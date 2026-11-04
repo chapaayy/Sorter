@@ -1,3 +1,12 @@
+# Upload throughput experiment: force HTTP/1.1 so browsers can use multiple
+# independent TCP connections instead of multiplexing on one h2/h3 connection.
+# Revert this global block to restore Caddy defaults (h1, h2, h3).
+{
+  servers :443 {
+    protocols h1
+  }
+}
+
 {$DOMAIN} {
   encode zstd gzip
   request_body {
