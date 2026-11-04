@@ -69,7 +69,20 @@ class Downloads:
         log=LOG_DIR/'megaloc.log'
         cmd=[sys.executable,'-c',
              'import sys; from huggingface_hub import hf_hub_download; hf_hub_download(repo_id="gberton/MegaLoc",filename="model.safetensors",local_dir=sys.argv[1])',str(target)]
+        # Hugging Face Hub/Xet need a writable home in the persistent models volume.
+        cache=MODEL_CACHE_DIR
+        locations={
+            'HOME':cache,
+            'XDG_CACHE_HOME':cache/'xdg',
+            'HF_HOME':cache/'huggingface',
+            'HF_HUB_CACHE':cache/'huggingface'/'hub',
+            'HF_XET_CACHE':cache/'huggingface'/'xet',
+            'TORCH_HOME':cache/'torch',
+        }
+        for folder in locations.values():
+            folder.mkdir(parents=True,exist_ok=True)
         env=os.environ.copy()
+        env.update({key:str(path) for key,path in locations.items()})
         env['HF_HUB_OFFLINE']='0'
         with log.open('w',encoding='utf8') as output:
             process=subprocess.Popen(cmd,env=env,stdout=output,stderr=subprocess.STDOUT)
