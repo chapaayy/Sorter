@@ -104,78 +104,115 @@ def upload_status(upload_id:str):
             'finalized':row['finalized']}
 
 
+def _append_chunk(path: Path, expected: int, data: bytes, declared_size: int) -> int:
+    """Check file offset and write in a worker thread, never on the ASGI event loop."""
+    with path.open('r+b') as output:
+        actual = output.seek(0, os.SEEK_END)
+        if actual != expected:
+            raise HTTPException(409, {'expected_offset': actual})
+        if actual + len(data) > declared_size:
+            raise HTTPException(413, 'Превышен размер файла')
+        try:
+            output.write(data)
+            output.flush()
+        except OSError:
+            output.truncate(actual)
+            raise
+    return actual + len(data)
+
+
+def _record_chunk(upload_id: uuid.UUID, received: int) -> None:
+    with connect() as db:
+        db.execute('UPDATE uploads SET received=%s WHERE id=%s', (received, upload_id))
+
+
 @router.patch('/uploads/{upload_id}')
-async def upload_chunk(upload_id:str,request:Request):
+async def upload_chunk(upload_id: str, request: Request):
+    try:
+        offset = int(request.headers.get('upload-offset', '-1'))
+    except ValueError:
+        raise HTTPException(400, 'Неверный upload-offset')
+    if offset < 0:
+        raise HTTPException(400, 'Неверный upload-offset')
+
+    # Buffer one bounded 16 MiB request, then offload disk and database work.
+    chunks = []
+    received = 0
+    async for data in request.stream():
+        received += len(data)
+        if received > CHUNK_LIMIT:
+            raise HTTPException(413, 'Превышен размер блока')
+        if data:
+            chunks.append(data)
+    if received == 0:
+        raise HTTPException(400, 'Пустой блок')
+    payload = b''.join(chunks)
+
+    # Serialize chunks of the same file, not uploads of different files.
+    async with lock_for(upload_id):
+        row = await asyncio.to_thread(get_upload, upload_id)
+        if row['finalized']:
+            raise HTTPException(409, 'Файл уже загружен')
+        path = PART_DIR / f'{row["id"]}.part'
+        if not await asyncio.to_thread(path.is_file):
+            raise HTTPException(409, 'Временный файл отсутствует')
+        confirmed = await asyncio.to_thread(
+            _append_chunk, path, offset, payload, row['declared_size'])
+        await asyncio.to_thread(_record_chunk, row['id'], confirmed)
+        return {'offset': confirmed}
+
+
+def _finalize_sync(upload_id: str):
+    """Hash, verify and register an uploaded photo off the ASGI event loop."""
     row=get_upload(upload_id)
-    try: offset=int(request.headers.get('upload-offset','-1'))
-    except ValueError:raise HTTPException(400,'Неверный upload-offset')
-    lock=lock_for(upload_id)
-    # Only one API replica; the lock serializes chunks of this upload.
-    async with lock:
-        if row['finalized']:raise HTTPException(409,'Файл уже загружен')
-        path=PART_DIR/f'{row["id"]}.part'
-        if not path.is_file():raise HTTPException(409,'Временный файл отсутствует')
-        actual=path.stat().st_size
-        if actual!=offset:raise HTTPException(409,{'expected_offset':actual})
-        written=0
-        with path.open('ab') as output:
-            async for chunk in request.stream():
-                written+=len(chunk)
-                if written>CHUNK_LIMIT or actual+written>row['declared_size']:
-                    output.truncate(actual)
-                    raise HTTPException(413,'Превышен размер блока или файла')
-                output.write(chunk)
-        with connect() as db:
-            db.execute('UPDATE uploads SET received=%s WHERE id=%s',(actual+written,row['id']))
-        return {'offset':actual+written}
+    with connect() as db:
+        if row['kind']=='reference' and db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
+            raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
+        if row['kind']=='fo' and db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',(row['batch_id'],)).fetchone():
+            raise HTTPException(409,'Партия уже запущена')
+    if row['finalized']:return {'path':row['target_path'],'already_finalized':True}
+    path=PART_DIR/f'{row["id"]}.part'
+    if not path.exists() or path.stat().st_size!=row['declared_size']:
+        raise HTTPException(409,'Файл загружен не полностью')
+    with path.open('rb') as stream:
+        digest=hashlib.file_digest(stream,'sha256').hexdigest()
+    if row['checksum'] and digest!=row['checksum']:raise HTTPException(422,'SHA-256 не совпадает')
+    try:
+        with Image.open(path) as im:im.verify()
+    except (OSError,UnidentifiedImageError,ValueError):
+        raise HTTPException(422,'Файл не является корректным изображением')
+    # Prevent duplicates when a SAM folder upload is restarted after an error.
+    # The transaction lock covers both the duplicate check and registration.
+    with connect() as db:
+        if row['kind']=='reference':
+            db.execute('SELECT pg_advisory_xact_lock(723409134)')
+            previous=db.execute(
+                "SELECT target_path FROM uploads WHERE kind='reference' AND finalized "
+                "AND sam=%s AND checksum=%s LIMIT 1",(row['sam'],digest)).fetchone()
+            if previous:
+                path.unlink()
+                db.execute('DELETE FROM uploads WHERE id=%s',(row['id'],))
+                return {'path':previous['target_path'],'sha256':digest,
+                        'already_finalized':False,'already_present':True}
+        base=UPLOADS_DIR/str(row['batch_id']) if row['kind']=='fo' else REFERENCES_DIR/row['sam']
+        base.mkdir(parents=True,exist_ok=True)
+        target=base/f'{digest[:20]}_{row["filename"]}'
+        if target.exists():
+            with target.open('rb') as stream:
+                previous_digest=hashlib.file_digest(stream,'sha256').hexdigest()
+            if previous_digest!=digest:
+                raise HTTPException(409,'Конфликт имён')
+            path.unlink()
+        else:path.replace(target)
+        db.execute('UPDATE uploads SET finalized=true,received=declared_size,checksum=%s,target_path=%s '
+                   'WHERE id=%s',(digest,str(target),row['id']))
+    return {'path':str(target),'sha256':digest,'already_finalized':False}
 
 
 @router.post('/uploads/{upload_id}/finish')
-async def finalize(upload_id:str):
+async def finalize(upload_id: str):
     async with lock_for(upload_id):
-        row=get_upload(upload_id)
-        with connect() as db:
-            if row['kind']=='reference' and db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
-                raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
-            if row['kind']=='fo' and db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',(row['batch_id'],)).fetchone():
-                raise HTTPException(409,'Партия уже запущена')
-        if row['finalized']:return {'path':row['target_path'],'already_finalized':True}
-        path=PART_DIR/f'{row["id"]}.part'
-        if not path.exists() or path.stat().st_size!=row['declared_size']:
-            raise HTTPException(409,'Файл загружен не полностью')
-        with path.open('rb') as stream:
-            digest=hashlib.file_digest(stream,'sha256').hexdigest()
-        if row['checksum'] and digest!=row['checksum']:raise HTTPException(422,'SHA-256 не совпадает')
-        try:
-            with Image.open(path) as im:im.verify()
-        except (OSError,UnidentifiedImageError,ValueError):
-            raise HTTPException(422,'Файл не является корректным изображением')
-        # Prevent duplicates when a SAM folder upload is restarted after an error.
-        # The transaction lock covers both the duplicate check and registration.
-        with connect() as db:
-            if row['kind']=='reference':
-                db.execute('SELECT pg_advisory_xact_lock(723409134)')
-                previous=db.execute(
-                    "SELECT target_path FROM uploads WHERE kind='reference' AND finalized "
-                    "AND sam=%s AND checksum=%s LIMIT 1",(row['sam'],digest)).fetchone()
-                if previous:
-                    path.unlink()
-                    db.execute('DELETE FROM uploads WHERE id=%s',(row['id'],))
-                    return {'path':previous['target_path'],'sha256':digest,
-                            'already_finalized':False,'already_present':True}
-            base=UPLOADS_DIR/str(row['batch_id']) if row['kind']=='fo' else REFERENCES_DIR/row['sam']
-            base.mkdir(parents=True,exist_ok=True)
-            target=base/f'{digest[:20]}_{row["filename"]}'
-            if target.exists():
-                with target.open('rb') as stream:
-                    previous_digest=hashlib.file_digest(stream,'sha256').hexdigest()
-                if previous_digest!=digest:
-                    raise HTTPException(409,'Конфликт имён')
-                path.unlink()
-            else:path.replace(target)
-            db.execute('UPDATE uploads SET finalized=true,received=declared_size,checksum=%s,target_path=%s '
-                       'WHERE id=%s',(digest,str(target),row['id']))
-        return {'path':str(target),'sha256':digest,'already_finalized':False}
+        return await asyncio.to_thread(_finalize_sync, upload_id)
 
 
 @router.get('/references')
