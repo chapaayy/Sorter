@@ -233,10 +233,11 @@ def _prepare_direct_upload(upload_id: str, payload: BeginUpload) -> dict:
 
     name = safe_name(payload.filename)
     batch_id = str(row['batch_id']) if row['batch_id'] else ''
+    expected_sam = check_label(payload.sam) if payload.kind == 'reference' else ''
     if (row['kind'] != payload.kind or row['filename'] != name or
             row['declared_size'] != payload.size or
             batch_id != (payload.batch_id or '') or
-            (row['sam'] or '') != (payload.sam or '')):
+            (row['sam'] or '') != expected_sam):
         raise HTTPException(409, 'Идентификатор занят другой загрузкой')
     return row
 
