@@ -150,17 +150,29 @@ async def finalize(upload_id:str):
             with Image.open(path) as im:im.verify()
         except (OSError,UnidentifiedImageError,ValueError):
             raise HTTPException(422,'Файл не является корректным изображением')
-        base=UPLOADS_DIR/str(row['batch_id']) if row['kind']=='fo' else REFERENCES_DIR/row['sam']
-        base.mkdir(parents=True,exist_ok=True)
-        target=base/f'{digest[:20]}_{row["filename"]}'
-        if target.exists():
-            with target.open('rb') as stream:
-                previous_digest=hashlib.file_digest(stream,'sha256').hexdigest()
-            if previous_digest!=digest:
-                raise HTTPException(409,'Конфликт имён')
-            path.unlink()
-        else:path.replace(target)
+        # Prevent duplicates when a SAM folder upload is restarted after an error.
+        # The transaction lock covers both the duplicate check and registration.
         with connect() as db:
+            if row['kind']=='reference':
+                db.execute('SELECT pg_advisory_xact_lock(723409134)')
+                previous=db.execute(
+                    "SELECT target_path FROM uploads WHERE kind='reference' AND finalized "
+                    "AND sam=%s AND checksum=%s LIMIT 1",(row['sam'],digest)).fetchone()
+                if previous:
+                    path.unlink()
+                    db.execute('DELETE FROM uploads WHERE id=%s',(row['id'],))
+                    return {'path':previous['target_path'],'sha256':digest,
+                            'already_finalized':False,'already_present':True}
+            base=UPLOADS_DIR/str(row['batch_id']) if row['kind']=='fo' else REFERENCES_DIR/row['sam']
+            base.mkdir(parents=True,exist_ok=True)
+            target=base/f'{digest[:20]}_{row["filename"]}'
+            if target.exists():
+                with target.open('rb') as stream:
+                    previous_digest=hashlib.file_digest(stream,'sha256').hexdigest()
+                if previous_digest!=digest:
+                    raise HTTPException(409,'Конфликт имён')
+                path.unlink()
+            else:path.replace(target)
             db.execute('UPDATE uploads SET finalized=true,received=declared_size,checksum=%s,target_path=%s '
                        'WHERE id=%s',(digest,str(target),row['id']))
         return {'path':str(target),'sha256':digest,'already_finalized':False}
