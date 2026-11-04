@@ -55,8 +55,7 @@ def begin_batch():
     return {'batch_id':str(batch_id)}
 
 
-@router.post('/uploads')
-def create_upload(payload:BeginUpload):
+def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
     if payload.kind not in ('fo','reference'):raise HTTPException(422,'Недопустимый тип загрузки')
     filename=safe_name(payload.filename)
     batch_id=None; sam=None
@@ -70,7 +69,6 @@ def create_upload(payload:BeginUpload):
             raise HTTPException(422,'Нужна папка SAM-xxxx')
     if payload.sha256 and not re.fullmatch(r'[0-9a-f]{64}',payload.sha256):
         raise HTTPException(422,'Неверная контрольная сумма')
-    file_id=uuid.uuid4()
     with connect() as db:
         if payload.kind=='reference' and db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
             raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
@@ -84,6 +82,12 @@ def create_upload(payload:BeginUpload):
     PART_DIR.mkdir(parents=True,exist_ok=True)
     (PART_DIR/f'{file_id}.part').touch(exist_ok=False)
     return {'id':str(file_id),'offset':0,'size':payload.size}
+
+
+
+@router.post('/uploads')
+def create_upload(payload:BeginUpload):
+    return _create_upload(payload, uuid.uuid4())
 
 
 def get_upload(upload_id):
@@ -212,6 +216,71 @@ def _finalize_sync(upload_id: str):
 @router.post('/uploads/{upload_id}/finish')
 async def finalize(upload_id: str):
     async with lock_for(upload_id):
+        return await asyncio.to_thread(_finalize_sync, upload_id)
+
+
+
+def _prepare_direct_upload(upload_id: str, payload: BeginUpload) -> dict:
+    """Create an idempotent upload id, or check the matching existing upload."""
+    uid = uuid.UUID(upload_id)
+    try:
+        row = get_upload(upload_id)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        _create_upload(payload, uid)
+        row = get_upload(upload_id)
+
+    name = safe_name(payload.filename)
+    batch_id = str(row['batch_id']) if row['batch_id'] else ''
+    if (row['kind'] != payload.kind or row['filename'] != name or
+            row['declared_size'] != payload.size or
+            batch_id != (payload.batch_id or '') or
+            (row['sam'] or '') != (payload.sam or '')):
+        raise HTTPException(409, 'Идентификатор занят другой загрузкой')
+    return row
+
+
+@router.put('/uploads/direct/{upload_id}')
+async def direct_upload(
+    upload_id: str, request: Request, kind: str, filename: str,
+    size: int, batch_id: str = '', sam: str = ''
+):
+    """Single-request upload; retain the resumable PATCH route for interrupted files."""
+    try:
+        uuid.UUID(upload_id)
+    except ValueError:
+        raise HTTPException(404, 'Загрузка не найдена')
+    payload = BeginUpload(kind=kind, filename=filename, size=size,
+                          batch_id=batch_id or None, sam=sam or None)
+    async with lock_for(upload_id):
+        row = await asyncio.to_thread(_prepare_direct_upload, upload_id, payload)
+        if row['finalized']:
+            return {'already_finalized': True, 'path': row['target_path']}
+
+        path = PART_DIR / f"{row['id']}.part"
+        length = await asyncio.to_thread(path.stat)
+        if length.st_size:
+            raise HTTPException(409, 'Продолжите загрузку через PATCH')
+        offset = 0
+        buffered = bytearray()
+        # Small chunks avoid buffering 60 MiB times the number of concurrent files.
+        async for data in request.stream():
+            if not data:
+                continue
+            if offset + len(buffered) + len(data) > size:
+                raise HTTPException(413, 'Превышен размер файла')
+            buffered.extend(data)
+            if len(buffered) >= 1024 * 1024:
+                offset = await asyncio.to_thread(
+                    _append_chunk, path, offset, bytes(buffered), size)
+                buffered.clear()
+        if buffered:
+            offset = await asyncio.to_thread(
+                _append_chunk, path, offset, bytes(buffered), size)
+        if offset != size:
+            raise HTTPException(409, 'Файл загружен не полностью')
+        # Keep SHA-256, Pillow verification and DB registration exactly as before.
         return await asyncio.to_thread(_finalize_sync, upload_id)
 
 
