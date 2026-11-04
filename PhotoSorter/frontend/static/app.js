@@ -14,7 +14,7 @@ function render(){if(!state.me)return renderLogin();let body=state.tab==='home'?
 function home(){const latest=state.active,progress=latest?.progress||{},running=latest&&['queued','running','stopping'].includes(latest.status),installed=state.model?.models?.[0]?.available;return `<div class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</div><h1 class="heading">Новая сортировка</h1><p class="sub">Загрузи ФО, один раз подготовь библиотеку Образцов и запусти MegaLoc.</p>${banner()}
 <div class="grid"><section class="panel"><div class="line"><h2>01 · Фотографии отчёта</h2><span class="pill">${Number(state.batchInfo.photos)||0} ФО</span></div><p>Выбери целую папку ФО на компьютере. Передача на сервер возобновляемая.</p><label class="file-label"><input type="file" id="foFiles" multiple webkitdirectory directory onchange="uploadFiles('fo',this.files)"><b>↑ Загрузить папку ФО</b><span class="hint">Или выбери несколько фотографий</span></label><button class="button" onclick="newBatch()">Создать новую партию</button><div class="hint" style="margin-top:12px">Партия: ${H(state.batch||'не создана')}</div></section>
 <section class="panel"><div class="line"><h2>02 · Библиотека Образцов</h2><span class="pill">${state.references.total} Образцов</span></div><p>Загрузи папку с подпапками SAM-0001, SAM-0002 и т.д. Кэш эмбеддингов создаётся автоматически после группировки ФО.</p><label class="file-label"><input type="file" id="refFiles" multiple webkitdirectory directory onchange="uploadFiles('reference',this.files)"><b>↑ Загрузить папку Образцов</b><span class="hint">SAM-xxxx/фото.jpg</span></label><div class="hint">Конструкций: ${state.references.sam.length} · Образцы сохраняются на VPS</div></section></div>
-${state.uploading?`<section class="panel"><div class="line"><b>Передача файлов</b><b>${state.uploadPercent}%</b></div><div class="bar"><span style="width:${state.uploadPercent}%"></span></div><div class="hint">${H(state.uploadLabel)}</div></section>`:''}
+${state.uploading?`<section class="panel"><div class="line"><b>Передача файлов</b><b id="uploadPercent">${state.uploadPercent}%</b></div><div class="bar" id="uploadBar"><span style="width:${state.uploadPercent}%"></span></div><div class="hint" id="uploadLabel">${H(state.uploadLabel)}</div></section>`:''}
 <section class="panel"><div class="line"><div><h2>03 · Распознавание</h2><p>Один движок — MegaLoc. CPU Worker отдельно от сайта.</p></div><span class="pill">${installed?'● Модель готова':'○ Нет модели'}</span></div>${!installed?`<button class="button" onclick="downloadModel()">Скачать MegaLoc</button><span class="hint">　${H(state.model?.downloads?.megaloc?.message||'Веса ещё не скачаны')}</span>`:''}<div class="section"><div class="line"><b>Порог группировки ФО</b><strong id="thresholdValue">${state.threshold.toFixed(2)}</strong></div><input type="range" min="0.50" max="0.99" step="0.01" value="${state.threshold}" oninput="setThreshold(this.value)"><p>Рабочее значение 0.50. Алгоритм группировки и сопоставления не изменён.</p></div></section>
 <section class="panel"><div class="line"><div><h2>${running?'Обработка выполняется':latest?'Последний запуск: '+H(latest.status):'Готово к обработке'}</h2><p>${H(progress.stage_label||'ФО → Группы ФО → Образцы → Готовые фотки')}</p></div><div class="btnrow">${running?`<button class="button danger" onclick="stopRun()">Остановить</button>`:`<button class="button primary" ${!installed||!state.batchInfo.photos||!state.references.total||state.uploading?'disabled':''} onclick="startRun()">▶ Начать обработку</button>`}</div></div>${latest?`<div class="bar"><span style="width:${Number(progress.overall_percent)||0}%"></span></div><div class="line hint"><span>${H(progress.detail||'')} · ${Number(progress.overall_percent||0).toFixed(1)}%</span><span>Осталось: ${progress.estimated_remaining_seconds!=null?Math.round(progress.estimated_remaining_seconds)+' с':'—'}</span></div>`:''}</section>`}
 function setThreshold(v){state.threshold=Number(v);document.getElementById('thresholdValue').textContent=state.threshold.toFixed(2)}
@@ -25,7 +25,131 @@ async function stopRun(){try{await api('/runs/'+state.active.id+'/stop',{method:
 async function signout(){await api('/auth/logout',{method:'POST'});state.me=null;clearInterval(state.runTimer);renderLogin()}
 const imageKinds=['jpg','jpeg','png','webp','bmp','tif','tiff'];
 function refSam(path){const parts=path.replaceAll('\\','/').split('/');return parts.find(p=>/^SAM-\d{4}(?!\d)(?=$|[- ,;\t(])/i.test(p))||''}
-async function uploadFiles(kind,input){const files=Array.from(input||[]).filter(f=>imageKinds.includes(f.name.split('.').pop().toLowerCase()));if(!files.length)return report('Не найдены изображения');if(state.uploading)return;try{state.error='';state.uploading=true;if(kind==='fo'&&!state.batch){const b=await api('/batches',{method:'POST'});state.batch=b.batch_id;localStorage.setItem('ps.batch',state.batch)}let done=0;const total=files.reduce((n,f)=>n+f.size,0);let processed=0;for(const file of files){const relative=file.webkitRelativePath||file.name;const sam=kind==='reference'?refSam(relative):null;if(kind==='reference'&&!sam)throw Error('Невозможно определить SAM для '+relative);state.uploadLabel=relative;render();const key=['ps-upload',kind,state.batch,relative,file.size,file.lastModified].join(':');let id=localStorage.getItem(key);let offset=0;if(id){try{const r=await api('/uploads/'+id);offset=r.offset;if(r.finalized){processed+=file.size;continue}}catch{id=null}}if(!id){const created=await api('/uploads',jopts({kind,filename:file.name,size:file.size,batch_id:kind==='fo'?state.batch:null,sam}));id=created.id;localStorage.setItem(key,id)}while(offset<file.size){const end=Math.min(offset+4*1024*1024,file.size);const response=await api('/uploads/'+id,{method:'PATCH',headers:{'Upload-Offset':String(offset),'Content-Type':'application/octet-stream'},body:file.slice(offset,end)});offset=response.offset;state.uploadPercent=Math.floor(100*(processed+offset)/total);document.querySelector('.bar span')?.style.setProperty('width',state.uploadPercent+'%')}await api('/uploads/'+id+'/finish',{method:'POST'});localStorage.removeItem(key);processed+=file.size;done++;state.uploadPercent=Math.floor(100*processed/total)}state.uploadLabel='Загружено '+done+' новых файлов';await refresh()}catch(e){report(e)}finally{state.uploading=false;await refresh()}}
+// Five simultaneous uploads; 16 MiB max per request.
+const UPLOAD_WORKERS=5, UPLOAD_CHUNK_BYTES=16*1024*1024, UPLOAD_MAX_FILE_BYTES=60*1024*1024;
+const uploadSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function retryableUploadError(error){
+  const msg=String(error?.message||error);
+  return error instanceof TypeError || /^HTTP (409|429|5\d\d)\b/.test(msg) ||
+    /Failed to fetch|NetworkError|Load failed/i.test(msg);
+}
+async function uploadFiles(kind,input){
+  const files=Array.from(input||[]).filter(f=>imageKinds.includes(f.name.split('.').pop().toLowerCase()));
+  if(!files.length)return report('Не найдены изображения');
+  if(state.uploading)return;
+  state.uploading=true;
+  state.uploadPercent=0;
+  state.uploadLabel='Подготовка загрузки…';
+  state.error='';
+  try{
+    if(kind==='fo'&&!state.batch){
+      const batch=await api('/batches',{method:'POST'});
+      state.batch=batch.batch_id;
+      localStorage.setItem('ps.batch',state.batch);
+    }
+    render();
+    const total=files.reduce((sum,file)=>sum+file.size,0);
+    const credited=new Array(files.length).fill(0);
+    const started=performance.now();
+    let cursor=0, completed=0, lastPaint=0;
+    const errors=[];
+    function updateProgress(force=false){
+      const now=performance.now();
+      if(!force&&now-lastPaint<150)return;
+      lastPaint=now;
+      const bytes=credited.reduce((sum,x)=>sum+x,0);
+      const elapsed=Math.max((now-started)/1000,0.001);
+      const rate=bytes/elapsed;
+      const remaining=rate>0?Math.ceil((total-bytes)/rate):null;
+      state.uploadPercent=total?Math.min(100,Math.floor(100*bytes/total)):100;
+      const mib=n=>(n/1048576).toFixed(1);
+      state.uploadLabel=completed+'/'+files.length+' файлов · '+mib(bytes)+' / '+mib(total)+' МБ · '+mib(rate)+' МБ/с'+
+        (remaining===null?'':' · осталось ~'+Math.ceil(remaining/60)+' мин');
+      const bar=document.querySelector('#uploadBar span');
+      const label=document.getElementById('uploadLabel');
+      const percent=document.getElementById('uploadPercent');
+      if(bar)bar.style.width=state.uploadPercent+'%';
+      if(label)label.textContent=state.uploadLabel;
+      if(percent)percent.textContent=state.uploadPercent+'%';
+    }
+    async function uploadOne(file,index){
+      const relative=file.webkitRelativePath||file.name;
+      const sam=kind==='reference'?refSam(relative):null;
+      if(kind==='reference'&&!sam)throw Error('Невозможно определить SAM для '+relative);
+      if(file.size>UPLOAD_MAX_FILE_BYTES)throw Error('Файл больше 60 МБ: '+relative);
+      const key=['ps-upload',kind,state.batch,relative,file.size,file.lastModified].join(':');
+      let id=localStorage.getItem(key), offset=0;
+      if(id){
+        try{
+          const status=await api('/uploads/'+encodeURIComponent(id));
+          if(status.finalized){
+            localStorage.removeItem(key);
+            credited[index]=file.size;completed++;updateProgress(true);
+            return;
+          }
+          offset=Number(status.offset);
+          if(!Number.isInteger(offset)||offset<0||offset>file.size)throw Error('Неверный offset');
+        }catch(error){
+          if(!/^HTTP (404|410)\b/.test(String(error?.message||error)))throw error;
+          localStorage.removeItem(key);
+          id=null;
+        }
+      }
+      if(!id){
+        const result=await api('/uploads',jopts({kind,filename:file.name,size:file.size,
+          batch_id:kind==='fo'?state.batch:null,sam}));
+        id=result.id;
+        localStorage.setItem(key,id);
+      }
+      credited[index]=offset;updateProgress(true);
+      let failures=0;
+      while(offset<file.size){
+        const end=Math.min(offset+UPLOAD_CHUNK_BYTES,file.size);
+        try{
+          const result=await api('/uploads/'+encodeURIComponent(id),{
+            method:'PATCH',headers:{'Upload-Offset':String(offset),'Content-Type':'application/octet-stream'},
+            body:file.slice(offset,end)
+          });
+          const confirmed=Number(result.offset);
+          if(!Number.isInteger(confirmed)||confirmed<=offset||confirmed>end)
+            throw Error('Неверный ответ сервера о размере блока');
+          offset=confirmed;
+          failures=0;
+        }catch(error){
+          if(!retryableUploadError(error)||++failures>3)throw error;
+          await uploadSleep(failures*400);
+          // Lost response? Ask the server how many bytes it really saved.
+          try{
+            const status=await api('/uploads/'+encodeURIComponent(id));
+            const confirmed=Number(status.offset);
+            if(Number.isInteger(confirmed)&&confirmed>=0&&confirmed<=file.size)offset=confirmed;
+          }catch{}
+        }
+        credited[index]=offset;
+        updateProgress();
+      }
+      await api('/uploads/'+encodeURIComponent(id)+'/finish',{method:'POST'});
+      localStorage.removeItem(key);
+      credited[index]=file.size;completed++;updateProgress(true);
+    }
+    async function worker(){
+      while(cursor<files.length){
+        const index=cursor++;
+        try{await uploadOne(files[index],index)}
+        catch(error){errors.push(files[index].name+': '+String(error?.message||error))}
+      }
+    }
+    await Promise.all(Array.from({length:Math.min(UPLOAD_WORKERS,files.length)},()=>worker()));
+    updateProgress(true);
+    if(errors.length)throw Error('Не загружено '+errors.length+' из '+files.length+' файлов: '+errors.slice(0,3).join('; '));
+    state.uploadLabel='Загружено '+completed+' файлов';
+  }catch(error){
+    state.error=String(error?.message||error);
+  }finally{
+    state.uploading=false;
+    await refresh();
+  }
+}
 function results(){const r=state.active,rows=state.results?.rows||[],sams=state.results?.sam_counts||{};return `<div class="eyebrow">РЕЗУЛЬТАТЫ ОБРАБОТКИ</div><h1 class="heading">Готовые фотографии</h1><p class="sub">Группы ФО, назначения SAM и выгрузка ZIP.</p>${banner()}<section class="panel"><div class="line"><select style="max-width:380px" onchange="selectRun(this.value)">${state.runs.map(x=>`<option value="${H(x.id)}" ${x.id===r?.id?'selected':''}>${H(x.id)} — ${H(x.status)}</option>`).join('')}</select>${r?.models?.megaloc?.status==='completed'?`<a href="/api/download/${r.id}" class="button primary">↓ Скачать все ZIP</a>`:''}</div></section>${!rows.length?'<div class="panel"><p>Нет готовых результатов. Выбери завершённый запуск.</p></div>':`<div class="meters"><div class="metric"><b>${rows.length}</b><small>ФО</small></div><div class="metric"><b>${new Set(rows.map(x=>x.group_id)).size}</b><small>Групп</small></div><div class="metric"><b>${rows.filter(x=>x.assigned_sam==='_Неопределено').length}</b><small>Неопределено</small></div></div><div class="tabline"><button class="button ${state.resultMode==='sam'?'active':''}" onclick="state.resultMode='sam';render()">По SAM</button><button class="button ${state.resultMode==='groups'?'active':''}" onclick="state.resultMode='groups';render()">Группы ФО</button></div>${resultGroups(rows,sams)}`}`}
 function resultGroups(rows,sams){const isSam=state.resultMode==='sam';const groups={};for(const row of rows){const key=isSam?row.assigned_sam:(row.group_id||'Без группы');(groups[key]??=[]).push(row)}return Object.keys(groups).sort().map(key=>`<section class="panel"><div class="line"><div><h2>${H(key)}</h2><span class="hint">${groups[key].length} ФО</span></div>${isSam?`<a class="button" href="/api/download/${state.active.id}?sam=${encodeURIComponent(key)}">↓ ZIP</a>`:''}</div><div class="run-grid">${groups[key].map(row=>{const i=rows.indexOf(row);return `<article class="photo"><img loading="lazy" src="/api/images/${state.active.id}/megaloc/${i}" alt="ФО"><div class="details">${isSam?`<b>${H(row.assigned_sam)}</b><br>`:`<b>Группа ${H(row.group_id)}</b><br>`}<span class="muted">${H(row.query?.split(/[\\/]/).pop())}</span><br>${isSam?'Оценка: '+(Number(row.score)||0).toFixed(3):'Из группы ФО'}</div></article>`}).join('')}</div></section>`).join('')}
 function selectRun(id){state.active=state.runs.find(x=>x.id===id)||null;state.results=null;refresh()}
