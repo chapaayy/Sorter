@@ -24,7 +24,7 @@ PY
   chmod 600 .env.generated
   echo '[INFO] Generated private credentials in .env.generated (do not commit or lose this file).'
 fi
-mkdir -p Models/models/megaloc Models/cache PhotoSorter/data/{references,uploads,runs,cache,outputs}
+mkdir -p Models/models/megaloc Models/cache/huggingface/{hub,xet} Models/cache/{torch,xdg,downloads} PhotoSorter/data/{references,uploads,runs,cache,outputs}
 # Docker image runs as UID 10001; prevent root-owned files after upgrades.
 if [[ "$(id -u)" == '0' ]]; then
   chown -R 10001:10001 Models PhotoSorter/data
