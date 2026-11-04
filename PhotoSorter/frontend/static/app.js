@@ -26,7 +26,7 @@ async function signout(){await api('/auth/logout',{method:'POST'});state.me=null
 const imageKinds=['jpg','jpeg','png','webp','bmp','tif','tiff'];
 function refSam(path){const parts=path.replaceAll('\\','/').split('/');return parts.find(p=>/^SAM-\d{4}(?!\d)(?=$|[- ,;\t(])/i.test(p))||''}
 // Five simultaneous uploads; 16 MiB max per request.
-const UPLOAD_WORKERS=5, UPLOAD_CHUNK_BYTES=16*1024*1024, UPLOAD_MAX_FILE_BYTES=60*1024*1024;
+const UPLOAD_WORKERS=12, UPLOAD_CHUNK_BYTES=16*1024*1024, UPLOAD_MAX_FILE_BYTES=60*1024*1024;
 const uploadSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function retryableUploadError(error){
   const msg=String(error?.message||error);
@@ -53,6 +53,12 @@ async function uploadFiles(kind,input){
     const started=performance.now();
     let cursor=0, completed=0, lastPaint=0;
     const errors=[];
+    const stageMetrics={init:{count:0,ms:0},transfer:{count:0,ms:0},finish:{count:0,ms:0}};
+    async function trackedUploadApi(stage,url,opts){
+      const startedAt=performance.now();
+      try{return await api(url,opts)}
+      finally{stageMetrics[stage].count++;stageMetrics[stage].ms+=performance.now()-startedAt}
+    }
     function updateProgress(force=false){
       const now=performance.now();
       if(!force&&now-lastPaint<150)return;
@@ -96,7 +102,7 @@ async function uploadFiles(kind,input){
         }
       }
       if(!id){
-        const result=await api('/uploads',jopts({kind,filename:file.name,size:file.size,
+        const result=await trackedUploadApi('init','/uploads',jopts({kind,filename:file.name,size:file.size,
           batch_id:kind==='fo'?state.batch:null,sam}));
         id=result.id;
         localStorage.setItem(key,id);
@@ -106,7 +112,7 @@ async function uploadFiles(kind,input){
       while(offset<file.size){
         const end=Math.min(offset+UPLOAD_CHUNK_BYTES,file.size);
         try{
-          const result=await api('/uploads/'+encodeURIComponent(id),{
+          const result=await trackedUploadApi('transfer','/uploads/'+encodeURIComponent(id),{
             method:'PATCH',headers:{'Upload-Offset':String(offset),'Content-Type':'application/octet-stream'},
             body:file.slice(offset,end)
           });
@@ -128,7 +134,7 @@ async function uploadFiles(kind,input){
         credited[index]=offset;
         updateProgress();
       }
-      await api('/uploads/'+encodeURIComponent(id)+'/finish',{method:'POST'});
+      await trackedUploadApi('finish','/uploads/'+encodeURIComponent(id)+'/finish',{method:'POST'});
       localStorage.removeItem(key);
       credited[index]=file.size;completed++;updateProgress(true);
     }
@@ -141,6 +147,9 @@ async function uploadFiles(kind,input){
     }
     await Promise.all(Array.from({length:Math.min(UPLOAD_WORKERS,files.length)},()=>worker()));
     updateProgress(true);
+    const seconds=(performance.now()-started)/1000;
+    const overallMbit=seconds>0?((credited.reduce((sum,x)=>sum+x,0)*8)/seconds/1e6).toFixed(1):'0';
+    console.info('[PhotoSorter upload] '+JSON.stringify({files:files.length,parallel:Math.min(UPLOAD_WORKERS,files.length),totalMbitPerSecond:overallMbit,elapsedSeconds:seconds.toFixed(1),stages:Object.fromEntries(Object.entries(stageMetrics).map(([name,data])=>[name,{requests:data.count,averageMs:data.count?Math.round(data.ms/data.count):0}]))}));
     if(errors.length)throw Error('Не загружено '+errors.length+' из '+files.length+' файлов: '+errors.slice(0,3).join('; '));
     state.uploadLabel='Загружено '+completed+' файлов';
   }catch(error){
