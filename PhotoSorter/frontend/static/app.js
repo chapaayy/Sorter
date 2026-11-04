@@ -25,7 +25,7 @@ async function stopRun(){try{await api('/runs/'+state.active.id+'/stop',{method:
 async function signout(){await api('/auth/logout',{method:'POST'});state.me=null;clearInterval(state.runTimer);renderLogin()}
 const imageKinds=['jpg','jpeg','png','webp','bmp','tif','tiff'];
 function refSam(path){const parts=path.replaceAll('\\','/').split('/');return parts.find(p=>/^SAM-\d{4}(?!\d)(?=$|[- ,;\t(])/i.test(p))||''}
-// Five simultaneous uploads; 16 MiB max per request.
+// 12 concurrent files; single-request fast path with resumable PATCH fallback.
 const UPLOAD_WORKERS=12, UPLOAD_CHUNK_BYTES=16*1024*1024, UPLOAD_MAX_FILE_BYTES=60*1024*1024;
 const uploadSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function retryableUploadError(error){
@@ -53,7 +53,7 @@ async function uploadFiles(kind,input){
     const started=performance.now();
     let cursor=0, completed=0, lastPaint=0;
     const errors=[];
-    const stageMetrics={init:{count:0,ms:0},transfer:{count:0,ms:0},finish:{count:0,ms:0}};
+    const stageMetrics={direct:{count:0,ms:0},init:{count:0,ms:0},transfer:{count:0,ms:0},finish:{count:0,ms:0}};
     async function trackedUploadApi(stage,url,opts){
       const startedAt=performance.now();
       try{return await api(url,opts)}
@@ -99,6 +99,42 @@ async function uploadFiles(kind,input){
           if(!/^HTTP (404|410)\b/.test(String(error?.message||error)))throw error;
           localStorage.removeItem(key);
           id=null;
+        }
+      }
+      if(!id){
+        // Stable client ID is stored before transfer: an interrupted direct PUT
+        // resumes through the existing offset-based PATCH API after a reload.
+        id=crypto.randomUUID();
+        localStorage.setItem(key,id);
+        const params=new URLSearchParams({
+          kind,filename:file.name,size:String(file.size),
+          batch_id:kind==='fo'?state.batch:'',sam:sam||''
+        });
+        try{
+          await trackedUploadApi('direct','/uploads/direct/'+encodeURIComponent(id)+'?'+params,{
+            method:'PUT',headers:{'Content-Type':'application/octet-stream'},body:file
+          });
+          localStorage.removeItem(key);
+          credited[index]=file.size;completed++;updateProgress(true);
+          return;
+        }catch(error){
+          if(!retryableUploadError(error))throw error;
+          try{
+            const status=await api('/uploads/'+encodeURIComponent(id));
+            if(status.finalized){
+              localStorage.removeItem(key);
+              credited[index]=file.size;completed++;updateProgress(true);
+              return;
+            }
+            offset=Number(status.offset);
+            if(!Number.isInteger(offset)||offset<0||offset>file.size)
+              throw Error('Неверный offset');
+          }catch(statusError){
+            if(!/^HTTP (404|410)\\b/.test(String(statusError?.message||statusError)))throw statusError;
+            // The server has no partial transfer. Use the old resumable route.
+            id=null;
+            localStorage.removeItem(key);
+          }
         }
       }
       if(!id){
