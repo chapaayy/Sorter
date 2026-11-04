@@ -1,6 +1,9 @@
 FROM python:3.11-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
-    PHOTOSORTER_FORCE_CPU=1 PHOTOSORTER_CPU_THREADS=8 PHOTOSORTER_BATCH_SIZE=4 PHOTOSORTER_PREFETCH_WORKERS=2
+    PHOTOSORTER_FORCE_CPU=1 PHOTOSORTER_CPU_THREADS=8 PHOTOSORTER_BATCH_SIZE=4 PHOTOSORTER_PREFETCH_WORKERS=2 \
+    HOME=/workspace/Models/cache XDG_CACHE_HOME=/workspace/Models/cache/xdg \
+    HF_HOME=/workspace/Models/cache/huggingface HF_HUB_CACHE=/workspace/Models/cache/huggingface/hub \
+    HF_XET_CACHE=/workspace/Models/cache/huggingface/xet TORCH_HOME=/workspace/Models/cache/torch
 WORKDIR /workspace/PhotoSorter
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 ca-certificates && rm -rf /var/lib/apt/lists/*
 # Verified CPU-only wheels; no CUDA runtime or GPU image layers.
