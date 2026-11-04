@@ -19,7 +19,7 @@ router=APIRouter(prefix='/api',tags=['uploads'])
 UPLOADS_DIR=DATA_DIR/'uploads'
 REFERENCES_DIR=DATA_DIR/'references'
 PART_DIR=DATA_DIR/'incoming'
-CHUNK_LIMIT=8*1024*1024
+CHUNK_LIMIT=16*1024*1024
 MAX_FILE_BYTES=60*1024*1024
 _LOCKS:dict[str,asyncio.Lock]={}
 _LOCKS_LOCK=threading.Lock()
