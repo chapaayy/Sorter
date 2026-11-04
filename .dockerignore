@@ -1,0 +1,15 @@
+.git
+.env
+.env.generated
+Models/
+PhotoSorter/data/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.venv/
+**/node_modules/
+*.zip
+*.log
+PhotoSorter/backend/tests/
+PhotoSorter/backend/tests_server/
+PhotoSorter/docs/

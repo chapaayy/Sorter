@@ -1,0 +1,6 @@
+# Local API and image handling. Neural engine requires PyTorch installed by launcher.
+fastapi>=0.115,<1
+pydantic>=2,<3
+uvicorn>=0.30,<1
+numpy==1.26.4
+Pillow==11.0.0

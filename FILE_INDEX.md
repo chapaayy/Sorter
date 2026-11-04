@@ -1,0 +1,29 @@
+# File index
+
+- `compose.yaml` — четыре Docker сервиса `caddy`,`api`,`worker`,`postgres`, сети и тома.
+- `.env.example` — единственная настройка пользователя: `DOMAIN`.
+- `.env.generated` — генерируемые при установке секреты, вне Git.
+- `install.sh` — первичная установка и обновление Docker Compose.
+- `.dockerignore`, `.gitignore` — исключение весов, данных, секретов из сборки/коммитов.
+- `Models/models/`, `Models/cache/` — веса и служебный кэш моделей (без фото).
+- `PhotoSorter/docker/caddy/Caddyfile` — HTTPS, reverse proxy, security headers.
+- `PhotoSorter/docker/app/Dockerfile` — CPU runtime.
+- `PhotoSorter/requirements*.txt` — Python зависимости.
+- `PhotoSorter/backend/server/main.py` — HTTP API, сессии, скачивание ZIP, статика.
+- `PhotoSorter/backend/server/auth.py` — аутентификация, session cookie.
+- `PhotoSorter/backend/server/database.py` — PostgreSQL DDL/транзакции.
+- `PhotoSorter/backend/server/uploads.py` — приём и проверка файлов, бэкапы данных не выполняет.
+- `PhotoSorter/backend/server/jobs.py` — job API + PostgreSQL статусы.
+- `PhotoSorter/backend/server/worker.py` — процесс фоновой обработки.
+- `PhotoSorter/backend/server/reference_cache.py` — кэш Образцов.
+- `PhotoSorter/backend/app/config.py` — постоянные пути к Models и data.
+- `PhotoSorter/backend/app/jobs/worker.py` — шаги одной сортировки.
+- `PhotoSorter/backend/app/jobs/runtime.py` — Job/progress без старого локального менеджера.
+- `PhotoSorter/backend/app/recognition/engines/megaloc/loader.py` — offline веса MegaLoc.
+- `PhotoSorter/backend/app/recognition/engines/megaloc/extractor.py` — batch CPU инференс.
+- `PhotoSorter/backend/app/recognition/pipeline.py` — ФО→группы→Образцы→SAM.
+- `PhotoSorter/backend/app/recognition/grouping/finder.py` — группировка по косинусному порогу.
+- `PhotoSorter/backend/app/recognition/matching/resolver.py` — назначение SAM.
+- `PhotoSorter/backend/app/results/` — запись ZIP-готовых файлов/manifest.
+- `PhotoSorter/frontend/static/app.js` — загрузка, прогресс, результаты, логи.
+- `PhotoSorter/frontend/static/style.css` — тема интерфейса.

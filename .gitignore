@@ -1,0 +1,16 @@
+.env
+.env.generated
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+node_modules/
+Models/models/*
+!Models/models/.gitkeep
+Models/cache/*
+!Models/cache/.gitkeep
+PhotoSorter/data/*
+!PhotoSorter/data/.gitkeep
+*.zip
+*.log
+.DS_Store

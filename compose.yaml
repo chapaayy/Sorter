@@ -1,0 +1,88 @@
+name: outdoor-sorter
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./PhotoSorter/docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [public]
+
+  api:
+    build:
+      context: .
+      dockerfile: PhotoSorter/docker/app/Dockerfile
+    restart: unless-stopped
+    command: ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    environment: &app_env
+      DATABASE_URL: postgresql://sorter:${POSTGRES_PASSWORD:?Run install.sh first}@postgres:5432/sorter
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Run install.sh first}
+      DOMAIN: ${DOMAIN:?Set DOMAIN}
+      PHOTOSORTER_FORCE_CPU: "1"
+      PHOTOSORTER_REFERENCE_CACHE: "1"
+      PHOTOSORTER_CPU_THREADS: "8"
+      PHOTOSORTER_BATCH_SIZE: "4"
+      PHOTOSORTER_PREFETCH_WORKERS: "2"
+    volumes: &app_data
+      - ./PhotoSorter/data:/workspace/PhotoSorter/data
+      - ./Models:/workspace/Models
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    networks: [public, private]
+
+  worker:
+    build:
+      context: .
+      dockerfile: PhotoSorter/docker/app/Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "server.worker"]
+    environment: *app_env
+    volumes: *app_data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cpus: 8
+    mem_limit: 20g
+    networks: [private]
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sorter
+      POSTGRES_USER: sorter
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run install.sh first}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sorter -d sorter"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks: [private]
+
+networks:
+  public:
+  private:
+    internal: true
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
