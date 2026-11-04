@@ -265,14 +265,16 @@ async def direct_upload(
             raise HTTPException(409, 'Продолжите загрузку через PATCH')
         offset = 0
         buffered = bytearray()
-        # Small chunks avoid buffering 60 MiB times the number of concurrent files.
+        # Batch disk writes (4 MiB) to reduce open/seek/write/thread handoffs.
+        # Keep bounded memory per active request, not the whole image.
+        write_batch_bytes = 4 * 1024 * 1024
         async for data in request.stream():
             if not data:
                 continue
             if offset + len(buffered) + len(data) > size:
                 raise HTTPException(413, 'Превышен размер файла')
             buffered.extend(data)
-            if len(buffered) >= 1024 * 1024:
+            if len(buffered) >= write_batch_bytes:
                 offset = await asyncio.to_thread(
                     _append_chunk, path, offset, bytes(buffered), size)
                 buffered.clear()
