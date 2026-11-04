@@ -1,6 +1,6 @@
 'use strict';
 const app=document.getElementById('app');
-const state={tab:'home',me:null,runs:[],active:null,batch:localStorage.getItem('ps.batch')||'',references:{total:0,sam:[]},batchInfo:{photos:0},model:null,uploading:false,uploadPercent:0,uploadLabel:'',runTimer:null,fullTimer:null,pollingRun:false,error:'',resultMode:'sam',results:null,logs:[],threshold:0.50};
+const state={tab:'home',me:null,runs:[],active:null,batch:localStorage.getItem('ps.batch')||'',references:{total:0,sam:[]},batchInfo:{photos:0},model:null,uploading:false,uploadPercent:0,uploadLabel:'',runTimer:null,fullTimer:null,homeRefreshTicks:0,pollingRun:false,error:'',resultMode:'sam',results:null,logs:[],threshold:0.50};
 const H=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=s=>{if(!s)return '—';return new Date(s).toLocaleString('ru-RU')};
 async function api(url,opts={}){const response=await fetch('/api'+url,{credentials:'same-origin',...opts});if(!response.ok){let detail='HTTP '+response.status;try{const data=await response.json();detail=typeof data.detail==='string'?data.detail:JSON.stringify(data.detail||data)}catch{}throw Error(detail)}return response.headers.get('content-type')?.includes('application/json')?response.json():response;}
@@ -12,7 +12,14 @@ async function boot(){try{
   await refresh();
   clearInterval(state.runTimer);clearInterval(state.fullTimer);
   state.runTimer=setInterval(pollRunProgress,1250);
-  state.fullTimer=setInterval(refresh,12000);
+  state.homeRefreshTicks=0;
+  state.fullTimer=setInterval(()=>{
+    // Keep logs/results responsive; home gets lightweight status polling instead.
+    if(state.tab!=='home'||++state.homeRefreshTicks>=5){
+      state.homeRefreshTicks=0;
+      refresh();
+    }
+  },2500);
   render();
 }catch{renderLogin()}}
 function renderLogin(){app.innerHTML=`<div class="login-bg"><form class="login" id="login"><span class="eyebrow">OUTDOOR · PHOTOSORTER</span><h1>Вход в панель</h1><p class="sub">Приватный сервер сортировки фотографий</p><label>Логин</label><input name="username" autocomplete="username" value="admin" required><label>Пароль</label><input name="password" type="password" autocomplete="current-password" required>${banner()}<button class="button primary">Войти</button></form></div>`;document.getElementById('login').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{state.error='';await api('/auth/login',jopts({username:f.get('username'),password:f.get('password')}));await boot()}catch(error){report(error)}}}
@@ -52,6 +59,7 @@ function runProgressCard(run){
   const stageLabel=working?(p.stage_label||'Подготовка обработки'):
     status==='queued'?'Задание ожидает запуска':
     status==='completed'?'Все этапы завершены':
+    status==='completed_with_errors'?'Некоторые файлы обработаны с ошибками, смотри «Логи»':
     status==='failed'?run.error||'Ошибка выполнения':
     status==='stopped'?'Остановлено пользователем':
     status==='interrupted'?'Выполнение было прервано':
@@ -65,7 +73,8 @@ function runProgressCard(run){
   return `<div class="line">
     <div><h2>${H(title)}</h2><p>${H(stageLabel)}</p></div>
     <div class="btnrow">${stepLabel?`<span class="pill">${H(stepLabel)}</span>`:''}
-    ${active?`<button class="button danger" onclick="stopRun()">Остановить</button>`:
+    ${status==='stopping'?`<button class="button danger" disabled>Останавливаем…</button>`:
+      active?`<button class="button danger" onclick="stopRun()">Остановить</button>`:
       `<button class="button primary" ${!state.model?.models?.[0]?.available||!state.batchInfo.photos||!state.references.total||state.uploading?'disabled':''} onclick="startRun()">▶ Начать обработку</button>`}</div>
   </div>
   ${counted?`<div class="run-stage-head"><strong>Прогресс этапа</strong><span>${count} из ${total} ${unit} · ${percent.toFixed(1)}%</span></div>
