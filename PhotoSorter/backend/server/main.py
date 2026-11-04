@@ -1,5 +1,6 @@
 """Authenticated internet-facing PhotoSorter API and static frontend."""
 from __future__ import annotations
+import asyncio
 import os
 import re
 import uuid
@@ -36,8 +37,8 @@ async def private_api(request:Request,call_next):
     path=request.url.path
     if path.startswith('/api/') and path not in ('/api/health','/api/auth/login'):
         try:
-            authenticate(request)
             check_origin(request)
+            await asyncio.to_thread(authenticate, request)
         except HTTPException as exc:
             return JSONResponse({'detail':exc.detail},status_code=exc.status_code)
     return await call_next(request)
