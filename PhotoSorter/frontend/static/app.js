@@ -130,7 +130,7 @@ async function uploadFiles(kind,input){
             if(!Number.isInteger(offset)||offset<0||offset>file.size)
               throw Error('Неверный offset');
           }catch(statusError){
-            if(!/^HTTP (404|410)\\b/.test(String(statusError?.message||statusError)))throw statusError;
+            if(!/^HTTP (404|410)\b/.test(String(statusError?.message||statusError)))throw statusError;
             // The server has no partial transfer. Use the old resumable route.
             id=null;
             localStorage.removeItem(key);
