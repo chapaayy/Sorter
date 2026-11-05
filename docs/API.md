@@ -87,3 +87,12 @@
 **SAM rename safety:** запрещён при queued/running/stopping MegaLoc и незавершённых загрузках данной SAM. Исторические manifests с исходными путями требуют отдельной проверки/миграции при переименовании библиотеки, прежде чем включать эту функцию на рабочем VPS. Это не изменяет MegaLoc math.
 
 **Предупреждение о ZIP:** `GET /api/download/{run_id}` только начинает поток; отдельный пользовательский `POST /api/batches/{id}/downloads/confirm` требуется после проверки файла. UI не пытается автоматически подтвердить получение архива.
+
+## Stage 4 — дополнительные поля и защита
+
+- `GET /api/system/status`: добавлено поле `services.{megaloc,thumbnail,cleanup}.{alive,last_seen}` на реальном PostgreSQL heartbeat. Это совместимое **добавление**, старые поля сохраняются. Состояние `alive` означает недавно полученный сигнал процесса, не гарантирует быстроту/успешность инференса.
+- `POST /api/auth/login`: после повторных неудач может вернуть HTTP 429 (bounded ephemeral throttle) вместо 401; формат cookies и DB-сессий не менялся.
+- Upload finalize: изображение свыше 30 млн пикселей HTTP 422, лимит файла 60MB остаётся.
+- `GET /api/download/{run_id}`: прежде чем публиковать member архив, проверяет SAM/filename на `../`, слеши, NUL и другие path escapes; формат ZIP и права / leases прежние.
+- `PATCH /api/references/sam/{sam}` / `DELETE`: если SAM встретилась в опубликованном историческом manifest, возвращает HTTP 409. Записанные manifests и source References не меняются при отказе.
+- Изменение БД: `0007_service_heartbeat.sql` (таблица worker presence), никакие таблицы партий, uploads, MegaLoc scores не переопределены.

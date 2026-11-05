@@ -23,3 +23,9 @@
 `frontend/static` и legacy `/` продолжают обслуживаться прежним backend. `frontend/src` построен на Vue3/Pinia/Vue Router/TypeScript; в runtime Python FastAPI отдаёт статический Vite `dist` по `/v3/`. Сборка Node24 выполняется только в Docker builder. Всё state сессии находится в httpOnly cookie, frontend хранит только theme и idempotent upload identity (не фото/пароли).
 
 ФО/Образцы/Обработка/Результаты/Логи/Настройки имеют отдельные папки features; REST API клиенты и composables отделены от компонентов. Backend Stage3 добавляет небольшой `services/references.py` для SAM rename/delete/cache, расширяет list batch counters, tail log API и ручную очистку только ownerless thumbnail cache. Ядро `app/recognition/` не изменялось.
+
+## Stage 4 — риск и восстановление
+
+- Между job очередью и процессной доступностью теперь независимая сущность `service_heartbeats`. Single-process API выставляет `services` для monitoring, а фоновые процессы пишут heartbeat отдельными daemon threads. Отказ DB отражается как ошибка, не подменяется фиктивным `alive`.
+- Snapshot и restored bytes выполняют независимые операции с project/data + Models cache/models. PostgreSQL custom dump сохраняется отдельно от файлового tar, копия считается **согласованной только если оператор остановил все writers**. Manifest backup имеет SHA, tar hardlink references, БД после восстановления проверяется на отдельной staging DB.
+- Отдельные инструменты `compare_baseline.py`, `staging_probe.py` обслуживают измерения и приёмку, не влияют на inference path. Production rollback и acceptance — [STAGE4_ROLLOUT](STAGE4_ROLLOUT.md).

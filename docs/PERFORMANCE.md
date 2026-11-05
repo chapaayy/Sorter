@@ -28,3 +28,10 @@
 - `/api/system/status` содержит p50/p95 HTTP header latency по последним 2048 запросам, **не полную длительность ZIP-stream**. CPU quota не является выделением физического ядра.
 - `/api/storage/usage` считает физические байты файлов по inode, плюс отдельно оценивает DB `pg_database_size`; PostgreSQL WAL, Docker daemon, Caddy volumes нельзя точно определить из API mount, они отмечены отдельно.
 - Текущий stage2 CI проверяет функциональные контракты в disposable DB, 1001 синтетическую metadata запись, но **не** пиковые Mbps/CPU и 1315 полноразмерных реальных фото.
+
+## Stage 4 — read-only probe и сравнение реальных результатов
+
+- `PhotoSorter/tools/stage4/staging_probe.py`: локальные GET /api/health, при отдельном cookie-файле (0600) GET /api/system/status и /api/storage/usage, p50/p95 latency, RPS/HTTP codes. Если указать `--docker-stats`, читается `docker stats --no-stream` (CPU%, memory, net/block IO), без SSH/запуска Worker. Удалённый staging хост требует `--allow-remote-staging`; **не запускать против production** без разрешения.
+- Инструмент `compare_baseline.py`: два сохранённых manifests, optional ZIP CRC, строгий diff порядка групп, SAM, top candidates, uncertainties, score. Имена одинаковых файлов в разных каталогах требуют явных `--golden-root/--actual-root`, чтобы не склеивать дубликаты.
+- Исторический ориентир ~314s / 1315 фото указан в исходном ТЗ и НЕ является stage4 benchmark. Новый 1315 synthetic ZIP test не измеряет MegaLoc.
+- Рабочий сценарий A/B: одинаковые golden weights+фото, три и более прогона в cpu 8 vs cpu7/cpuset, базовые и нагрузочные p95, upload/ZIP, RSS, disk, сравнение и сохранение JSON evidence. Инференс в CI без модели не производился.

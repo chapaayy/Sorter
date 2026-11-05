@@ -24,3 +24,11 @@ Docker `json-file` logs max-size 10m/max-file 3, data/cache/thumbnails shared mo
 4. `/` и `/static/` остаются legacy UI. Открыть только `/v3/`, протестировать cookie/login, sidebar, FO uploads, SAM gallery/rename, queued runs, results, full ZIP, explicit confirmation, logs и settings.
 5. Отдельно проверить CSP/headers, HTTPS/SameSite cookies, iPhone Safari/iOS, 360px responsive, tab/focus/Escape, browser cache invalidation, исходные photos and SAM, disk quota.
 6. Без письменной приёмки не заменять `/` на Vue и не удалять `frontend/static`, не выполнять `docker compose down -v`.
+
+## Stage 4: fail-closed update safeguards
+
+Инсталлятор теперь имеет `./install.sh --check` (**без новых паролей, без chown, без Docker up**) и `./install.sh --deploy`. Если Docker volume `outdoor-sorter_postgres_data` уже существует, а `.env.generated` утрачена, скрипт **останавливается** и требует restore исходных credentials: новый пароль вместо прежнего создать нельзя.
+
+Для обновления существующего инстанса после **реально проверенного** offsite backup/restore требуется установка `PHOTOSORTER_APPROVE_UPGRADE=VERIFIED_BACKUP_AND_ROLLBACK` оператором, иначе никаких новых контейнеров/изменений данных. При обновлении отключён рекурсивный chown моделей и фото. CPUSET проверяется по фактически разрешённым CPU IDs ещё до Docker startup. Административные пароли не выводятся в stdout.
+
+Это **не автоматическое разрешение production rollout**: до реального VPS обязательно пройти [STAGE4_ACCEPTANCE](STAGE4_ACCEPTANCE.md) и отдельно получить разрешение владельца. Миграция `0007_service_heartbeat.sql` аддитивная; все предыдущие таблицы остаются.

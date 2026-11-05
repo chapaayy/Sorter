@@ -27,3 +27,7 @@
 ## Этап 3: Vue и API без новой схемы БД
 
 Stage 3 не добавляет таблицы или миграционные SQL. Он использует уже существующие Stage1/2 batches, uploads, jobs, thumbnail_tasks, reference_cache, run logs; дополнительные HTTP handlers для SAM, cursor-tail и cache cleanup находятся в сервисах/роутерах. Production-база не изменялась. Статический frontend build не должен перезаписывать `frontend/static/`, `data/` или `Models/`.
+
+## Stage 4 — additive heartbeat
+
+`0007_service_heartbeat.sql` создаёт `service_heartbeats(service PRIMARY KEY, instance_id UUID, seen_at TIMESTAMPTZ)` и индекс по seen_at. Не удаляет и не изменяет старые rows, credentials, uploads, runs, результирующие manifests. Миграция идемпотентна, применяется в той же транзакции что предыдущие миграции. Парсер `migration_runner.py` теперь пропускает полные строки `-- SQL comment` до разделения на `;`, чтобы пунктуация комментариев не исполнялась как SQL. Как прежде, процедурные SQL-блоки не поддерживаются.

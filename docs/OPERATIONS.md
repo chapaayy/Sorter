@@ -34,3 +34,11 @@ CI запускает PostgreSQL 17, compile Python, Compose config и unit/inte
 ## Итог проверок stage2
 
 Сборка Python/Compose и 52 автоматических теста завершились успешно: [GitHub Actions 41954580354](https://github.com/chapaayy/Sorter/actions/runs/41954580354). Full production smoke test и A/B по реальным CPU, сети и 1315 ФО не выполнялись. Это остаётся обязательным до внедрения.
+
+## Stage 4 heartbeat и операторские состояния
+
+Три независимых процесса периодически (раз в 10 секунд) пишут в `service_heartbeats` отметку присутствия; API `/api/system/status.services` возвращает `alive:bool` (свежее ≤35 секунд), `last_seen`. Пустая очередь заданий не означает, что process alive. После остановки процесса реальная отметка устаревает, `Settings` показывает ошибочное состояние, вместо фиктивного «работает».
+
+После обновления Schema 0007 и запуска Compose проверить worker, thumbnail, cleanup heartbeat **при простое и во время инференса**. Если Process не отвечает, сверить Docker ps, logs, DB network и RAM; не запускать второй worker в обход global advisory lock.
+
+Скрипт `install.sh --check` теперь проверяет допустимость cpuset на текущем хосте; обновления существующего volume требуют реального backup и отдельного ack. См. [STAGE4_ROLLOUT](STAGE4_ROLLOUT.md).
