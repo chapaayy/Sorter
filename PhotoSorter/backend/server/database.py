@@ -92,5 +92,8 @@ def snapshot(run_id):
 
 def save_snapshot(info):
     with connect() as db:
-        db.execute('UPDATE jobs SET snapshot=%s, status=%s, updated_at=now() WHERE id=%s',
-                   (Jsonb(info),info['status'],info['id']))
+        db.execute("""UPDATE jobs SET snapshot=%s,status=%s,updated_at=now(),
+             finished_at=CASE WHEN %s IN
+               ('completed','completed_with_errors','failed','stopped','interrupted')
+                 THEN now() ELSE finished_at END
+             WHERE id=%s""",(Jsonb(info),info['status'],info['status'],info['id']))

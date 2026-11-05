@@ -1,47 +1,62 @@
-"""Dedicated CPU process: durable one-job-at-a-time PostgreSQL queue consumer."""
+"""One exclusive DB-advisory-locked MegaLoc leader, FIFO jobs and crash recovery."""
 from __future__ import annotations
-import logging
-import signal
-import time
-from psycopg.types.json import Jsonb
-from .database import connect,wait_and_initialize
+import logging,os,signal,threading,time
+import psycopg
+from psycopg.rows import dict_row
+from .database import connect,wait_and_initialize,DB_URL
+from .db.repositories import queue
 from .jobs import ServerJob
 
-logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s')
+logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
 RUN=True
+LEADER_KEY=723409139
 
 def stop(*_):
     global RUN
     RUN=False
 
-
 def claim_job():
     with connect() as db:
-        # Multiple worker containers also cannot claim the same queued job.
-        row=db.execute("SELECT j.id,j.snapshot FROM jobs j JOIN batches b ON b.id=j.batch_id "
-                       "WHERE j.status='queued' AND b.delete_state='active' "
-                       'ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1').fetchone()
-        if row:
-            info=row['snapshot'];info['status']='running'
-            db.execute('UPDATE jobs SET status=%s,snapshot=%s,updated_at=now() WHERE id=%s',
-                       ('running',Jsonb(info),row['id']))
-            return info
-    return None
+        return queue.next_job(db)
 
+def _leader_watch(connection,stop_event):
+    while not stop_event.wait(5):
+        try:connection.execute("SELECT 1")
+        except Exception:
+            logging.critical("Lost the global MegaLoc leader DB connection; aborting to prevent parallel inference")
+            os._exit(77)
 
 def main():
     signal.signal(signal.SIGTERM,stop)
     signal.signal(signal.SIGINT,stop)
     wait_and_initialize()
-    with connect() as db:
-        db.execute("UPDATE jobs SET status='interrupted',snapshot=jsonb_set(snapshot,'{status}', to_jsonb('interrupted'::text)),updated_at=now() WHERE status IN ('running','stopping')")
-    logging.info('MegaLoc worker started (CPU, PostgreSQL-backed queue)')
     while RUN:
-        info=claim_job()
-        if info:
-            logging.info('Processing %s',info['id'])
-            try:ServerJob(info).run()
-            except Exception:logging.exception('Unhandled job exception: %s',info['id'])
-        else:time.sleep(1)
+        try:
+            with psycopg.connect(DB_URL,autocommit=True,row_factory=dict_row) as leader:
+                acquired=leader.execute("SELECT pg_try_advisory_lock(%s)",(LEADER_KEY,)).fetchone()
+                if not acquired or not next(iter(acquired.values())):
+                    logging.info("Another MegaLoc worker owns global leader lock")
+                    time.sleep(5)
+                    continue
+                with connect() as db:queue.mark_interrupted(db)
+                watch_stop=threading.Event()
+                watcher=threading.Thread(target=_leader_watch,args=(leader,watch_stop),daemon=True)
+                watcher.start()
+                try:
+                    logging.info("MegaLoc leader ready; FIFO queue enabled")
+                    while RUN:
+                        info=claim_job()
+                        if info:
+                            logging.info("Processing %s",info["id"])
+                            try:ServerJob(info).run()
+                            except Exception:logging.exception("Unhandled job exception for %s",info["id"])
+                        else:time.sleep(1)
+                finally:
+                    watch_stop.set()
+                    watcher.join(timeout=6)
+                    leader.execute("SELECT pg_advisory_unlock(%s)",(LEADER_KEY,))
+        except Exception:
+            logging.exception("MegaLoc worker loop failed")
+            time.sleep(3)
 
-if __name__=='__main__':main()
+if __name__=="__main__":main()
