@@ -257,3 +257,39 @@ def test_legacy_zip_and_stream_lease_survives_delete_request(sandbox):
         assert archive.namelist()==["SAM-0045/photo.jpg"]
         assert archive.read("SAM-0045/photo.jpg")==source.read_bytes()
     assert cleanup.cleanup_one(own)=="completed"
+
+def test_retention_due_guard_cannot_delete_after_new_run(sandbox):
+    from server.services import cleanup,retention
+    from server.database import connect
+    own=_batch(sandbox)
+    run=_job(sandbox,own)
+    directory=paths.run_dir(run)/"megaloc"
+    directory.mkdir(parents=True)
+    (directory/"manifest.json").write_text("[]",encoding="utf8")
+    retention.confirm(own,run)
+    with connect() as db:
+        db.execute("""UPDATE batches SET delete_after_at=now()-interval '1 minute'
+            WHERE id=%s""",(own,))
+    # Scheduler may have read a due ID before a newer run invalidated the date.
+    with connect() as db:
+        db.execute("""UPDATE batches SET delete_after_at=NULL,
+           download_confirmed_at=NULL,confirmed_run_id=NULL WHERE id=%s""",(own,))
+    assert cleanup.request(own,only_if_due=True)["state"]=="skipped"
+    assert paths.batch_dir(own).exists()
+    cleanup.request(own)
+    cleanup.cleanup_one(own)
+
+def test_warning_for_stale_unconfirmed_and_seven_day_notice(sandbox):
+    from server.services import retention,cleanup
+    from server.database import connect
+    own=_batch(sandbox,with_photo=False)
+    with connect() as db:
+        db.execute("UPDATE batches SET created_at=now()-interval '31 days' WHERE id=%s",(own,))
+    assert retention.status(own)["stale_unconfirmed"] is True
+    assert retention.status(own)["warning"] is False
+    with connect() as db:
+        db.execute("""UPDATE batches SET delete_after_at=now()+interval '6 days',
+            download_confirmed_at=now() WHERE id=%s""",(own,))
+    assert retention.status(own)["warning"] is True
+    cleanup.request(own)
+    cleanup.cleanup_one(own)

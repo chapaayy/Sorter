@@ -48,7 +48,9 @@ def status(batch_id):
     with connect() as db:
         row=db.execute("""SELECT delete_state,download_confirmed_at,delete_after_at,
              confirmed_run_id,delete_after_at IS NOT NULL AND
-             delete_after_at <= now()+interval '7 days' AS warning
+             delete_after_at <= now()+interval '7 days' AS warning,
+             download_confirmed_at IS NULL AND created_at<=now()-interval '30 days'
+             AS stale_unconfirmed
              FROM batches WHERE id=%s""",(batch_id,)).fetchone()
         if not row:raise HTTPException(404,"Партия не найдена")
     return {**row,"batch_id":str(batch_id)}

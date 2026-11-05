@@ -15,7 +15,7 @@ def stop(*_):
 
 def run_cycle():
     for batch_id in retention.due_batch_ids():
-        cleanup.request(batch_id)
+        cleanup.request(batch_id,only_if_due=True)
     for batch_id,result in cleanup.process_pending():
         logging.info("Batch cleanup %s: %s",batch_id,result)
 

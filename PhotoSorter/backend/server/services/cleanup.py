@@ -9,14 +9,19 @@ from .batches import uid
 
 IN_USE = ("queued","running","stopping")
 
-def request(batch_id):
+def request(batch_id, *, only_if_due=False):
     batch_id=uid(batch_id)
     with connect() as db:
         # Same queue gate as creating a job, and per-batch lock as uploading.
         db.execute("SELECT pg_advisory_xact_lock(723409133)")
-        batch=db.execute("SELECT delete_state FROM batches WHERE id=%s FOR UPDATE",
+        batch=db.execute("SELECT delete_state,download_confirmed_at,delete_after_at FROM batches WHERE id=%s FOR UPDATE",
                          (batch_id,)).fetchone()
         if not batch: return {"batch_id":str(batch_id),"state":"not_found"}
+        if only_if_due:
+            due=db.execute("""SELECT 1 FROM batches WHERE id=%s
+                AND delete_state='active' AND download_confirmed_at IS NOT NULL
+                AND delete_after_at<=now()""",(batch_id,)).fetchone()
+            if not due:return {"batch_id":str(batch_id),"state":"skipped"}
         if batch["delete_state"]=="deleted":
             return {"batch_id":str(batch_id),"state":"deleted"}
         db.execute("""UPDATE batches SET delete_state='deleting',
