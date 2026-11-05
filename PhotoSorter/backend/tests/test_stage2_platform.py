@@ -235,3 +235,32 @@ def test_disk_reserve_blocks_growth(thumbs,monkeypatch):
     assert exc.value.status_code==507
     monkeypatch.setattr(disk_guard,"stat",lambda *args:(200*1024**3,80*1024**3))
     assert disk_guard.check_admission(60*1024**2)["available"]==80*1024**3
+
+def test_expired_final_attempt_becomes_failed(thumbs):
+    from server.services import cleanup
+    own=_batch(thumbs,with_photo=False)
+    photo=_finalize_picture(thumbs,own,_jpg())
+    with connect() as db:
+        db.execute("""UPDATE thumbnail_tasks SET state='running',attempts=%s,
+            lease_until=now()-interval '1 minute' WHERE upload_id=%s""",
+            (thumbnails.MAX_ATTEMPTS,photo))
+    assert thumbnails.claim() is None
+    with connect() as db:
+        state=db.execute("SELECT state FROM thumbnail_tasks WHERE upload_id=%s",
+                         (photo,)).fetchone()["state"]
+    assert state=="failed"
+    cleanup.request(own)
+    cleanup.cleanup_one(own)
+
+def test_stale_temp_webp_cleanup_never_removes_real_preview(thumbs):
+    import time
+    root=cache.ROOT/"v1"/"aa"
+    root.mkdir(parents=True)
+    temp=root/".thumb-123.webp.tmp"
+    temp.write_bytes(b"temporary")
+    os.utime(temp,(time.time()-90000,time.time()-90000))
+    live=root/("a"*64+".webp")
+    live.write_bytes(b"live")
+    assert thumbnails.gc_incomplete(limit=10,grace_seconds=86400)==1
+    assert not temp.exists()
+    assert live.exists()

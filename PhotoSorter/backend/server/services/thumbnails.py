@@ -22,6 +22,12 @@ def enqueue(db,upload_id,checksum):
 
 def claim():
     with connect() as db:
+        # Last crashed attempt must become a visible failed task, never stuck running.
+        db.execute("""UPDATE thumbnail_tasks SET state='failed',
+            last_error='Thumbnail worker stopped after maximum retries',
+            lease_until=NULL,updated_at=now()
+            WHERE state='running' AND lease_until<now() AND attempts>=%s""",
+            (MAX_ATTEMPTS,))
         row=db.execute("""SELECT t.upload_id,t.checksum,t.version,u.kind,u.batch_id,u.sam,u.target_path
           FROM thumbnail_tasks t JOIN uploads u ON u.id=t.upload_id
           WHERE u.finalized AND (t.state='queued' OR
@@ -147,6 +153,21 @@ def gc_unowned(limit=100,grace_seconds=86400):
                 owner=db.execute("SELECT 1 FROM uploads WHERE finalized AND checksum=%s LIMIT 1",
                                  (digest,)).fetchone()
             if owner:continue
+            path.unlink(missing_ok=True)
+            removed+=1
+        except (OSError,ValueError):continue
+    return removed
+
+def gc_incomplete(limit=50,grace_seconds=86400):
+    """Remove only stale random temporary WebP fragments left by dead workers."""
+    import time
+    removed=0
+    for path in cache.ROOT.glob(f"v{cache.VERSION}/*/.thumb-*.webp.tmp"):
+        if removed>=limit:break
+        try:
+            cache.safe_location(path)
+            if path.is_symlink():continue
+            if time.time()-path.stat().st_mtime<grace_seconds:continue
             path.unlink(missing_ok=True)
             removed+=1
         except (OSError,ValueError):continue
