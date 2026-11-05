@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 export const router = createRouter({
-  history: createWebHistory('/v3/'),
+  history: createWebHistory('/'),
   scrollBehavior(to, from, saved) { return saved ?? (to.path !== from.path ? { top: 0 } : undefined) },
   routes: [
     { path: '/', redirect: '/fo' },

@@ -70,7 +70,7 @@ def test_sam_changes_reject_traversal_and_busy_jobs(sam_store,sandbox):
     assert cleanup.cleanup_one(own)=="completed"
     assert references.delete("SAM-1768")["deleted"]
 
-def test_stage3_site_is_opt_in_and_assets_cannot_escape(tmp_path,monkeypatch):
+def test_single_root_vue_site_and_assets_cannot_escape(tmp_path,monkeypatch):
     from server.api.routes import site
     root=tmp_path/"dist"
     assets=root/"assets"
@@ -78,11 +78,14 @@ def test_stage3_site_is_opt_in_and_assets_cannot_escape(tmp_path,monkeypatch):
     (root/"index.html").write_text("<!doctype html><title>vue</title>",encoding="utf8")
     (assets/"main-1.js").write_text("export {}",encoding="utf8")
     monkeypatch.setattr(site,"VUE_DIST",root)
-    assert site.vue_app("fo/example").path==root/"index.html"
-    assert site.vue_asset("main-1.js").path==assets/"main-1.js"
-    assert site.new_ui().status_code==308
-    assert site.index().path==site.FRONTEND/"index.html"
-    with pytest.raises(HTTPException) as exc:site.vue_asset("../../index.html")
+    assert site.index().path==root/"index.html"
+    assert site.app_route("fo/example").path==root/"index.html"
+    assert site.app_route("references").path==root/"index.html"
+    assert site.asset("main-1.js").path==assets/"main-1.js"
+    with pytest.raises(HTTPException) as exc:site.asset("../../index.html")
     assert exc.value.status_code==404
-    with pytest.raises(HTTPException) as exc:site.vue_app("not-a-valid-page")
+    with pytest.raises(HTTPException) as exc:site.app_route("not-a-valid-page")
     assert exc.value.status_code==404
+    for old_path in ("v3/fo", "static/app.js", "api/something"):
+        with pytest.raises(HTTPException) as exc:site.app_route(old_path)
+        assert exc.value.status_code==404
