@@ -1,10 +1,13 @@
-name: Backend regression checks
-
+name: PhotoSorter CI
 on:
   push:
-    branches: ["stage1/**", "stage2/**", "stage3/**"]
+    branches: ["main"]
   pull_request:
-    branches: ["vps/docker-rebuild", "stage1/**", "stage2/**"]
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   backend:
@@ -21,22 +24,87 @@ jobs:
           --health-cmd "pg_isready -U sorter_test -d sorter_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://sorter_test:test_only_no_real_data@localhost:5432/sorter_test
+      DATABASE_URL: postgresql://sorter_test:test_only_no_real_data@127.0.0.1:5432/sorter_test
+      PYTHONPATH: PhotoSorter/backend
+      DOMAIN: ci.example.test
+      POSTGRES_PASSWORD: test_only_no_real_data
+      ADMIN_PASSWORD: test_only_no_real_data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install regression dependencies
+        run: pip install pytest httpx numpy==1.26.4 Pillow==11.0.0 fastapi "pydantic>=2,<3" "psycopg[binary]>=3.2,<4" "zipstream-ng>=1.8,<2"
+      - name: Compile all Python, shell syntax and Docker compose
+        run: |
+          python -m compileall -q PhotoSorter/backend PhotoSorter/tools
+          bash -n install.sh
+          docker compose config --quiet
+      - name: Backend regression tests
+        run: python -m pytest -q PhotoSorter/backend/tests
+      - name: Validate Caddy syntax without real TLS or deployment
+        run: docker run --rm -e DOMAIN=stage4.example.test -v "$PWD/PhotoSorter/docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+
+  restore:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: sorter_test
+          POSTGRES_USER: sorter_test
+          POSTGRES_PASSWORD: test_only_no_real_data
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sorter_test -d sorter_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://sorter_test:test_only_no_real_data@127.0.0.1:5432/sorter_test
       PYTHONPATH: PhotoSorter/backend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install PostgreSQL client and psycopg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+          pip install "psycopg[binary]>=3.2,<4"
+      - name: Actual pg_dump and pg_restore on two disposable CI databases
+        run: python PhotoSorter/tools/stage4/ci_restore_drill.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PhotoSorter/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "24", cache: "npm", cache-dependency-path: "PhotoSorter/frontend/package-lock.json" }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npm run test
+      - name: Install browser engines
+        run: npx playwright install --with-deps chromium webkit
+      - name: UI smoke in Chromium and WebKit desktop/mobile
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
         with:
-          python-version: "3.11"
-      - name: Install backend test dependencies
-        run: pip install pytest numpy==1.26.4 Pillow==11.0.0 fastapi "pydantic>=2,<3" "psycopg[binary]>=3.2,<4" "zipstream-ng>=1.8,<2"
-      - name: Verify Compose syntax (no deployment)
-        env:
-          DOMAIN: stage-test.example.com
-          POSTGRES_PASSWORD: test_only_no_real_data
-          ADMIN_PASSWORD: test_only_no_real_data
-        run: docker compose config --quiet
-      - name: Compile Python
-        run: python -m compileall -q PhotoSorter/backend
-      - name: MegaLoc math and stage 1+2 contract tests
-        run: python -m pytest -q PhotoSorter/backend/tests
+          name: browser-test-errors
+          path: |
+            PhotoSorter/frontend/playwright-report/
+            PhotoSorter/frontend/test-results/
+          retention-days: 7
+
+  docker-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      GITHUB_ACTIONS: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Full CPU-PyTorch Docker build + isolated runtime, no real photos
+        run: bash PhotoSorter/tools/stage4/smoke_container.sh

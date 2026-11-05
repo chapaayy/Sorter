@@ -103,7 +103,7 @@ async function cleanup(){
     <h2>Резервные копии</h2>
     <div class="alert warning">Автоматическое внешнее резервное копирование не подтверждено доступным API. Последнюю успешную offsite-копию невозможно проверить из этой панели.</div>
     <p class="meta">Перед обновлением или переносом VPS требуется согласованный backup PostgreSQL, PhotoSorter/data и Models, а также тест восстановления. Не используйте «down -v».</p>
-    <a class="btn" href="https://github.com/chapaayy/Sorter/blob/stage3/vue-frontend/docs/BACKUP_RESTORE.md" target="_blank" rel="noopener noreferrer" style="align-self:start">Инструкция по бэкапам ↗</a>
+    <a class="btn" href="https://github.com/chapaayy/Sorter/blob/main/docs/BACKUP_RESTORE.md" target="_blank" rel="noopener noreferrer" style="align-self:start">Инструкция по бэкапам ↗</a>
   </section>
 </div>
 <ConfirmDialog v-if="cleanConfirm" title="Очистить только неиспользуемый кэш?" message="Будут удалены только не принадлежащие ни одному фото миниатюры и устаревшие временные WebP. Оригиналы ФО и Образцы не затрагиваются." confirm-label="Очистить кэш" :busy="busy" @cancel="cleanConfirm=false" @confirm="cleanup"/>

@@ -21,7 +21,7 @@ async def lifespan(app):
     bootstrap_admin()
     yield
 
-app=FastAPI(title="Outdoor PhotoSorter VPS",version="4.1.0-vps",lifespan=lifespan,
+app=FastAPI(title="Outdoor PhotoSorter VPS",version="0.1.0-beta.1",lifespan=lifespan,
             docs_url=None,redoc_url=None,openapi_url=None)
 
 @app.middleware("http")
@@ -40,7 +40,7 @@ async def private_api(request:Request,call_next):
         system.record(time.perf_counter()-started)
 
 @app.get("/api/health")
-def health():return {"status":"ok","version":"4.1.0-vps"}
+def health():return {"status":"ok","version":"0.1.0-beta.1"}
 
 for router in (auth.router,batches.router,uploads_router,jobs_router,
                models.router,results.router,images.router,downloads.router,
