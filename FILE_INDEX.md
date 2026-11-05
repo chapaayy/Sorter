@@ -68,3 +68,44 @@
 | `docs/ROLLBACK.md` | кодовый rollback без потери данных |
 | `docs/MIGRATION_NOTES.md` | исходный и новый schema/path mapping |
 | `docs/DESIGN_SYSTEM.md` | утверждённый будущий UX (этап 3) |
+
+## Stage 2 — новые файлы и роли
+
+| Файл | Назначение / кто использует |
+|---|---|
+| `server/db/migrations/0003_thumbnails_queue.sql` | thumbnail queue, updated_at/backfill |
+| `server/db/migrations/0004_megaloc_queue.sql` | FIFO timestamps, queue indexes |
+| `server/db/migrations/0005_result_pages.sql` | индекс finalized FO source lookup |
+| `server/db/migrations/0006_unfinished_age.sql` | индекс unfinished TTL |
+| `server/db/repositories/queue.py` | очередь/позиция/claim/один running; jobs/worker |
+| `server/db/repositories/pagination.py` | keyset cursor для ФО/Образцов |
+| `server/storage/thumbnail_cache.py` | версия/ключ/путь и политика WebP |
+| `server/services/thumbnails.py` | enqueue/claim/render/retry/cache; upload/worker |
+| `server/services/thumbnail_gc.py` | cache owner cleanup; maintenance |
+| `server/services/disk_guard.py` | free-reserve admission; uploads/system |
+| `server/services/temp_cleanup.py` | безопасный TTL только незавершённых .part; maintenance |
+| `server/services/result_pages.py` | постраничные JSONL results; results router |
+| `server/api/routes/thumbnails.py` | UUID WebP/202/status/retry; main |
+| `server/api/routes/references.py` | SAM cursor gallery; main |
+| `server/api/routes/originals.py` | оригинал по UUID с lease; main |
+| `server/api/routes/system.py` | queue/latency/storage system status; main |
+| `server/workers/thumbnail.py` | отдельный low-priority process; Docker |
+| `PhotoSorter/tools/benchmark_api.py` | read-only stage A/B latency sampler |
+| `PhotoSorter/backend/tests/test_stage2_platform.py` | thumbnails/FIFO/cursor/logs/storage tests |
+| `PhotoSorter/backend/tests/test_stage2_transfers.py` | PUT/PATCH/cancel/ZIP/original stream tests |
+| `docs/PERFORMANCE.md` | CPU A/B метод и ограничения |
+| `docs/OPERATIONS.md` | Queue, retention, logs, preview, disk runbook |
+
+## Основные изменённые файлы этапа 2
+
+- `compose.yaml` — thumbnail сервис, CPU budget, Docker log rotation.
+- `server/uploads.py` — постановка миниатюр, контроль диска, отмена .part, updated_at.
+- `server/jobs.py`/`server/worker.py`/`server/database.py` — FIFO queue и лидер, безопасный stop.
+- `server/main.py` — дополнительные routers и измерение response latency.
+- `server/api/routes/{batches,results,logs,downloads}.py` — cursor/leases/совместимость.
+- `server/services/storage_usage.py` — inode dedup, DB estimated bytes, диск.
+- `server/workers/cleanup.py` — редкая очистка thumbnail/temp.
+- `app/results/exporter.py` — `manifest.rows.jsonl` параллельно старым JSON/CSV.
+- `app/logging/events.py` — ротация, cursor API.
+- `app/jobs/progress.py` — измеряемая скорость по стадиям.
+- `.github/workflows/ci.yml` — stage2 workflow.

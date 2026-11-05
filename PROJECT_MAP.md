@@ -41,4 +41,26 @@ PostgreSQL (server/database.py + db/migration_runner.py + migrations/)
 - **Подтверждение:** пользователь сохраняет весь ZIP → отдельный POST подтверждения → `delete_after_at` через 2 calendar months UTC.
 - **Удаление:** DELETE batch / достижение срока → `deleting` → остановка jobs, ожидание IO → проверка trusted IDs/paths → все owned files → строки jobs/uploads → tombstone `deleted`. Crash возобновляется через `cleanup_tasks`.
 
-См. [DATA_LIFECYCLE](docs/DATA_LIFECYCLE.md), [API](docs/API.md), [FILE_INDEX](FILE_INDEX.md). **Этап 2** добавит thumbnails и настоящую очередь; сейчас backend не притворяется, что они готовы.
+См. [DATA_LIFECYCLE](docs/DATA_LIFECYCLE.md), [API](docs/API.md), [FILE_INDEX](FILE_INDEX.md). **Этап 2 серверно реализован**: preview-очередь, FIFO jobs, журнал и дисковая защита. Этап 3 — Vue UI, этап 4 — полномасштабная проверка/production.
+
+## Новые потоки этапа 2
+
+```text
+Upload finish (Pillow+SHA) --SQL txn--> thumbnail_tasks(queue)
+       |                                |
+       +--> original uploads/            +--> server/workers/thumbnail.py
+                                                   |
+                                      storage/thumbnail_cache.py
+                                                   |
+                                    data/cache/thumbnails/v1/<checksum>.webp
+Cursor galleries  -> db/repositories/pagination.py -> uploads metadata
+Result galleries  -> services/result_pages.py -> manifest.rows.jsonl (new)
+Original viewer   -> api/routes/originals.py -> operation lease + file stream
+Jobs API          -> db/repositories/queue.py -> PostgreSQL FIFO
+Worker            -> session advisory leader -> exactly one running inference
+Logs              -> app/logging/events.py -> rotated JSONL + cursor
+Maintenance       -> temp_cleanup / thumbnail_gc (time-limited, owned only)
+System API        -> p50/p95 request latency, job/preview queue, disk reserve
+```
+
+Общие `references/` и `Models/` не принадлежат партиям и не затрагиваются при cleanup. Для storage, Docker services и CPU см. `docs/OPERATIONS.md`.
