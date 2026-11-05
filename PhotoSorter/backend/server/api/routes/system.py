@@ -4,9 +4,9 @@ import os,resource,statistics,threading,time
 from collections import deque
 from datetime import datetime,timezone
 from fastapi import APIRouter
-from ..database import connect
-from ..services.disk_guard import stat,reserve
-from ..services import heartbeat
+from ...database import connect
+from ...services.disk_guard import stat,reserve
+from ...services import heartbeat
 from app.config import DATA_DIR
 
 router=APIRouter(prefix="/api/system",tags=["system"])
