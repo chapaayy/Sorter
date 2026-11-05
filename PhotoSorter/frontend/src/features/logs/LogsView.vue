@@ -21,7 +21,7 @@ async function read(reset=false,tail=false){
   const stamp=sequence
   loading.value=true;error.value=''
   try{
-    const response=await logApi.page(selected.value,{...filters.value,cursor:reset?null:cursor.value,limit:200,tail})
+    const response=await logApi.page(selected.value,{...filters.value,cursor:reset?null:cursor.value,limit:200,tail_mode:tail})
     if(stamp!==sequence)return
     if(reset)events.value=response.events
     else events.value=events.value.concat(response.events).slice(-2000)

@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import {RouterLink} from 'vue-router'
 defineProps<{icon?:string;to?:string}>()
 </script>
 <template>
-  <component :is="to?'a':'div'" class="rowcard" :href="to?'#'+to:undefined" @click="to&&$router.push(to)">
+  <component :is="to?RouterLink:'div'" :to="to||undefined" class="rowcard">
     <div class="rowcard-icon" aria-hidden="true">{{icon||'▤'}}</div>
     <div class="rowcard-content">
       <div class="rowcard-title"><slot name="title"/></div>
