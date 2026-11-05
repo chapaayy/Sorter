@@ -7,7 +7,7 @@ def migrate(db):
     db.execute("""CREATE TABLE IF NOT EXISTS schema_migrations (
         version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )""")
-    applied = {row["version"] for row in db.execute("SELECT version FROM schema_migrations")}
+    applied = {(row["version"] if isinstance(row, dict) else row[0]) for row in db.execute("SELECT version FROM schema_migrations")}
     for file in sorted(MIGRATIONS.glob("*.sql")):
         if file.name in applied:
             continue

@@ -1,6 +1,7 @@
 """Stage 1 safety contract on disposable test files and a disposable test DB."""
 from __future__ import annotations
 import errno
+import asyncio
 import hashlib
 import io
 import json
@@ -246,7 +247,12 @@ def test_legacy_zip_and_stream_lease_survives_delete_request(sandbox):
     response=download_results(run)
     cleanup.request(own)
     assert cleanup.cleanup_one(own)=="waiting"
-    body=b"".join(response.body_iterator)
+    async def collect():
+        chunks=[]
+        async for item in response.body_iterator:
+            chunks.append(item)
+        return b"".join(chunks)
+    body=asyncio.run(collect())
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
         assert archive.namelist()==["SAM-0045/photo.jpg"]
         assert archive.read("SAM-0045/photo.jpg")==source.read_bytes()
