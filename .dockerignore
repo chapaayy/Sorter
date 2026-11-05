@@ -13,3 +13,7 @@ PhotoSorter/data/
 PhotoSorter/backend/tests/
 PhotoSorter/backend/tests_server/
 PhotoSorter/docs/
+
+PhotoSorter/frontend/dist/
+PhotoSorter/frontend/playwright-report/
+PhotoSorter/frontend/test-results/

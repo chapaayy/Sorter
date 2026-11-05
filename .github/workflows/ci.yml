@@ -1,10 +1,10 @@
-name: Stage 1 Python checks
+name: Backend regression checks
 
 on:
   push:
-    branches: ["stage1/**", "stage2/**"]
+    branches: ["stage1/**", "stage2/**", "stage3/**"]
   pull_request:
-    branches: ["vps/docker-rebuild", "stage1/**"]
+    branches: ["vps/docker-rebuild", "stage1/**", "stage2/**"]
 
 jobs:
   backend:
