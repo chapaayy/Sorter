@@ -2,6 +2,8 @@ import {ref} from 'vue'
 import {uploadOne} from '../utils/upload'
 import {runUploadQueue} from '../utils/uploadQueue'
 import {errorText} from '../utils/format'
+import {referenceApi} from '../api/references'
+import {fileSha256,indexReferenceHashes} from '../utils/referenceDuplicates'
 import type {UploadEntry} from '../utils/upload'
 
 export interface ReferenceTransferItem{sam:string;address?:string;entry:UploadEntry}
@@ -18,15 +20,35 @@ export function useReferenceTransfer(){
     const signal=controller.signal
     const amounts=items.map(()=>0)
     try{
+      // Do not retransmit unchanged references already present on the server.
+      // Failure of this optional lookup falls back to backend-side SHA-256 dedup.
+      const known=await referenceApi.files()
+        .then(result=>indexReferenceHashes(result.files)).catch(()=>new Map<string,Set<string>>())
       const failures=await runUploadQueue(items.length,parallel,signal,async i=>{
         const item=items[i]
         if(!item)return
+        const fingerprints=known.get(item.sam)
+        if(fingerprints?.size){
+          const digest=await fileSha256(item.entry.file)
+          if(signal.aborted)throw new DOMException('Остановлено','AbortError')
+          if(digest&&fingerprints.has(digest)){
+            amounts[i]=item.entry.file.size
+            sentBytes.value=amounts.reduce((sum,current)=>sum+current,0)
+            completed.value++;duplicates.value++
+            return
+          }
+        }
         const result=await uploadOne({kind:'reference',sam:item.sam,address:item.address},
           item.entry,signal,n=>{
             amounts[i]=n
             sentBytes.value=amounts.reduce((sum,current)=>sum+current,0)
           })
         completed.value++
+        if(result.sha256){
+          let hashes=known.get(item.sam)
+          if(!hashes){hashes=new Set();known.set(item.sam,hashes)}
+          hashes.add(result.sha256.toLowerCase())
+        }
         if(result.already_present||result.already_finalized)duplicates.value++
       },{
         haltAfterFailuresWithoutSuccess:Math.min(3,Math.max(1,parallel)),
