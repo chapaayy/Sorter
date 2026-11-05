@@ -1,4 +1,5 @@
 import {parseConstructionFolder,inspectReferenceDirectory} from '../src/utils/referenceSelection'
+import {indexReferenceHashes,fileSha256} from '../src/utils/referenceDuplicates'
 import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest'
 import {directoryEntries,ALLOWED,UPLOAD_CHUNK_BYTES,uploadOne} from '../src/utils/upload'
 import {runUploadQueue} from '../src/utils/uploadQueue'
@@ -190,5 +191,22 @@ describe('strict construction library imports',()=>{
     expect(result.errors).toHaveLength(1)
     expect(result.folders).toHaveLength(1)
     expect(result.tasks).toHaveLength(1)
+  })
+})
+
+describe('reference duplicate detection before transfer',()=>{
+  it('keeps hashes scoped to one construction, independent of filenames',()=>{
+    const hash='a'.repeat(64)
+    const index=indexReferenceHashes([{id:'1',sam:'SAM 0004',name:'old.jpg',sha256:hash}])
+    expect(index.get('SAM 0004')?.has(hash)).toBe(true)
+    expect(index.get('TLT 0004')?.has(hash)).toBe(false)
+  })
+  it('hashes actual file bytes with SHA-256 when browser crypto is available',async()=>{
+    const digest=await fileSha256(new File(['abc'],'new.jpg'))
+    if(typeof crypto!=='undefined'&&crypto.subtle){
+      expect(digest).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
+    }else{
+      expect(digest).toBeNull()
+    }
   })
 })
