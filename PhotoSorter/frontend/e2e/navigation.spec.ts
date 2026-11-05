@@ -82,3 +82,18 @@ test('mobile drawer allows navigation',async({page,isMobile})=>{
   await page.getByRole('link',{name:'Настройки'}).click()
   await expect(page.getByRole('heading',{name:'Настройки',exact:true})).toBeVisible()
 })
+
+test('processing select includes fresh and previously processed completed batches',async({page})=>{
+  await page.goto('/processing')
+  const select=page.getByRole('combobox',{name:'Партия ФО'})
+  // The baseline fixture has one completed run. Re-running it is allowed by the API.
+  await expect(select).toHaveValue(bid)
+  await expect(page.getByRole('button',{name:/Запустить \/ поставить в очередь/})).toBeEnabled()
+
+  // An older API response may omit runs for an entirely new batch.
+  await page.route(/^https?:\/\/[^/]+\/api\/batches(?:\?.*)?$/,route=>
+    respond(route,{batches:[{...batch,runs:undefined}],total:1}))
+  await page.reload()
+  await expect(select).toHaveValue(bid)
+  await expect(page.getByRole('button',{name:/Запустить \/ поставить в очередь/})).toBeEnabled()
+})

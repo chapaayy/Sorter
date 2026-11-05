@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,ref} from 'vue'
 import {batchApi} from '../../api/batches'
+import {canResumeUpload} from '../../utils/batches'
 import {directoryEntries,uploadOne} from '../../utils/upload'
 import type {UploadEntry} from '../../utils/upload'
 import {bytes,errorText} from '../../utils/format'
@@ -19,12 +20,12 @@ function choose(e:Event){
   if(!files)return
   try{
     const batch=directoryEntries(files)
-    entries.value=batch.entries;folder.value=batch.folder;amounts.value=entries.value.map(()=>0)
+    entries.value=batch.entries;folder.value=batch.folder;batchId.value='';amounts.value=entries.value.map(()=>0)
     error.value='';finished.value=0
   }catch(err){error.value=errorText(err)}
 }
 function storageKey(){
-  return 'ps.folder.v3:'+folder.value+':'+entries.value.length+':'+total.value
+  return 'ps.folder:'+folder.value+':'+entries.value.length+':'+total.value
 }
 function storedId(){try{return localStorage.getItem(storageKey())}catch{return null}}
 function saveId(id:string){try{localStorage.setItem(storageKey(),id)}catch{}}
@@ -35,7 +36,7 @@ async function start(){
     const saved=storedId()
     if(saved){
       const old=await batchApi.one(saved).catch(()=>null)
-      if(old && old.delete_state==='active' && old.runs===0)batchId.value=saved
+      if(old && canResumeUpload(old))batchId.value=saved
     }
     if(!batchId.value){const created=await batchApi.create(folder.value);batchId.value=created.batch_id;saveId(batchId.value)}
     const signal=controller.signal,queue=entries.value.map((_,i)=>i)

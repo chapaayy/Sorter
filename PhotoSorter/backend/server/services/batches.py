@@ -34,6 +34,8 @@ def _serialize(row,counters=None):
             "delete_after_at","deleted_at")
     data={"batch_id":str(row["id"])}
     for field in fields:data[field]=row[field]
+    # Each batch has the same counter contract, even with no photos/runs.
+    data.update({"photos":0,"size_bytes":0,"pending":0,"runs":0})
     if counters:data.update(counters)
     return data
 

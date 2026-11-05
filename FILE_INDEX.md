@@ -114,12 +114,14 @@
 | `frontend/src/features/settings/SettingsView.vue` | Диск, состояние сервисов, тема, cleanup |
 | `frontend/src/styles/` | CSS tokens, layout, components |
 | `frontend/src/utils/{upload,format}.ts` | Resumable upload, форматы |
+| `frontend/src/utils/batches.ts` | Общие проверки готовности ФО к обработке и безопасного возобновления загрузки |
 
 ## Проверки и обслуживание
 
 | Файл | Назначение |
 |---|---|
 | `backend/tests/` | Backend regression: SQL, MegaLoc math, безопасность, upload, ZIP, retention и HTTP |
+| `backend/tests/test_batch_listing_regressions.py` | Счётчики нулевых запусков, список ФО после удаления, PostgreSQL |
 | `frontend/tests/` | Vitest |
 | `frontend/e2e/navigation.spec.ts`, `playwright.config.ts` | Chromium/WebKit на десктопе и mobile |
 | `PhotoSorter/tools/benchmark_api.py` | API latency |

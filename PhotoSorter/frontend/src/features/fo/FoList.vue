@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue'
 import {batchApi} from '../../api/batches'
+import {usePolling} from '../../composables/usePolling'
 import type {Batch} from '../../types/api'
 import {date,bytes,errorText} from '../../utils/format'
 import PageHeader from '../../components/ui/PageHeader.vue'
@@ -22,6 +23,10 @@ async function load(more=false){
   }catch(e){error.value=errorText(e)}finally{loading.value=false}
 }
 onMounted(()=>{void load()})
+// Poll only while deletion is pending, so the count clears when cleanup finishes.
+usePolling(async()=>{
+  if(batches.value.some(b=>b.delete_state==='deleting'))await load()
+},3000)
 function status(b:Batch){
   if(b.delete_state!=='active')return 'Удаление: '+b.delete_state
   if(b.thumbnail_state==='ready')return '✓ Миниатюры готовы'

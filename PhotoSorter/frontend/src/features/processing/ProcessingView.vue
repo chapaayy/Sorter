@@ -2,6 +2,7 @@
 import {computed,onMounted,ref} from 'vue'
 import {useRouter} from 'vue-router'
 import {batchApi} from '../../api/batches'
+import {canProcessBatch} from '../../utils/batches'
 import {runApi} from '../../api/runs'
 import type {Batch,Run,ModelInfo} from '../../types/api'
 import {usePolling} from '../../composables/usePolling'
@@ -18,13 +19,13 @@ const submitting=ref(false),downloading=ref(false),error=ref(''),search=ref('')
 const activeRuns=computed(()=>runs.value.filter(r=>isActive(r.status)))
 const latest=computed(()=>activeRuns.value[0]||runs.value[0])
 const history=computed(()=>runs.value.filter(r=>(r.id+' '+(batchName(r.batch_id))).toLowerCase().includes(search.value.toLowerCase())))
-const available=computed(()=>batches.value.filter(b=>b.delete_state==='active'&&(b.photos||0)>0&&(b.pending||0)===0&&b.runs===0))
+const available=computed(()=>batches.value.filter(canProcessBatch))
 function batchName(id:string){return batches.value.find(b=>b.batch_id===id)?.display_name||id}
 async function load(){
   try{
     const [rs,bs,m]=await Promise.all([runApi.list(),batchApi.list(200),runApi.models()])
     runs.value=rs.runs;batches.value=bs.batches;model.value=m
-    if(!chosen.value||!batches.value.some(b=>b.batch_id===chosen.value))chosen.value=available.value[0]?.batch_id||''
+    if(!available.value.some(b=>b.batch_id===chosen.value))chosen.value=available.value[0]?.batch_id||''
     error.value=''
   }catch(e){error.value=errorText(e)}
 }
@@ -60,6 +61,7 @@ async function install(){
     <label class="field"><span class="label">Модель</span><select disabled><option>MegaLoc · CPU</option></select></label>
     <label class="field"><span class="label">Порог группировки: {{threshold.toFixed(2)}}</span><input v-model.number="threshold" type="range" min=".50" max=".99" step=".01" aria-label="Порог группировки"/></label>
   </div>
+  <p v-if="!available.length" class="meta">Нет готовых партий: загрузите фотографии во вкладке «ФО» и дождитесь завершения передачи.</p>
   <div class="row between wrap">
     <span class="meta">{{model?.models[0]?.available?'Модель готова. Запуски выполняются по одному.':model?.models[0]?.reason||'Проверка состояния модели…'}}</span>
     <div class="row">

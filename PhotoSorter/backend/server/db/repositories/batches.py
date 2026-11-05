@@ -17,9 +17,11 @@ def count_photos_and_runs(db,batch_id):
     return {**counter,**runs}
 
 def list_rows(db,limit,offset):
-    rows=db.execute("SELECT * FROM batches ORDER BY created_at DESC LIMIT %s OFFSET %s",
-                    (limit,offset)).fetchall()
-    total=db.execute("SELECT count(*) AS c FROM batches").fetchone()["c"]
+    rows=db.execute("""SELECT * FROM batches WHERE delete_state <> 'deleted'
+        ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s""",
+        (limit,offset)).fetchall()
+    total=db.execute("""SELECT count(*) AS c FROM batches
+        WHERE delete_state <> 'deleted'""").fetchone()["c"]
     return rows,total
 
 def set_name(db,batch_id,name):
