@@ -10,7 +10,7 @@ routes = {getattr(route,'path',None) for route in app.routes}
 for url in ('/', '/v3', '/v3/{path:path}', '/api/health',
             '/api/system/status', '/api/storage/usage', '/api/runs',
             '/api/download/{run_id}', '/api/references/sam/{sam}'):
-    assert url in routes, (url, sorted(routes))
+    assert url in routes, (url, sorted(x for x in routes if isinstance(x,str)))
 assert len(routes) >= 30, len(routes)
 """
     result=subprocess.run([sys.executable,"-c",script],capture_output=True,text=True,timeout=15)
