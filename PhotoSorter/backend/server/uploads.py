@@ -142,7 +142,8 @@ def _append_chunk(path: Path, expected: int, data: bytes, declared_size: int) ->
 
 def _record_chunk(upload_id: uuid.UUID, received: int) -> None:
     with connect() as db:
-        db.execute('UPDATE uploads SET received=%s WHERE id=%s', (received, upload_id))
+        db.execute('UPDATE uploads SET received=%s,updated_at=now() WHERE id=%s',
+                   (received, upload_id))
 
 
 @router.patch('/uploads/{upload_id}')

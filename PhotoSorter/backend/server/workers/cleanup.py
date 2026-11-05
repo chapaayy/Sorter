@@ -4,7 +4,7 @@ import logging
 import signal
 import time
 from ..database import wait_and_initialize
-from ..services import cleanup,retention
+from ..services import cleanup,retention,thumbnail_gc,temp_cleanup
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
 RUN=True
@@ -20,6 +20,10 @@ def run_cycle():
         logging.info("Batch cleanup %s: %s",batch_id,result)
     removed=cleanup.reconcile_incomplete_exports()
     if removed:logging.info("Removed %s orphaned unpublished exports",len(removed))
+    abandoned=temp_cleanup.reclaim_abandoned(limit=20)
+    if abandoned:logging.info("Reclaimed %s abandoned upload parts",abandoned)
+    stale=thumbnail_gc.collect(limit=20)
+    if stale:logging.info("Cleared %s unreferenced thumbnails",stale)
 
 def main():
     signal.signal(signal.SIGTERM,stop)

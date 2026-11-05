@@ -2,6 +2,11 @@ name: outdoor-sorter
 services:
   caddy:
     image: caddy:2-alpine
+    logging: &bounded_logs
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
@@ -19,6 +24,7 @@ services:
     networks: [public]
 
   api:
+    logging: *bounded_logs
     build:
       context: .
       dockerfile: PhotoSorter/docker/app/Dockerfile
@@ -30,7 +36,7 @@ services:
       DOMAIN: ${DOMAIN:?Set DOMAIN}
       PHOTOSORTER_FORCE_CPU: "1"
       PHOTOSORTER_REFERENCE_CACHE: "1"
-      PHOTOSORTER_CPU_THREADS: "8"
+      PHOTOSORTER_CPU_THREADS: "7"
       PHOTOSORTER_BATCH_SIZE: "4"
       PHOTOSORTER_PREFETCH_WORKERS: "2"
     volumes: &app_data
@@ -48,6 +54,7 @@ services:
     networks: [public, private]
 
   worker:
+    logging: *bounded_logs
     build:
       context: .
       dockerfile: PhotoSorter/docker/app/Dockerfile
@@ -58,11 +65,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    cpus: 8
+    cpus: 7
+    cpuset: "${PHOTOSORTER_WORKER_CPUSET:-0-6}"
     mem_limit: 20g
     networks: [private]
 
   cleanup:
+    logging: *bounded_logs
     build:
       context: .
       dockerfile: PhotoSorter/docker/app/Dockerfile
@@ -77,7 +86,24 @@ services:
     mem_limit: 256m
     networks: [private]
 
+  thumbnail:
+    logging: *bounded_logs
+    build:
+      context: .
+      dockerfile: PhotoSorter/docker/app/Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "server.workers.thumbnail"]
+    environment: *app_env
+    volumes: *app_data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cpus: 0.35
+    mem_limit: 512m
+    networks: [private]
+
   postgres:
+    logging: *bounded_logs
     image: postgres:17-alpine
     restart: unless-stopped
     environment:

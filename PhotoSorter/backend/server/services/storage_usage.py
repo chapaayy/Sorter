@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from app.config import DATA_DIR, MODELS_DIR
+from .disk_guard import reserve
 
 def _size(root,seen):
     total=0
@@ -35,7 +36,9 @@ def usage():
                       ("runs",DATA_DIR/"runs"),("incoming",DATA_DIR/"incoming")):
         groups[key]=_size(root,seen)
     fraction=used/total if total else 0
+    required=reserve(total)
     return {"disk":{"total_bytes":total,"used_bytes":used,"available_bytes":free,
+            "reserved_bytes":required,"admission_ok":free>required,
             "used_fraction":fraction,"warning":"critical" if fraction>=.90
             else "warning" if fraction>=.80 else None},
             "categories_bytes":groups,"counting":"physical_inode_deduplicated"}
