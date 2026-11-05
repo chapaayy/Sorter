@@ -97,3 +97,14 @@ jobs:
             PhotoSorter/frontend/playwright-report/
             PhotoSorter/frontend/test-results/
           retention-days: 7
+
+  docker-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      GITHUB_ACTIONS: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Full CPU-PyTorch Docker build + isolated runtime, no real photos
+        run: bash PhotoSorter/tools/stage4/smoke_container.sh
