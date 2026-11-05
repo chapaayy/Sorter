@@ -138,6 +138,6 @@
 - `PhotoSorter/frontend/src/components/ui/UiSelect.vue` — единый доступный раскрывающийся список без стрелок и нативного меню.
 - `PhotoSorter/frontend/src/components/ui/UiIcon.vue` — SVG-навигация без внешнего icon runtime.
 - `PhotoSorter/frontend/src/styles/tokens.css` — цветовые токены тёмной/светлой темы.
-- `PhotoSorter/frontend/src/styles/monochrome.css` — общее визуальное оформление интерфейса.
+- `PhotoSorter/frontend/src/styles/components.css` — единое актуальное оформление и адаптивная компоновка без каскадных тем-надстроек.
 - `PhotoSorter/frontend/src/styles/select.css` — стили кастомного выпадающего меню.
 - `PhotoSorter/frontend/e2e/navigation.spec.ts` — браузерная проверка выбора партии, Esc и существующей навигации.
