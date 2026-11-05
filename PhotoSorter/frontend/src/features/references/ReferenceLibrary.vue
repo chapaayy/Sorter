@@ -68,7 +68,7 @@ async function onUploaded(){
 }
 async function removeSam(){
   busy.value=true
-  try{await referenceApi.deleteSam(selected.value);deleteSam.value=false;selected.value='';await refresh();notice.add('SAM и её Образцы удалены','ok')}
+  try{await referenceApi.deleteSam(selected.value);deleteSam.value=false;selected.value='';await refresh();notice.add('Конструкция и её образцы удалены','ok')}
   catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
 </script>
@@ -85,7 +85,7 @@ async function removeSam(){
   <span v-if="cache" class="meta">Кэш MegaLoc: {{cache.cached}} / {{cache.total}} · {{cache.current_signature?'актуальная подпись':'модель не подтверждена'}}</span>
 </div>
 <div v-if="list.length" class="split">
-  <GroupPicker v-model="selected" :items="groups" placeholder="Поиск SAM…"/>
+  <GroupPicker v-model="selected" :items="groups" placeholder="Поиск номера или адреса…"/>
   <section class="panel split-main">
     <div class="panel-header"><div><h2>{{selectedEntry?.display_name||selected}}</h2>
       <span class="meta">{{selectedEntry?.photos||0}} образцов</span></div>
@@ -93,7 +93,7 @@ async function removeSam(){
         <UiButton small :disabled="active" @click="openUpload('single')">+ Добавить фото</UiButton>
         <UiButton v-if="selectedEntry?.address!=null" small :disabled="active"
           @click="addressDraft=selectedEntry.address||'';editing=true">Изменить адрес</UiButton>
-        <UiButton kind="danger" small :disabled="active" @click="deleteSam=true">Удалить SAM</UiButton>
+        <UiButton kind="danger" small :disabled="active" @click="deleteSam=true">Удалить конструкцию</UiButton>
       </div>
     </div>
     <div v-if="galleryError" class="alert error">{{galleryError}}</div>
@@ -107,7 +107,7 @@ async function removeSam(){
 </EmptyState>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
 <ConfirmDialog v-if="deletePhoto" title="Удалить Образец?" message="Фотография исчезнет из общей библиотеки SAM. Действующие обработки остаются, пока нет активных запусков." danger confirm-label="Удалить Образец" :busy="busy" @cancel="deletePhoto=null" @confirm="dropOne"/>
-<ConfirmDialog v-if="deleteSam" title="Безвозвратно удалить SAM?" :message="'Все эталонные фото '+selected+' будут удалены из общей библиотеки. Это не удаляет партии ФО.'" :required-text="selected" danger confirm-label="Удалить SAM" :busy="busy" @cancel="deleteSam=false" @confirm="removeSam"/>
+<ConfirmDialog v-if="deleteSam" title="Безвозвратно удалить конструкцию?" :message="'Все эталонные фото '+selected+' будут удалены из общей библиотеки. Это не удаляет партии ФО.'" :required-text="selected" danger confirm-label="Удалить SAM" :busy="busy" @cancel="deleteSam=false" @confirm="removeSam"/>
 <div v-if="editing" class="modal-overlay" @click.self="editing=false">
   <form class="modal stack" @submit.prevent="saveAddress">
     <h2>Изменить адрес</h2><p>Номер {{selected}} и все фотографии останутся прежними.</p>
