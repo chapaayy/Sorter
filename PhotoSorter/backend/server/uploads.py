@@ -15,6 +15,7 @@ from .database import connect
 from .services import operations
 from .db.repositories import batches as batch_repository
 from .services import thumbnails
+from .services import construction_catalog
 from .services.disk_guard import check_admission
 from app.config import DATA_DIR
 from app.photos.reader import EXTS
@@ -49,6 +50,7 @@ class BeginUpload(BaseModel):
     size:int=Field(gt=0,le=MAX_FILE_BYTES)
     batch_id:str|None=None
     sam:str|None=None
+    address:str|None=None
     sha256:str|None=None
 
 
@@ -62,8 +64,8 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
     else:
         try:sam=check_label(payload.sam or '')
         except ValueError as exc:raise HTTPException(422,str(exc))
-        if not re.match(r'^SAM-\d{4}(?:$|[-])',sam,re.I):
-            raise HTTPException(422,'Нужна папка SAM-xxxx')
+        if not sam:
+            raise HTTPException(422,'Укажите конструкцию')
     if payload.sha256 and not re.fullmatch(r'[0-9a-f]{64}',payload.sha256):
         raise HTTPException(422,'Неверная контрольная сумма')
     check_admission(payload.size)
@@ -75,6 +77,9 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
             if payload.kind=='reference' and db.execute(
                  "SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
                 raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
+            if payload.kind=='reference':
+                try: sam=construction_catalog.ensure_upload(db,sam,payload.address)
+                except ValueError as exc: raise HTTPException(422,str(exc)) from exc
             if batch_id:
                 # A parallel file-init eventually updates this batch row. Acquiring
                 # FOR SHARE first causes a FOR SHARE -> UPDATE deadlock when
@@ -286,13 +291,14 @@ def _prepare_direct_upload(upload_id: str, payload: BeginUpload) -> dict:
 @router.put('/uploads/direct/{upload_id}')
 async def direct_upload(
     upload_id: str, request: Request, kind: str, filename: str,
-    size: int, batch_id: str = '', sam: str = ''
+    size: int, batch_id: str = '', sam: str = '', address: str = ''
 ):
     """Single-request upload; keep the resumable PATCH fallback."""
     try:uuid.UUID(upload_id)
     except ValueError:raise HTTPException(404,'Загрузка не найдена')
     payload=BeginUpload(kind=kind,filename=filename,size=size,
-                        batch_id=batch_id or None,sam=sam or None)
+                        batch_id=batch_id or None,sam=sam or None,
+                        address=address or None)
     async with lock_for(upload_id):
         row=await asyncio.to_thread(_prepare_direct_upload,upload_id,payload)
         token=await asyncio.to_thread(operations.start,row['batch_id'],'upload') if row['batch_id'] else None
@@ -332,8 +338,14 @@ async def direct_upload(
 @router.get('/references')
 def references_status():
     with connect() as db:
-        rows=db.execute('SELECT sam, count(*) AS photos FROM uploads '
-                        'WHERE kind=\'reference\' AND finalized GROUP BY sam ORDER BY sam').fetchall()
+        rows=db.execute("""SELECT u.sam,count(*) AS photos,
+                   c.city_code,c.construction_number,c.address,
+                   CASE WHEN c.sam IS NOT NULL THEN u.sam || ' — ' || c.address
+                        ELSE u.sam END AS display_name
+                   FROM uploads u LEFT JOIN reference_constructions c ON c.sam=u.sam
+                   WHERE u.kind='reference' AND u.finalized
+                   GROUP BY u.sam,c.sam,c.city_code,c.construction_number,c.address
+                   ORDER BY u.sam""").fetchall()
     return {'sam':rows,'total':sum(row['photos'] for row in rows)}
 
 
