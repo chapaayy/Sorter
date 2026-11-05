@@ -12,9 +12,16 @@ function saved(k:string){try{return localStorage.getItem(k)}catch{return null}}
 function remember(k:string,value:string|null){try{if(value)localStorage.setItem(k,value);else localStorage.removeItem(k)}catch{}}
 async function resume(id:string,t:UploadTarget,e:UploadEntry,signal:AbortSignal,progress:(n:number)=>void):Promise<UploadResult>{
   let status:{offset:number;size:number;finalized:boolean}
-  try{status=await api('/uploads/'+id)}
-  catch(error){
-    if(!(error instanceof ApiError)||error.status!==404)throw error
+  if(id){
+    try{status=await api('/uploads/'+id)}
+    catch(error){
+      if(!(error instanceof ApiError)||error.status!==404)throw error
+      const created=await post<{id:string}>('/uploads',{kind:t.kind,batch_id:t.batchId||null,sam:t.sam||null,filename:e.file.name,size:e.file.size})
+      id=created.id
+      remember(key(t,e),id)
+      status={offset:0,size:e.file.size,finalized:false}
+    }
+  }else{
     const created=await post<{id:string}>('/uploads',{kind:t.kind,batch_id:t.batchId||null,sam:t.sam||null,filename:e.file.name,size:e.file.size})
     id=created.id
     remember(key(t,e),id)
