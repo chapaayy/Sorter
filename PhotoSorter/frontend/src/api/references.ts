@@ -1,6 +1,14 @@
-import {api,del,patch,query} from './client'
+import {api,del,patch,post,query} from './client'
 import type {CursorPage,Photo,SamCount,ReferenceFile} from '../types/api'
+export interface ImportPlanEntry{
+  sam:string;name:string;address:string;city_code:string;number:string;existing:boolean;photos:number
+}
+export interface ImportPlanError{folder:string;reason:string}
+export interface ImportPlan{entries:ImportPlanEntry[];errors:ImportPlanError[];cities:Record<string,string>}
 export const referenceApi={
+  importPreview:(folders:string[])=>post<ImportPlan>('/references/import/preview',{folders}),
+  changeAddress:(sam:string,address:string)=>patch<{sam:string;address:string;name:string}>(
+    '/references/constructions/'+encodeURIComponent(sam)+'/address',{address}),
   list:()=>api<{sam:SamCount[];total:number}>('/references'),
   gallery:(sam:string,cursor?:string|null,limit=60)=>api<CursorPage<Photo>>('/references/'+encodeURIComponent(sam)+'/photos'+query({cursor,limit})),
   files:()=>api<{files:ReferenceFile[]}>('/references/files'),
