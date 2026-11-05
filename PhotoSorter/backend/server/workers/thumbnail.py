@@ -16,17 +16,13 @@ def main():
     try:os.nice(10)
     except OSError:pass
     wait_and_initialize()
-    count=0
     while RUN:
         try:
             task=thumbnails.claim()
             if task:
                 result=thumbnails.complete(task)
                 if result=="error":logging.warning("Preview failed for upload %s",task["upload_id"])
-                count+=1
-                if count%100==0:thumbnails.gc_unowned(limit=20)
             else:
-                thumbnails.gc_unowned(limit=10)
                 time.sleep(2)
         except Exception:
             logging.exception("Thumbnail worker failure")

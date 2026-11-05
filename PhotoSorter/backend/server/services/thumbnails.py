@@ -5,7 +5,7 @@ import os
 import tempfile
 import uuid
 from pathlib import Path
-from PIL import Image,ImageOps,UnidentifiedImageError
+from PIL import Image,ImageOps,ImageCms,UnidentifiedImageError
 from ..database import connect
 from . import operations
 from ..storage import thumbnail_cache as cache
@@ -52,6 +52,15 @@ def render(source:Path,destination:Path):
         with Image.open(source) as img:
             img.load()
             img=ImageOps.exif_transpose(img)
+            # Convert tagged RGB sources to sRGB; malformed ICC never alters originals.
+            icc=img.info.get("icc_profile")
+            if icc and len(icc)<=131072 and img.mode=="RGB":
+                try:
+                    src_profile=ImageCms.ImageCmsProfile(io.BytesIO(icc))
+                    img=ImageCms.profileToProfile(img,src_profile,
+                        ImageCms.createProfile("sRGB"),outputMode="RGB")
+                except (OSError,ValueError,TypeError):
+                    pass
             if img.width*img.height>cache.PIXEL_LIMIT:
                 raise ValueError("Image too large")
             img.thumbnail((cache.MAX_SIDE,cache.MAX_SIDE),Image.Resampling.LANCZOS)
