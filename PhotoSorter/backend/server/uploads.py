@@ -70,6 +70,7 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
     recorded=False
     try:
         with connect() as db:
+            if payload.kind=='reference':db.execute('SELECT pg_advisory_xact_lock(723409133)')
             if payload.kind=='reference' and db.execute(
                  "SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
                 raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
@@ -213,6 +214,7 @@ def _finalize_sync(upload_id: str):
     # The transaction lock covers both the duplicate check and registration.
     with connect() as db:
         if row['kind']=='reference':
+            db.execute('SELECT pg_advisory_xact_lock(723409133)')
             db.execute('SELECT pg_advisory_xact_lock(723409134)')
             previous=db.execute(
                 "SELECT target_path FROM uploads WHERE kind='reference' AND finalized "

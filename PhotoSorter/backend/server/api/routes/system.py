@@ -42,3 +42,9 @@ def system_status():
                "latency":latency_snapshot(),
                "rss_peak_kib":resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
                "allowed_cpus":sorted(os.sched_getaffinity(0)) if hasattr(os,"sched_getaffinity") else None}}
+
+@router.post("/cache/cleanup")
+def clean_unused_thumbnails():
+    """Manual, owner-checked cleanup only of orphaned preview cache."""
+    from ..services.thumbnails import gc_unowned,gc_incomplete
+    return {"removed":gc_unowned(limit=200)+gc_incomplete(limit=200)}

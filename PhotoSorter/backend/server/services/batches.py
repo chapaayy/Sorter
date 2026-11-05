@@ -48,7 +48,21 @@ def get(batch_id):
 def list_all(limit=100,offset=0):
     with connect() as db:
         rows,total=repository.list_rows(db,limit,offset)
-    return {"batches":[_serialize(row) for row in rows],"total":total}
+        identifiers=[row["id"] for row in rows]
+        aggregates={}
+        if identifiers:
+            stats=db.execute("""SELECT b.id,
+              count(u.id) FILTER(WHERE u.kind='fo' AND u.finalized) AS photos,
+              coalesce(sum(u.declared_size) FILTER(WHERE u.kind='fo' AND u.finalized),0) AS size_bytes,
+              count(u.id) FILTER(WHERE u.kind='fo' AND NOT u.finalized) AS pending
+              FROM batches b LEFT JOIN uploads u ON u.batch_id=b.id
+              WHERE b.id=ANY(%s) GROUP BY b.id""",(identifiers,)).fetchall()
+            runs=db.execute("""SELECT batch_id,count(*) AS runs FROM jobs
+              WHERE batch_id=ANY(%s) GROUP BY batch_id""",(identifiers,)).fetchall()
+            aggregates={r["id"]:dict(r) for r in stats}
+            for entry in runs:aggregates.setdefault(entry["batch_id"],{})["runs"]=entry["runs"]
+    return {"batches":[_serialize(row,aggregates.get(row["id"],{"photos":0,"pending":0,"size_bytes":0,"runs":0}))
+                       for row in rows],"total":total}
 
 def rename(batch_id,name):
     batch_id=uid(batch_id)

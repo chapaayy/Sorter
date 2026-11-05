@@ -131,3 +131,11 @@ def usage():
     files=[f for f in RUNS_DIR.glob("*/events.jsonl*") if f.is_file() and not f.is_symlink()]
     return {"bytes":sum(f.stat().st_size for f in files),
             "budget_bytes":TOTAL_BYTES,"run_budget_bytes":SEGMENT_BYTES*SEGMENTS}
+
+def tail(run_id,*,limit=200,model=None,level=None,source=None,search=None):
+    """Return recent bounded events with a cursor AFTER the currently published tail."""
+    rows=read(run_id,model=model,level=level,source=source,search=search,limit=limit)
+    files=[f for f in _files(run_id) if f.is_file()]
+    if not files:return {"events":rows,"next_cursor":None}
+    newest=files[-1]
+    return {"events":rows,"next_cursor":_encode(newest.name,newest.stat().st_size)}

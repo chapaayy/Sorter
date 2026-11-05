@@ -1,7 +1,7 @@
 """Bounded compatible log tail plus forward cursor pages for large journals."""
 from fastapi import APIRouter,HTTPException
 from app.results.repository import load_run
-from app.logging.events import read, page,usage
+from app.logging.events import read, page,tail,usage
 router=APIRouter(prefix="/api/logs",tags=["logs"])
 
 @router.get("/usage")
@@ -18,9 +18,11 @@ def logs(run_id:str,model:str|None=None,level:str|None=None,
 @router.get("/{run_id}/page")
 def paged(run_id:str,cursor:str|None=None,limit:int=200,
           model:str|None=None,level:str|None=None,
-          source:str|None=None,search:str|None=None):
+          source:str|None=None,search:str|None=None,tail_mode:bool=False):
     try:
         load_run(run_id)
+        if tail_mode:return tail(run_id,limit=limit,model=model,level=level,
+                                 source=source,search=search)
         return page(run_id,cursor=cursor,limit=limit,model=model,level=level,
                     source=source,search=search)
     except FileNotFoundError:raise HTTPException(404,"Запуск не найден")
