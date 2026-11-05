@@ -21,9 +21,9 @@ Docker `json-file` logs max-size 10m/max-file 3, data/cache/thumbnails shared mo
 1. Убедиться, что текущий commit — отдельная ветка `stage3/vue-frontend`, а не действующий `vps/docker-rebuild`. У Stage 3 есть зависимость от Stage 2 (preview, galleries, logs, queues).
 2. Не менять боевой VPS. На **изолированном** 8-vCPU стенде проверить CPU affinity, PostgreSQL 17, mount `PhotoSorter/data`, `Models/models` и `Models/cache`.
 3. Dockerfile multi-stage: сборка `node:24-alpine` `npm ci` + `npm run build`, только `dist/` переносится в Python 3.11 final image; Node не присутствует в backend/runtime.
-4. `/` и `/static/` остаются legacy UI. Открыть только `/v3/`, протестировать cookie/login, sidebar, FO uploads, SAM gallery/rename, queued runs, results, full ZIP, explicit confirmation, logs и settings.
+4. Один Vue-интерфейс на `/` и deep links `/fo`, `/references`, `/processing`, `/results`, `/logs`, `/settings`. Протестировать cookie/login, sidebar, FO uploads, SAM gallery/rename, queued runs, full ZIP, explicit confirmation и settings; старые `/v3/` и `/static/*` отвечают 404.
 5. Отдельно проверить CSP/headers, HTTPS/SameSite cookies, iPhone Safari/iOS, 360px responsive, tab/focus/Escape, browser cache invalidation, исходные photos and SAM, disk quota.
-6. Без письменной приёмки не заменять `/` на Vue и не удалять `frontend/static`, не выполнять `docker compose down -v`.
+6. По явному запросу владельца новый Vue теперь единственный UI в коде. Это не разрешение стирать постоянные фото/Models/PostgreSQL; `docker compose down -v` не выполнять при обычном обновлении.
 
 ## Stage 4: fail-closed update safeguards
 

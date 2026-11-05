@@ -79,10 +79,10 @@
 | DELETE | `/api/references/sam/{sam}` | удалить всю SAM и принадлежащие эталонные фото |
 | GET | `/api/logs/{run_id}/page?tail_mode=true` | последние ограниченные события плюс курсор от конца |
 | POST | `/api/system/cache/cleanup` | только cache WebP без checksum owner и устаревшие временные файлы |
-| GET | `/v3/`, `/v3/fo/:id` и другие SPA пути | Vue bundle с истории маршрутов, только read-only HTML |
-| GET | `/v3/assets/*` | только уже собранные Vite assets внутри `frontend/dist/assets`, без path traversal |
+| GET | `/`, `/fo/:id`, `/references`, `/processing`, `/results`, `/logs`, `/settings` и другие SPA пути | Единственный Vue bundle, history fallback, только read-only HTML |
+| GET | `/assets/*` | Только собранные Vite assets внутри `frontend/dist/assets`, без path traversal |
 
-**Сохранённые пути:** `/` (старый интерфейс), `/static/app.js`, `/static/style.css`, login/logout, streaming ZIP, batch CRUD, queues и Base API этапов 1–2. Новые методы защищены теми же cookie/Origin middleware. При несуществующем Vue dist `/v3/` возвращает 503 и не ломает legacy `/`.
+**Сохранённый API:** `/api/auth/login`, `/api/auth/logout`, streaming ZIP, batch CRUD, очереди и API этапов 1–4. API защищён cookie/Origin middleware; root Vue не ослабляет авторизацию. Если Vue dist отсутствует, `/` и SPA deep links возвращают 503, а `/api/health` продолжает работать. Старые `/v3/` и `/static/*` возвращают 404.
 
 **SAM rename safety:** запрещён при queued/running/stopping MegaLoc и незавершённых загрузках данной SAM. Исторические manifests с исходными путями требуют отдельной проверки/миграции при переименовании библиотеки, прежде чем включать эту функцию на рабочем VPS. Это не изменяет MegaLoc math.
 
