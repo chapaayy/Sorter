@@ -46,6 +46,8 @@ test.beforeEach(async({page})=>{
 test('six navigation sections and real data bindings',async({page})=>{
   const firstResponse=await page.goto('/v3/fo')
   console.log('BROWSER_DIAGNOSTIC',firstResponse?.status(),page.url(),(await page.locator('body').innerText()).slice(0,950))
+  const source=await page.request.get('http://127.0.0.1:5173/v3/src/api/client.ts')
+  console.log('SOURCE_DIAGNOSTIC',source.status(),(await source.text()).slice(0,700))
   await expect(page.getByRole('heading',{name:'Фотоотчёты'})).toBeVisible()
   await expect(page.getByText('Выезд Самара 05.11').first()).toBeVisible()
   for(const [path,heading] of [['/v3/references','Образцы'],['/v3/processing','Обработка'],['/v3/results','Результаты'],['/v3/logs','Логи'],['/v3/settings','Настройки']] as const){
