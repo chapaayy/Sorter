@@ -51,3 +51,13 @@ def path_is_shared(db,path,photo_id):
 
 def delete_photo_row(db,photo_id):
     db.execute("DELETE FROM uploads WHERE id=%s",(photo_id,))
+
+def refresh_upload_state(db,batch_id):
+    """Derived from the actual uploads and jobs, never a UI-only flag."""
+    db.execute("""UPDATE batches SET upload_state=CASE
+       WHEN EXISTS (SELECT 1 FROM jobs WHERE batch_id=%s) THEN 'sealed'
+       WHEN EXISTS (SELECT 1 FROM uploads WHERE kind='fo' AND batch_id=%s
+            AND NOT finalized) THEN 'open'
+       WHEN EXISTS (SELECT 1 FROM uploads WHERE kind='fo' AND batch_id=%s
+            AND finalized) THEN 'ready'
+       ELSE 'open' END WHERE id=%s""",(batch_id,batch_id,batch_id,batch_id))

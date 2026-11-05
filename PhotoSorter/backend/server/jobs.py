@@ -49,7 +49,7 @@ def enqueue(data:NewRun):
               'models':{},'progress':{},'started_at':datetime.now(timezone.utc).isoformat()}
         # A new run invalidates the previous whole-archive confirmation.
         db.execute("""UPDATE batches SET download_confirmed_at=NULL,delete_after_at=NULL,
-            confirmed_run_id=NULL WHERE id=%s""",(data.batch_id,))
+            confirmed_run_id=NULL,upload_state='sealed' WHERE id=%s""",(data.batch_id,))
         db.execute('INSERT INTO jobs(id,batch_id,status,snapshot) VALUES (%s,%s,%s,%s)',
                    (run_id,data.batch_id,'queued',Jsonb(info)))
     return info

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from PIL import Image, UnidentifiedImageError
 from .database import connect
 from .services import operations
+from .db.repositories import batches as batch_repository
 from app.config import DATA_DIR
 from app.photos.reader import EXTS
 from app.photos.labels import check_label
@@ -80,6 +81,7 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
             db.execute('INSERT INTO uploads(id,kind,batch_id,sam,filename,declared_size,checksum) '
                        'VALUES (%s,%s,%s,%s,%s,%s,%s)',
                        (file_id,payload.kind,batch_id,sam,filename,payload.size,payload.sha256))
+            if batch_id:db.execute("UPDATE batches SET upload_state='open' WHERE id=%s",(batch_id,))
         recorded=True
         PART_DIR.mkdir(parents=True,exist_ok=True)
         (PART_DIR/f'{file_id}.part').touch(exist_ok=False)
@@ -227,6 +229,7 @@ def _finalize_sync(upload_id: str):
         if row['kind']=='fo': target.chmod(0o444)
         db.execute('UPDATE uploads SET finalized=true,received=declared_size,checksum=%s,target_path=%s '
                    'WHERE id=%s',(digest,str(target),row['id']))
+        if row['batch_id']:batch_repository.refresh_upload_state(db,row['batch_id'])
     return {'path':str(target),'sha256':digest,'already_finalized':False}
 
 

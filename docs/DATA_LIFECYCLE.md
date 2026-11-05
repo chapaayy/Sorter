@@ -2,6 +2,8 @@
 
 ## Состояния
 
+`batches.upload_state`: `open` пока партия пуста/есть незавершённые файлы, `ready` когда все ФО завершены, `sealed` после первого запуска MegaLoc (больше нельзя менять ФО без новой версии). При загрузке очередного файла до запуска `ready → open`; состояние вычисляется из реальных записей uploads/jobs, а не из интерфейса.
+
 `batches.delete_state`: `active → deleting → deleted`; при IO/FS ошибке `deleting → delete_failed`, повторный подтверждённый DELETE переводит снова в `deleting`. До удаления партия содержит `upload_state`, `thumbnail_state` (миниатюры **не создаются** в этапе 1), `download_confirmed_at`, `confirmed_run_id`, `delete_after_at`. Срок ожидания кодируется датой при `active`, не отдельным состоянием `retention_pending`.
 
 `cleanup_tasks`: `pending → running → completed`; ошибка `failed` с причиной, ручное возобновление возвращает `pending`. Перезапуск контейнера может оставить `running`; worker повторит idempotent процесс. Заявка DELETE возвращается до фактического окончания, состояние доступно через API.

@@ -32,6 +32,7 @@
 | `server/db/migration_runner.py` | versioned forward-only SQL; database.initialize |
 | `server/db/repositories/batches.py` | batch/photo metadata queries; services/batches.py |
 | `server/db/migrations/0001_batch_lifecycle.sql` | display_name, retention, leases, cleanup tracking; runner |
+| `server/db/migrations/0002_batch_upload_state.sql` | обратимо-совместимое определение open/ready/sealed для исторических партий; runner |
 | `server/uploads.py` | legacy resumable API/sha+Pillow+direct transfer; main и UI |
 | `server/jobs.py` | старый `/api/runs` и stop; main, worker |
 | `server/worker.py` | последовательное выполнение MegaLoc; Compose worker |

@@ -86,4 +86,5 @@ def remove_unprocessed_photo(batch_id,photo_id):
             path=owned_file(DATA_DIR/"incoming"/f"{photo_id}.part",DATA_DIR/"incoming")
             path.unlink(missing_ok=True)
         repository.delete_photo_row(db,photo_id)
+        repository.refresh_upload_state(db,batch_id)
     return {"deleted":True}

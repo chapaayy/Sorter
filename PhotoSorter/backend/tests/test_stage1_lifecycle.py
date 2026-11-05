@@ -426,3 +426,42 @@ def test_calendar_months_are_not_sixty_days(db):
     assert str(rows["feb"])=="2028-02-29"
     assert str(rows["march"])=="2028-03-31"
     assert str(rows["april"])=="2028-04-29"
+
+def test_upload_state_transitions_with_real_finalization(sandbox,monkeypatch):
+    from PIL import Image
+    from server import uploads
+    from server.services import batches,cleanup
+    from server.db.repositories import batches as batch_repository
+    from server.database import connect
+    own=_batch(sandbox,with_photo=False)
+    monkeypatch.setattr(uploads,"UPLOADS_DIR",sandbox/"uploads")
+    monkeypatch.setattr(uploads,"PART_DIR",sandbox/"incoming")
+    monkeypatch.setattr(uploads,"REFERENCES_DIR",sandbox/"references")
+    assert batches.get(own)["upload_state"]=="open"
+    picture=io.BytesIO()
+    Image.new("RGB",(20,20),"green").save(picture,format="JPEG")
+    raw=picture.getvalue()
+    payload=uploads.BeginUpload(kind="fo",batch_id=str(own),filename="fo.jpg",
+                                size=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+    file_id=uuid.uuid4()
+    uploads._create_upload(payload,file_id)
+    assert batches.get(own)["upload_state"]=="open"
+    (sandbox/"incoming"/f"{file_id}.part").write_bytes(raw)
+    result=uploads._finalize_sync(str(file_id))
+    assert result["sha256"]==payload.sha256
+    assert batches.get(own)["upload_state"]=="ready"
+    original=Path(result["path"])
+    assert original.read_bytes()==raw
+    with connect() as db:
+        batch_repository.refresh_upload_state(db,own)
+    assert batches.get(own)["upload_state"]=="ready"
+    _job(sandbox,own)
+    with connect() as db:
+        batch_repository.refresh_upload_state(db,own)
+    assert batches.get(own)["upload_state"]=="sealed"
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        uploads._create_upload(payload,uuid.uuid4())
+    assert exc.value.status_code==409
+    cleanup.request(own)
+    assert cleanup.cleanup_one(own)=="completed"
