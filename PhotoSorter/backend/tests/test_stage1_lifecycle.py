@@ -39,6 +39,7 @@ def test_hardlink_cross_device_fallback_and_no_partial_output(tmp_path,monkeypat
     assert target.read_bytes()==source.read_bytes()
     assert target.stat().st_ino != source.stat().st_ino
     with pytest.raises(FileExistsError):link_or_copy(source,target)
+    assert target.read_bytes()==b"raw", "An existing export must survive a name collision"
     with pytest.raises(ValueError):
         link_or_copy(source,tmp_path/"bad.jpg",expected_hash="0"*64)
     assert not (tmp_path/"bad.jpg").exists()
@@ -293,3 +294,13 @@ def test_warning_for_stale_unconfirmed_and_seven_day_notice(sandbox):
     assert retention.status(own)["warning"] is True
     cleanup.request(own)
     cleanup.cleanup_one(own)
+
+def test_hardlink_collision_does_not_unlink_original_result(tmp_path):
+    src=tmp_path/"original.jpg"
+    src.write_bytes(b"new content")
+    destination=tmp_path/"old-result.jpg"
+    destination.write_bytes(b"important historical output")
+    with pytest.raises(FileExistsError):
+        link_or_copy(src,destination)
+    assert destination.read_bytes()==b"important historical output"
+    assert src.read_bytes()==b"new content"

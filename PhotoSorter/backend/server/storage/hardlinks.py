@@ -23,17 +23,21 @@ def link_or_copy(source: Path, target: Path, *, expected_stamp=None, expected_ha
     if expected_hash and digest != expected_hash:
         raise ValueError("Photo checksum mismatch before export")
     method = "hardlink"
+    created = False
     try:
         try:
             os.link(source, target, follow_symlinks=False)
+            created = True
         except OSError as error:
             if error.errno not in COPY_FALLBACK:
                 raise
             method = "copy"
-            with source.open("rb") as src, target.open("xb") as dst:
-                shutil.copyfileobj(src, dst, 1024 * 1024)
-                dst.flush()
-                os.fsync(dst.fileno())
+            with source.open("rb") as src:
+                with target.open("xb") as dst:
+                    created = True
+                    shutil.copyfileobj(src, dst, 1024 * 1024)
+                    dst.flush()
+                    os.fsync(dst.fileno())
             shutil.copystat(source, target)
         after = source.stat()
         if (before.st_size, before.st_mtime_ns, before.st_ino, before.st_dev) != (
@@ -46,5 +50,6 @@ def link_or_copy(source: Path, target: Path, *, expected_stamp=None, expected_ha
             raise ValueError("Photo checksum changed during export")
         return method
     except Exception:
-        target.unlink(missing_ok=True)
+        if created:
+            target.unlink(missing_ok=True)
         raise
