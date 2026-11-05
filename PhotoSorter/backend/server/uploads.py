@@ -13,6 +13,8 @@ from PIL import Image, UnidentifiedImageError
 from .database import connect
 from .services import operations
 from .db.repositories import batches as batch_repository
+from .services import thumbnails
+from .services.disk_guard import check_admission
 from app.config import DATA_DIR
 from app.photos.reader import EXTS
 from app.photos.labels import check_label
@@ -63,6 +65,7 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
             raise HTTPException(422,'Нужна папка SAM-xxxx')
     if payload.sha256 and not re.fullmatch(r'[0-9a-f]{64}',payload.sha256):
         raise HTTPException(422,'Неверная контрольная сумма')
+    check_admission(payload.size)
     token=operations.start(batch_id,'init') if batch_id else None
     recorded=False
     try:
@@ -127,6 +130,7 @@ def _append_chunk(path: Path, expected: int, data: bytes, declared_size: int) ->
             raise HTTPException(409, {'expected_offset': actual})
         if actual + len(data) > declared_size:
             raise HTTPException(413, 'Превышен размер файла')
+        check_admission(len(data))
         try:
             output.write(data)
             output.flush()
@@ -230,6 +234,7 @@ def _finalize_sync(upload_id: str):
         if row['kind']=='fo': target.chmod(0o444)
         db.execute('UPDATE uploads SET finalized=true,received=declared_size,checksum=%s,target_path=%s '
                    'WHERE id=%s',(digest,str(target),row['id']))
+        thumbnails.enqueue(db,row['id'],digest)
         if row['batch_id']:batch_repository.refresh_upload_state(db,row['batch_id'])
     return {'path':str(target),'sha256':digest,'already_finalized':False}
 
@@ -350,3 +355,24 @@ def remove_reference(reference_id:str):
         referenced=db.execute('SELECT 1 FROM uploads WHERE target_path=%s LIMIT 1',(str(file),)).fetchone()
     if not referenced:file.unlink(missing_ok=True)
     return {'deleted':True}
+
+@router.delete('/uploads/{upload_id}')
+async def cancel_upload(upload_id:str):
+    """Only remove unfinished transfer; never delete finalized originals."""
+    async with lock_for(upload_id):
+        row=await asyncio.to_thread(get_upload,upload_id)
+        token=await asyncio.to_thread(operations.start,row['batch_id'],'cancel') if row['batch_id'] else None
+        try:
+            if row['finalized']:raise HTTPException(409,'Готовый оригинал нельзя отменить')
+            def remove():
+                with connect() as db:
+                    target=db.execute("""SELECT id FROM uploads WHERE id=%s AND NOT finalized FOR UPDATE""",
+                                      (row['id'],)).fetchone()
+                    if not target:raise HTTPException(409,'Загрузка уже завершена')
+                    (PART_DIR/f"{row['id']}.part").unlink(missing_ok=True)
+                    db.execute("DELETE FROM uploads WHERE id=%s",(row['id'],))
+                    if row['batch_id']:batch_repository.refresh_upload_state(db,row['batch_id'])
+            await asyncio.to_thread(remove)
+            return {"cancelled":True}
+        finally:
+            if token:await asyncio.to_thread(operations.finish,token)

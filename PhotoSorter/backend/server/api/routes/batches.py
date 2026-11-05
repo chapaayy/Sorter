@@ -3,6 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter,HTTPException
 from pydantic import BaseModel,Field
 from ...services import batches,cleanup,retention
+from ...database import connect
+from ...db.repositories.pagination import page
 
 router=APIRouter(prefix="/api/batches",tags=["batches"])
 
@@ -34,6 +36,15 @@ def rename(batch_id:str,payload:RenameBatch):
 def photos(batch_id:str,limit:int=100,offset:int=0):
     if not 1<=limit<=200 or offset<0:raise HTTPException(422,"Неверная пагинация")
     return batches.photos(batch_id,limit,offset)
+
+@router.get("/{batch_id}/gallery")
+def gallery(batch_id:str,cursor:str|None=None,limit:int=60):
+    batch_id=batches.uid(batch_id)
+    with connect() as db:
+        if not db.execute("SELECT 1 FROM batches WHERE id=%s",(batch_id,)).fetchone():
+            raise HTTPException(404,"Партия не найдена")
+        return page(db,"u.kind='fo' AND u.finalized AND u.batch_id=%s",
+                    (batch_id,),cursor=cursor,limit=limit)
 
 @router.delete("/{batch_id}/photos/{photo_id}")
 def delete_photo(batch_id:str,photo_id:str):

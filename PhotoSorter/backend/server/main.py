@@ -10,7 +10,7 @@ from .auth import authenticate,bootstrap_admin,check_origin
 from .database import wait_and_initialize
 from .uploads import router as uploads_router
 from .jobs import router as jobs_router
-from .api.routes import auth,batches,downloads,images,logs,models,results,site,storage
+from .api.routes import auth,batches,downloads,images,logs,models,results,site,storage,thumbnails,references
 
 @asynccontextmanager
 async def lifespan(app):
@@ -39,5 +39,5 @@ def health():return {"status":"ok","version":"4.1.0-vps"}
 
 for router in (auth.router,batches.router,uploads_router,jobs_router,
                models.router,results.router,images.router,downloads.router,
-               logs.router,storage.router,site.router):
+               logs.router,storage.router,thumbnails.router,references.router,site.router):
     app.include_router(router)
