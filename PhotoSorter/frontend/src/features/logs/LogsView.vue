@@ -61,7 +61,7 @@ async function download(){
     let next:string|null=null
     const lines:string[]=[]
     do{
-      const chunk=await logApi.page(selected.value,{...filters.value,cursor:next,limit:500,tail:false})
+      const chunk=await logApi.page(selected.value,{...filters.value,cursor:next,limit:500,tail_mode:false})
       for(const e of chunk.events)lines.push(JSON.stringify(e))
       next=chunk.next_cursor
       if(lines.length>120000)throw new Error('Журнал слишком большой для браузера. Сузьте фильтр.')
