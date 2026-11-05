@@ -45,7 +45,7 @@ def test_check_does_not_mutate_secrets_or_launch_containers(deploy):
     assert result.returncode==0,result.stderr
     assert (root/".env.generated").read_bytes()==before
     calls=log.read_text()
-    assert "compose config --quiet" in calls
+    assert any(line.endswith("config --quiet") for line in calls.splitlines())
     assert "compose up" not in calls
     assert "Initial password" not in result.stdout
 
@@ -56,16 +56,16 @@ def test_upgrade_blocks_missing_original_secrets(deploy):
     assert result.returncode!=0
     assert "ORIGINAL credentials" in result.stderr
     assert not (root/".env.generated").exists()
-    assert "compose up" not in log.read_text()
+    assert not any(line.endswith("up -d --build") for line in log.read_text().splitlines())
 
 def test_upgrade_requires_explicit_backup_ack(deploy):
     root,run,log=deploy
     before=(root/".env.generated").read_bytes()
     assert run("--deploy").returncode!=0
-    assert "compose up" not in log.read_text()
+    assert not any(line.endswith("up -d --build") for line in log.read_text().splitlines())
     yes=run("--deploy",overrides={"PHOTOSORTER_APPROVE_UPGRADE":"VERIFIED_BACKUP_AND_ROLLBACK"})
     assert yes.returncode==0,yes.stderr
-    assert "compose up -d --build" in log.read_text()
+    assert any(line.endswith("up -d --build") for line in log.read_text().splitlines())
     assert (root/".env.generated").read_bytes()==before
     assert "password" not in yes.stdout.lower()
 
@@ -74,4 +74,4 @@ def test_invalid_cpu_preflight_fails_without_up(deploy):
     result=run("--check",overrides={"PHOTOSORTER_WORKER_CPUSET":"999999"})
     assert result.returncode!=0
     assert "CPU affinity" in result.stderr
-    assert "compose up" not in log.read_text()
+    assert not any(line.endswith("up -d --build") for line in log.read_text().splitlines())
