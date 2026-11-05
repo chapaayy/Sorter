@@ -7,7 +7,7 @@ from starlette.requests import Request
 from PIL import Image
 from pathlib import Path
 from .test_stage2_platform import thumbs,_jpg,_finalize_picture
-from .test_stage1_lifecycle import _batch,_job
+from .test_stage1_lifecycle import _batch,_job,sandbox,db
 from server.database import connect
 
 def as_request(data,*,offset=None):
