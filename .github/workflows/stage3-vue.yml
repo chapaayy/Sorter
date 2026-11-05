@@ -60,6 +60,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Install Chromium and WebKit browser dependencies
         run: npx playwright install --with-deps chromium webkit
+      - name: Check app bootstrap before broad browser suite
+        run: npx playwright test --project chromium-desktop --grep "six navigation sections" --retries=0
       - name: Test responsive and desktop journeys
         run: npm run test:e2e
       - name: Upload browser traces when checks fail
