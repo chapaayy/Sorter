@@ -2,7 +2,6 @@
 from __future__ import annotations
 from datetime import datetime,timezone
 from psycopg.types.json import Jsonb
-from ..database import connect
 
 MAX_WAITING=20
 ACTIVE=("queued","running","stopping")
