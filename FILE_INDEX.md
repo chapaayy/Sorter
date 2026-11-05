@@ -109,3 +109,38 @@
 - `app/logging/events.py` — ротация, cursor API.
 - `app/jobs/progress.py` — измеряемая скорость по стадиям.
 - `.github/workflows/ci.yml` — stage2 workflow.
+
+## Stage 3 — новые Vue/TypeScript файлы и серверный мост
+
+| Модуль | Ответственность |
+|---|---|
+| `frontend/{package.json,package-lock.json,vite.config.ts,tsconfig.json,index.html}` | точные зависимости, Vite `/v3/`, строгая сборка |
+| `frontend/src/main.ts` | bootstrap Vue 3, Pinia, router |
+| `frontend/src/app/{App.vue,router.ts}` | auth gate, маршруты всех 6 разделов |
+| `frontend/src/api/{client,batches,references,runs,results,logs,system}.ts` | cookie-safe typed API и пагинация; единственный network boundary |
+| `frontend/src/stores/{theme,session,notice}.ts` | тема, httpOnly-сессия, уведомления |
+| `frontend/src/composables/{useCursor,usePolling}.ts` | хранение страниц и polling без параллельных запросов |
+| `frontend/src/components/layout/Shell.vue` | шесть разделов, responsive sidebar |
+| `frontend/src/components/ui/*.vue` | RowCard 108 px, UiButton, PageHeader, ConfirmDialog, Toast, EmptyState |
+| `frontend/src/components/gallery/*.vue` | lazy preview и полноразмерный viewer |
+| `frontend/src/components/split/GroupPicker.vue` | desktop dual-pane / mobile select |
+| `frontend/src/features/auth/LoginView.vue` | cookie auth form |
+| `frontend/src/features/fo/{FoList,FoGallery,UploadPanel}.vue` | папки, партии, отдельная галерея, удаление |
+| `frontend/src/features/references/{ReferenceLibrary,ReferenceUploader}.vue` | библиотека SAM, редактирование, сетевая загрузка |
+| `frontend/src/features/processing/{ProcessingView,RunDetail,RunProgress}.vue` | очередь MegaLoc, измеренные стадии, стоп |
+| `frontend/src/features/results/{ResultsList,ResultDetail}.vue` | SAM/groups, ZIP, подтверждение, retention |
+| `frontend/src/features/logs/LogsView.vue` | курсорные логи, tail, копирование |
+| `frontend/src/features/settings/SettingsView.vue` | темы, состояние mount, безопасная очистка, срок хранения |
+| `frontend/src/utils/{format,upload}.ts` | форматирование и resumable direct+PATCH |
+| `frontend/src/styles/{tokens,base,components}.css` | graphite/light design tokens, responsive layout |
+| `frontend/tests/*.test.ts` | Vitest unit contracts |
+| `frontend/e2e/*.spec.ts`, `frontend/playwright.config.ts` | browser smoke journey: Chromium / WebKit / mobile |
+| `backend/server/services/references.py` | owner-safe SAM rename/delete/cache query; no photo inference |
+| `backend/server/api/routes/references.py` | SAM HTTP endpoints |
+| `backend/server/api/routes/site.py` | legacy / + isolated /v3/ |
+| `backend/server/services/batches.py` | aggregated counters for list rows |
+| `backend/server/api/routes/logs.py` / `app/logging/events.py` | log tail pagination |
+| `backend/server/api/routes/system.py` | owner-safe manual orphaned thumbnail cleanup |
+| `backend/tests/test_stage3_ui_api.py` | SAM deletion/rename + SPA path isolation test |
+| `docker/app/Dockerfile` | Node24 build stage, Python runtime |
+| `.github/workflows/stage3-vue.yml` | npm ci + vue-tsc/Vite + Vitest + Playwright |

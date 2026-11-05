@@ -1,7 +1,7 @@
 # PROJECT_MAP.md — архитектурная карта
 
 ```text
-Browser (legacy static JS, stage 3 => Vue)
+Browser (legacy / and opt-in Vue /v3/)
     | HTTPS/Caddy
     v
 FastAPI server/main.py (lifespan, session+Origin middleware)
@@ -64,3 +64,37 @@ System API        -> p50/p95 request latency, job/preview queue, disk reserve
 ```
 
 Общие `references/` и `Models/` не принадлежат партиям и не затрагиваются при cleanup. Для storage, Docker services и CPU см. `docs/OPERATIONS.md`.
+
+## Stage 3 — frontend application graph
+
+```text
+PhotoSorter/frontend/
+  package.json / package-lock.json / vite.config.ts / tsconfig.json
+  index.html
+  src/
+    main.ts             -> Vue + Pinia + Vue Router + global styles
+    app/                 -> App.vue auth gate + router.ts
+    api/                 -> typed client / batches / references / runs / results / logs / system
+    stores/              -> session / theme / notifications
+    composables/         -> usePolling / useCursor
+    components/
+      layout/Shell.vue   -> sidebar six routes + mobile drawer
+      ui/                -> RowCard, Buttons, PageHeader, ConfirmDialog, EmptyState, ToastStack
+      split/             -> GroupPicker (desktop left / mobile select)
+      gallery/           -> ThumbnailGrid lazy WebP, ImageViewer full image
+    features/
+      auth/              -> LoginView
+      fo/                -> FoList, FoGallery, UploadPanel
+      references/        -> ReferenceLibrary, ReferenceUploader
+      processing/        -> ProcessingView, RunDetail, RunProgress
+      results/           -> ResultsList, ResultDetail
+      logs/              -> LogsView
+      settings/          -> SettingsView
+    utils/               -> format, resumable upload
+    styles/              -> graphite/light tokens, base, reusable layout
+  tests/                 -> Vitest contracts/format/upload
+  e2e/                   -> Playwright mocked API navigation and flows
+  dist/ (generated)      -> static assets, not tracked
+```
+
+`server/api/routes/site.py` раздельно выдаёт `/` (legacy) и `/v3/` (Vue SPA history fallback), `/v3/assets` только внутри `frontend/dist/assets`. Python Dockerfile использует multi-stage Node 24 build; runtime без Node. `server/services/references.py` + `api/routes/references.py` обеспечивают явные управляемые rename/delete/cache SAM. `system/cache/cleanup` очищает только orphaned previews.
