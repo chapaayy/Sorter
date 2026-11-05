@@ -51,33 +51,46 @@ class BeginUpload(BaseModel):
 def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
     if payload.kind not in ('fo','reference'):raise HTTPException(422,'Недопустимый тип загрузки')
     filename=safe_name(payload.filename)
-    batch_id=None; sam=None
+    batch_id=None;sam=None
     if payload.kind=='fo':
-        try: batch_id=uuid.UUID(payload.batch_id or '')
+        try:batch_id=uuid.UUID(payload.batch_id or '')
         except ValueError:raise HTTPException(422,'Нужна партия ФО')
     else:
-        try: sam=check_label(payload.sam or '')
+        try:sam=check_label(payload.sam or '')
         except ValueError as exc:raise HTTPException(422,str(exc))
         if not re.match(r'^SAM-\d{4}(?:$|[-])',sam,re.I):
             raise HTTPException(422,'Нужна папка SAM-xxxx')
     if payload.sha256 and not re.fullmatch(r'[0-9a-f]{64}',payload.sha256):
         raise HTTPException(422,'Неверная контрольная сумма')
-    with connect() as db:
-        if payload.kind=='reference' and db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
-            raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
-        if batch_id:
-            batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR SHARE',(batch_id,)).fetchone()
-            if not batch:raise HTTPException(404,'Партия не найдена')
-            if batch['delete_state']!='active':raise HTTPException(409,'Партия удаляется')
-            if db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',(batch_id,)).fetchone():
-                raise HTTPException(409,'Партия уже использовалась для сортировки')
-        db.execute('INSERT INTO uploads(id,kind,batch_id,sam,filename,declared_size,checksum) '
-                   'VALUES (%s,%s,%s,%s,%s,%s,%s)',
-                   (file_id,payload.kind,batch_id,sam,filename,payload.size,payload.sha256))
-    PART_DIR.mkdir(parents=True,exist_ok=True)
-    (PART_DIR/f'{file_id}.part').touch(exist_ok=False)
-    return {'id':str(file_id),'offset':0,'size':payload.size}
-
+    token=operations.start(batch_id,'init') if batch_id else None
+    recorded=False
+    try:
+        with connect() as db:
+            if payload.kind=='reference' and db.execute(
+                 "SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
+                raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
+            if batch_id:
+                batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR SHARE',
+                                 (batch_id,)).fetchone()
+                if not batch:raise HTTPException(404,'Партия не найдена')
+                if batch['delete_state']!='active':raise HTTPException(409,'Партия удаляется')
+                if db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',
+                              (batch_id,)).fetchone():
+                    raise HTTPException(409,'Партия уже использовалась для сортировки')
+            db.execute('INSERT INTO uploads(id,kind,batch_id,sam,filename,declared_size,checksum) '
+                       'VALUES (%s,%s,%s,%s,%s,%s,%s)',
+                       (file_id,payload.kind,batch_id,sam,filename,payload.size,payload.sha256))
+        recorded=True
+        PART_DIR.mkdir(parents=True,exist_ok=True)
+        (PART_DIR/f'{file_id}.part').touch(exist_ok=False)
+        return {'id':str(file_id),'offset':0,'size':payload.size}
+    except Exception:
+        if recorded:
+            with connect() as db:
+                db.execute('DELETE FROM uploads WHERE id=%s AND NOT finalized',(file_id,))
+        raise
+    finally:
+        if token:operations.finish(token)
 
 
 @router.post('/uploads')

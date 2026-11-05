@@ -21,7 +21,7 @@ def confirm(batch_id,run_id):
         if not manifest.is_file():
             raise HTTPException(409,"Полный результат не опубликован")
         row=db.execute("""UPDATE batches SET download_confirmed_at=now(),
-           confirmed_run_id=%s,delete_after_at=now()+interval '2 months'
+           confirmed_run_id=%s,delete_after_at=((now() AT TIME ZONE 'UTC')+interval '2 months') AT TIME ZONE 'UTC'
            WHERE id=%s RETURNING download_confirmed_at,delete_after_at""",
            (run_id,batch_id)).fetchone()
         db.execute("""INSERT INTO download_confirmations(id,batch_id,run_id,event)
@@ -35,7 +35,7 @@ def extend(batch_id):
         if not row["delete_after_at"]:
             raise HTTPException(409,"Архив ещё не подтверждён")
         data=db.execute("""UPDATE batches SET
-            delete_after_at=greatest(delete_after_at,now())+interval '2 months'
+            delete_after_at=(((greatest(delete_after_at,now()) AT TIME ZONE 'UTC')+interval '2 months') AT TIME ZONE 'UTC')
             WHERE id=%s RETURNING download_confirmed_at,delete_after_at,confirmed_run_id""",
             (batch_id,)).fetchone()
         db.execute("""INSERT INTO download_confirmations(id,batch_id,run_id,event)
