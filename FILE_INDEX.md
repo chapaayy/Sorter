@@ -121,6 +121,7 @@
 | `frontend/src/styles/` | CSS tokens, layout, components |
 | `frontend/src/utils/{upload,format}.ts` | Resumable upload, форматы |
 | `frontend/src/utils/referenceSelection.ts` | Клиентская проверка имени папки, учёт всех выбранных файлов |
+| `frontend/src/utils/referenceDuplicates.ts` | SHA-256 сверка с готовыми образцами перед сетевой загрузкой |
 | `frontend/src/utils/uploadQueue.ts` | Ограничение и отчёт ошибок параллельных передач |
 | `frontend/src/stores/uploadSettings.ts` | Настройка числа одновременных загрузок |
 | `frontend/src/utils/batches.ts` | Общие проверки готовности ФО к обработке и безопасного возобновления загрузки |
