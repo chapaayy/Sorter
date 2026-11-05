@@ -22,7 +22,7 @@ def references(folder, warn=None):
                 cache[name]=None
                 if warn: warn(f'Пропуск папки {name}: {e}')
         if cache[name]: entries.append((file,cache[name]))
-    if not entries: raise ValueError('Нет образцов в папках SAM-0001, SAM-0002 ...')
+    if not entries: raise ValueError('Нет образцов в папках конструкций')
     return entries
 
 def validate(paths,progress=None,should_stop=None,warn=None):
