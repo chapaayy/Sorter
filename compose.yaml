@@ -62,6 +62,21 @@ services:
     mem_limit: 20g
     networks: [private]
 
+  cleanup:
+    build:
+      context: .
+      dockerfile: PhotoSorter/docker/app/Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "server.workers.cleanup"]
+    environment: *app_env
+    volumes: *app_data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cpus: 0.25
+    mem_limit: 256m
+    networks: [private]
+
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped

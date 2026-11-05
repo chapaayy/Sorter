@@ -18,8 +18,9 @@ def stop(*_):
 def claim_job():
     with connect() as db:
         # Multiple worker containers also cannot claim the same queued job.
-        row=db.execute("SELECT id,snapshot FROM jobs WHERE status='queued' "
-                       'ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1').fetchone()
+        row=db.execute("SELECT j.id,j.snapshot FROM jobs j JOIN batches b ON b.id=j.batch_id "
+                       "WHERE j.status='queued' AND b.delete_state='active' "
+                       'ORDER BY j.created_at FOR UPDATE OF j SKIP LOCKED LIMIT 1').fetchone()
         if row:
             info=row['snapshot'];info['status']='running'
             db.execute('UPDATE jobs SET status=%s,snapshot=%s,updated_at=now() WHERE id=%s',
