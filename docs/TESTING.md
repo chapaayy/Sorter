@@ -36,3 +36,7 @@ GitHub Actions runs `41949026787` и `41949033874`: **33 passed**, Python compil
 `PhotoSorter/backend/tests/test_stage2_transfers.py` проверяет прямой PUT, PATCH offset/resume, mismatch SHA, cancel только pending, ZIP disconnect и release IO lease, original viewer read lease. Все файлы в `tmp_path`, PostgreSQL 17 только disposable CI service. Дополнительно выполняются все регрессии этапа 1 + MegaLoc math (без изменения алгоритмов).
 
 Ручные проверки **не выполнялись**: real 189/1315 photo files, полный Docker build с PyTorch, настоящие 8-vCPU VPS нагрузочные A/B, сеть 350–400 Мбит/с, Safari UI (этап 3), full backup/restore. Замеры будут честно получены только после разрешения. Порядок A/B — в [PERFORMANCE](PERFORMANCE.md).
+
+## Фактически выполненный CI для stage2
+
+GitHub Actions workflow `41954580354` на `4f6212729ef7277091eb134141f4a18b80375134`: `52 passed in 4.52s`, `python -m compileall` и `docker compose config --quiet` прошли. Тестовая PostgreSQL 17 — временный CI service, а не действующий VPS. Ни один файл `app/recognition/` в diff stage1→stage2 не менялся.

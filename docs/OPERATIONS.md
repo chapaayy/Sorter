@@ -30,3 +30,7 @@
 ## Тестирование и откат
 
 CI запускает PostgreSQL 17, compile Python, Compose config и unit/integration тесты. Full Docker runtime с CPU PyTorch и A/B на фактическом VPS не проводились. Документы: [PERFORMANCE](PERFORMANCE.md), [ROLLBACK](ROLLBACK.md), [BACKUP_RESTORE](BACKUP_RESTORE.md).
+
+## Итог проверок stage2
+
+Сборка Python/Compose и 52 автоматических теста завершились успешно: [GitHub Actions 41954580354](https://github.com/chapaayy/Sorter/actions/runs/41954580354). Full production smoke test и A/B по реальным CPU, сети и 1315 ФО не выполнялись. Это остаётся обязательным до внедрения.

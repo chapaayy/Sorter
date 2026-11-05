@@ -70,3 +70,7 @@ Hard Links **не являются бэкапом**. Никогда не при�
 CI: `python -m compileall -q PhotoSorter/backend`, `PYTHONPATH=PhotoSorter/backend pytest -q PhotoSorter/backend/tests`. В CI тестовая PostgreSQL 17 и изолированные файлы в `tmp_path`. Реальные 189/1315-ФО fixtures не входят в репозиторий: полноценная сверка с эталонными отчётами и production rollout — только после разрешения.
 
 Документация: [архитектура](docs/ARCHITECTURE.md), [файлы](FILE_INDEX.md), [жизненный цикл](docs/DATA_LIFECYCLE.md), [API](docs/API.md), [миграции](docs/MIGRATION_NOTES.md), [тесты](docs/TESTING.md), [бэкап](docs/BACKUP_RESTORE.md), [откат](docs/ROLLBACK.md), [развёртывание](docs/DEPLOYMENT.md), [дизайн этапа 3](docs/DESIGN_SYSTEM.md).
+
+## Итог CI второго этапа
+
+[GitHub Actions: 52 tests passed](https://github.com/chapaayy/Sorter/actions/runs/41954580354). Проверены Compose config и Python compile. Code только в [PR #2](https://github.com/chapaayy/Sorter/pull/2), который основан на ещё не объединённом PR этапа 1. Математика MegaLoc не изменена; на действующем VPS ничего не применено.
