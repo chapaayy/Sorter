@@ -4,6 +4,7 @@ import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from .db.migration_runner import migrate
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
@@ -72,6 +73,7 @@ def initialize():
         # psycopg 3 multi statements with params=None, no prepared server statement.
         for statement in SCHEMA.split(';'):
             if statement.strip(): db.execute(statement)
+        migrate(db)
 
 
 def wait_and_initialize(timeout=90):
