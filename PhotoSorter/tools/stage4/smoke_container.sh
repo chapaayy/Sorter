@@ -38,8 +38,10 @@ if [[ "$healthy" -ne 1 ]]; then
   echo "[ERROR] HTTPS/API failed to become ready" >&2
   exit 1
 fi
-curl -kfsS --max-time 10 https://localhost/v3/ | grep -q 'OUTDOOR'
-curl -kfsS --max-time 10 https://localhost/ | grep -q '<html'
+curl -kfsS --max-time 10 https://localhost/ | grep -q 'OUTDOOR'
+curl -kfsS --max-time 10 https://localhost/fo | grep -q 'OUTDOOR'
+test "$(curl -ksS -o /dev/null -w '%{http_code}' https://localhost/v3/)" = 404
+test "$(curl -ksS -o /dev/null -w '%{http_code}' https://localhost/static/app.js)" = 404
 cookie_file="$(mktemp)"
 chmod 600 "$cookie_file"
 trap 'rm -f "$cookie_file";cleanup' EXIT
@@ -67,4 +69,4 @@ id="$(printf '%s' "$created" | python3 -c 'import json,sys;print(json.load(sys.s
 curl -kfsS --max-time 8 -b "$cookie_file" "https://localhost/api/batches/$id" >/dev/null
 curl -kfsS --max-time 8 -b "$cookie_file" -X DELETE \
   -H 'Origin: https://localhost' "https://localhost/api/batches/$id" >/dev/null
-echo "[OK] Full image build and isolated runtime: TLS self-signed, API/login, legacy/Vue, 3 workers and synthetic batch lifecycle"
+echo "[OK] Full image build and isolated runtime: TLS self-signed, API/login, root Vue SPA, 3 workers and synthetic batch lifecycle"

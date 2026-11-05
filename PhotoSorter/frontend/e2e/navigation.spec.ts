@@ -39,16 +39,16 @@ async function mock(page:Page){
 }
 test.beforeEach(async({page})=>{await mock(page)})
 test('six navigation sections and real data bindings',async({page})=>{
-  await page.goto('/v3/fo')
+  await page.goto('/fo')
   await expect(page.getByRole('heading',{name:'Фотоотчёты'})).toBeVisible()
   await expect(page.getByText('Выезд Самара 05.11').first()).toBeVisible()
-  for(const [path,heading] of [['/v3/references','Образцы'],['/v3/processing','Обработка'],['/v3/results','Результаты'],['/v3/logs','Логи'],['/v3/settings','Настройки']] as const){
+  for(const [path,heading] of [['/references','Образцы'],['/processing','Обработка'],['/results','Результаты'],['/logs','Логи'],['/settings','Настройки']] as const){
     await page.goto(path)
     await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible()
   }
 })
 test('FO gallery is separate and shows real original viewer',async({page})=>{
-  await page.goto('/v3/fo/'+bid)
+  await page.goto('/fo/'+bid)
   await expect(page.getByRole('heading',{name:'Выезд Самара 05.11'})).toBeVisible()
   await expect(page.getByText('Подготовка миниатюр').first()).toBeVisible()
   await page.getByRole('button',{name:'Открыть screen_001.jpg'}).click()
@@ -57,7 +57,7 @@ test('FO gallery is separate and shows real original viewer',async({page})=>{
   await expect(page.getByRole('dialog',{name:'Просмотр фотографии'})).not.toBeVisible()
 })
 test('full ZIP confirmation is separate from download with required phrase',async({page})=>{
-  await page.goto('/v3/results/'+rid)
+  await page.goto('/results/'+rid)
   await expect(page.getByRole('heading',{name:'Выезд Самара 05.11'})).toBeVisible()
   const save=page.getByRole('button',{name:'Я сохранил полный архив'})
   await save.click()
@@ -69,7 +69,7 @@ test('full ZIP confirmation is separate from download with required phrase',asyn
   await expect(page.getByText('Архив подтверждён')).toBeVisible()
 })
 test('theme setting works in light and dark',async({page})=>{
-  await page.goto('/v3/settings')
+  await page.goto('/settings')
   await page.getByRole('radio',{name:'Светлая'}).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme','light')
   await page.getByRole('radio',{name:'Тёмная'}).click()
@@ -77,7 +77,7 @@ test('theme setting works in light and dark',async({page})=>{
 })
 test('mobile drawer allows navigation',async({page,isMobile})=>{
   test.skip(!isMobile,'Mobile layout only')
-  await page.goto('/v3/fo')
+  await page.goto('/fo')
   await page.getByRole('button',{name:'Открыть меню'}).click()
   await page.getByRole('link',{name:'Настройки'}).click()
   await expect(page.getByRole('heading',{name:'Настройки',exact:true})).toBeVisible()
