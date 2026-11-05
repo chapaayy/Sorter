@@ -65,19 +65,22 @@ export async function uploadOne(t:UploadTarget,e:UploadEntry,signal:AbortSignal,
   if(!ALLOWED.test(e.file.name))throw new Error('Неподдерживаемое изображение: '+e.file.name)
   if(e.file.size>MAX_FILE)throw new Error('Файл превышает лимит 60 МБ: '+e.file.name)
   if(e.file.size===0)throw new Error('Пустой файл: '+e.file.name)
-  const storage=key(t,e);let id=saved(storage)||uuid()
+  const storage=key(t,e)
+  const previous=saved(storage)
+  if(previous==='done'){progress(e.file.size);return {path:'',already_finalized:true}}
+  let id=previous||uuid()
   remember(storage,id)
   const params=new URLSearchParams({kind:t.kind,filename:e.file.name,size:String(e.file.size)})
   if(t.batchId)params.set('batch_id',t.batchId)
   if(t.sam)params.set('sam',t.sam)
   try{
     const result=await direct('/api/uploads/direct/'+id+'?'+params,e.file,signal,progress)
-    remember(storage,null);progress(e.file.size);return result
+    remember(storage,'done');progress(e.file.size);return result
   }catch(error){
     if(signal.aborted)throw error
     if(error instanceof ApiError&&[413,422,507,403].includes(error.status))throw error
     const result=await resume(id,t,e,signal,progress)
-    remember(storage,null);progress(e.file.size);return result
+    remember(storage,'done');progress(e.file.size);return result
   }
 }
 export function directoryEntries(files:FileList):{folder:string;entries:UploadEntry[]}{

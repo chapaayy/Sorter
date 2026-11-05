@@ -71,8 +71,13 @@ async function removeBatch(){
 <div v-else-if="!loading" class="empty"><strong>В этой партии пока нет фото</strong><p>Вернитесь к списку и выберите папку для загрузки.</p></div>
 <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё фотографии</UiButton></div>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
-<ConfirmDialog v-if="rename" title="Новое название" message="Название партии изменится, файлы останутся прежними." confirm-label="Сохранить" :busy="busy" @confirm="saveName" @cancel="rename=false">
-</ConfirmDialog>
+<div v-if="rename" class="modal-overlay" @click.self="rename=false">
+  <form class="modal stack" @submit.prevent="saveName" role="dialog" aria-modal="true" aria-label="Переименование партии">
+    <h2>Переименовать партию</h2><p>Оригиналы ФО и результаты останутся на месте.</p>
+    <label class="field">Название<input v-model="newName" maxlength="120" minlength="1" required autofocus/></label>
+    <div class="modal-actions"><UiButton @click="rename=false">Отмена</UiButton><UiButton kind="primary" type="submit" :loading="busy">Сохранить</UiButton></div>
+  </form>
+</div>
 <ConfirmDialog v-if="deletePhoto" title="Удалить фотографию?" message="Удаление невозможно отменить. Операция доступна только до начала сортировки." confirm-label="Удалить ФО" :danger="true" :busy="busy" @confirm="removePhoto" @cancel="deletePhoto=null"/>
 <ConfirmDialog v-if="deleteWhole&&batch" title="Безвозвратно удалить всю партию?" :message="'Будут удалены ВСЕ фотографии, запуски, результаты и логи партии «'+batch.display_name+'». Общие Образцы и модель не затрагиваются.'" confirm-label="Удалить всю партию" :required-text="batch.display_name" :danger="true" :busy="busy" @confirm="removeBatch" @cancel="deleteWhole=false"/>
 </template>
