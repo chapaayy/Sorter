@@ -62,11 +62,12 @@ def render(source:Path,destination:Path):
                 img=base
             else:
                 img=img.convert("RGB")
-            with os.fdopen(fd,"wb") as output:
+            fileobj=os.fdopen(fd,"wb")
+            fd=-1
+            with fileobj as output:
                 img.save(output,format="WEBP",quality=cache.QUALITY,method=4)
                 output.flush()
                 os.fsync(output.fileno())
-            fd=-1
         if destination.is_symlink():raise ValueError("Invalid cached thumbnail")
         os.replace(tmp,destination)
     finally:
