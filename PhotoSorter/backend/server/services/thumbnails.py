@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 from PIL import Image,ImageOps,UnidentifiedImageError
 from ..database import connect
+from . import operations
 from ..storage import thumbnail_cache as cache
 from ..storage.paths import owned_file
 from app.config import DATA_DIR
@@ -73,7 +74,10 @@ def render(source:Path,destination:Path):
         tmp.unlink(missing_ok=True)
 
 def complete(task):
+    token=None
     try:
+        if task["batch_id"]:
+            token=operations.start(task["batch_id"],"thumbnail")
         output=cache.location(task["checksum"],task["version"])
         if not output.is_file():
             source=_image_source(task)
@@ -95,6 +99,8 @@ def complete(task):
                     (state,f"{type(exc).__name__}: {exc}"[:500],task["upload_id"]))
                 _refresh_batch(db,task["batch_id"])
         return "error"
+    finally:
+        if token:operations.finish(token)
 
 def _refresh_batch(db,batch_id):
     if not batch_id:return

@@ -27,6 +27,10 @@ def decorated(db,row):
     return info
 
 def next_job(db):
+    # Global scheduling gate even if a second process bypasses worker leader loop.
+    db.execute("SELECT pg_advisory_xact_lock(723409133)")
+    if db.execute("SELECT 1 FROM jobs WHERE status IN ('running','stopping') LIMIT 1").fetchone():
+        return None
     row=db.execute("""SELECT j.id,j.snapshot FROM jobs j JOIN batches b ON b.id=j.batch_id
         WHERE j.status='queued' AND b.delete_state='active'
         ORDER BY j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1""").fetchone()

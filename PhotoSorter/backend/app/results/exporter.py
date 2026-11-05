@@ -37,7 +37,7 @@ def export(model_dir,rows):
     # Stage 2 galleries scan this append-free index lazily. Legacy JSON remains identical.
     with (model_dir/'manifest.rows.jsonl').open('w',encoding='utf-8') as stream:
         for index,row in enumerate(rows):
-            stream.write(json.dumps({'index':index,**row},ensure_ascii=False,separators=(',',':'))+'\\n')
+            stream.write(json.dumps({'index':index,**row},ensure_ascii=False,separators=(',',':'))+'\n')
     with (model_dir/'manifest.csv').open('w',newline='',encoding='utf-8-sig') as f:
         writer=csv.DictWriter(f,fieldnames=['query','sam','score','reference','copy','alternative_candidates','verdict','reason','checked_count','group_id','group_size','group_status','individual_sam','individual_top'],delimiter=';')
         writer.writeheader()
