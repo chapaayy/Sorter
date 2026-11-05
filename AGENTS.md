@@ -25,7 +25,7 @@
 
 ## Stage 3 frontend и безопасность
 
-20. Vue 3 + TypeScript располагается только в `PhotoSorter/frontend/src`. Старый `frontend/static` не перезаписывать, fallback `/` должен оставаться до явной приёмки.
+20. Vue 3 + TypeScript — единственный клиент, живёт в `PhotoSorter/frontend/src` и отдаётся на `/`. Не возвращать отдельный `frontend/static`, версионные префиксы `/vN/` или вторую сборку. API остаётся на `/api/`.
 21. Фронтенд не хранит в localStorage пароли, cookie, SHA/содержимое ФО или результаты. Browser передаёт идентификаторы файлов/партий/запусков, только backend владеет физическими путями.
 22. Full ZIP download **не означает** получение пользователем: ретеншн запускается только отдельным подтверждением после проверки сохранения полного архива. Деструктивные операции требуют явного осмысленного подтверждения.
 23. Для галерей/логов пользоваться cursor pagination, lazy thumbnails, не загружать гигабайтные manifests целиком в UI. Оригинал только в ImageViewer.
@@ -41,5 +41,5 @@
 30. В исторически опубликованных runs не уничтожать и не перемещать SAM reference-paths; текущий SAM rename/delete при ссылке в manifest возвращает 409 (fail closed).
 31. Изображения, ZIP path и распаковка резервной копии ограничены; не доверять клиентским путям, symlink, `../`, `\x00`. Для restore нужен пустой `sorter_restore_*` DB и staging marker.
 32. `0007_service_heartbeat.sql` — **только additive schema**; старые данные/sessions/jobs не менять. Здоровье worker=heartbeat, а не `0 queued`.
-33. Никакого удаления старого `frontend/static` до доказанной работы нового UI после реального switch и отдельного rollback window. `Models/models` и `Models/cache` по-прежнему независимые каталоги.
+33. По запросу владельца старый `frontend/static` удалён из release-ветки. Это не разрешение удалять живые фото, секреты, модели или Docker volumes. Сохранять бэкап и rollback commit; `Models/models` и `Models/cache` независимы.
 34. Изменения `app/recognition/` запретить и в Stage4, без отдельного benchmark+approval.

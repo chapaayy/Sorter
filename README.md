@@ -1,4 +1,4 @@
-# OUTDOOR PhotoSorter — VPS / MegaLoc (этапы 1–4, Stage 4 pending production acceptance)
+# OUTDOOR PhotoSorter — VPS / MegaLoc (единый Vue-интерфейс)
 
 Приватный фотоотчёт рекламных конструкций. MegaLoc сначала группирует **только ФО** (порог по умолчанию 0.50), затем сопоставляет группы с общей библиотекой SAM. Нейронная математика, постоянные модели и кэш эталонов в этапе 1 не изменялись.
 
@@ -8,7 +8,8 @@
 - Разработка этапа 1: `stage1/batch-lifecycle-hardlinks` (отдельная ветка, не production).
 - Изменения этапа 1 — новая схема и фоновые операции удаления; **не запускать на действующем VPS без резервной копии, проверки восстановления и явного разрешения**.
 - Никаких удалений, миграций и развёртываний на VPS в ходе работы над веткой не выполнялось.
-- **Этап 2:** `stage2/performance-thumbnails-queue`, отдельная ветка от этапа 1. **Этап 3:** `stage3/vue-frontend`, отдельная ветка от этапа 2 (PR будет отдельно). Этап 4 (production validation) не реализован.
+- **Этапы 2–4:** `stage2/performance-thumbnails-queue` → `stage3/vue-frontend` → `stage4/validation-backup-rollout`.
+- **Единый UI:** в `release/single-ui-root` Vue работает на `/`, прежний HTML/JS/CSS удалён. Изменения GitHub не применяются на VPS автоматически.
 
 ## Этап 1: какие серверные функции добавлены
 
@@ -75,9 +76,9 @@ CI: `python -m compileall -q PhotoSorter/backend`, `PYTHONPATH=PhotoSorter/backe
 
 [GitHub Actions: 52 tests passed](https://github.com/chapaayy/Sorter/actions/runs/41954580354). Проверены Compose config и Python compile. Code только в [PR #2](https://github.com/chapaayy/Sorter/pull/2), который основан на ещё не объединённом PR этапа 1. Математика MegaLoc не изменена; на действующем VPS ничего не применено.
 
-## Этап 3: новый Vue интерфейс (параллельно старому)
+## Единый Vue-интерфейс
 
-**URL:** прежний `/` и `/static/app.js` сохраняются неизменными. Новый UI запускается по **`/v3/`** и пока не назначен основным. Никаких операций на рабочем VPS не производилось.
+**URL:** `https://ваш-домен/` — единственный интерфейс Vue 3. Вкладки: `/fo`, `/references`, `/processing`, `/results`, `/logs`, `/settings`. Устаревшие `/v3/` и `/static/*` отвечают 404.
 
 | Раздел | Назначение |
 |---|---|
@@ -99,7 +100,7 @@ npm run test:e2e
 ```
 Vite dev server на порту 5173, backend `/api` проксируется на localhost:8000. Статический Docker build использует отдельный `node:24-alpine` build stage; в Python/runtime Node не устанавливается. Архив ZIP через существующий streaming endpoint, отдельного server-side staging ZIP нет.
 
-**Важно:** установка сборки и переключение `/` на Vue — не входят в этот этап. Для реального VPS сначала провести этап 4: независимый стенд, SSL/cookies, backup/restore, 189/1315-FО регрессии, CPU A/B, browser/phone UX.
+**Важно:** единый сайт на `/` подготовлен в `release/single-ui-root`. Перед чистой установкой решите, сохранять ли прежние фото, SAM и PostgreSQL. Без отдельного разрешения на очистку живые данные не удаляются.
 
 ### Проверенный CI третьего этапа
 
@@ -110,7 +111,7 @@ Vite dev server на порту 5173, backend `/api` проксируется н
 
 ## Этап 4 — проверка безопасности, backup/restore и gate перед production
 
-**Ветка:** `stage4/validation-backup-rollout`. Этапы 1–3 остались отдельными draft PR и **не слиты в `vps/docker-rebuild`**. **Production VPS, реальные пользовательские ФО и веса не изменены**.
+**Stage4:** `stage4/validation-backup-rollout`, поверх него `release/single-ui-root`. Эти изменения в GitHub не изменяют работающий VPS и пользовательские данные.
 
 Добавлены: полноценный CLI снимка с версированным manifest + SHA, снимок PostgreSQL custom-format, Models/models и Models/cache, изолированный восстановительный прогон в CI; comparator реального MegaLoc baseline/ZIP; synthetic 1315-FО zip/hardlink/storage lifecycle; только read-only staging probe; ограничение попыток логина и архивных путей, защита исторических SAM и проверки слишком больших изображений; реальный heartbeat трёх background workers (additive migration 0007); безопасный installer `--check`, no password reset, резервные условия upgrade.
 
@@ -121,4 +122,4 @@ Vite dev server на порту 5173, backend `/api` проксируется н
 - [Аудит безопасности](docs/STAGE4_SECURITY.md)
 - [Changelog](docs/CHANGELOG.md)
 
-Рабочее `/` по-прежнему отдаёт прежний интерфейс, `/v3/` — opt-in Vue после сборки. Математика MegaLoc `app/recognition/` не изменялась.
+В `release/single-ui-root` `/` обслуживает Vue, `/v3/` и `/static/*` не обслуживаются. Математика MegaLoc `app/recognition/` не изменялась.
