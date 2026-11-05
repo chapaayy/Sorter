@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from app.config import DATA_DIR
 from ..storage.paths import run_dir
 from app.photos.labels import check_label
+from app.photos.construction import parse_key
 from app.system.model_store import signature
 from ..database import connect
 from ..storage.paths import owned_file,owned_directory
@@ -13,10 +14,16 @@ from ..storage.paths import owned_file,owned_directory
 REFS=DATA_DIR/"references"
 
 def sam_id(value):
+    # New city/number keys and existing legacy SAM-xxxx rows can coexist.
+    try:
+        parse_key(value)
+        return value
+    except ValueError:
+        pass
     try:label=check_label(value)
     except ValueError as exc:raise HTTPException(422,str(exc)) from exc
     if not re.fullmatch(r"SAM-\d{4}(?:-[A-Za-zА-Яа-я0-9]{1,8}){0,2}",label):
-        raise HTTPException(422,"Ожидался идентификатор SAM-xxxx")
+        raise HTTPException(422,"Некорректный идентификатор конструкции")
     return label
 
 def _editable(db,source):
@@ -68,6 +75,8 @@ def rename(source,target):
     source=sam_id(source)
     target=sam_id(target)
     if source==target:return {"sam":source,"renamed":False}
+    if not source.startswith("SAM-") or not target.startswith("SAM-"):
+        raise HTTPException(422,"Номер новой конструкции не переименовывается. Измените адрес отдельно.")
     old_root=owned_directory(REFS/source,REFS)
     new_root=owned_directory(REFS/target,REFS)
     if new_root.exists():raise HTTPException(409,"Папка SAM с новым именем уже существует")
@@ -133,6 +142,7 @@ def delete(source):
         if not rows:raise HTTPException(404,"SAM не найдена")
         files=[owned_file(Path(row["target_path"]),root) for row in rows]
         db.execute("""DELETE FROM uploads WHERE kind='reference' AND sam=%s""",(source,))
+        db.execute("DELETE FROM reference_constructions WHERE sam=%s",(source,))
     # Never unlink a shared target path still referenced by another SAM.
     with connect() as db:
         for path in set(files):
