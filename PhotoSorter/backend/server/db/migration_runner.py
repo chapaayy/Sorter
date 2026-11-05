@@ -15,7 +15,7 @@ def migrate(db):
         # in a --comment must never be parsed as a new SQL command. Complex SQL
         # (procedural blocks, semicolons inside strings) is not supported by this
         # additive migration format.
-        script = "\\n".join(line for line in file.read_text(encoding="utf-8").splitlines()
+        script = chr(10).join(line for line in file.read_text(encoding="utf-8").splitlines()
                            if not line.lstrip().startswith("--"))
         for statement in script.split(";"):
             if statement.strip():
