@@ -10,7 +10,7 @@ import {useNoticeStore} from '../../stores/notice'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
-import ThumbnailGrid from '../../components/gallery/ThumbnailGrid.vue'
+import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
 const route=useRoute(),router=useRouter(),notice=useNoticeStore()
 const id=String(route.params.batchId)
@@ -66,7 +66,7 @@ async function removeBatch(){
 </section>
 <div v-if="batch&&batch.runs" class="alert" style="margin-bottom:20px">Эта партия уже обрабатывалась. Удаление отдельного ФО заблокировано, чтобы не нарушить существующие результаты.</div>
 <div v-if="galleryError" class="alert error">{{galleryError}}</div>
-<ThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_url:p.thumbnail_url,original_url:p.original_url,thumbnail_status:p.thumbnail_status}))"
+<VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_url:p.thumbnail_url,original_url:p.original_url,thumbnail_status:p.thumbnail_status}))"
   :can-delete="!batch?.runs&&batch?.delete_state==='active'" @open="i=>viewer=i" @remove="pid=>deletePhoto=pid"/>
 <div v-else-if="!loading" class="empty"><strong>В этой партии пока нет фото</strong><p>Вернитесь к списку и выберите папку для загрузки.</p></div>
 <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё фотографии</UiButton></div>

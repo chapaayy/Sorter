@@ -12,7 +12,7 @@ import UiButton from '../../components/ui/UiButton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import GroupPicker from '../../components/split/GroupPicker.vue'
-import ThumbnailGrid from '../../components/gallery/ThumbnailGrid.vue'
+import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import ReferenceUploader from './ReferenceUploader.vue'
 const list=ref<SamCount[]>([]),selected=ref(''),adding=ref(false),editing=ref(false),rename=ref(''),
@@ -79,7 +79,7 @@ async function removeSam(){
       </div>
     </div>
     <div v-if="galleryError" class="alert error">{{galleryError}}</div>
-    <ThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_status:p.thumbnail_status,thumbnail_url:p.thumbnail_url,original_url:p.original_url}))" :can-delete="!active" @open="i=>viewer=i" @remove="id=>deletePhoto=id"/>
+    <VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_status:p.thumbnail_status,thumbnail_url:p.thumbnail_url,original_url:p.original_url}))" :can-delete="!active" @open="i=>viewer=i" @remove="id=>deletePhoto=id"/>
     <EmptyState v-else-if="!loading" title="В этой SAM пока нет фотографий" detail="Добавьте эталонные фото для сопоставления."/>
     <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё</UiButton></div>
   </section>

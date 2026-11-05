@@ -10,7 +10,7 @@ import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import GroupPicker from '../../components/split/GroupPicker.vue'
-import ThumbnailGrid from '../../components/gallery/ThumbnailGrid.vue'
+import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import {useNoticeStore} from '../../stores/notice'
@@ -104,7 +104,7 @@ async function deleteBatch(){
       <UiButton v-if="mode==='sam'" small @click="download(selected)">↓ Скачать SAM</UiButton>
     </div>
     <div v-if="pageError" class="alert error" role="alert">{{pageError}}</div>
-    <ThumbnailGrid v-if="items.length" :items="tiles" :show-scores="true" @open="i=>viewer=i"/>
+    <VirtualThumbnailGrid v-if="items.length" :items="tiles" :show-scores="true" @open="i=>viewer=i"/>
     <EmptyState v-else-if="!loading" title="Фотографий здесь нет" detail="Выберите другую SAM или группу."/>
     <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё</UiButton></div>
   </section>
