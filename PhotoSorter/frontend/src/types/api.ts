@@ -1,0 +1,54 @@
+export type ThemeChoice = 'system' | 'dark' | 'light'
+export interface User { username: string }
+export interface Batch {
+  batch_id: string; display_name: string; created_at: string; upload_state: string
+  thumbnail_state: string; delete_state: string; deleted_at?: string | null
+  download_confirmed_at?: string | null; confirmed_run_id?: string | null
+  delete_after_at?: string | null; photos?: number; size_bytes?: number; runs?: number; pending?: number
+}
+export interface Photo {
+  id: string; name: string; bytes: number; created_at: string
+  thumbnail_status?: 'queued' | 'running' | 'pending' | 'ready' | 'failed'
+  thumbnail_url?: string | null; original_url?: string | null
+}
+export interface CursorPage<T> { photos: T[]; next_cursor: string | null }
+export interface SamCount { sam: string; photos: number }
+export interface ReferenceFile { id: string; sam: string; name: string; sha256: string }
+export interface RunProgress {
+  model?: string | null; stage?: string; stage_label?: string; detail?: string
+  current?: number; total?: number; stage_percent?: number | null
+  elapsed_seconds?: number; stage_items_per_second?: number
+  estimated_remaining_seconds?: number | null; overall_percent?: number | null; eta_status?: string
+}
+export interface Run {
+  id: string; batch_id: string; status: string; started_at?: string
+  actual_started_at?: string; finished_at?: string; actual_finished_at?: string
+  grouping_threshold?: number; selected_models?: string[]
+  queue_position?: number | null; models?: Record<string, { status?: string; count?: number; groups?: number }>
+  progress?: RunProgress; error?: string
+}
+export interface ResultPhoto {
+  index: number; assigned_sam?: string; group_id?: string
+  score?: number | null; verdict?: string; reason?: string
+  thumbnail_url?: string | null; image_url: string
+}
+export interface Retention {
+  batch_id: string; delete_state: string; download_confirmed_at?: string | null
+  delete_after_at?: string | null; confirmed_run_id?: string | null
+  warning?: boolean; stale_unconfirmed?: boolean
+}
+export interface LogEntry { at: string; level: string; model?: string | null; source?: string; message: string }
+export interface ModelInfo {
+  models: Array<{ id: string; title: string; available: boolean; reason?: string; downloadable: boolean }>
+  device: string; downloads?: Record<string, unknown>
+}
+export interface StorageUsage {
+  disk: { total_bytes: number; used_bytes: number; available_bytes: number; used_fraction: number
+    warning?: 'warning' | 'critical' | null; reserved_bytes?: number; admission_ok?: boolean }
+  categories_bytes: Record<string, number>; database_estimated_bytes?: number | null; not_scanned?: string[]
+}
+export interface SystemStatus {
+  at: string; worker: { queue: Record<string, number>; expected_threads: number }
+  thumbnails: Record<string, number>; disk: { total_bytes: number; available_bytes: number; reserved_bytes: number }
+  api: { uptime_seconds: number; latency: { samples: number; p50_ms: number | null; p95_ms: number | null }; rss_peak_kib: number }
+}

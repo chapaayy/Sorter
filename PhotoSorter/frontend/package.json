@@ -1,0 +1,28 @@
+{
+  "name": "outdoor-photosorter-ui",
+  "private": true,
+  "version": "3.0.0-stage3",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "vue": "3.5.44",
+    "vue-router": "5.4.0",
+    "pinia": "4.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.10",
+    "vite": "8.3.5",
+    "typescript": "6.0.3",
+    "vue-tsc": "3.3.14",
+    "vitest": "5.1.0",
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.10.0"
+  }
+}
