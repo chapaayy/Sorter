@@ -144,3 +144,44 @@ def test_original_viewer_streaming_lease(thumbs,monkeypatch):
                       WHERE batch_id=%s""",(own,)).fetchone()["n"]==0
     cleanup.request(own)
     cleanup.cleanup_one(own)
+
+def test_parallel_upload_creation_on_same_batch_has_no_deadlocks(thumbs,monkeypatch):
+    """Many browser file starts on one batch must not deadlock."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from server import uploads
+    from server.services import cleanup
+
+    batch=_batch(thumbs,with_photo=False)
+    concurrency=6
+    barrier=Barrier(concurrency)
+    original_start=uploads.operations.start
+
+    def aligned_start(batch_id,kind):
+        token=original_start(batch_id,kind)
+        if kind=='init':
+            barrier.wait(timeout=15)
+        return token
+
+    monkeypatch.setattr(uploads.operations,'start',aligned_start)
+
+    def create(index):
+        uid=uuid.uuid4()
+        uploads._create_upload(uploads.BeginUpload(
+            kind='fo',filename=f'parallel_{index}.jpg',
+            batch_id=str(batch),size=1024),uid)
+        return uid
+
+    try:
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            futures=[pool.submit(create,index) for index in range(concurrency)]
+            identifiers=[future.result(timeout=30) for future in futures]
+        with connect() as db:
+            count=db.execute(
+                "SELECT count(*) AS n FROM uploads WHERE batch_id=%s AND NOT finalized",
+                (batch,)).fetchone()['n']
+        assert count==concurrency
+        assert len(set(identifiers))==concurrency
+    finally:
+        cleanup.request(batch)
+        cleanup.cleanup_one(batch)

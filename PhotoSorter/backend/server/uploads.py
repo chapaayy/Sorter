@@ -76,7 +76,10 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
                  "SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
                 raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
             if batch_id:
-                batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR SHARE',
+                # A parallel file-init eventually updates this batch row. Acquiring
+                # FOR SHARE first causes a FOR SHARE -> UPDATE deadlock when
+                # several files start together. Take the update lock immediately.
+                batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR NO KEY UPDATE',
                                  (batch_id,)).fetchone()
                 if not batch:raise HTTPException(404,'Партия не найдена')
                 if batch['delete_state']!='active':raise HTTPException(409,'Партия удаляется')

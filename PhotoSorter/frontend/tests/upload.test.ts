@@ -123,3 +123,29 @@ describe('parallel upload scheduling',()=>{
     expect(started).toEqual([0])
   })
 })
+
+describe('upload outage visibility',()=>{
+  it('reports errors immediately and stops an unavailable server before 1330 attempts',async()=>{
+    const started:number[]=[]
+    const errors:number[]=[]
+    await expect(runUploadQueue(1330,5,new AbortController().signal,async index=>{
+      started.push(index)
+      throw new Error('HTTP 500')
+    },{
+      haltAfterFailuresWithoutSuccess:3,
+      onFailure:failure=>errors.push(failure.index)
+    })).rejects.toThrow('Передача остановлена')
+    expect(errors.length).toBeGreaterThanOrEqual(3)
+    expect(errors[0]).toBe(0)
+    expect(started.length).toBeLessThanOrEqual(5)
+  })
+  it('continues valid uploads when one image fails after progress',async()=>{
+    const done:number[]=[]
+    const failures=await runUploadQueue(7,3,new AbortController().signal,async index=>{
+      if(index===2)throw new Error('invalid image')
+      done.push(index)
+    },{haltAfterFailuresWithoutSuccess:3})
+    expect(done).toHaveLength(6)
+    expect(failures.map(f=>f.index)).toEqual([2])
+  })
+})

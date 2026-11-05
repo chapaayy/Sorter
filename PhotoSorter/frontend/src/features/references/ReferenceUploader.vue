@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,ref} from 'vue'
 import {uploadOne,ALLOWED} from '../../utils/upload'
+import {ApiError} from '../../api/client'
 import {runUploadQueue} from '../../utils/uploadQueue'
 import {useUploadSettingsStore} from '../../stores/uploadSettings'
 import type {UploadEntry} from '../../utils/upload'
@@ -47,6 +48,15 @@ async function upload(){
         amounts[i]=n;sent.value=amounts.reduce((a,b)=>a+b,0)
       })
       done.value++
+    },{
+      haltAfterFailuresWithoutSuccess:Math.min(3,uploadSettings.parallelUploads),
+      onFailure:failure=>{
+        if(error.value)return
+        const file=tasks.value[failure.index]?.entry.file.name||'Неизвестный файл'
+        const code=failure.error instanceof ApiError&&failure.error.status
+          ?'HTTP '+failure.error.status+' · ':''
+        error.value='Ошибка «'+file+'»: '+code+errorText(failure.error)
+      }
     })
     if(failures.length){
       const details=failures.slice(0,3).map(({index,error})=>
@@ -54,8 +64,12 @@ async function upload(){
       throw new Error('Не загружено '+failures.length+' из '+tasks.value.length+' файлов: '+details)
     }
     tasks.value=[];emit('finished')
-  }catch(e){error.value=controller.signal.aborted?'Передача приостановлена — выберите файлы ещё раз для докачки.':errorText(e)}
-  finally{busy.value=false;controller=null}
+  }catch(e){
+    const firstError=error.value
+    error.value=controller.signal.aborted
+      ?'Передача приостановлена — выберите файлы ещё раз для докачки.'
+      :firstError?firstError+' · '+errorText(e):errorText(e)
+  }finally{busy.value=false;controller=null}
 }
 </script>
 <template>

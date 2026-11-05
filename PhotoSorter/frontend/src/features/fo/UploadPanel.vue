@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,ref} from 'vue'
 import {batchApi} from '../../api/batches'
+import {ApiError} from '../../api/client'
 import {canResumeUpload} from '../../utils/batches'
 import {directoryEntries,uploadOne} from '../../utils/upload'
 import {runUploadQueue} from '../../utils/uploadQueue'
@@ -11,7 +12,7 @@ import {useNoticeStore} from '../../stores/notice'
 import UiButton from '../../components/ui/UiButton.vue'
 const emit=defineEmits<{(e:'finished',batchId:string):void}>()
 const entries=ref<UploadEntry[]>([]),folder=ref(''),batchId=ref(''),running=ref(false),error=ref(''),finished=ref(0)
-const amounts=ref<number[]>([])
+const amounts=ref<number[]>([]),phase=ref('')
 let controller:AbortController|null=null
 const total=computed(()=>entries.value.reduce((s,e)=>s+e.file.size,0))
 const uploaded=computed(()=>amounts.value.reduce((a,b)=>a+b,0))
@@ -23,7 +24,7 @@ function choose(e:Event){
   try{
     const batch=directoryEntries(files)
     entries.value=batch.entries;folder.value=batch.folder;batchId.value='';amounts.value=entries.value.map(()=>0)
-    error.value='';finished.value=0
+    error.value='';finished.value=0;phase.value=''
   }catch(err){error.value=errorText(err)}
 }
 function storageKey(){
@@ -33,7 +34,7 @@ function storedId(){try{return localStorage.getItem(storageKey())}catch{return n
 function saveId(id:string){try{localStorage.setItem(storageKey(),id)}catch{}}
 async function start(){
   if(!entries.value.length||running.value)return
-  error.value='';running.value=true;controller=new AbortController()
+  error.value='';running.value=true;phase.value='Подготовка партии…';controller=new AbortController()
   try{
     const saved=storedId()
     if(saved){
@@ -42,6 +43,7 @@ async function start(){
     }
     if(!batchId.value){const created=await batchApi.create(folder.value);batchId.value=created.batch_id;saveId(batchId.value)}
     const signal=controller.signal
+    phase.value='Передача файлов'
     const failures=await runUploadQueue(entries.value.length,uploadSettings.parallelUploads,signal,async idx=>{
       const entry=entries.value[idx]
       if(!entry)return
@@ -49,6 +51,15 @@ async function start(){
         amounts.value[idx]=n
       })
       finished.value++;amounts.value[idx]=entry.file.size
+    },{
+      haltAfterFailuresWithoutSuccess:Math.min(3,uploadSettings.parallelUploads),
+      onFailure:failure=>{
+        if(error.value)return
+        const file=entries.value[failure.index]?.file.name||'Неизвестный файл'
+        const code=failure.error instanceof ApiError&&failure.error.status
+          ?'HTTP '+failure.error.status+' · ':''
+        error.value='Ошибка «'+file+'»: '+code+errorText(failure.error)
+      }
     })
     if(failures.length){
       const details=failures.slice(0,3).map(({index,error})=>
@@ -58,8 +69,11 @@ async function start(){
     notice.add('Папка загружена. Миниатюры формируются отдельно.','ok')
     emit('finished',batchId.value)
   }catch(err){
-    error.value=controller.signal.aborted?'Загрузка приостановлена. Выберите эту же папку и продолжите позже.':errorText(err)
-  }finally{running.value=false;controller=null}
+    const firstError=error.value
+    error.value=controller.signal.aborted
+      ?'Загрузка приостановлена. Выберите эту же папку и продолжите позже.'
+      :firstError?firstError+' · '+errorText(err):errorText(err)
+  }finally{running.value=false;phase.value='';controller=null}
 }
 function stop(){controller?.abort()}
 </script>
@@ -79,7 +93,7 @@ function stop(){controller?.abort()}
   <div v-if="running||uploaded" class="stack-sm">
     <div class="row between meta"><span>Передано {{bytes(uploaded)}} / {{bytes(total)}}</span><span>{{percent.toFixed(1)}}%</span></div>
     <div class="progress-track" role="progressbar" :aria-valuenow="percent" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill" :style="{width:percent+'%'}"/></div>
-    <div class="meta">{{finished}} из {{entries.length}} файлов · до {{uploadSettings.parallelUploads}} передач одновременно</div>
+    <div class="meta">{{phase}} · {{finished}} из {{entries.length}} файлов · до {{uploadSettings.parallelUploads}} передач одновременно</div>
   </div>
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
 </section>
