@@ -19,12 +19,11 @@ git clone --branch main --single-branch https://github.com/chapaayy/Sorter.git
 cd Sorter
 cp .env.example .env
 nano .env            # DOMAIN=ваш-настоящий-домен
-bash ./install.sh --check  # для уже настроенной среды; на пустой установке секретов ещё нет
 bash ./install.sh --deploy
 docker compose --env-file .env --env-file .env.generated ps
 ```
 
-**Примечание:** `--check` на новом пустом сервере ожидаемо предупредит об отсутствии `.env.generated`; это не ошибка `--deploy`. Новый установщик сгенерирует секреты. Логин `admin`, пароль сохранён в приватном `.env.generated`, который нельзя удалять или добавлять в Git. Модель/веса можно загрузить из веб-интерфейса.
+**Примечание:** на пустой установке `--deploy` сгенерирует секреты; `--check` предназначен для проверки уже настроенного окружения. Логин `admin`, пароль сохранён в приватном `.env.generated`, который нельзя удалять или добавлять в Git. Модель/веса можно загрузить из веб-интерфейса.
 
 В результате поднимаются `caddy` (HTTPS), `postgres`, `api`, `worker` (MegaLoc), `thumbnail` (WebP) и `cleanup` (служебная очистка). Снаружи публикуются только 80/443.
 
@@ -74,6 +73,7 @@ cd PhotoSorter/frontend
 npm ci
 npm run build
 npm run test
+npx playwright install chromium webkit
 npm run test:e2e
 
 # Backend — Python 3.11 + PostgreSQL 17 в изолированной среде
