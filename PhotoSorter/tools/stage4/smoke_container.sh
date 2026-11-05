@@ -20,8 +20,7 @@ export PHOTOSORTER_CPU_THREADS="1"
 mkdir -p Models/models/megaloc Models/cache/{torch,xdg,downloads,huggingface} PhotoSorter/data/{references,uploads,runs,cache,outputs}
 sudo chown -R 10001:10001 Models PhotoSorter/data
 echo "[INFO] Isolated Docker Compose build for disposable CI containers"
-docker compose build api
-docker compose up -d --no-build
+docker compose up -d --build
 cleanup() {
   docker compose ps || true
   docker compose logs --tail=80 api worker thumbnail cleanup postgres caddy || true
