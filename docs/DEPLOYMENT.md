@@ -1,34 +1,63 @@
-# Развёртывание и эксплуатация — этап 1 (staging only)
+# Развёртывание и обновление PhotoSorter (beta)
 
-1. **Production VPS не трогать без отдельного разрешения.** Код `stage1/batch-lifecycle-hardlinks` предназначен для тестового стенда. Проверьте `git rev-parse HEAD`, `docker compose config`, mounts/UID перед первым запуском.
-2. Перед любой миграцией реальных данных: консистентный backup PostgreSQL + `PhotoSorter/data` + `Models` + `.env.generated`, восстановить на изолированном стенде. См. [BACKUP_RESTORE](BACKUP_RESTORE.md).
-3. `compose.yaml` теперь содержит `cleanup` и `thumbnail` с CPU/memory limit; вместе с `api` выполняет `wait_and_initialize()`, версионируемую миграцию. По умолчанию фоновая очистка **может** удалять подтверждённые по новому API партии после срока. Не разворачивать её на рабочем сервере без полного испытания.
-4. Сохранить bind mounts: `./PhotoSorter/data:/workspace/PhotoSorter/data`, `./Models:/workspace/Models`; `postgres_data` volume без изменения; Caddy TLS volumes без изменения.
-5. Проверить `docker compose config --quiet`, `docker compose up -d --build` **только на staging**, затем `/api/health`, авторизацию, legacy PUT/PATCH, SAM, MegaLoc, ZIP, cleanup.
-6. `docker compose logs -f api worker cleanup` для диагностики. Не использовать `docker compose down -v` / `docker system prune --volumes` / `rm -rf PhotoSorter/data`.
-7. Нагрузочные и реальные regression tests 189/1315 ФО, disk/CPU/OpenSSL/TLS и offsite backups проверяются отдельно перед production.
+Основная ветка — **`main`**. Сайт обслуживает **один** Vue SPA на `/`; прежних `/v3/` и `frontend/static` больше нет. Backend, Vue, Caddy и Docker Compose живут в одном репозитории.
 
-Оригинальная инструкция развертывания: [PhotoSorter/docs/DEPLOYMENT.md](../PhotoSorter/docs/DEPLOYMENT.md). План отката: [ROLLBACK.md](ROLLBACK.md).
+## Требования
 
-## Дополнительные условия stage2
+Linux x86-64, Docker Engine + Compose v2, Python 3, DNS домена на VPS и открытые 80/443. По умолчанию `PHOTOSORTER_WORKER_CPUSET=0-6` и `PHOTOSORTER_WORKER_CPUS=7`; на сервере с менее чем семью доступными CPU ID установить допустимый cpuset в shell или `.env` до проверки. Worker mem limit — 20GiB, поэтому учитывать реальную RAM. Для больших фото нужны место на диске, CPU PyTorch и стабильный канал.
 
-Новый `thumbnail` контейнер работает с CPU=0.35 и RAM=512MiB. Worker MegaLoc на **8-vCPU staging** настроен на cpus=7, cpuset `0-6`, `PHOTOSORTER_CPU_THREADS=7`. Перед test `docker compose up` обязательно проверить допустимый CPU affinity текущего хоста; для 4-vCPU стенда нужна явная переустановка `PHOTOSORTER_WORKER_CPUSET` и CPU quota. Не менять CPU/Caddy на рабочем VPS без согласованного A/B.
+## Установка на пустой сервер / пустое состояние
 
-Docker `json-file` logs max-size 10m/max-file 3, data/cache/thumbnails shared mount, PG additive migrations 0003–0006. Учесть DB row/index backups, restore preview tasks and cache state. `docker compose config --quiet` проверяется автоматически; runtime `docker compose up --build` **в этой беседе не запускался**.
+```bash
+git clone --single-branch --branch main https://github.com/chapaayy/Sorter.git
+cd Sorter
+cp .env.example .env
+nano .env
+bash ./install.sh --deploy
+docker compose --env-file .env --env-file .env.generated ps
+```
 
-## Stage 3 — Vue rollout только на изолированном staging
+`.env` содержит `DOMAIN=...` с настоящим доменом. При первой установке скрипт генерирует `.env.generated` с `ADMIN_PASSWORD` и `POSTGRES_PASSWORD`. Не публиковать, не коммитить, сохранить отдельно. Сайт: `https://DOMAIN/`. Логин: `admin`. Модель может быть скачана из интерфейса.
 
-1. Убедиться, что текущий commit — отдельная ветка `stage3/vue-frontend`, а не действующий `vps/docker-rebuild`. У Stage 3 есть зависимость от Stage 2 (preview, galleries, logs, queues).
-2. Не менять боевой VPS. На **изолированном** 8-vCPU стенде проверить CPU affinity, PostgreSQL 17, mount `PhotoSorter/data`, `Models/models` и `Models/cache`.
-3. Dockerfile multi-stage: сборка `node:24-alpine` `npm ci` + `npm run build`, только `dist/` переносится в Python 3.11 final image; Node не присутствует в backend/runtime.
-4. Один Vue-интерфейс на `/` и deep links `/fo`, `/references`, `/processing`, `/results`, `/logs`, `/settings`. Протестировать cookie/login, sidebar, FO uploads, SAM gallery/rename, queued runs, full ZIP, explicit confirmation и settings; старые `/v3/` и `/static/*` отвечают 404.
-5. Отдельно проверить CSP/headers, HTTPS/SameSite cookies, iPhone Safari/iOS, 360px responsive, tab/focus/Escape, browser cache invalidation, исходные photos and SAM, disk quota.
-6. По явному запросу владельца новый Vue теперь единственный UI в коде. Это не разрешение стирать постоянные фото/Models/PostgreSQL; `docker compose down -v` не выполнять при обычном обновлении.
+Сервисы Compose: `caddy`, `postgres`, `api`, `worker`, `thumbnail`, `cleanup`. Том PostgreSQL и TLS-тома Caddy постоянные, а `PhotoSorter/data` и `Models` — bind mounts. Новый `git clone` **не обнуляет** volumes существующего Compose с именем `outdoor-sorter`.
 
-## Stage 4: fail-closed update safeguards
+## Обновление работающего VPS
 
-Инсталлятор теперь имеет `./install.sh --check` (**без новых паролей, без chown, без Docker up**) и `./install.sh --deploy`. Если Docker volume `outdoor-sorter_postgres_data` уже существует, а `.env.generated` утрачена, скрипт **останавливается** и требует restore исходных credentials: новый пароль вместо прежнего создать нельзя.
+Перед обновлением получить проверенную внешнюю копию PostgreSQL, `PhotoSorter/data`, `Models`, `.env`, `.env.generated` и TLS volumes; см. [BACKUP_RESTORE](BACKUP_RESTORE.md), [ROLLBACK](ROLLBACK.md). Во время снимка все пишущие операции должны быть остановлены.
 
-Для обновления существующего инстанса после **реально проверенного** offsite backup/restore требуется установка `PHOTOSORTER_APPROVE_UPGRADE=VERIFIED_BACKUP_AND_ROLLBACK` оператором, иначе никаких новых контейнеров/изменений данных. При обновлении отключён рекурсивный chown моделей и фото. CPUSET проверяется по фактически разрешённым CPU IDs ещё до Docker startup. Административные пароли не выводятся в stdout.
+На VPS со старой веткой/отсоединённым HEAD сначала проверить `git status --short`. Не перетирать локальные изменения. Затем:
 
-Это **не автоматическое разрешение production rollout**: до реального VPS обязательно пройти [STAGE4_ACCEPTANCE](STAGE4_ACCEPTANCE.md) и отдельно получить разрешение владельца. Миграция `0007_service_heartbeat.sql` аддитивная; все предыдущие таблицы остаются.
+```bash
+cd /root/Sorter
+git fetch origin main:refs/remotes/origin/main
+git switch main || git switch -c main --track origin/main
+git merge --ff-only origin/main
+bash ./install.sh --check
+```
+
+После успешного preflight, snapshot и теста восстановления:
+
+```bash
+PHOTOSORTER_APPROVE_UPGRADE=VERIFIED_BACKUP_AND_ROLLBACK bash ./install.sh --deploy
+docker compose --env-file .env --env-file .env.generated ps
+```
+
+`--check` **не** меняет файлы/пароли и не запускает контейнеры. `--deploy` пересобирает и обновляет runtime, сохраняет существующие модели, файлы, PostgreSQL и сертификаты. Токен одобрения не использовать, если резервная копия действительно не проверена.
+
+Проверить `/api/health`, вход, `/`, `/fo`, `/references`, `/processing`, просмотр фото, историю runs, ZIP, состояния трех background workers, HTTPS и ошибки. Любые данные настоящей партии удалять только после осознанного выбора.
+
+## Бета-сброс данных — отдельное действие
+
+Если все временные SAM, ФО и история не нужны, это **полный сброс состояния**, а не обычное обновление: остановка всех сервисов, проверенная независимая копия, явно указанный список каталогов и PostgreSQL volume, повторная первичная установка с новыми секретами. Изменение кода `main` не должно делать это неявно. См. [SINGLE_SITE_INSTALL](SINGLE_SITE_INSTALL.md).
+
+Никогда не применять `docker compose down -v`, `docker system prune --volumes`, `rm -rf PhotoSorter/data` как «быстрый апдейт» без отдельного подтверждения полного удаления. Миграции БД от 0001 до 0007 необходимы свежей установке, это не хлам и не отдельные версии сайта.
+
+## Проверки и диагностика
+
+```bash
+docker compose --env-file .env --env-file .env.generated ps
+docker compose --env-file .env --env-file .env.generated logs --tail=100 api worker thumbnail cleanup
+df -h /
+```
+
+Единый GitHub CI — [`.github/workflows/ci.yml`](../.github/workflows/ci.yml); результаты CI не заменяют реальный приемочный набор ФО.

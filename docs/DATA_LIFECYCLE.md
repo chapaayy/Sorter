@@ -16,7 +16,7 @@
 | `data/outputs/<run_id>` | run этой партии | да, все manifests и hardlinks/старые копии |
 | `data/runs/<run_id>` | run этой партии | да, события/прогресс |
 | `data/incoming/<upload_id>.part` | upload этой партии | да |
-| `data/cache/thumbnails` | будущий owner/refcount этапа 2 | stage2: shared checksum cache, удаление после grace и отсутствия owners |
+| `data/cache/thumbnails` | thumbnail owner/refcount | stage2: shared checksum cache, удаление после grace и отсутствия owners |
 | `data/references/SAM-*` | общая библиотека | **НИКОГДА** |
 | `data/cache/megaloc/references` | общий reference cache | **НИКОГДА** |
 | `Models/**`, users/sessions, Caddy volume | система | **НИКОГДА** |
@@ -33,7 +33,7 @@
 
 **Ограничения этапа 1:** миниатюры/общий cache ownership придут в этапе 2; никаких автоматических удалений unconfirmed ФО по нехватке диска; большой ZIP/read-only просмотр не масштабируется на несколько API процессов до полной координации. Проверенный restore test на реальных данных требуется до VPS deployment.
 
-## Stage 2 — thumbnail + unfinished storage
+## Превью и незавершённые передачи
 
 `thumbnail_tasks(upload_id)` с ON DELETE CASCADE связана с финализированным upload: `queued → running → ready`, ошибка `running → queued` до 3 попыток, затем `failed`, ручной retry. Рабочие входные оригиналы не редактируются, WebP создаётся отдельно `data/cache/thumbnails/v1/<prefix>/<checksum>.webp` размером 480px long edge/q78. Превью по checksum разделяется между разными ФО партиями и общими Образцами; cache GC удаляет физический файл только после исчезновения **всех** финализированных checksum owners и 24h grace. Удаление партии каскадно удаляет её очередь preview, не global SAM cache.
 

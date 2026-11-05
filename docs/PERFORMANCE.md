@@ -1,4 +1,4 @@
-# Stage 2 — CPU, API latency, загрузка и честные baseline
+# Производительность PhotoSorter — CPU, API, загрузка и baseline
 
 ## Известные исторические наблюдения (из ТЗ, не новые измерения)
 
@@ -6,7 +6,7 @@
 - Исходный Worker: Docker `cpus: 8`, `PHOTOSORTER_CPU_THREADS=8`, batch=4, prefetch=2.
 - При инференсе сайт иногда тормозил. Caddy HTTP/1.1 ранее увеличил upload throughput в пользовательском тесте. Настройки TLS/HTTP Caddy **не менялись**.
 
-## Гипотеза stage2 на отдельном 8-vCPU Linux staging
+## Гипотеза CPU на 8-vCPU Linux
 
 - `worker` cpuset 0–6, `cpus:7`, 7 потоков. CPU7 остаётся доступным API/DB/Caddy, но это **не гарантированно физически выделенное ядро**.
 - `thumbnail` отдельный контейнер, 0.35 CPU, 512 MiB RAM, nice+10; `cleanup` 0.25 CPU/256 MiB.
@@ -29,7 +29,7 @@
 - `/api/storage/usage` считает физические байты файлов по inode, плюс отдельно оценивает DB `pg_database_size`; PostgreSQL WAL, Docker daemon, Caddy volumes нельзя точно определить из API mount, они отмечены отдельно.
 - Текущий stage2 CI проверяет функциональные контракты в disposable DB, 1001 синтетическую metadata запись, но **не** пиковые Mbps/CPU и 1315 полноразмерных реальных фото.
 
-## Stage 4 — read-only probe и сравнение реальных результатов
+## Read-only probe и сравнение реальных результатов
 
 - `PhotoSorter/tools/stage4/staging_probe.py`: локальные GET /api/health, при отдельном cookie-файле (0600) GET /api/system/status и /api/storage/usage, p50/p95 latency, RPS/HTTP codes. Если указать `--docker-stats`, читается `docker stats --no-stream` (CPU%, memory, net/block IO), без SSH/запуска Worker. Удалённый staging хост требует `--allow-remote-staging`; **не запускать против production** без разрешения.
 - Инструмент `compare_baseline.py`: два сохранённых manifests, optional ZIP CRC, строгий diff порядка групп, SAM, top candidates, uncertainties, score. Имена одинаковых файлов в разных каталогах требуют явных `--golden-root/--actual-root`, чтобы не склеивать дубликаты.

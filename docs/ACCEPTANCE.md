@@ -1,12 +1,12 @@
-# Stage 4 — приёмка перед реальным запуском
+# Приёмка бета-версии PhotoSorter
 
-**Статус: CODE/CI VALIDATION, production NOT approved.** Ниже критерии, а не заявление, что все они уже пройдены.
+**Статус: автоматические CI-проверки пройдены; реальная эксплуатационная приёмка ещё не завершена.** Ниже критерии, а не заявление, что все они уже пройдены.
 
 ## Обязательные ворота перед переключением VPS
 
 | Ворота | Требование | Статус |
 |---|---|---|
-| P0: целостность | Оригиналы ФО/Образцы и исторические manifests/ZIP сравниваются по SHA-256 | В CI только синтетические файлы; реальные не предъявлены |
+| P0: целостность | Оригиналы ФО/Образцы и исторические manifests/ZIP сравниваются по SHA-256 | В CI только синтетические файлы; реальные ФО нужно проверять отдельно |
 | P0: MegaLoc baseline | 189 ФО, 27 групп, 3 uncertain при наличии проверенного эталона; точное сравнение SAM, порядка, score/top/verdict | **Блокер:** golden baseline и те же веса/фото не доступны |
 | P0: рабочий объём | 1315 ФО, ~6.4 ГБ, сеть/throughput, ZIP, CPU/RAM/disk/API latency | В CI проверено 1315 **маленьких синтетических hardlink-записей**; реальные ГБ НЕ прогонялись |
 | P0: backup | Offsite зашифрованный снимок PG+ФО/Образцы/outputs/Models/.env.generated; snapshot после остановки записей | CLI реализован; в CI реальный pg_dump/pg_restore двух disposable БД, не реального VPS |
@@ -21,7 +21,7 @@
 
 ## Доказательства CI, которые есть в репозитории
 
-- `.github/workflows/stage4-validation.yml`: PostgreSQL17/Python, Bash syntax, Compose config, Caddy config validation, Pytest; отдельная disposable PG dump→restore, checksum и link inode; Vue typecheck, unit, Chromium/WebKit desktop и mobile UI.
+- `.github/workflows/ci.yml`: PostgreSQL17/Python, Bash syntax, Compose config, Caddy config validation, Pytest; отдельная disposable PG dump→restore, checksum и link inode; Vue typecheck, unit, Chromium/WebKit desktop и mobile UI.
 - `PhotoSorter/tools/stage4/compare_baseline.py`: строгая проверка двух предоставленных manifests и двух ZIP. Не создаёт фиктивные 189-ФО результаты.
 - `PhotoSorter/tools/stage4/staging_probe.py`: только HTTP GET, замер p50/p95, rps, API/worker/disk, опционально read-only Docker stats. Удалённые хосты требуют явного opt-in.
 - `PhotoSorter/backend/tests/test_stage4_load.py`: 1315 маленьких синтетических ссылок, открытие результата по страницам, zipstream-ng, checksum, однопартийная очистка.

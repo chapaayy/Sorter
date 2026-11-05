@@ -1,6 +1,6 @@
-# Консистентный backup/restore (план перед VPS rollout)
+# Бэкап и восстановление PhotoSorter
 
-**В этапе 1 в реальном VPS backup и restore не выполнялись: доступ и разрешение на production отсутствуют.** Перед активацией миграций/cleanup оператор должен получить проверенный снимок и продемонстрировать восстановление на отдельном стенде.
+**Перед любым обновлением или сбросом бета-сервера:** согласованный бэкап и его восстановление нужно проверить на отдельном стенде. Наличие файла архива на том же VPS не равно проверенной защите.
 
 1. Приостановить приём новых upload/run и убедиться, что активные дисковые записи завершились; обеспечить согласованность снимка каталога `PhotoSorter/data/` с PostgreSQL. Простой `pg_dump` при одновременно меняющихся файлах не гарантирует согласованный filesystem state.
 2. Сохранить в защищённое **другое хранилище**: `pg_dump --format=custom` соответствующей БД; `PhotoSorter/data/references/`, `uploads/`, `outputs/`, `runs/`, `incoming/` и service cache по политике; `.env.generated` с правами 0600; модельные веса `Models/models/` и информацию о version/code SHA.
@@ -10,16 +10,16 @@
 
 Отсутствие offsite backup означает отсутствие проверенной аварийной защиты. Hard Links и второй путь в `outputs/` не спасают при повреждении диска. Никаких команд `down -v`.
 
-## Дополнительный stage2 backup scope
+## Дополнительные данные PostgreSQL и WebP
 
-В резервную копию PostgreSQL входят `thumbnail_tasks`, `uploads.updated_at`, новые jobs timestamps и indexes. `data/cache/thumbnails/v1/` — пересчитываемый WebP cache, но для точного восстановления состояния очереди разумно снимать его согласованно с БД. Общий MegaLoc reference embedding cache сохранять отдельно, не трактовать thumbnails как резерв ФО. Во время snapshot приостановить thumbnail/cleanup/worker и завершить pending uploads. Реальный restore в этой беседе не проводился.
+В резервную копию PostgreSQL входят `thumbnail_tasks`, `uploads.updated_at`, новые jobs timestamps и indexes. `data/cache/thumbnails/v1/` — пересчитываемый WebP cache, но для точного восстановления состояния очереди разумно снимать его согласованно с БД. Общий MegaLoc reference embedding cache сохранять отдельно, не трактовать thumbnails как резерв ФО. Во время snapshot приостановить thumbnail/cleanup/worker и завершить pending uploads. Реальное offsite восстановление нужно проверять отдельно от CI.
 
-Stage3 UI — исключительно клиент существующих серверных состояний. Он не создает новую резервную систему, а показывает предупреждение, если проверенная внешняя копия неизвестна. Сохранение `package-lock.json` и dist assets **не заменяет** snapshot PostgreSQL+data+Models при реальном обновлении. Rename SAM изменяет пути Образцов — перед production тестом понадобится согласованная копия данных и проверка зависимостей старых manifests.
+Vue UI — клиент существующих серверных состояний. Он не создает новую резервную систему, а показывает предупреждение, если проверенная внешняя копия неизвестна. Сохранение `package-lock.json` и dist assets **не заменяет** snapshot PostgreSQL+data+Models при реальном обновлении. Rename SAM изменяет пути Образцов — перед production тестом понадобится согласованная копия данных и проверка зависимостей старых manifests.
 
-## Stage 4 — реализованная утилита и границы CI
+## Утилита snapshot и границы CI
 
 `PhotoSorter/tools/stage4/snapshot.py`: команды `capture`/`verify`/`restore-test`. Перед backup **оператор выключает всех writers**, после чего явно передаёт `--ack-writers-stopped`. Snapshot включает `PhotoSorter/data`, `Models/models`, `Models/cache`, конфигурацию/секреты, `pg_dump` custom format. SHA-256 каждой записи и всего tar/dump; повторные inode оформляются tar Hard Link. Архив создаётся в другом каталоге, владеет 0700, ни один исходный файл не меняется.
 
 Restore требует `--confirm-staging`, **новый каталог** и marker `.photosorter-staging-only` со значением `STAGING_ONLY` в его родителе. БД должна существовать, быть пустой и называться `sorter_restore_*`; при некорректном/подменённом tar никакой распаковки до `verify()`.
 
-CI `ci_restore_drill.py` действительно вызывает `pg_dump` и `pg_restore` с PostgreSQL17 на двух disposable базах и проверяет SHA файлов, запись БД и inode. **Это не снимок VPS**. Настоящая резервная копия должна быть зашифрована offsite (внутри находятся пароли `.env.generated` и фотографии). Caddy Docker volume с TLS private keys нужно отдельно копировать и восстанавливать. Без offsite restore-test не давать согласие на production rollout. Команды: [STAGE4_ROLLOUT](STAGE4_ROLLOUT.md).
+CI `ci_restore_drill.py` действительно вызывает `pg_dump` и `pg_restore` с PostgreSQL17 на двух disposable базах и проверяет SHA файлов, запись БД и inode. **Это не снимок VPS**. Настоящая резервная копия должна быть зашифрована offsite (внутри находятся пароли `.env.generated` и фотографии). Caddy Docker volume с TLS private keys нужно отдельно копировать и восстанавливать. Без offsite restore-test не давать согласие на production rollout. Команды: [STAGE4_ROLLOUT](ROLLOUT.md).

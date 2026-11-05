@@ -1,6 +1,6 @@
 # Дизайн-система OUTDOOR PhotoSorter — этап 3 (Vue 3)
 
-**Реализовано в stage3 branch** в `PhotoSorter/frontend/src/styles/` и `components/`. Не развёрнуто на работающем VPS; прежний UI продолжает работать на `/`, новый — `/v3/` после сборки Docker.
+**Актуальный дизайн единственного Vue-сайта в `main`**: `PhotoSorter/frontend/src/styles/` и `components/`. Основной сайт доступен на `/`, старые версии и `/v3/` удалены из runtime.
 
 - Тёмная графитовая тема: `--page:#0d1110`, `--sidebar:#101513`, `--panel:#171d19`, `--accent:#91c47e`; светлая: `--page:#f6f7f5`, `--panel:#fff`, `--accent:#4f8652`. Единая палитра CSS tokens для кнопок, модалок, инпутов, таблиц, подсказок.
 - Переключение `system/dark/light` с реакцией на `prefers-color-scheme`; предпочтение хранится под `ps.theme.v3` (не cookie).
