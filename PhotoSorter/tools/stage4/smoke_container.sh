@@ -17,16 +17,17 @@ print(min(os.sched_getaffinity(0)))
 PY
 )"
 export PHOTOSORTER_CPU_THREADS="1"
+export PHOTOSORTER_WORKER_CPUS="1"
 mkdir -p Models/models/megaloc Models/cache/{torch,xdg,downloads,huggingface} PhotoSorter/data/{references,uploads,runs,cache,outputs}
 sudo chown -R 10001:10001 Models PhotoSorter/data
 echo "[INFO] Isolated Docker Compose build for disposable CI containers"
-docker compose up -d --build
 cleanup() {
   docker compose ps || true
   docker compose logs --tail=80 api worker thumbnail cleanup postgres caddy || true
   docker compose down --remove-orphans || true
 }
 trap cleanup EXIT
+docker compose up -d --build
 
 healthy=0
 for i in $(seq 1 90); do

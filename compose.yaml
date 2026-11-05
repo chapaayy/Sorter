@@ -65,7 +65,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    cpus: 7
+    cpus: ${PHOTOSORTER_WORKER_CPUS:-7}
     cpuset: "${PHOTOSORTER_WORKER_CPUSET:-0-6}"
     mem_limit: 20g
     networks: [private]
