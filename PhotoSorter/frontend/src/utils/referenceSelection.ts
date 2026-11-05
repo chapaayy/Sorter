@@ -27,14 +27,14 @@ export interface ReferenceSelection{
 }
 
 const NAME=/^([A-Z]{2,5}) ([0-9]{1,8}) — (.+)$/
-const INVALID_ADDRESS=/[<>:"/\\|?*\x00-\x1f]/
+const INVALID_ADDRESS=/[<>:"|?*\\\x00-\x1f]/
 
 export function parseConstructionFolder(name:string):ConstructionFolder|null{
   const match=NAME.exec(name)
   if(!match)return null
   const [,cityCode,number,address]=match
   if(!cityCode||!number||!address||name.length>200||address.length>120||
-     address!==address.trim()||address.endsWith('.')||address.includes('  ')||
+     address!==address.trim()||address.endsWith('.')||address.includes('  ')||address.includes('/')||
      INVALID_ADDRESS.test(address))return null
   return {folder:name,sam:cityCode+' '+number,cityCode,number,address,count:0}
 }
