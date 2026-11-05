@@ -44,7 +44,7 @@ PHOTOSORTER_APPROVE_UPGRADE=VERIFIED_BACKUP_AND_ROLLBACK bash ./install.sh --dep
 
 ## Работа
 
-1. **Образцы:** создать библиотеку `SAM-xxxx` из папок с фотографиями конструкций.
+1. **Образцы:** загрузить библиотеку конструкций в строгом формате `SAM 0004 — Гагарина 64` или `TLT 3245 — Южное шоссе 10`. Перед передачей все файлы и имена проверяются. Существующие конструкции дополняются без удаления и перезаписи; отдельные фото можно добавить в выбранную конструкцию.
 2. **ФО:** загрузить папку фотоотчёта, дождаться передачи оригиналов и формирования миниатюр.
 3. **Обработка:** выбрать партию, MegaLoc и порог, затем запустить очередь. Один MegaLoc Worker выполняет одно задание за раз.
 4. **Результаты:** проверить назначенные SAM и неопределённые фотографии; скачать полный ZIP. Отдельное подтверждение сохранения ZIP запускает срок хранения партии — два календарных месяца UTC, предупреждение за семь дней.
@@ -56,7 +56,7 @@ PHOTOSORTER_APPROVE_UPGRADE=VERIFIED_BACKUP_AND_ROLLBACK bash ./install.sh --dep
 |---|---|
 | `Models/models/` | Веса моделей; вне Git |
 | `Models/cache/` | Кэш загрузчиков и библиотек; вне Git |
-| `PhotoSorter/data/references/` | Постоянные образцы SAM |
+| `PhotoSorter/data/references/` | Постоянные образцы конструкций; папка по неизменному ключу города и номера |
 | `PhotoSorter/data/uploads/` | Оригиналы партий ФО |
 | `PhotoSorter/data/runs/`, `outputs/` | История обработок и результаты |
 | `PhotoSorter/data/cache/` | Только служебные кэши, в том числе WebP и embeddings образцов |
@@ -81,5 +81,7 @@ PYTHONPATH=PhotoSorter/backend python -m pytest -q PhotoSorter/backend/tests
 ```
 
 Единый workflow `.github/workflows/ci.yml` на `main` проверяет Python/SQL/Compose/Caddy, backend, PostgreSQL dump→restore, Vue/Playwright и полный изолированный Docker startup. Синтетические тесты **не доказывают** качество распознавания на реальных фотографиях.
+
+Правила импорта: [названия папок, предварительная проверка, повторная загрузка](docs/REFERENCE_IMPORT.md).
 
 Подробности: [архитектура](PROJECT_MAP.md), [индекс файлов](FILE_INDEX.md), [правила разработки](AGENTS.md), [API](docs/API.md), [операции](docs/OPERATIONS.md), [бэкапы](docs/BACKUP_RESTORE.md), [тестирование](docs/TESTING.md).
