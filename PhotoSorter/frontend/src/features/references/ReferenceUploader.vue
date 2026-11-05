@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import {computed,ref} from 'vue'
 import {uploadOne,ALLOWED} from '../../utils/upload'
+import {runUploadQueue} from '../../utils/uploadQueue'
+import {useUploadSettingsStore} from '../../stores/uploadSettings'
 import type {UploadEntry} from '../../utils/upload'
 import {bytes,errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 const props=defineProps<{selectedSam:string;disabled:boolean}>()
+const uploadSettings=useUploadSettingsStore()
 const emit=defineEmits<{(e:'finished'):void}>()
 type Task={sam:string;entry:UploadEntry}
 const tasks=ref<Task[]>([]),busy=ref(false),error=ref(''),done=ref(0),sent=ref(0)
@@ -34,22 +37,22 @@ function chooseDirectory(event:Event){
 async function upload(){
   if(!tasks.value.length||busy.value||props.disabled)return
   busy.value=true;error.value='';done.value=0;sent.value=0;controller=new AbortController()
-  const amounts=tasks.value.map(()=>0),queue=tasks.value.map((_,i)=>i)
+  const amounts=tasks.value.map(()=>0)
   try{
-    async function worker(){
-      while(queue.length){
-        const i=queue.shift()
-        if(i===undefined)break
-        const item=tasks.value[i]
-        if(!item)continue
-        if(controller?.signal.aborted)throw new DOMException('Остановлено','AbortError')
-        await uploadOne({kind:'reference',sam:item.sam},item.entry,controller!.signal,n=>{
-          amounts[i]=n;sent.value=amounts.reduce((a,b)=>a+b,0)
-        })
-        done.value++
-      }
+    const signal=controller.signal
+    const failures=await runUploadQueue(tasks.value.length,uploadSettings.parallelUploads,signal,async i=>{
+      const item=tasks.value[i]
+      if(!item)return
+      await uploadOne({kind:'reference',sam:item.sam},item.entry,signal,n=>{
+        amounts[i]=n;sent.value=amounts.reduce((a,b)=>a+b,0)
+      })
+      done.value++
+    })
+    if(failures.length){
+      const details=failures.slice(0,3).map(({index,error})=>
+        tasks.value[index]?.entry.file.name+': '+errorText(error)).join('; ')
+      throw new Error('Не загружено '+failures.length+' из '+tasks.value.length+' файлов: '+details)
     }
-    await Promise.all(Array.from({length:Math.min(3,queue.length)},worker))
     tasks.value=[];emit('finished')
   }catch(e){error.value=controller.signal.aborted?'Передача приостановлена — выберите файлы ещё раз для докачки.':errorText(e)}
   finally{busy.value=false;controller=null}
@@ -78,6 +81,7 @@ async function upload(){
   <div v-if="busy" class="stack-sm">
     <div class="row between meta"><span>{{done}} из {{tasks.length}} файлов</span><span>{{percent}}%</span></div>
     <div class="progress-track"><span class="progress-fill" :style="{width:percent+'%'}"/></div>
+    <div class="meta">До {{uploadSettings.parallelUploads}} передач одновременно</div>
   </div>
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
 </section>
