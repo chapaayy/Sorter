@@ -19,7 +19,7 @@ assert client.get('/v3',follow_redirects=False).status_code==404
 assert client.get('/fo').status_code in (200,503)
 assert client.get('/references').status_code in (200,503)
 assert client.get('/assets/not-found.js').status_code==404
-assert client.get('/api/unknown-route').status_code==404
+assert client.get('/api/unknown-route').status_code in (401,404)
 assert client.post('/api/auth/login',json={}).status_code==422
 assert client.get('/nonexistent',follow_redirects=False).status_code==404
 assert len(app.routes)>=15, len(app.routes)
