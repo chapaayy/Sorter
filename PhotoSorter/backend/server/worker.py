@@ -4,6 +4,7 @@ import logging,os,signal,threading,time
 import psycopg
 from psycopg.rows import dict_row
 from .database import connect,wait_and_initialize,DB_URL
+from .services import heartbeat
 from .db.repositories import queue
 from .jobs import ServerJob
 
@@ -30,6 +31,7 @@ def main():
     signal.signal(signal.SIGTERM,stop)
     signal.signal(signal.SIGINT,stop)
     wait_and_initialize()
+    pulse,thread=heartbeat.start("megaloc")
     while RUN:
         try:
             with psycopg.connect(DB_URL,autocommit=True,row_factory=dict_row) as leader:

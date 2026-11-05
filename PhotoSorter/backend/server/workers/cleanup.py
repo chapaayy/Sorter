@@ -4,6 +4,7 @@ import logging
 import signal
 import time
 from ..database import wait_and_initialize
+from ..services import heartbeat
 from ..services import cleanup,retention,thumbnail_gc,temp_cleanup
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
@@ -33,6 +34,7 @@ def main():
     signal.signal(signal.SIGTERM,stop)
     signal.signal(signal.SIGINT,stop)
     wait_and_initialize()
+    pulse,thread=heartbeat.start("cleanup")
     while RUN:
         try:run_cycle()
         except Exception:logging.exception("Lifecycle maintenance failure")

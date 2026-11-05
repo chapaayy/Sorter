@@ -6,6 +6,7 @@ from datetime import datetime,timezone
 from fastapi import APIRouter
 from ..database import connect
 from ..services.disk_guard import stat,reserve
+from ..services import heartbeat
 from app.config import DATA_DIR
 
 router=APIRouter(prefix="/api/system",tags=["system"])
@@ -31,11 +32,13 @@ def system_status():
              GROUP BY status""").fetchall()
         thumbs=db.execute("""SELECT state,count(*) AS n FROM thumbnail_tasks
              GROUP BY state""").fetchall()
+        services=heartbeat.status(db)
     total,available=stat(DATA_DIR)
     return {"at":datetime.now(timezone.utc).isoformat(),
         "worker":{"queue":{x["status"]:x["n"] for x in jobs},
                   "expected_threads":int(os.environ.get("PHOTOSORTER_CPU_THREADS","8"))},
         "thumbnails":{x["state"]:x["n"] for x in thumbs},
+        "services":services,
         "disk":{"total_bytes":total,"available_bytes":available,
                 "reserved_bytes":reserve(total)},
         "api":{"uptime_seconds":round(time.monotonic()-START,1),

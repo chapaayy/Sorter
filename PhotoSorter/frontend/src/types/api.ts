@@ -49,6 +49,8 @@ export interface StorageUsage {
 }
 export interface SystemStatus {
   at: string; worker: { queue: Record<string, number>; expected_threads: number }
-  thumbnails: Record<string, number>; disk: { total_bytes: number; available_bytes: number; reserved_bytes: number }
+  thumbnails: Record<string, number>;
+  services?: Record<string, { alive: boolean; last_seen: string | null }>;
+  disk: { total_bytes: number; available_bytes: number; reserved_bytes: number }
   api: { uptime_seconds: number; latency: { samples: number; p50_ms: number | null; p95_ms: number | null }; rss_peak_kib: number }
 }

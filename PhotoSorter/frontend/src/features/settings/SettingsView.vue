@@ -80,6 +80,12 @@ async function cleanup(){
       <div class="row between"><span class="meta">PostgreSQL</span><span class="status" :class="system?'ok':''">{{system?'Доступен':'Нет данных'}}</span></div>
       <div class="row between"><span class="meta">Задачи MegaLoc</span><strong>{{system?.worker.queue.running||0}} выполняется · {{system?.worker.queue.queued||0}} ожидает</strong></div>
       <div class="row between"><span class="meta">Миниатюры</span><strong>{{system?.thumbnails.queued||0}} в очереди</strong></div>
+      <div v-for="role in ['megaloc','thumbnail','cleanup']" :key="role" class="row between">
+        <span class="meta">{{role==='megaloc'?'MegaLoc worker':role==='thumbnail'?'Генератор миниатюр':'Очистка'}}</span>
+        <span class="status" :class="system?.services?.[role]?.alive?'ok':'danger'">
+          {{system?.services?.[role]?.alive?'Heartbeat получен':'Нет свежего heartbeat'}}
+        </span>
+      </div>
       <div class="row between"><span class="meta">API p95 (последние запросы)</span><strong>{{system?.api.latency.p95_ms??'—'}} мс</strong></div>
       <div class="meta">Независимый heartbeat Worker пока не предоставляется API. Пустая очередь не доказывает, что процесс работает.</div>
     </section>

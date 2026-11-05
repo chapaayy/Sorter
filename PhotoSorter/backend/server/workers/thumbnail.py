@@ -2,6 +2,7 @@
 from __future__ import annotations
 import logging,os,signal,time
 from ..database import wait_and_initialize
+from ..services import heartbeat
 from ..services import thumbnails
 RUN=True
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
@@ -16,6 +17,7 @@ def main():
     try:os.nice(10)
     except OSError:pass
     wait_and_initialize()
+    pulse,thread=heartbeat.start("thumbnail")
     while RUN:
         try:
             task=thumbnails.claim()
