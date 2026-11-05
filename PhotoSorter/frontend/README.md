@@ -1,28 +1,25 @@
-# OUTDOOR PhotoSorter · Vue 3 UI — Stage 3
+# OUTDOOR PhotoSorter — единый интерфейс Vue 3
 
-Новый UI обслуживается по `/v3/`; **legacy UI остаётся на `/`**, пока не проведена приёмка. Не направляйте Vite proxy на рабочий VPS и не загружайте реальные ФО в тестовый стенд без разрешения.
+**Один сайт:** HTTPS `/` обслуживает Vue SPA; маршруты `/fo`, `/references`, `/processing`, `/results`, `/logs`, `/settings`, `/login` работают без версии в адресе. Старый HTML/JS/CSS удалён, `/v3/` и `/static/app.js` недоступны.
 
-## Установка и проверки
+## Разработка и тесты
 
 ```bash
 npm ci
 npm run dev
-npm run typecheck
 npm run build
 npm run test
 npx playwright install chromium webkit
 npm run test:e2e
 ```
 
-Node 24, точный `package-lock.json`. Для настоящих POST с cookie/Origin на dev требуется backend test environment и корректная конфигурация origin; Playwright тесты вместо этого используют mock API, production обслуживается тем же доменом, что и backend.
+Node 24. Dev Vite слушает `http://127.0.0.1:5173/` с прокси `/api` на изолированный backend. Не направляйте dev proxy на рабочий VPS. В production Caddy проксирует запросы в один FastAPI, который отдаёт готовые Vue assets и API на том же домене.
 
-## Назначение модулей
+- `src/app`: auth gate и history router; `src/stores`: session/theme/toasts.
+- `src/api`: типизированный клиент; `src/types`: контракты API.
+- `src/features`: отдельные разделы PhotoSorter; `src/components`: переиспользуемый UI.
+- `src/components/gallery/VirtualThumbnailGrid.vue`: только видимые карточки.
+- `src/styles`: общая тема и адаптивная сетка.
+- `tests`: Vitest; `e2e`: Playwright Chromium/WebKit desktop/mobile.
 
-- `src/app`: auth gate/router; `src/stores`: session/theme/toasts.
-- `src/api`: все сетевые вызовы; `src/types`: контракты backend, `src/composables`: polling и cursor pagination.
-- `src/features`: каждая вкладка собственными Vue SFC; `src/components`: единые визуальные элементы.
-- `src/components/gallery/VirtualThumbnailGrid.vue`: не держит 1315 карточек в DOM; `ImageViewer.vue`: полный оригинал только по клику.
-- `src/styles`: graphite/light/system tokens and mobile responsive layout.
-- `tests`: Vitest, `e2e`: Playwright Chromium/WebKit desktop/mobile с тестовыми API ответами.
-
-Рабочие данные PhotoSorter, MegaLoc math/weights, Caddy HTTPS и старая страница не менялись. Полная карта проекта: [../../../PROJECT_MAP.md](../../../PROJECT_MAP.md).
+Фото, модель MegaLoc, каталог `Models` и базы PostgreSQL не являются частью frontend bundle. Полная карта: [../../../PROJECT_MAP.md](../../../PROJECT_MAP.md).

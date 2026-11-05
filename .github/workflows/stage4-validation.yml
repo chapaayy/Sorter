@@ -1,9 +1,9 @@
 name: Stage 4 isolated validation
 on:
   push:
-    branches: ["stage4/**"]
+    branches: ["stage4/**", "release/**"]
   pull_request:
-    branches: ["stage3/**"]
+    branches: ["stage3/**", "stage4/**"]
   workflow_dispatch:
 
 permissions:
