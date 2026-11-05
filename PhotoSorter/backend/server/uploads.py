@@ -90,6 +90,7 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
         if recorded:
             with connect() as db:
                 db.execute('DELETE FROM uploads WHERE id=%s AND NOT finalized',(file_id,))
+                if batch_id:batch_repository.refresh_upload_state(db,batch_id)
         raise
     finally:
         if token:operations.finish(token)
