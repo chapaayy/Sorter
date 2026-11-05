@@ -69,7 +69,7 @@ def safe_model_symlink(name,target):
     Block symlinks in user photographs/secret config and links out of Models.
     """
     if (not name.startswith("Models/") or not target or
-            posixpath.isabs(target) or "\\\\" in target or "\\x00" in target):
+            posixpath.isabs(target) or chr(92) in target or chr(0) in target):
         raise ValueError("Unsafe model symlink")
     destination=posixpath.normpath(posixpath.join(posixpath.dirname(name),target))
     if not any(destination.startswith(prefix+"/") for prefix in ("Models/cache","Models/models")):
