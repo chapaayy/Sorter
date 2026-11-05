@@ -5,7 +5,7 @@ after deletion. The disposable PostgreSQL fixture is not a real VPS.
 """
 from __future__ import annotations
 
-from .test_stage1_lifecycle import sandbox,_batch,_job
+from .test_stage1_lifecycle import sandbox,db,_batch,_job
 from server.services import batches,cleanup
 
 
