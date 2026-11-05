@@ -3,11 +3,26 @@ from __future__ import annotations
 from fastapi import APIRouter,HTTPException
 from pydantic import BaseModel,Field
 from ...services import references as reference_service
+from ...services import construction_catalog
 from app.photos.labels import check_label
 from ...database import connect
 from ...db.repositories.pagination import page
 
 router=APIRouter(prefix="/api/references",tags=["references"])
+
+class PreviewImport(BaseModel):
+    folders:list[str]=Field(min_length=1,max_length=5000)
+
+class ChangeAddress(BaseModel):
+    address:str=Field(min_length=1,max_length=120)
+
+@router.post("/import/preview")
+def preview_import(payload:PreviewImport):
+    return construction_catalog.preview(payload.folders)
+
+@router.patch("/constructions/{sam}/address")
+def change_address(sam:str,payload:ChangeAddress):
+    return construction_catalog.change_address(sam,payload.address)
 
 @router.get("/{sam}/photos")
 def gallery(sam:str,cursor:str|None=None,limit:int=60):
