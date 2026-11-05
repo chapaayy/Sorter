@@ -37,5 +37,6 @@ def page(db,filter_sql,params,*,cursor=None,limit=60):
         results.append({"id":str(row["id"]),"name":row["filename"],
            "bytes":row["declared_size"],"created_at":row["created_at"],
            "thumbnail_status":row["thumbnail_status"] or "pending",
-           "thumbnail_url":f'/api/thumbnails/{row["id"]}' if row["finalized"] else None})
+           "thumbnail_url":f'/api/thumbnails/{row["id"]}' if row["finalized"] else None,
+           "original_url":f'/api/photos/{row["id"]}/original' if row["finalized"] else None})
     return {"photos":results,"next_cursor":next_cursor}

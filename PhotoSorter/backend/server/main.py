@@ -1,6 +1,7 @@
 """FastAPI assembly: middleware, lifecycle, and independent feature routers."""
 from __future__ import annotations
 import asyncio
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI,HTTPException,Request
 from fastapi.responses import JSONResponse
@@ -10,7 +11,7 @@ from .auth import authenticate,bootstrap_admin,check_origin
 from .database import wait_and_initialize
 from .uploads import router as uploads_router
 from .jobs import router as jobs_router
-from .api.routes import auth,batches,downloads,images,logs,models,results,site,storage,thumbnails,references
+from .api.routes import auth,batches,downloads,images,logs,models,results,site,storage,thumbnails,references,originals,system
 
 @asynccontextmanager
 async def lifespan(app):
@@ -25,6 +26,7 @@ app=FastAPI(title="Outdoor PhotoSorter VPS",version="4.1.0-vps",lifespan=lifespa
 
 @app.middleware("http")
 async def private_api(request:Request,call_next):
+    started=time.perf_counter()
     path=request.url.path
     if path.startswith("/api/") and path not in ("/api/health","/api/auth/login"):
         try:
@@ -32,12 +34,15 @@ async def private_api(request:Request,call_next):
             await asyncio.to_thread(authenticate,request)
         except HTTPException as exc:
             return JSONResponse({"detail":exc.detail},status_code=exc.status_code)
-    return await call_next(request)
+    try:
+        return await call_next(request)
+    finally:
+        system.record(time.perf_counter()-started)
 
 @app.get("/api/health")
 def health():return {"status":"ok","version":"4.1.0-vps"}
 
 for router in (auth.router,batches.router,uploads_router,jobs_router,
                models.router,results.router,images.router,downloads.router,
-               logs.router,storage.router,thumbnails.router,references.router,site.router):
+               logs.router,storage.router,thumbnails.router,references.router,originals.router,system.router,site.router):
     app.include_router(router)
