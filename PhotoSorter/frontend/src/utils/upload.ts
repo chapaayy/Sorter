@@ -1,6 +1,6 @@
 import {api,post,ApiError} from '../api/client'
-export interface UploadTarget{kind:'fo'|'reference';batchId?:string;sam?:string}
-export interface UploadResult{path:string;sha256?:string;already_finalized?:boolean}
+export interface UploadTarget{kind:'fo'|'reference';batchId?:string;sam?:string;address?:string}
+export interface UploadResult{path:string;sha256?:string;already_finalized?:boolean;already_present?:boolean}
 export interface UploadEntry{file:File;relative:string}
 export const ALLOWED=/\.(jpe?g|png|webp|bmp|tiff?)$/i
 export const MAX_IMAGE_UPLOAD_BYTES=60*1024*1024
@@ -16,19 +16,19 @@ async function resume(id:string,t:UploadTarget,e:UploadEntry,signal:AbortSignal,
     try{status=await api('/uploads/'+id)}
     catch(error){
       if(!(error instanceof ApiError)||error.status!==404)throw error
-      const created=await post<{id:string}>('/uploads',{kind:t.kind,batch_id:t.batchId||null,sam:t.sam||null,filename:e.file.name,size:e.file.size})
+      const created=await post<{id:string}>('/uploads',{kind:t.kind,batch_id:t.batchId||null,sam:t.sam||null,address:t.address||null,filename:e.file.name,size:e.file.size})
       id=created.id
       remember(key(t,e),id)
       status={offset:0,size:e.file.size,finalized:false}
     }
   }else{
-    const created=await post<{id:string}>('/uploads',{kind:t.kind,batch_id:t.batchId||null,sam:t.sam||null,filename:e.file.name,size:e.file.size})
+    const created=await post<{id:string}>('/uploads',{kind:t.kind,batch_id:t.batchId||null,sam:t.sam||null,address:t.address||null,filename:e.file.name,size:e.file.size})
     id=created.id
     remember(key(t,e),id)
     status={offset:0,size:e.file.size,finalized:false}
   }
   if(status.size!==e.file.size)throw new Error('Файл отличается по размеру от сохранённой загрузки')
-  if(status.finalized){progress(e.file.size);return {path:'',already_finalized:true}}
+  if(status.finalized){progress(e.file.size);return {path:'',already_finalized:true,already_present:true}}
   let offset=status.offset,retries=0
   while(offset<e.file.size){
     if(signal.aborted)throw new DOMException('Остановлено','AbortError')
@@ -42,7 +42,7 @@ async function resume(id:string,t:UploadTarget,e:UploadEntry,signal:AbortSignal,
       if(signal.aborted)throw err
       if(err instanceof ApiError&&err.status===409){
         status=await api('/uploads/'+id)
-        if(status.finalized){progress(e.file.size);return {path:'',already_finalized:true}}
+        if(status.finalized){progress(e.file.size);return {path:'',already_finalized:true,already_present:true}}
         if(status.offset===offset)throw err
         offset=status.offset;progress(offset);continue
       }
@@ -60,7 +60,7 @@ export async function uploadOne(t:UploadTarget,e:UploadEntry,signal:AbortSignal,
   if(e.file.size===0)throw new Error('Пустой файл: '+e.file.name)
   const storage=key(t,e)
   const previous=saved(storage)
-  if(previous==='done'){progress(e.file.size);return {path:'',already_finalized:true}}
+  if(previous==='done'){progress(e.file.size);return {path:'',already_finalized:true,already_present:true}}
   // Restore the original 16 MiB offset-based protocol (5 workers by default).
   // Existing direct-transfer upload IDs are also resumed safely via GET.
   const result=await resume(previous||'',t,e,signal,progress)
