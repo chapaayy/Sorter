@@ -3,7 +3,7 @@
 ```text
 Браузер: один Vue 3 SPA (/)
   ├─ /fo              Фотоотчёты, загрузка партий, просмотр
-  ├─ /references      Библиотека SAM, фотографии образцов
+  ├─ /references      Библиотека конструкций: массовый импорт и добавление фото
   ├─ /processing      Очередь MegaLoc, запуск/остановка
   ├─ /results         Галереи результатов, ZIP, подтверждение
   ├─ /logs            Логи и фильтры
@@ -19,14 +19,15 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
                               │           │
                               │           └─ services/batches.py, operations.py
                               ├─ server/api/routes/references.py
-                              │           └─ services/references.py
+                              │           ├─ services/references.py
+                              │           └─ services/construction_catalog.py
                               ├─ jobs.py + api/routes/results.py
                               │           └─ db/repositories/queue.py
                               ├─ api/routes/images.py, originals.py, thumbnails.py
                               ├─ api/routes/downloads.py  => verified ZIP stream
                               ├─ api/routes/logs.py, models.py, storage.py, system.py
                               └─ db/migration_runner.py ───► PostgreSQL 17
-                                                            users/sessions/batches/uploads/
+                                                            users/sessions/batches/uploads/reference_constructions/
                                                             jobs/thumbnails/cleanup/service heartbeat
 
 Параллельные процессы в том же Docker Compose:
@@ -67,6 +68,8 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 
 ## Основные сценарии
 
+**Образцы:** Vue `ReferenceDirectoryImporter` → проверка всех файлов в браузере → `POST /api/references/import/preview` → сверка город/номер/адрес с БД → передача через общий `useReferenceTransfer` и `/api/uploads` → SHA-256/Pillow → дополняем существующие конструкции или создаём новые. `ReferencePhotoUploader` добавляет обычные фото в выбранную конструкцию. Адрес хранится отдельно в `reference_constructions`, стабильный идентификатор не меняется. Старые `SAM-xxxx` записи остаются без миграции. [Инструкция](docs/REFERENCE_IMPORT.md).
+
 **Upload:** Vue `UploadPanel` → `/api/batches` / `/api/uploads` → проверка Pillow/checksum + публикация оригинала в `data/uploads/` → новая запись в PostgreSQL → thumbnail queue → WebP cache.
 
 **Распознавание:** `/api/runs` → PostgreSQL FIFO и single-leader → MegaLoc **сначала группирует ФО**, затем независимо сравнивает группы с SAM → manifest, Hard Links или безопасные копии → `data/outputs/<run>/` → галерея результатов.
@@ -82,4 +85,4 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 - Под `Models/` только веса/загрузчики, под `PhotoSorter/data/` пользовательские оригиналы и результаты; исходники из Git не пересоздают эти каталоги произвольно.
 - Математику MegaLoc, бизнес-правила сохранения ZIP и защиту API не менять ради косметического рефакторинга.
 
-См. [FILE_INDEX](FILE_INDEX.md), [AGENTS](AGENTS.md), [API](docs/API.md), [BACKUP_RESTORE](docs/BACKUP_RESTORE.md).
+См. [Инструкция импорта образцов](docs/REFERENCE_IMPORT.md), [FILE_INDEX](FILE_INDEX.md), [AGENTS](AGENTS.md), [API](docs/API.md), [BACKUP_RESTORE](docs/BACKUP_RESTORE.md).
