@@ -9,6 +9,7 @@ import {usePolling} from '../../composables/usePolling'
 import {date,errorText,isActive,runLabels,bytes} from '../../utils/format'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
+import UiSelect from '../../components/ui/UiSelect.vue'
 import RowCard from '../../components/ui/RowCard.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import RunProgress from './RunProgress.vue'
@@ -57,8 +58,8 @@ async function install(){
 <section class="panel stack" style="margin-bottom:20px">
   <div class="panel-header"><h2>Новый запуск</h2><span class="status">Доступна одна модель · MegaLoc</span></div>
   <div class="grid3">
-    <label class="field"><span class="label">Партия ФО</span><select v-model="chosen"><option value="">Выберите партию</option><option v-for="b in available" :key="b.batch_id" :value="b.batch_id">{{b.display_name}} · {{b.photos}} ФО</option></select></label>
-    <label class="field"><span class="label">Модель</span><select disabled><option>MegaLoc · CPU</option></select></label>
+    <div class="field"><span class="label">Партия ФО</span><UiSelect v-model="chosen" label="Партия ФО" placeholder="Выберите партию" :disabled="!available.length" :options="available.map(b=>({value:b.batch_id,label:b.display_name+' · '+b.photos+' ФО'}))"/></div>
+    <div class="field"><span class="label">Модель</span><div class="readonly-field" aria-label="Модель">MegaLoc · CPU</div></div>
     <label class="field"><span class="label">Порог группировки: {{threshold.toFixed(2)}}</span><input v-model.number="threshold" type="range" min=".50" max=".99" step=".01" aria-label="Порог группировки"/></label>
   </div>
   <p v-if="!available.length" class="meta">Нет готовых партий: загрузите фотографии во вкладке «ФО» и дождитесь завершения передачи.</p>

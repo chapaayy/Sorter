@@ -87,13 +87,18 @@ test('processing select includes fresh and previously processed completed batche
   await page.goto('/processing')
   const select=page.getByRole('combobox',{name:'Партия ФО'})
   // The baseline fixture has one completed run. Re-running it is allowed by the API.
-  await expect(select).toHaveValue(bid)
+  await expect(select).toContainText('Выезд Самара 05.11')
   await expect(page.getByRole('button',{name:/Запустить \/ поставить в очередь/})).toBeEnabled()
+  await select.click()
+  await expect(page.getByRole('listbox',{name:'Партия ФО'})).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('listbox',{name:'Партия ФО'})).not.toBeVisible()
+  await expect(select).toHaveAttribute('aria-expanded','false')
 
   // An older API response may omit runs for an entirely new batch.
   await page.route(/^https?:\/\/[^/]+\/api\/batches(?:\?.*)?$/,route=>
     respond(route,{batches:[{...batch,runs:undefined}],total:1}))
   await page.reload()
-  await expect(select).toHaveValue(bid)
+  await expect(select).toContainText('Выезд Самара 05.11')
   await expect(page.getByRole('button',{name:/Запустить \/ поставить в очередь/})).toBeEnabled()
 })

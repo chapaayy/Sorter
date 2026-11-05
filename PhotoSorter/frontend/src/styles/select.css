@@ -1,0 +1,24 @@
+/* Shared select-only combobox: no browser menu, decorative arrows or icons. */
+.ui-select{position:relative;width:100%;min-width:0}
+.ui-select-trigger{display:flex;align-items:center;width:100%;min-height:44px;padding:10px 13px;
+  text-align:left;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--input);color:var(--text);cursor:pointer;font-size:14px;line-height:1.35;
+  transition:border-color .14s ease,background-color .14s ease}
+.ui-select-trigger:hover:not(:disabled){background:var(--panel-alt)}
+.ui-select-trigger[aria-expanded=true]{border-color:var(--muted-2);box-shadow:0 0 0 3px color-mix(in srgb,var(--text) 7%,transparent)}
+.ui-select-trigger:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.ui-select-trigger:disabled{opacity:.55;cursor:not-allowed}
+.ui-select-value{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+.ui-select-placeholder{color:var(--muted)}
+.ui-select-list{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:80;
+  max-height:min(320px,50vh);overflow-y:auto;padding:5px;border:1px solid var(--border);
+  border-radius:12px;background:var(--panel);box-shadow:var(--shadow)}
+.ui-select-option{padding:10px 12px;min-height:40px;display:flex;align-items:center;
+  border-radius:8px;cursor:pointer;font-size:13px;line-height:1.35;color:var(--text);
+  overflow-wrap:anywhere}
+.ui-select-option.active{background:var(--panel-alt)}
+.ui-select-option.selected{font-weight:650}
+.ui-select-option[aria-disabled=true]{opacity:.45;cursor:not-allowed}
+.ui-select-option[aria-disabled=true]:hover{background:transparent}
+.readonly-field{min-height:44px;display:flex;align-items:center;border:1px solid var(--border);
+  border-radius:var(--radius-sm);background:var(--panel-alt);padding:10px 13px;color:var(--muted)}

@@ -1,0 +1,56 @@
+/* Monochrome design treatment; layout and feature styles stay in components.css. */
+.sidebar{width:226px;padding:20px 12px 16px}
+.main-area{margin-left:226px;width:calc(100% - 226px)}
+.main-header{height:66px;padding:0 clamp(24px,3vw,48px)}
+.content{max-width:none;padding:32px clamp(24px,3vw,48px) 90px}
+.brand{padding:6px 10px 33px;gap:11px}
+.brand-mark{width:35px;height:35px;border-color:var(--border);background:var(--panel-alt);padding:7px}
+.brand-mark i{background:var(--text)}
+.brand strong{font-size:12px;letter-spacing:.11em}
+.brand small{font-size:10px;letter-spacing:.07em}
+.nav-caption{padding:8px 12px;margin-bottom:10px;letter-spacing:.09em;font-size:10px}
+.nav-link{height:43px;padding:0 12px;gap:12px;font-size:13px;border:0}
+.nav-link .nav-icon{display:grid;place-items:center;width:18px;flex:none}
+.nav-link.router-link-active{border:0;background:var(--accent-bg);color:var(--text);font-weight:620}
+.nav-link:hover{background:var(--panel-alt);color:var(--text)}
+.sidebar-bottom{gap:8px}
+.server-pill{font-size:11px;padding:10px 12px}
+.server-pill::before{background:var(--success)}
+.page-head{margin-bottom:24px}
+.page-head h1{letter-spacing:-.035em}
+.page-head p{font-size:14px;line-height:1.5}
+.eyebrow{letter-spacing:.11em;font-size:10px;color:var(--muted-2);font-weight:670}
+.panel{border-color:var(--border-subtle);padding:24px}
+.btn{min-height:40px;border-radius:9px;padding:8px 14px;font-size:13px;font-weight:600}
+.btn:hover:not(:disabled){border-color:var(--border);background:var(--highlight,var(--panel-alt))}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.btn.primary:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 32%,var(--border));background:var(--danger-bg)}
+.btn.danger:hover:not(:disabled){border-color:var(--danger);background:var(--danger-bg)}
+.btn.small{font-size:12px}
+.btn-spinner{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:ui-spin .7s linear infinite}
+@keyframes ui-spin{to{transform:rotate(360deg)}}
+.status.ok{background:color-mix(in srgb,var(--success) 10%,var(--panel));color:var(--success)}
+.status.danger{background:var(--danger-bg);color:var(--danger)}
+.rowcard:hover{transform:none;background:var(--panel-alt);border-color:var(--border)}
+.rowcard-icon{color:var(--text)}
+.rowcard-arrow{color:var(--muted-2)}
+.split{grid-template-columns:252px minmax(0,1fr);gap:16px}
+.split-item.active{background:var(--accent-bg);color:var(--text)}
+.photo-grid{grid-template-columns:repeat(auto-fill,minmax(176px,1fr))}
+.photo-item:hover{border-color:var(--muted-2)}
+.empty{border-style:solid;border-color:var(--border-subtle);padding:47px 18px}
+.empty-icon{color:var(--muted);font-size:25px}
+.segment button.active,.segment button[aria-checked=true]{box-shadow:0 1px 3px rgba(0,0,0,.08)}
+input:focus,select:focus,textarea:focus{border-color:var(--muted-2)}
+@media(max-width:950px) and (min-width:701px){
+  .sidebar{width:210px}.main-area{margin-left:210px;width:calc(100% - 210px)}
+  .content{padding:28px 20px 70px}.main-header{padding:0 20px}
+}
+@media(max-width:700px){
+  .sidebar{width:min(86vw,280px)}.main-area{width:100%;margin-left:0}
+  .content{padding:25px 15px 85px}.main-header{height:64px;padding:0 18px}
+  .panel{padding:17px}.split-main{padding:16px}
+  .photo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(prefers-reduced-motion:reduce){.btn-spinner{animation:none;border-right-color:currentColor}}

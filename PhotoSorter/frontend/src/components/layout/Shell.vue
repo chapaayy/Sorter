@@ -2,16 +2,17 @@
 import {ref,watch} from 'vue'
 import {useRoute,RouterLink} from 'vue-router'
 import {useSessionStore} from '../../stores/session'
+import UiIcon from '../ui/UiIcon.vue'
 const menu=ref(false),route=useRoute(),session=useSessionStore()
 watch(()=>route.path,()=>{menu.value=false})
 const links=[
-{to:'/fo',label:'ФО',icon:'▤'},
-{to:'/references',label:'Образцы',icon:'▦'},
-{to:'/processing',label:'Обработка',icon:'◉'},
-{to:'/results',label:'Результаты',icon:'▣'},
-{to:'/logs',label:'Логи',icon:'⌘'},
-{to:'/settings',label:'Настройки',icon:'⚙'}
-]
+{to:'/fo',label:'ФО',icon:'photos'},
+{to:'/references',label:'Образцы',icon:'references'},
+{to:'/processing',label:'Обработка',icon:'processing'},
+{to:'/results',label:'Результаты',icon:'results'},
+{to:'/logs',label:'Логи',icon:'logs'},
+{to:'/settings',label:'Настройки',icon:'settings'}
+] as const
 const title=()=>links.find(l=>route.path.startsWith(l.to))?.label||'Фотоотчёты'
 </script>
 <template>
@@ -25,17 +26,17 @@ const title=()=>links.find(l=>route.path.startsWith(l.to))?.label||'Фотоот
       <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav class="nav-links">
         <RouterLink v-for="link in links.slice(0,5)" :key="link.to" :to="link.to" class="nav-link">
-          <span class="nav-icon" aria-hidden="true">{{link.icon}}</span>{{link.label}}
+          <span class="nav-icon" aria-hidden="true"><UiIcon :name="link.icon"/></span>{{link.label}}
         </RouterLink>
       </nav>
       <div class="sidebar-bottom">
-        <div class="nav-links"><RouterLink to="/settings" class="nav-link"><span class="nav-icon">⚙</span>Настройки</RouterLink></div>
+        <div class="nav-links"><RouterLink to="/settings" class="nav-link"><span class="nav-icon" aria-hidden="true"><UiIcon name="settings"/></span>Настройки</RouterLink></div>
         <div class="server-pill">Приватная панель · MegaLoc</div>
       </div>
     </aside>
     <section class="main-area">
       <header class="main-header">
-        <div class="mobile-top"><button class="btn ghost icon" aria-label="Открыть меню" @click="menu=true">☰</button><strong>OUTDOOR</strong></div>
+        <div class="mobile-top"><button class="btn ghost icon" aria-label="Открыть меню" @click="menu=true"><UiIcon name="menu"/></button><strong>OUTDOOR</strong></div>
         <div class="breadcrumbs desktop-only">Приложение <span>›</span> <b>{{title()}}</b></div>
         <div class="header-right"><span class="desktop-only">{{session.user?.username}}</span><button class="btn ghost small" @click="session.logout()">Выйти</button></div>
       </header>

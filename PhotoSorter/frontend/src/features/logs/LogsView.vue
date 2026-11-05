@@ -8,6 +8,7 @@ import {bytes,date,errorText} from '../../utils/format'
 import type {Run,LogEntry} from '../../types/api'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
+import UiSelect from '../../components/ui/UiSelect.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import {useNoticeStore} from '../../stores/notice'
 const route=useRoute(),notice=useNoticeStore()
@@ -83,9 +84,9 @@ function scrolled(){
 </PageHeader>
 <div class="panel stack" style="margin-bottom:18px">
   <div class="grid3">
-    <label class="field"><span class="label">Запуск</span><select v-model="selected"><option v-for="run in runs" :key="run.id" :value="run.id">{{date(run.started_at)}} · {{run.id}}</option></select></label>
-    <label class="field"><span class="label">Уровень</span><select v-model="level"><option value="">Все</option><option>INFO</option><option>WARNING</option><option>ERROR</option></select></label>
-    <label class="field"><span class="label">Источник</span><select v-model="source"><option value="">Все</option><option value="API">API</option><option value="MegaLoc">MegaLoc</option></select></label>
+    <div class="field"><span class="label">Запуск</span><UiSelect v-model="selected" label="Запуск" placeholder="Нет запусков" :disabled="!runs.length" :options="runs.map(run=>({value:run.id,label:date(run.started_at)+' · '+run.id}))"/></div>
+    <div class="field"><span class="label">Уровень</span><UiSelect v-model="level" label="Уровень" :options="[{value:'',label:'Все'},{value:'INFO',label:'INFO'},{value:'WARNING',label:'WARNING'},{value:'ERROR',label:'ERROR'}]"/></div>
+    <div class="field"><span class="label">Источник</span><UiSelect v-model="source" label="Источник" :options="[{value:'',label:'Все'},{value:'API',label:'API'},{value:'MegaLoc',label:'MegaLoc'}]"/></div>
   </div>
   <div class="row between wrap"><input v-model="search" placeholder="Поиск по сообщениям…" aria-label="Поиск логов" style="max-width:390px"/><label class="row meta"><input v-model="following" type="checkbox"/>Автопрокрутка</label></div>
 </div>

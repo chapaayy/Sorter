@@ -23,3 +23,15 @@ Node 24. Dev Vite слушает `http://127.0.0.1:5173/` с прокси `/api`
 - `tests`: Vitest; `e2e`: Playwright Chromium/WebKit desktop/mobile.
 
 Фото, модель MegaLoc, каталог `Models` и базы PostgreSQL не являются частью frontend bundle. Полная карта: [../../../PROJECT_MAP.md](../../../PROJECT_MAP.md).
+
+## Единый визуальный стиль
+
+Нейтральная монохромная тема без декоративных стрелок и системных меню выбора:
+- `src/styles/tokens.css` — только палитры `dark` / `light` и базовые токены.
+- `src/styles/base.css` и `components.css` — существующие базовые/структурные правила.
+- `src/styles/monochrome.css` — уточнения геометрии и визуальной иерархии общих компонентов.
+- `src/styles/select.css` — оформление единственного кастомного `UiSelect`.
+- `src/components/ui/UiSelect.vue` — доступный select-only combobox, без стрелок, с клавиатурой и закрытием вне поля.
+- `src/components/ui/UiIcon.vue` — единые SVG-иконки навигации без дополнительных npm-зависимостей.
+
+Элементы, принадлежащие одной feature, остаются внутри `src/features/<feature>/`. API, обработка MegaLoc, данные и маршруты не затрагиваются визуальной темой. Для браузерных меню не использовать нативный `<select>` без специального обоснования. Запрещено копировать из Uiverse разнородные CSS без приведения к общим токенам.

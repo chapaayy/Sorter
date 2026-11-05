@@ -12,6 +12,7 @@ import type {Batch,StorageUsage,SystemStatus,ModelInfo,ThemeChoice} from '../../
 import {bytes,date,errorText} from '../../utils/format'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
+import UiSelect from '../../components/ui/UiSelect.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 const theme=useThemeStore(),notice=useNoticeStore(),uploadSettings=useUploadSettingsStore()
 const usage=ref<StorageUsage|null>(null),system=ref<SystemStatus|null>(null),logs=ref<{bytes:number;budget_bytes:number}|null>(null),
@@ -54,10 +55,10 @@ async function cleanup(){
     <h2>Передача файлов</h2>
     <p class="meta">Общая настройка для загрузки ФО и Образцов. Изменения применяются при следующем запуске передачи.</p>
     <div class="row between wrap">
-      <label for="parallel-uploads"><strong>Параллельная загрузка</strong><span class="meta" style="display:block;margin-top:4px">Количество файлов, отправляемых одновременно</span></label>
-      <select id="parallel-uploads" v-model.number="uploadSettings.parallelUploads" style="width:140px" aria-label="Количество параллельных загрузок">
-        <option v-for="count in 10" :key="count" :value="count">{{count}} {{count===1?'поток':count<5?'потока':'потоков'}}</option>
-      </select>
+      <div><strong>Параллельная загрузка</strong><span class="meta" style="display:block;margin-top:4px">Количество файлов, отправляемых одновременно</span></div>
+      <div style="width:165px"><UiSelect label="Количество параллельных загрузок" :model-value="String(uploadSettings.parallelUploads)"
+        :options="Array.from({length:10},(_,i)=>({value:String(i+1),label:(i+1)+' '+(i+1===1?'поток':i+1<5?'потока':'потоков')}))"
+        @update:model-value="uploadSettings.parallelUploads=Number($event)"/></div>
     </div>
     <p class="meta" style="margin:0">По умолчанию — 5. Файлы передаются блоками по 16 МБ с возможностью продолжить после обрыва. Настройка хранится в этом браузере.</p>
   </section>

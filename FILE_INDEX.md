@@ -133,3 +133,11 @@
 | `docs/` | Актуальные API, архитектура, backup, deployment, operations, security, acceptance и rollback |
 
 **Что не входит в актуальный код:** `frontend/static`, маршрут `/v3`, отдельные старые stage CI и второй JS/HTML-фронтенд. Исторические имена `test_stage*.py` остаются регрессионными тестами, а рабочие инструменты находятся в `tools/maintenance/` — параллельных версий приложения нет.
+
+### UI: единый монохромный слой (dark/light)
+- `PhotoSorter/frontend/src/components/ui/UiSelect.vue` — единый доступный раскрывающийся список без стрелок и нативного меню.
+- `PhotoSorter/frontend/src/components/ui/UiIcon.vue` — SVG-навигация без внешнего icon runtime.
+- `PhotoSorter/frontend/src/styles/tokens.css` — цветовые токены тёмной/светлой темы.
+- `PhotoSorter/frontend/src/styles/monochrome.css` — общее визуальное оформление интерфейса.
+- `PhotoSorter/frontend/src/styles/select.css` — стили кастомного выпадающего меню.
+- `PhotoSorter/frontend/e2e/navigation.spec.ts` — браузерная проверка выбора партии, Esc и существующей навигации.
