@@ -3,6 +3,7 @@ import {computed,onMounted,ref,watch} from 'vue'
 import {useRoute,useRouter} from 'vue-router'
 import {batchApi} from '../../api/batches'
 import {resultApi} from '../../api/results'
+import {referenceApi} from '../../api/references'
 import {useCursor} from '../../composables/useCursor'
 import type {Batch,Run,ResultPhoto,Retention} from '../../types/api'
 import {bytes,date,errorText,friendlySam,isComplete} from '../../utils/format'
@@ -16,16 +17,17 @@ import EmptyState from '../../components/ui/EmptyState.vue'
 import {useNoticeStore} from '../../stores/notice'
 const route=useRoute(),router=useRouter(),id=String(route.params.runId),notice=useNoticeStore()
 const run=ref<Run|null>(null),batch=ref<Batch|null>(null),retention=ref<Retention|null>(null)
-const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),mode=ref<'sam'|'group'>('sam')
+const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),referenceNames=ref<Record<string,string>>({}),mode=ref<'sam'|'group'>('sam')
 const selected=ref(''),lastSam=ref(''),lastGroup=ref(''),error=ref(''),busy=ref(false)
 const viewer=ref<number|null>(null),confirmZip=ref(false),deleteWhole=ref(false)
+const displaySam=(sam:string)=>referenceNames.value[sam]||friendlySam(sam)
 const list=computed(()=>Object.entries(mode.value==='sam'?sams.value:groups.value)
   .sort(([a],[b])=>a==='_Неопределено'?1:b==='_Неопределено'?-1:a.localeCompare(b,'ru',{numeric:true}))
-  .map(([key,count])=>({id:key,label:mode.value==='sam'?friendlySam(key):key,count})))
+  .map(([key,count])=>({id:key,label:mode.value==='sam'?displaySam(key):key,count})))
 const {items,cursor,loading,error:pageError,load,reset}=useCursor<ResultPhoto>(next=>
   resultApi.photos(id,{[mode.value==='sam'?'sam':'group']:selected.value,cursor:next,limit:60}))
 const tiles=computed(()=>items.value.map(p=>({id:String(p.index),label:'ФО №'+(p.index+1),thumbnail_url:p.thumbnail_url,original_url:p.image_url,score:p.score})))
-const previews=computed(()=>items.value.map(p=>({src:p.image_url,label:'ФО №'+(p.index+1)+' · '+friendlySam(p.assigned_sam||''),score:p.score})))
+const previews=computed(()=>items.value.map(p=>({src:p.image_url,label:'ФО №'+(p.index+1)+' · '+displaySam(p.assigned_sam||''),score:p.score})))
 const total=computed(()=>Object.values(sams.value).reduce((x,y)=>x+y,0))
 function changeMode(value:'sam'|'group'){
   if(mode.value===value)return
@@ -38,7 +40,8 @@ onMounted(async()=>{
   try{
     run.value=await resultApi.one(id)
     if(!isComplete(run.value.status)){error.value='Этот запуск ещё не завершён';return}
-    const [b,s,g]=await Promise.all([batchApi.one(run.value.batch_id),resultApi.sam(id),resultApi.groups(id)])
+    const [b,s,g,refs]=await Promise.all([batchApi.one(run.value.batch_id),resultApi.sam(id),resultApi.groups(id),referenceApi.list().catch(()=>null)])
+    referenceNames.value=Object.fromEntries((refs?.sam||[]).map(item=>[item.sam,item.display_name||item.sam]))
     batch.value=b;sams.value=s;groups.value=g;selected.value=list.value[0]?.id||''
     retention.value=await batchApi.retention(b.batch_id)
   }catch(e){error.value=errorText(e)}
@@ -91,7 +94,7 @@ async function deleteBatch(){
 </section>
 <div class="row wrap between" style="margin-bottom:16px">
   <div class="segment" role="tablist" aria-label="Способ группировки">
-    <button role="tab" :aria-selected="mode==='sam'" @click="changeMode('sam')">По SAM</button>
+    <button role="tab" :aria-selected="mode==='sam'" @click="changeMode('sam')">По конструкциям</button>
     <button role="tab" :aria-selected="mode==='group'" @click="changeMode('group')">По группам ФО</button>
   </div>
   <span class="meta">Оценки показаны только для отдельных ФО, из manifest MegaLoc.</span>
@@ -100,7 +103,7 @@ async function deleteBatch(){
   <GroupPicker v-model="selected" :items="list" :placeholder="mode==='sam'?'Поиск SAM…':'Поиск группы…'"/>
   <section class="panel split-main">
     <div class="panel-header">
-      <div><h2>{{mode==='sam'?friendlySam(selected):selected}}</h2><span class="meta">{{list.find(x=>x.id===selected)?.count||0}} ФО</span></div>
+      <div><h2>{{mode==='sam'?displaySam(selected):selected}}</h2><span class="meta">{{list.find(x=>x.id===selected)?.count||0}} ФО</span></div>
       <UiButton v-if="mode==='sam'" small @click="download(selected)">↓ Скачать SAM</UiButton>
     </div>
     <div v-if="pageError" class="alert error" role="alert">{{pageError}}</div>
