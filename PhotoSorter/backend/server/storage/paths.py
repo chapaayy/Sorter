@@ -12,7 +12,8 @@ RUN_PATTERN = re.compile(r"\d{8}T\d{6}-[a-f0-9]{12}\Z")
 def batch_dir(batch_id):
     return UPLOADS / str(uuid.UUID(str(batch_id)))
 
-def run_dir(run_id, root=OUTPUTS):
+def run_dir(run_id, root=None):
+    if root is None: root=OUTPUTS
     if not RUN_PATTERN.fullmatch(str(run_id)):
         raise ValueError("Invalid run identifier")
     return Path(root) / str(run_id)
