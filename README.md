@@ -1,125 +1,85 @@
-# OUTDOOR PhotoSorter — VPS / MegaLoc (единый Vue-интерфейс)
+# OUTDOOR PhotoSorter
 
-Приватный фотоотчёт рекламных конструкций. MegaLoc сначала группирует **только ФО** (порог по умолчанию 0.50), затем сопоставляет группы с общей библиотекой SAM. Нейронная математика, постоянные модели и кэш эталонов в этапе 1 не изменялись.
+**Бета · один сайт · основная ветка `main`.** Приватная система сортировки фотоотчётов наружной рекламы по конструкциям. Сейчас используется одна модель MegaLoc: она сначала группирует фотографии ФО (порог по умолчанию **0.50**), затем сопоставляет группы с общей библиотекой образцов SAM. Нейросетевая математика не меняется при переработке интерфейса.
 
-## Статус веток и безопасность
+## Одна актуальная версия
 
-- Стабильная исходная ветка: `vps/docker-rebuild`.
-- Разработка этапа 1: `stage1/batch-lifecycle-hardlinks` (отдельная ветка, не production).
-- Изменения этапа 1 — новая схема и фоновые операции удаления; **не запускать на действующем VPS без резервной копии, проверки восстановления и явного разрешения**.
-- Никаких удалений, миграций и развёртываний на VPS в ходе работы над веткой не выполнялось.
-- **Этапы 2–4:** `stage2/performance-thumbnails-queue` → `stage3/vue-frontend` → `stage4/validation-backup-rollout`.
-- **Единый UI:** в `release/single-ui-root` Vue работает на `/`, прежний HTML/JS/CSS удалён. Изменения GitHub не применяются на VPS автоматически.
+- Сайт: `https://<DOMAIN>/` — **Vue 3 + TypeScript**, без `/v3/` и параллельного старого интерфейса.
+- Страницы: `/fo`, `/references`, `/processing`, `/results`, `/logs`, `/settings`. Вход: `/login`.
+- API: `/api/*` на том же домене. Данные и авторизация остаются на сервере.
+- Код развивается в **`main`**; отдельные исторические ветки не являются версиями для установки.
+- `PhotoSorter/frontend/static/` удалён. Единственный frontend — `PhotoSorter/frontend/src/`; результат сборки находится в игнорируемом `dist/`.
 
-## Этап 1: какие серверные функции добавлены
+## Установка на новый пустой сервер
 
-- Версионируемые **аддитивные SQL-миграции**: существующие таблицы, загрузки, пользователи, сессии и работы сохраняются. Старые партии получают отображаемое имя.
-- API `/api/batches`: список, создание именованной партии, детали, переименование, метаданные фото, безопасное удаление одного ФО **только до первого запуска**, асинхронный запрос полного удаления партии.
-- Все результаты **новых запусков** публикуются атомарно из временной директории и используют проверенные Hard Links; при EXDEV/неподдерживаемой ФС — безопасный fallback на копирование. Старые физические копии не мигрируются.
-- `GET /api/download/{run_id}` продолжает выдавать ZIP потоком, теперь со счётчиком активных операций, чтобы очистка ожидала завершения потока. `?sam=` сохранён.
-- `POST /api/batches/{id}/downloads/confirm`: **явное** подтверждение сохранённого общего архива; срок 2 календарных месяца UTC. Новый run сбрасывает подтверждение. `POST .../retention/extend` продлевает срок.
-- Фоновый контейнер `cleanup` сканирует подтверждённые партии, проверяет активные задания/передачи и удаляет **только привязанные к партии** uploads, outputs, runs и временные .part. Не трогает `Models/`, `references/` и другие партии. Для удаления есть task/status, безопасный повтор после сбоя.
-- `GET /api/storage/usage` отдаёт реальную ёмкость тома данных и оценку физического объёма файлов с дедупликацией inode. Размер PostgreSQL (отдельный volume) в категории не включён.
-
-**Интерфейс остаётся прежним до этапа 3.** Старые PUT/PATCH, авторизация и потоковый ZIP сохраняются.
-
-## Этап 2 — серверная платформа
-
-- Финализация upload записывает `thumbnail_tasks` в PostgreSQL **без ожидания** конвертации. Низкоприоритетный `thumbnail` Worker создаёт content-addressed WebP 480px quality 78, EXIF/ICC, защищён от больших изображений, восстанавливает просроченные задачи и ограничивает число попыток.
-- Пагинация и новые API: `/api/batches/{id}/gallery`, `/api/references/{sam}/photos`, `/api/results/{run_id}/photos`, `/api/thumbnails/{photo_id}`, `/api/photos/{photo_id}/original`; оригиналы только для viewer, старые полные results API сохранены.
-- MegaLoc имеет PostgreSQL FIFO до 20 ожидающих, 1 running на лидера, DB-ограничитель, `queue_position`, отмену и `interrupted` при рестарте. Распознавание, grouping/math и SAM не менялись.
-- Docker `json-file` лог-ротация 10m×3 на контейнер; run JSONL 4MiB×5 и общий бюджет ~512MiB с фильтрами и cursor пагинацией.
-- Контроль места по `statvfs` и системный резерв (HTTP 507 на **новые** записи), удаление только устаревших незаконченных `.part` (30 дней/нет активных операций), reaper превью только без владельцев.
-- Предварительная **8-vCPU staging** настройка Worker 7 threads, cpuset 0–6, отдельный thumbnail CPU quota 0.35. Никаких обещаний ускорения без A/B на разрешённом тестовом VPS.
-- Мониторинг `/api/system/status`, расширенный `/api/storage/usage`; замер p95 тестового API: `python PhotoSorter/tools/benchmark_api.py --url http://127.0.0.1:8000/api/health --count 100`.
-
-**На живой VPS ветка не развёрнута;** отсутствуют разрешение на production, backup/restore и real 1315-ФО benchmark. Подробности: [PERFORMANCE](docs/PERFORMANCE.md), [OPERATIONS](docs/OPERATIONS.md).
-
-
-## Запуск текущей стабильной версии (без переключения на ветку этапа 1)
-
-Требования: Linux x86-64, Docker Engine + Compose v2, домен с доступными портами 80/443. Весовые файлы MegaLoc находятся отдельно в `Models/models/megaloc/`.
+Linux x86-64, Docker Engine + Compose v2, Python 3, собственный домен с DNS на сервер, доступные TCP 80/443. Целевая конфигурация: 8 vCPU (доступность CPU IDs 0–6), около 24 ГБ RAM и 200 ГБ диска. Указанные CPU — настройки, а не гарантия скорости обработки.
 
 ```bash
-git clone -b vps/docker-rebuild --single-branch https://github.com/chapaayy/Sorter.git
+git clone --branch main --single-branch https://github.com/chapaayy/Sorter.git
 cd Sorter
 cp .env.example .env
-nano .env                  # только DOMAIN
-./install.sh
+nano .env            # DOMAIN=ваш-настоящий-домен
+bash ./install.sh --check  # для уже настроенной среды; на пустой установке секретов ещё нет
+bash ./install.sh --deploy
+docker compose --env-file .env --env-file .env.generated ps
 ```
 
-Первоначальные DB/admin-секреты генерируются в защищённом `.env.generated`. Не коммитьте и не теряйте этот файл, `Models/`, `PhotoSorter/data/`, PostgreSQL volume. `install.sh` не должен пересоздавать существующие пароли.
+**Примечание:** `--check` на новом пустом сервере ожидаемо предупредит об отсутствии `.env.generated`; это не ошибка `--deploy`. Новый установщик сгенерирует секреты. Логин `admin`, пароль сохранён в приватном `.env.generated`, который нельзя удалять или добавлять в Git. Модель/веса можно загрузить из веб-интерфейса.
 
-## Хранение
+В результате поднимаются `caddy` (HTTPS), `postgres`, `api`, `worker` (MegaLoc), `thumbnail` (WebP) и `cleanup` (служебная очистка). Снаружи публикуются только 80/443.
 
-| Путь | Владелец |
-|---|---|
-| `Models/models/`, `Models/cache/` | общие веса/кэш моделей (никогда не относятся к batch) |
-| `PhotoSorter/data/references/SAM-xxxx/` | общая библиотека Образцов |
-| `PhotoSorter/data/cache/megaloc/references/` | общий кэш эмбеддингов **только Образцов** |
-| `PhotoSorter/data/uploads/<batch_id>/` | оригиналы отдельной партии |
-| `PhotoSorter/data/outputs/<run_id>/megaloc/` | новый hardlink / прежняя копия и manifest |
-| `PhotoSorter/data/runs/<run_id>/` | состояние и журнал запуска |
-| `PhotoSorter/data/incoming/<upload_id>.part` | незаконченная передача |
-| `postgres_data` | DB, версии миграций, жизненный цикл, сессии |
-| `caddy_data`, `caddy_config` | HTTPS сертификаты/состояние |
+### Обновление ранее установленного PhotoSorter
 
-Hard Links **не являются бэкапом**. Никогда не применять `docker compose down -v`, `docker system prune --volumes` или удаление `PhotoSorter/data` ради обновления.
+`git pull` и новая папка `git clone` **не сбрасывают существующую базу**. Compose использует постоянное имя `outdoor-sorter` и Docker volumes. Перед обновлением проверить `git status`, `./install.sh --check` и согласованную копию PostgreSQL + `PhotoSorter/data` + `Models` + `.env.generated` (внешнее защищённое хранилище, тест восстановления). После проверки бэкапа обновление запускают:
 
-## Проверки и дальнейшая работа
-
-CI: `python -m compileall -q PhotoSorter/backend`, `PYTHONPATH=PhotoSorter/backend pytest -q PhotoSorter/backend/tests`. В CI тестовая PostgreSQL 17 и изолированные файлы в `tmp_path`. Реальные 189/1315-ФО fixtures не входят в репозиторий: полноценная сверка с эталонными отчётами и production rollout — только после разрешения.
-
-Документация: [архитектура](docs/ARCHITECTURE.md), [файлы](FILE_INDEX.md), [жизненный цикл](docs/DATA_LIFECYCLE.md), [API](docs/API.md), [миграции](docs/MIGRATION_NOTES.md), [тесты](docs/TESTING.md), [бэкап](docs/BACKUP_RESTORE.md), [откат](docs/ROLLBACK.md), [развёртывание](docs/DEPLOYMENT.md), [дизайн этапа 3](docs/DESIGN_SYSTEM.md).
-
-## Итог CI второго этапа
-
-[GitHub Actions: 52 tests passed](https://github.com/chapaayy/Sorter/actions/runs/41954580354). Проверены Compose config и Python compile. Code только в [PR #2](https://github.com/chapaayy/Sorter/pull/2), который основан на ещё не объединённом PR этапа 1. Математика MegaLoc не изменена; на действующем VPS ничего не применено.
-
-## Единый Vue-интерфейс
-
-**URL:** `https://ваш-домен/` — единственный интерфейс Vue 3. Вкладки: `/fo`, `/references`, `/processing`, `/results`, `/logs`, `/settings`. Устаревшие `/v3/` и `/static/*` отвечают 404.
-
-| Раздел | Назначение |
-|---|---|
-| ФО | список партий, папка ФО (resumable PUT/PATCH), название, отдельная cursor-галерея, EXIF-превью и полноразмерный viewer |
-| Образцы | двухпанельная библиотека SAM, загрузка папок, удаление/переименование SAM, блокировки при инференсе |
-| Обработка | выбор партии/модели MegaLoc, порог 0.50–0.99, FIFO очередь, отмена, статус/измеренный ETA |
-| Результаты | список завершённых запусков, SAM/группы и _Неопределено, полноразмерные фото, ZIP, отдельное явное подтверждение, retention |
-| Логи | курсорные страницы, поиск/фильтр, режим tail, копирование и скачивание JSONL |
-| Настройки | тёмная/светлая/системная тема, дисковый резерв, очередь, логи, retention и безопасный reaper кэша |
-
-**Разработка UI на отдельной машине** (не запускать против реального продакшена):
 ```bash
+git fetch origin main
+git switch main
+git pull --ff-only origin main
+PHOTOSORTER_APPROVE_UPGRADE=VERIFIED_BACKUP_AND_ROLLBACK bash ./install.sh --deploy
+```
+
+Если ранее сервер был на detached commit, сперва проверить локальные изменения: `git switch main` может требовать разрешения конфликтов. Токен `PHOTOSORTER_APPROVE_UPGRADE` применять **только после действительно проверенного бэкапа**, не ради обхода защиты.
+
+**Полный бета-сброс** (включая удаление базы, фотографий, SAM и исторических результатов) — отдельная операция, не часть `git pull` или `install.sh`. Инструкция: [SINGLE_SITE_INSTALL](docs/SINGLE_SITE_INSTALL.md). Не использовать `docker compose down -v` как команду обновления.
+
+## Работа
+
+1. **Образцы:** создать библиотеку `SAM-xxxx` из папок с фотографиями конструкций.
+2. **ФО:** загрузить папку фотоотчёта, дождаться передачи оригиналов и формирования миниатюр.
+3. **Обработка:** выбрать партию, MegaLoc и порог, затем запустить очередь. Один MegaLoc Worker выполняет одно задание за раз.
+4. **Результаты:** проверить назначенные SAM и неопределённые фотографии; скачать полный ZIP. Отдельное подтверждение сохранения ZIP запускает срок хранения партии — два календарных месяца UTC, предупреждение за семь дней.
+5. **Логи и настройки:** следить за состоянием фоновых служб, диска, логами обработки и галереями.
+
+## Где хранятся данные
+
+| Путь / Docker volume | Назначение |
+|---|---|
+| `Models/models/` | Веса моделей; вне Git |
+| `Models/cache/` | Кэш загрузчиков и библиотек; вне Git |
+| `PhotoSorter/data/references/` | Постоянные образцы SAM |
+| `PhotoSorter/data/uploads/` | Оригиналы партий ФО |
+| `PhotoSorter/data/runs/`, `outputs/` | История обработок и результаты |
+| `PhotoSorter/data/cache/` | Только служебные кэши, в том числе WebP и embeddings образцов |
+| `outdoor-sorter_postgres_data` | PostgreSQL: пользователи, партии, задания, очереди |
+| `outdoor-sorter_caddy_data`, `caddy_config` | Сертификаты HTTPS и состояние Caddy |
+
+**Файлы в `Models/` и `PhotoSorter/data/` не являются частью репозитория.** Изменение ветки не очищает их.
+
+## Разработка и тестирование
+
+```bash
+# Frontend — Node.js 24
 cd PhotoSorter/frontend
 npm ci
-npm run dev
 npm run build
 npm run test
 npm run test:e2e
+
+# Backend — Python 3.11 + PostgreSQL 17 в изолированной среде
+PYTHONPATH=PhotoSorter/backend python -m pytest -q PhotoSorter/backend/tests
 ```
-Vite dev server на порту 5173, backend `/api` проксируется на localhost:8000. Статический Docker build использует отдельный `node:24-alpine` build stage; в Python/runtime Node не устанавливается. Архив ZIP через существующий streaming endpoint, отдельного server-side staging ZIP нет.
 
-**Важно:** единый сайт на `/` подготовлен в `release/single-ui-root`. Перед чистой установкой решите, сохранять ли прежние фото, SAM и PostgreSQL. Без отдельного разрешения на очистку живые данные не удаляются.
+Единый workflow `.github/workflows/ci.yml` на `main` проверяет Python/SQL/Compose/Caddy, backend, PostgreSQL dump→restore, Vue/Playwright и полный изолированный Docker startup. Синтетические тесты **не доказывают** качество распознавания на реальных фотографиях.
 
-### Проверенный CI третьего этапа
-
-На `c0c1592b2f70db927498c9ffb9ca0f4f2770f453` проверены backend 56/56, frontend Vitest 9/9, TypeScript/Vite production build и Playwright 13 passed / 2 intentionally skipped (mobile-only сценарий пропущен для desktop). Исходники MegaLoc `app/recognition/` не менялись, работающий VPS не задействован.
-
-- [GitHub Actions — backend](https://github.com/chapaayy/Sorter/actions/runs/41969359100)
-- [GitHub Actions — Vue/Chromium/WebKit](https://github.com/chapaayy/Sorter/actions/runs/41969359113)
-
-## Этап 4 — проверка безопасности, backup/restore и gate перед production
-
-**Stage4:** `stage4/validation-backup-rollout`, поверх него `release/single-ui-root`. Эти изменения в GitHub не изменяют работающий VPS и пользовательские данные.
-
-Добавлены: полноценный CLI снимка с версированным manifest + SHA, снимок PostgreSQL custom-format, Models/models и Models/cache, изолированный восстановительный прогон в CI; comparator реального MegaLoc baseline/ZIP; synthetic 1315-FО zip/hardlink/storage lifecycle; только read-only staging probe; ограничение попыток логина и архивных путей, защита исторических SAM и проверки слишком больших изображений; реальный heartbeat трёх background workers (additive migration 0007); безопасный installer `--check`, no password reset, резервные условия upgrade.
-
-**Статус:** код и доступные CI тесты могут быть зелёными, но система **НЕ объявлена production-ready**. Для этого всё ещё необходимы одинаковый реальный эталон 189 фото, 1315 реальных ФО (~6,4 ГБ), CPU A/B, полная Docker-runtime и TLS smoke, offsite backup/restore реального окружения, физический iPhone Safari и явное согласование запуска.
-
-- [Матрица приёмки](docs/STAGE4_ACCEPTANCE.md)
-- [Развёртывание и откат](docs/STAGE4_ROLLOUT.md)
-- [Аудит безопасности](docs/STAGE4_SECURITY.md)
-- [Changelog](docs/CHANGELOG.md)
-
-В `release/single-ui-root` `/` обслуживает Vue, `/v3/` и `/static/*` не обслуживаются. Математика MegaLoc `app/recognition/` не изменялась.
+Подробности: [архитектура](PROJECT_MAP.md), [индекс файлов](FILE_INDEX.md), [правила разработки](AGENTS.md), [API](docs/API.md), [операции](docs/OPERATIONS.md), [бэкапы](docs/BACKUP_RESTORE.md), [тестирование](docs/TESTING.md).

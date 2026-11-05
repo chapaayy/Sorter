@@ -1,126 +1,85 @@
-# PROJECT_MAP.md — архитектурная карта
+# PROJECT_MAP.md — текущая архитектура PhotoSorter
 
 ```text
-Browser (single Vue SPA / and /fo, /references, /processing, ...)
-    | HTTPS/Caddy
-    v
-FastAPI server/main.py (lifespan, session+Origin middleware)
-    |-- api/routes/auth.py          => auth.py => users/sessions
-    |-- api/routes/batches.py       => services/batches.py,retention.py,cleanup.py
-    |-- uploads.py (legacy adapter) => operations leases, uploads table, incoming/ -> uploads/
-    |-- jobs.py                     => jobs table, Job snapshot, run enqueue/stop
-    |-- api/routes/models.py        => model_store/downloads
-    |-- api/routes/results.py       => app/results/repository.py => manifest
-    |-- api/routes/images.py        => read-only photo path guards
-    |-- api/routes/downloads.py     => zipstream + operations lease
-    |-- api/routes/logs.py          => events.jsonl
-    |-- api/routes/storage.py       => services/storage_usage.py
-    |-- api/routes/site.py          => Vue index /, hashed /assets/*, SPA history fallback
-    |
-PostgreSQL (server/database.py + db/migration_runner.py + migrations/)
-    |-- batches,uploads,jobs,users,sessions,reference_cache (legacy retained)
-    |-- schema_migrations,download_confirmations,batch_operations,cleanup_tasks
-    |-- db/repositories/batches.py   => SQL reads/writes separated from services
-    |
-    +-- server/worker.py            => app/jobs/* => app/recognition/* (unchanged)
-    |      |                         => app/results/copier.py => storage/hardlinks.py
-    |      +-- outputs/<run>/megaloc/{SAM,_Неопределено}/ + manifest
-    |
-    +-- server/workers/cleanup.py   => services/cleanup.py,retention.py
-           +-- runs/<run> outputs/<run> uploads/<batch> incoming/<upload>.part
-               NEVER references/ or Models/
+Браузер: один Vue 3 SPA (/)
+  ├─ /fo              Фотоотчёты, загрузка партий, просмотр
+  ├─ /references      Библиотека SAM, фотографии образцов
+  ├─ /processing      Очередь MegaLoc, запуск/остановка
+  ├─ /results         Галереи результатов, ZIP, подтверждение
+  ├─ /logs            Логи и фильтры
+  ├─ /settings        Темы, диск, жизненный цикл, состояние служб
+  └─ /login           Авторизация
+         │ HTTPS, same-origin /api/*
+         ▼
+Caddy (:80/:443) ──────► FastAPI (api:8000, один процесс)
+                              │ server/main.py
+                              ├─ server/api/routes/site.py  => Vue dist на / и /assets/*
+                              ├─ server/api/routes/auth.py  => sessions/auth.py
+                              ├─ server/api/routes/batches.py, uploads.py
+                              │           │
+                              │           └─ services/batches.py, operations.py
+                              ├─ server/api/routes/references.py
+                              │           └─ services/references.py
+                              ├─ jobs.py + api/routes/results.py
+                              │           └─ db/repositories/queue.py
+                              ├─ api/routes/images.py, originals.py, thumbnails.py
+                              ├─ api/routes/downloads.py  => verified ZIP stream
+                              ├─ api/routes/logs.py, models.py, storage.py, system.py
+                              └─ db/migration_runner.py ───► PostgreSQL 17
+                                                            users/sessions/batches/uploads/
+                                                            jobs/thumbnails/cleanup/service heartbeat
+
+Параллельные процессы в том же Docker Compose:
+  worker        ──► app/jobs/worker.py ──► app/recognition/ (MegaLoc, не менять)
+                    │                       ├─ grouping (ФО)
+                    │                       └─ matching (SAM)
+                    └─ app/results/*        ──► safe hardlinks/ZIP manifests
+  thumbnail     ──► services/thumbnails.py  ──► WebP cache
+  cleanup       ──► services/cleanup.py, retention.py, temp_cleanup.py
+                    (только owned files, без shared SAM/Models)
+
+Постоянное состояние:
+  Models/models/             веса MegaLoc
+  Models/cache/              HuggingFace/torch caches
+  PhotoSorter/data/          оригиналы, SAM, результаты, previews
+  outdoor-sorter_postgres_data   PostgreSQL
+  outdoor-sorter_caddy_data, caddy_config  TLS
 ```
 
-**Физические корни:** `Models/models` — веса, `Models/cache` — загрузчики; `PhotoSorter/data` — persistent originals/outputs/runs/references; PostgreSQL — отдельный Docker volume. Контейнеры: `caddy`, `api`, `worker`, `cleanup`, `postgres`.
+## Распределение ответственности
 
-## Потоки данных
+| Слой | Место | Назначение |
+|---|---|---|
+| Vue app | `PhotoSorter/frontend/src/app/` | Auth gate, Vue history router, единый layout |
+| Vue API | `PhotoSorter/frontend/src/api/` | Типизированные запросы по `/api` |
+| Vue features | `PhotoSorter/frontend/src/features/` | Разделы и подстраницы без дублирования общего UI |
+| Vue components | `PhotoSorter/frontend/src/components/` | Общие кнопки, modal, gallery, grid, sidebar |
+| Vue stores | `PhotoSorter/frontend/src/stores/` | Сессия, theme, уведомления |
+| Backend API | `PhotoSorter/backend/server/api/routes/` | HTTP контракты, проверка доступа |
+| Backend services | `PhotoSorter/backend/server/services/` | Работа с состоянием, безопасное удаление, архивы, очередь |
+| PostgreSQL | `PhotoSorter/backend/server/db/` | Аддитивные миграции и read/write репозитории |
+| Storage | `PhotoSorter/backend/server/storage/` | Безопасные пути и Hard Links |
+| Inference | `PhotoSorter/backend/app/recognition/` | **Замороженные** математические алгоритмы MegaLoc |
+| Jobs | `PhotoSorter/backend/app/jobs/` | Стадии исполнения, прогресс и export |
+| Docker | `compose.yaml`, `PhotoSorter/docker/` | Caddy + API + 3 worker services + PostgreSQL |
+| Support | `PhotoSorter/tools/` | Benchmark, snapshot, verify, restore-test и CI smoke |
+| CI | `.github/workflows/ci.yml` | Один pipeline для `main` |
 
-- **Upload:** `POST /api/batches` → `POST /api/uploads` или direct PUT → PATCH/offset (при обрыве) → `finish` (Pillow+SHA) → `uploads/<UUID>/`; открытая IO-операция учитывается в БД.
-- **Run:** `POST /api/runs` → `jobs` в PostgreSQL → единственный Worker → неизменённый MegaLoc → временный output → верифицированные hardlinks → manifest → атомарная публикация.
-- **Просмотр/ZIP:** manifest → защищённый photo path → `zipstream-ng` (без дискового ZIP) → клиент. При ZIP поток удерживает lease.
-- **Подтверждение:** пользователь сохраняет весь ZIP → отдельный POST подтверждения → `delete_after_at` через 2 calendar months UTC.
-- **Удаление:** DELETE batch / достижение срока → `deleting` → остановка jobs, ожидание IO → проверка trusted IDs/paths → все owned files → строки jobs/uploads → tombstone `deleted`. Crash возобновляется через `cleanup_tasks`.
+## Основные сценарии
 
-См. [DATA_LIFECYCLE](docs/DATA_LIFECYCLE.md), [API](docs/API.md), [FILE_INDEX](FILE_INDEX.md). **Этап 2 серверно реализован**: preview-очередь, FIFO jobs, журнал и дисковая защита. Этап 3 — Vue UI, этап 4 — полномасштабная проверка/production.
+**Upload:** Vue `UploadPanel` → `/api/batches` / `/api/uploads` → проверка Pillow/checksum + публикация оригинала в `data/uploads/` → новая запись в PostgreSQL → thumbnail queue → WebP cache.
 
-## Новые потоки этапа 2
+**Распознавание:** `/api/runs` → PostgreSQL FIFO и single-leader → MegaLoc **сначала группирует ФО**, затем независимо сравнивает группы с SAM → manifest, Hard Links или безопасные копии → `data/outputs/<run>/` → галерея результатов.
 
-```text
-Upload finish (Pillow+SHA) --SQL txn--> thumbnail_tasks(queue)
-       |                                |
-       +--> original uploads/            +--> server/workers/thumbnail.py
-                                                   |
-                                      storage/thumbnail_cache.py
-                                                   |
-                                    data/cache/thumbnails/v1/<checksum>.webp
-Cursor galleries  -> db/repositories/pagination.py -> uploads metadata
-Result galleries  -> services/result_pages.py -> manifest.rows.jsonl (new)
-Original viewer   -> api/routes/originals.py -> operation lease + file stream
-Jobs API          -> db/repositories/queue.py -> PostgreSQL FIFO
-Worker            -> session advisory leader -> exactly one running inference
-Logs              -> app/logging/events.py -> rotated JSONL + cursor
-Maintenance       -> temp_cleanup / thumbnail_gc (time-limited, owned only)
-System API        -> p50/p95 request latency, job/preview queue, disk reserve
-```
+**ZIP/retention:** streaming ZIP под operation lease → пользователь отдельно подтверждает сохранение → срок `+2` календарных месяца UTC → `cleanup` после проверки leases/tasks. Shared SAM/Models не удаляются вместе с партией.
 
-Общие `references/` и `Models/` не принадлежат партиям и не затрагиваются при cleanup. Для storage, Docker services и CPU см. `docs/OPERATIONS.md`.
+**Бэкап:** отдельно сохраняются PostgreSQL, `PhotoSorter/data`, `Models`, env secrets и TLS Docker volumes. `snapshot.py` не сохраняет TLS volume, поэтому оператор архивирует его отдельно. Тест восстановления допустим только на изолированной пустой БД.
 
-## Stage 3 — frontend application graph
+## Инварианты
 
-```text
-PhotoSorter/frontend/
-  package.json / package-lock.json / vite.config.ts / tsconfig.json
-  index.html
-  src/
-    main.ts             -> Vue + Pinia + Vue Router + global styles
-    app/                 -> App.vue auth gate + router.ts
-    api/                 -> typed client / batches / references / runs / results / logs / system
-    stores/              -> session / theme / notifications
-    composables/         -> usePolling / useCursor
-    components/
-      layout/Shell.vue   -> sidebar six routes + mobile drawer
-      ui/                -> RowCard, Buttons, PageHeader, ConfirmDialog, EmptyState, ToastStack
-      split/             -> GroupPicker (desktop left / mobile select)
-      gallery/           -> ThumbnailGrid lazy WebP, ImageViewer full image
-    features/
-      auth/              -> LoginView
-      fo/                -> FoList, FoGallery, UploadPanel
-      references/        -> ReferenceLibrary, ReferenceUploader
-      processing/        -> ProcessingView, RunDetail, RunProgress
-      results/           -> ResultsList, ResultDetail
-      logs/              -> LogsView
-      settings/          -> SettingsView
-    utils/               -> format, resumable upload
-    styles/              -> graphite/light tokens, base, reusable layout
-  tests/                 -> Vitest contracts/format/upload
-  e2e/                   -> Playwright mocked API navigation and flows
-  dist/ (generated)      -> static assets, not tracked
-```
+- Веб-интерфейс **ровно один**: Vue SPA по `/`; старых `/v3/` и `/static/*` нет.
+- `PhotoSorter/frontend/dist/` собирается в Docker на Node 24, runtime использует Python/FastAPI, без сервера Node.
+- Под `Models/` только веса/загрузчики, под `PhotoSorter/data/` пользовательские оригиналы и результаты; исходники из Git не пересоздают эти каталоги произвольно.
+- Математику MegaLoc, бизнес-правила сохранения ZIP и защиту API не менять ради косметического рефакторинга.
 
-`server/api/routes/site.py` отдаёт единственный Vue SPA на `/`, `/assets/*` и известные history routes. Legacy HTML/JS/CSS удалён, `/v3/` и `/static/*` недоступны. Python Dockerfile использует multi-stage Node 24 build; runtime без Node. `server/services/references.py` + `api/routes/references.py` обеспечивают явные управляемые rename/delete/cache SAM. `system/cache/cleanup` очищает только orphaned previews.
-
-## Stage 4 — validation, workers, recovery
-
-```text
-server/security/login_throttle.py     -> bounded login failure memory; auth.py/login
-server/services/heartbeat.py          -> 10s role pulse + fresh/stale API state
-server/db/migrations/0007_service_heartbeat.sql -> additive table
-  server/worker.py                    -> MegaLoc heartbeat (separate daemon thread)
-  server/workers/thumbnail.py         -> independent preview heartbeat
-  server/workers/cleanup.py           -> independent retention heartbeat
-server/api/routes/system.py           -> system/status.services.<role>.alive
-frontend/features/settings            -> honest health indicator for all 3 services
-server/api/routes/downloads.py        -> strict safe ZIP member names
-server/services/references.py         -> historic manifest SAM guard
-server/uploads.py                     -> 30M pixel upload limit
-install.sh                            -> --check and upgrade approval, preserve secrets
-PhotoSorter/tools/stage4/
-  snapshot.py                         -> independent backup, hash verify, test restore
-  ci_restore_drill.py                 -> disposable real PG17 dump/restore
-  compare_baseline.py                 -> actual/golden MegaLoc manifest + ZIP diff
-  staging_probe.py                    -> read-only HTTP latency/disk/worker stats
-backend/tests/test_stage4_*.py        -> disposable Linux/PG CI regressions
-.github/workflows/stage4-validation.yml -> 3 jobs: backend/Caddy, restore, Vue/WebKit
-```
-
-Ни одна из утилит не переносит реальные `Models`/фотографии и не запускает deployment без оператора. Без реальных staging acceptance-метрик production остаётся закрытым.
+См. [FILE_INDEX](FILE_INDEX.md), [AGENTS](AGENTS.md), [API](docs/API.md), [BACKUP_RESTORE](docs/BACKUP_RESTORE.md).
