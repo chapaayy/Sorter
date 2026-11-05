@@ -4,7 +4,7 @@
 
 `batches.upload_state`: `open` пока партия пуста/есть незавершённые файлы, `ready` когда все ФО завершены, `sealed` после первого запуска MegaLoc (больше нельзя менять ФО без новой версии). При загрузке очередного файла до запуска `ready → open`; состояние вычисляется из реальных записей uploads/jobs, а не из интерфейса.
 
-`batches.delete_state`: `active → deleting → deleted`; при IO/FS ошибке `deleting → delete_failed`, повторный подтверждённый DELETE переводит снова в `deleting`. До удаления партия содержит `upload_state`, `thumbnail_state` (миниатюры **не создаются** в этапе 1), `download_confirmed_at`, `confirmed_run_id`, `delete_after_at`. Срок ожидания кодируется датой при `active`, не отдельным состоянием `retention_pending`.
+`batches.delete_state`: `active → deleting → deleted`; при IO/FS ошибке `deleting → delete_failed`, повторный подтверждённый DELETE переводит снова в `deleting`. До удаления партия содержит `upload_state`, `thumbnail_state` (миниатюры создаются асинхронно с этапа 2), `download_confirmed_at`, `confirmed_run_id`, `delete_after_at`. Срок ожидания кодируется датой при `active`, не отдельным состоянием `retention_pending`.
 
 `cleanup_tasks`: `pending → running → completed`; ошибка `failed` с причиной, ручное возобновление возвращает `pending`. Перезапуск контейнера может оставить `running`; worker повторит idempotent процесс. Заявка DELETE возвращается до фактического окончания, состояние доступно через API.
 
@@ -16,7 +16,7 @@
 | `data/outputs/<run_id>` | run этой партии | да, все manifests и hardlinks/старые копии |
 | `data/runs/<run_id>` | run этой партии | да, события/прогресс |
 | `data/incoming/<upload_id>.part` | upload этой партии | да |
-| `data/cache/thumbnails` | будущий owner/refcount этапа 2 | stage1 не производит |
+| `data/cache/thumbnails` | будущий owner/refcount этапа 2 | stage2: shared checksum cache, удаление после grace и отсутствия owners |
 | `data/references/SAM-*` | общая библиотека | **НИКОГДА** |
 | `data/cache/megaloc/references` | общий reference cache | **НИКОГДА** |
 | `Models/**`, users/sessions, Caddy volume | система | **НИКОГДА** |
@@ -32,3 +32,9 @@
 Один потоковый ZIP по `GET /api/download/{run_id}`; lease держится до конца/обрыва. HTTP-успех **не подтверждает**, что архив остался на устройстве. Пользователь отдельным `POST .../downloads/confirm` подтверждает только **последний завершённый run** партии. `delete_after_at` назначается в UTC через **2 календарных месяца**. Следующий run сбрасывает прежнее подтверждение/таймер. `POST .../retention/extend` сдвигает срок ещё на 2 календарных месяца. `GET .../retention` сообщает срок и предупреждение за 7 суток. Нет подтверждения → **нет автоматического удаления**.
 
 **Ограничения этапа 1:** миниатюры/общий cache ownership придут в этапе 2; никаких автоматических удалений unconfirmed ФО по нехватке диска; большой ZIP/read-only просмотр не масштабируется на несколько API процессов до полной координации. Проверенный restore test на реальных данных требуется до VPS deployment.
+
+## Stage 2 — thumbnail + unfinished storage
+
+`thumbnail_tasks(upload_id)` с ON DELETE CASCADE связана с финализированным upload: `queued → running → ready`, ошибка `running → queued` до 3 попыток, затем `failed`, ручной retry. Рабочие входные оригиналы не редактируются, WebP создаётся отдельно `data/cache/thumbnails/v1/<prefix>/<checksum>.webp` размером 480px long edge/q78. Превью по checksum разделяется между разными ФО партиями и общими Образцами; cache GC удаляет физический файл только после исчезновения **всех** финализированных checksum owners и 24h grace. Удаление партии каскадно удаляет её очередь preview, не global SAM cache.
+
+Временные `incoming/<upload_uuid>.part` с `finalized=false` удаляются отдельно после 30 дней без активности, без активной batch lease, jobs или recent mtime. Для уже существующих исторических uploads миграция создаёт задания preview, не двигает оригиналы. Новый run не кэширует FO embeddings.
