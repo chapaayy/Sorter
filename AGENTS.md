@@ -1,12 +1,14 @@
-# Agent instructions
+# AGENTS.md — обязательные правила изменений OUTDOOR PhotoSorter
 
-1. **Do not change MegaLoc vectors, cosine threshold 0.50, grouping or SAM matching** without explicit approval and comparison with verified baseline. A refactor must preserve memberships and rankings.
-2. Runtime must remain MegaLoc-only. Do not re-introduce DINO/CLIP/Qwen or old benchmark scripts.
-3. Keep `Models/models/` and `Models/cache/` separate. Do not commit or delete weights, user photos, references, secrets or job history.
-4. All server APIs should be authenticated except login and basic health; no arbitrary filesystem path may come from browser input.
-5. PostgreSQL contains metadata, not blobs. Store original photos and numpy cache outside the container on persistent mounts.
-6. Keep uploads resumable and idempotent by server-issued ID/offset. Reject traversal, ZIP slips, invalid images and incompatible cache entries.
-7. Maintain separation: Caddy/TLS, API/DB, worker/CPU, library, frontend.
-8. Keep root `.env` user-editable for DOMAIN only; never put admin or database passwords in committed files. Do not reset generated secrets on upgrade.
-9. Use syntax/tests and Docker smoke tests when Docker is available. Update `README.md`, `PROJECT_MAP.md`, `FILE_INDEX.md` when changing topology or files.
-10. GitHub workflow: implement in `vps/docker-rebuild` until deploy and real-photo regression are confirmed; do not merge an untested deployment into `main`.
+1. **MegaLoc math frozen.** Не менять `app/recognition/`, порядок ФО→группы→SAM, порог по умолчанию 0.50, score/manifest без отдельного разрешения и baseline regression.
+2. Изменения делать по одному утверждённому этапу в **новой ветке от `vps/docker-rebuild`**. Не менять `main`, исходную ветку или VPS без разрешения; фиксировать base SHA.
+3. Никогда не удалять и не копировать секреты, `Models/`, `PhotoSorter/data/`, библиотеку SAM, PostgreSQL volumes или реальные фото. Миграции только аддитивные/обратимо совместимые. Сначала бэкап и restore-test на тестовом окружении.
+4. Любое удаление партии — **строго по доверенному UUID из БД**, с защитой path/symlink traversal и журналом состояния. Не удалять shared reference/model cache вместе с партией. Запускать cleanup только при подтверждённом ZIP либо явном DELETE.
+5. Не считать HTTP ZIP ответ доказательством сохранённого файла: требуется явное подтверждение пользователем. Retention: UTC +2 **календарных** месяца; предупреждение за 7 дней; очередная обработка сбрасывает подтверждение.
+6. Hard Link допускается только при совпадении файловой системы/правах и неизменности исходника. Если нет — безопасная копия/ошибка. Нельзя перезаписывать оригинал или существующий результат, массово менять старые outputs. Hardlink — не бэкап.
+7. Не ломать текущую auth/session/HTTPS, resumable PUT/PATCH/checksum, ZIP stream или кэш **только Образцов**. Любая новая API ручка должна использовать текущую middleware auth и Origin.
+8. Один модуль — одна ответственность. HTTP API / service / DB / storage / Worker разделять; переносить логику без двух параллельных реализаций. Не создавать пустые файлы ради структуры.
+9. Никогда не менять `install.sh` так, чтобы он регенерировал действующие секреты. Не добавлять пароли/домены/ключи/фотографии в Git.
+10. После каждого изменения обновлять `README.md`, `AGENTS.md`, `PROJECT_MAP.md`, `FILE_INDEX.md` и релевантные `docs/`; запускать compile/tests/CI, сообщать непроверенные пункты и ошибки.
+11. Изменения базы, реального хранения и фоновой очистки — особенно опасны. **Не деплоить stage1 код на рабочий VPS** до backup/restore испытаний и отдельного подтверждения владельца.
+12. Не переходить к этапу 2 по собственной инициативе. Этап 1 завершать только после фактической проверки контрактов, а не визуальных заглушек.
