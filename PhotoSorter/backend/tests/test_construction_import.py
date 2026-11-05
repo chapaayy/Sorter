@@ -10,6 +10,7 @@ from app.photos.construction import parse_folder_name, parse_key
 from server.database import connect
 from server.services import construction_catalog, references
 from .test_stage2_platform import thumbs, _jpg
+from .test_stage1_lifecycle import sandbox, db
 
 
 @pytest.mark.parametrize("name,key,address",[
