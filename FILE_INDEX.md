@@ -45,7 +45,7 @@
 | `server/api/routes/downloads.py` | streaming ZIP + lease; main |
 | `server/api/routes/logs.py` | прежние run JSONL events; main |
 | `server/api/routes/storage.py` | mount usage API; main |
-| `server/api/routes/site.py` | старый index/static; main |
+| `server/api/routes/site.py` | единственный Vue SPA `/`, безопасные `/assets/*` и history fallback; main |
 | `server/services/batches.py` | batch list/create/rename/photos, до-run photo removal; batch route |
 | `server/services/operations.py` | persistent live IO lease for batch; uploads/ZIP/cleanup |
 | `server/services/retention.py` | confirmation/extend/status/due UTC; batch route/cleanup |
@@ -57,7 +57,6 @@
 | `PhotoSorter/backend/tests/test_grouping.py` | MegaLoc grouping baseline (math unchanged); pytest |
 | `PhotoSorter/backend/tests/test_progress_ring.py` | progress/ETA regression; pytest |
 | `PhotoSorter/backend/tests/test_stage1_lifecycle.py` | schema, hardlink, delete, lease, ZIP/retention; pytest |
-| `PhotoSorter/frontend/static/{index.html,app.js,style.css}` | **текущий**, пока не заменённый frontend; FastAPI site |
 | `PhotoSorter/docs/DEPLOYMENT.md` | legacy operator note, переадресация к root docs |
 | `docs/ARCHITECTURE.md` | компоненты/границы/ограничения |
 | `docs/DATA_LIFECYCLE.md` | ownership/state machines/retention |
@@ -114,7 +113,7 @@
 
 | Модуль | Ответственность |
 |---|---|
-| `frontend/{package.json,package-lock.json,vite.config.ts,tsconfig.json,index.html}` | точные зависимости, Vite `/v3/`, строгая сборка |
+| `frontend/{package.json,package-lock.json,vite.config.ts,tsconfig.json,index.html}` | точные зависимости, Vite `/`, строгая сборка |
 | `frontend/src/main.ts` | bootstrap Vue 3, Pinia, router |
 | `frontend/src/app/{App.vue,router.ts}` | auth gate, маршруты всех 6 разделов |
 | `frontend/src/api/{client,batches,references,runs,results,logs,system}.ts` | cookie-safe typed API и пагинация; единственный network boundary |
@@ -137,7 +136,7 @@
 | `frontend/e2e/*.spec.ts`, `frontend/playwright.config.ts` | browser smoke journey: Chromium / WebKit / mobile |
 | `backend/server/services/references.py` | owner-safe SAM rename/delete/cache query; no photo inference |
 | `backend/server/api/routes/references.py` | SAM HTTP endpoints |
-| `backend/server/api/routes/site.py` | legacy / + isolated /v3/ |
+| `backend/server/api/routes/site.py` | single Vue `/` + `/assets/*`, retired paths 404 |
 | `backend/server/services/batches.py` | aggregated counters for list rows |
 | `backend/server/api/routes/logs.py` / `app/logging/events.py` | log tail pagination |
 | `backend/server/api/routes/system.py` | owner-safe manual orphaned thumbnail cleanup |

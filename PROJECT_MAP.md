@@ -1,7 +1,7 @@
 # PROJECT_MAP.md — архитектурная карта
 
 ```text
-Browser (legacy / and opt-in Vue /v3/)
+Browser (single Vue SPA / and /fo, /references, /processing, ...)
     | HTTPS/Caddy
     v
 FastAPI server/main.py (lifespan, session+Origin middleware)
@@ -15,7 +15,7 @@ FastAPI server/main.py (lifespan, session+Origin middleware)
     |-- api/routes/downloads.py     => zipstream + operations lease
     |-- api/routes/logs.py          => events.jsonl
     |-- api/routes/storage.py       => services/storage_usage.py
-    |-- api/routes/site.py          => old frontend/static/*
+    |-- api/routes/site.py          => Vue index /, hashed /assets/*, SPA history fallback
     |
 PostgreSQL (server/database.py + db/migration_runner.py + migrations/)
     |-- batches,uploads,jobs,users,sessions,reference_cache (legacy retained)
@@ -97,7 +97,7 @@ PhotoSorter/frontend/
   dist/ (generated)      -> static assets, not tracked
 ```
 
-`server/api/routes/site.py` раздельно выдаёт `/` (legacy) и `/v3/` (Vue SPA history fallback), `/v3/assets` только внутри `frontend/dist/assets`. Python Dockerfile использует multi-stage Node 24 build; runtime без Node. `server/services/references.py` + `api/routes/references.py` обеспечивают явные управляемые rename/delete/cache SAM. `system/cache/cleanup` очищает только orphaned previews.
+`server/api/routes/site.py` отдаёт единственный Vue SPA на `/`, `/assets/*` и известные history routes. Legacy HTML/JS/CSS удалён, `/v3/` и `/static/*` недоступны. Python Dockerfile использует multi-stage Node 24 build; runtime без Node. `server/services/references.py` + `api/routes/references.py` обеспечивают явные управляемые rename/delete/cache SAM. `system/cache/cleanup` очищает только orphaned previews.
 
 ## Stage 4 — validation, workers, recovery
 
