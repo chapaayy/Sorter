@@ -144,3 +144,5 @@
 | `backend/tests/test_stage3_ui_api.py` | SAM deletion/rename + SPA path isolation test |
 | `docker/app/Dockerfile` | Node24 build stage, Python runtime |
 | `.github/workflows/stage3-vue.yml` | npm ci + vue-tsc/Vite + Vitest + Playwright |
+
+| `frontend/src/components/gallery/VirtualThumbnailGrid.vue` | Intersection/viewport-based virtual row window, rendering only visible FO/SAM/results cards (keeps full index for viewer) |

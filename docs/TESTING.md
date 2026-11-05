@@ -57,3 +57,12 @@ npm run test:e2e
 `backend/tests/test_stage3_ui_api.py` на временных директориях и тестовой PostgreSQL проверяет rename/delete SAM, запрет во время queued обработки, защиту от traversal и раздельность legacy `/` и Vue `/v3/`.
 
 Не подтверждено: реальный iPhone Safari, реальные 189/1315 изображений, полноценный Docker build с CPU PyTorch, реальная сеть/диск/время финиша ZIP, отказоустойчивость прерывания на нескольких API workers, production backup/restore. **Этап 4 — обязательная приёмка**; приложение пока opt-in и не стало основным UI.
+
+### Фактический CI после исправления браузерной маски
+
+На коммите `c0c1592b2f70db927498c9ffb9ca0f4f2770f453`:
+- [backend run 41969359100](https://github.com/chapaayy/Sorter/actions/runs/41969359100): **56 passed**, временная PostgreSQL 17 и старые regressions.
+- [Vue run 41969359113](https://github.com/chapaayy/Sorter/actions/runs/41969359113): `vue-tsc` strict, Vite production bundle, Vitest **9 passed**, Chromium desktop / WebKit desktop / mobile WebKit Playwright **13 passed + 2 skipped**. Пропуски относятся к тесту меню, применимому только к мобильному проекту.
+- Первый browser run выявил баг *тестового* page-route mock: glob `**/api/**` случайно перехватывал `/v3/src/api/client.ts` и отдавал 404. Исправлено на anchored regexp matching только root `/api/`; повторные тесты зелёные.
+
+Эта проверка **не** подтверждает реальные загрузки 6ГБ, работу на физическом iPhone, backup/restore или время инференса на производственном VPS.

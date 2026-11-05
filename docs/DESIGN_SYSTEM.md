@@ -16,3 +16,7 @@
 - Keyboard focus, aria-live notifications and aria-modal for confirmation; reduced motion @media.
 
 Browser functional tests выполняются на mock API в GitHub Actions. Визуальная QA на реальном Safari и реальных 1315 фото относится к отдельной приёмке, **не утверждается как выполненная автоматически**.
+
+## Виртуализация больших галерей
+
+`VirtualThumbnailGrid.vue` вычисляет количество колонок по ширине, выбирает видимые строки с запасом и рендерит внутри `ThumbnailGrid` только их. При мобильной ширине адаптирует колонны до двух, отслеживает scroll/resize и сохраняет реальный индекс при открытии full-size viewer. Курсовая подгрузка сохраняется отдельной composable `useCursor`, так что память UI не включает весь 1315+ dataset в одном API ответе. Нет скрытого скачивания полноразмерных файлов на каждую карточку.

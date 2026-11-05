@@ -100,3 +100,10 @@ npm run test:e2e
 Vite dev server на порту 5173, backend `/api` проксируется на localhost:8000. Статический Docker build использует отдельный `node:24-alpine` build stage; в Python/runtime Node не устанавливается. Архив ZIP через существующий streaming endpoint, отдельного server-side staging ZIP нет.
 
 **Важно:** установка сборки и переключение `/` на Vue — не входят в этот этап. Для реального VPS сначала провести этап 4: независимый стенд, SSL/cookies, backup/restore, 189/1315-FО регрессии, CPU A/B, browser/phone UX.
+
+### Проверенный CI третьего этапа
+
+На `c0c1592b2f70db927498c9ffb9ca0f4f2770f453` проверены backend 56/56, frontend Vitest 9/9, TypeScript/Vite production build и Playwright 13 passed / 2 intentionally skipped (mobile-only сценарий пропущен для desktop). Исходники MegaLoc `app/recognition/` не менялись, работающий VPS не задействован.
+
+- [GitHub Actions — backend](https://github.com/chapaayy/Sorter/actions/runs/41969359100)
+- [GitHub Actions — Vue/Chromium/WebKit](https://github.com/chapaayy/Sorter/actions/runs/41969359113)

@@ -23,3 +23,7 @@
 - Новый `manifest.rows.jsonl` создаётся **для новых запусков** параллельно прежним JSON/CSV; для старых результатов предусмотрен fallback. Никакие старые копии outputs/веса не мигрируются.
 
 Все миграции аддитивные, применяются по версии `schema_migrations`. Старт `thumbnail` и `cleanup` после backup/restore только на отдельном staging. Не запускать SQL вручную на боевом VPS.
+
+## Этап 3: Vue и API без новой схемы БД
+
+Stage 3 не добавляет таблицы или миграционные SQL. Он использует уже существующие Stage1/2 batches, uploads, jobs, thumbnail_tasks, reference_cache, run logs; дополнительные HTTP handlers для SAM, cursor-tail и cache cleanup находятся в сервисах/роутерах. Production-база не изменялась. Статический frontend build не должен перезаписывать `frontend/static/`, `data/` или `Models/`.
