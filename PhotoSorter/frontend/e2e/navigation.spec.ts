@@ -37,9 +37,15 @@ async function mock(page:Page){
     return route.fulfill({status:404,contentType:'application/json',body:JSON.stringify({detail:'Unexpected test API: '+p})})
   })
 }
-test.beforeEach(async({page})=>{await mock(page)})
+test.beforeEach(async({page})=>{
+  page.on('console',message=>console.log('BROWSER_CONSOLE',message.type(),message.text()))
+  page.on('pageerror',error=>console.log('BROWSER_PAGEERROR',error.message,error.stack))
+  page.on('requestfailed',request=>console.log('BROWSER_FAILED_REQUEST',request.url(),request.failure()?.errorText))
+  await mock(page)
+})
 test('six navigation sections and real data bindings',async({page})=>{
-  await page.goto('/v3/fo')
+  const firstResponse=await page.goto('/v3/fo')
+  console.log('BROWSER_DIAGNOSTIC',firstResponse?.status(),page.url(),(await page.locator('body').innerText()).slice(0,950))
   await expect(page.getByRole('heading',{name:'Фотоотчёты'})).toBeVisible()
   await expect(page.getByText('Выезд Самара 05.11').first()).toBeVisible()
   for(const [path,heading] of [['/v3/references','Образцы'],['/v3/processing','Обработка'],['/v3/results','Результаты'],['/v3/logs','Логи'],['/v3/settings','Настройки']] as const){
