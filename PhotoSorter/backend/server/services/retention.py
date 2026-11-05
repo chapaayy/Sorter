@@ -11,10 +11,12 @@ def confirm(batch_id,run_id):
     batch_id=uid(batch_id)
     with connect() as db:
         _require_active(db,batch_id)
-        job=db.execute("SELECT status FROM jobs WHERE batch_id=%s AND id=%s",
-                       (batch_id,run_id)).fetchone()
-        if not job or job["status"] not in ("completed","completed_with_errors"):
-            raise HTTPException(409,"Нет завершённого запуска этой партии")
+        latest=db.execute("""SELECT id,status FROM jobs WHERE batch_id=%s
+            ORDER BY created_at DESC,id DESC LIMIT 1""",(batch_id,)).fetchone()
+        if not latest or latest["id"]!=run_id:
+            raise HTTPException(409,"Подтвердите последний запуск этой партии")
+        if latest["status"] not in ("completed","completed_with_errors"):
+            raise HTTPException(409,"Последний запуск ещё не завершён")
         # Do not start a deletion timer for nonexistent/failed result archives.
         try: manifest=run_dir(run_id,DATA_DIR/"outputs")/"megaloc"/"manifest.json"
         except ValueError:raise HTTPException(422,"Неверный запуск")

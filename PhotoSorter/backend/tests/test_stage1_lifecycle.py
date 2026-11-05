@@ -352,3 +352,26 @@ def test_export_crash_does_not_publish_partial_result(sandbox,monkeypatch):
     assert not (paths.run_dir(run)/".megaloc.building").exists()
     assert source.read_bytes()==b"first"
     assert second.read_bytes()==b"second"
+
+def test_cannot_reconfirm_old_zip_after_a_newer_run(sandbox):
+    from server.services import retention,cleanup
+    from server.database import connect
+    from fastapi import HTTPException
+    own=_batch(sandbox)
+    old=_job(sandbox,own)
+    olddir=paths.run_dir(old)/"megaloc"
+    olddir.mkdir(parents=True)
+    (olddir/"manifest.json").write_text("[]",encoding="utf8")
+    retention.confirm(own,old)
+    new=_job(sandbox,own,"running")
+    with connect() as db:
+        db.execute("""UPDATE batches SET download_confirmed_at=NULL,
+           confirmed_run_id=NULL,delete_after_at=NULL WHERE id=%s""",(own,))
+    with pytest.raises(HTTPException) as err:
+        retention.confirm(own,old)
+    assert err.value.status_code==409
+    assert retention.status(own)["delete_after_at"] is None
+    cleanup.request(own)
+    with connect() as db:
+        db.execute("UPDATE jobs SET status='stopped' WHERE id=%s",(new,))
+    cleanup.cleanup_one(own)
