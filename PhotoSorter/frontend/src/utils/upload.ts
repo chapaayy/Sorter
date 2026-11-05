@@ -3,7 +3,7 @@ export interface UploadTarget{kind:'fo'|'reference';batchId?:string;sam?:string}
 export interface UploadResult{path:string;sha256?:string;already_finalized?:boolean}
 export interface UploadEntry{file:File;relative:string}
 export const ALLOWED=/\.(jpe?g|png|webp|bmp|tiff?)$/i
-const MAX_FILE=60*1024*1024
+export const MAX_IMAGE_UPLOAD_BYTES=60*1024*1024
 export const UPLOAD_CHUNK_BYTES=16*1024*1024
 function key(t:UploadTarget,entry:UploadEntry){
   return 'ps.up.v3.'+[t.kind,t.batchId||t.sam||'',entry.relative,entry.file.size,entry.file.lastModified].join(':')
@@ -56,7 +56,7 @@ async function resume(id:string,t:UploadTarget,e:UploadEntry,signal:AbortSignal,
 }
 export async function uploadOne(t:UploadTarget,e:UploadEntry,signal:AbortSignal,progress:(n:number)=>void):Promise<UploadResult>{
   if(!ALLOWED.test(e.file.name))throw new Error('Неподдерживаемое изображение: '+e.file.name)
-  if(e.file.size>MAX_FILE)throw new Error('Файл превышает лимит 60 МБ: '+e.file.name)
+  if(e.file.size>MAX_IMAGE_UPLOAD_BYTES)throw new Error('Файл превышает лимит 60 МБ: '+e.file.name)
   if(e.file.size===0)throw new Error('Пустой файл: '+e.file.name)
   const storage=key(t,e)
   const previous=saved(storage)
