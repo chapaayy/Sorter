@@ -8,7 +8,7 @@ const photo={id:pid,name:'screen_001.jpg',bytes:1024,created_at:'2026-11-05T06:0
 const output={index:0,assigned_sam:'SAM-0001',group_id:'G0001',score:.921,thumbnail_url:'/api/thumbnails/'+pid,image_url:'/api/images/'+rid+'/megaloc/0?kind=query'}
 function respond(route:any,data:unknown){return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)})}
 async function mock(page:Page){
-  await page.route('**/api/**',async route=>{
+  await page.route(/^https?:\/\/[^/]+\/api\//,async route=>{
     const url=new URL(route.request().url()),p=url.pathname,method=route.request().method()
     if(p==='/api/auth/me')return respond(route,{username:'admin'})
     if(p==='/api/auth/login')return respond(route,{username:'admin'})
@@ -37,17 +37,9 @@ async function mock(page:Page){
     return route.fulfill({status:404,contentType:'application/json',body:JSON.stringify({detail:'Unexpected test API: '+p})})
   })
 }
-test.beforeEach(async({page})=>{
-  page.on('console',message=>console.log('BROWSER_CONSOLE',message.type(),message.text()))
-  page.on('pageerror',error=>console.log('BROWSER_PAGEERROR',error.message,error.stack))
-  page.on('requestfailed',request=>console.log('BROWSER_FAILED_REQUEST',request.url(),request.failure()?.errorText))
-  await mock(page)
-})
+test.beforeEach(async({page})=>{await mock(page)})
 test('six navigation sections and real data bindings',async({page})=>{
-  const firstResponse=await page.goto('/v3/fo')
-  console.log('BROWSER_DIAGNOSTIC',firstResponse?.status(),page.url(),(await page.locator('body').innerText()).slice(0,950))
-  const source=await page.request.get('http://127.0.0.1:5173/v3/src/api/client.ts')
-  console.log('SOURCE_DIAGNOSTIC',source.status(),(await source.text()).slice(0,700))
+  await page.goto('/v3/fo')
   await expect(page.getByRole('heading',{name:'Фотоотчёты'})).toBeVisible()
   await expect(page.getByText('Выезд Самара 05.11').first()).toBeVisible()
   for(const [path,heading] of [['/v3/references','Образцы'],['/v3/processing','Обработка'],['/v3/results','Результаты'],['/v3/logs','Логи'],['/v3/settings','Настройки']] as const){
