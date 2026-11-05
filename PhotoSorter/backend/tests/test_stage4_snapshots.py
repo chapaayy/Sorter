@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import pytest
 
-MODULE=Path(__file__).resolve().parents[2]/"tools"/"stage4"/"snapshot.py"
+MODULE=Path(__file__).resolve().parents[2]/"tools"/"maintenance"/"snapshot.py"
 spec=importlib.util.spec_from_file_location("stage4_snapshot",MODULE)
 snapshot=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(snapshot)

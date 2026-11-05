@@ -6,7 +6,7 @@ import threading
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 import pytest
-MODULE=Path(__file__).resolve().parents[2]/"tools"/"stage4"/"staging_probe.py"
+MODULE=Path(__file__).resolve().parents[2]/"tools"/"maintenance"/"staging_probe.py"
 spec=importlib.util.spec_from_file_location("staging_probe",MODULE)
 probe=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)

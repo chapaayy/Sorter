@@ -18,19 +18,19 @@
 ```bash
 # ЗАПУСКАТЬ только на согласованном изолированном стенде и с его DATABASE_URL.
 # Строку подключения читайте из защищённого окружения/файла, не вставляйте пароль в shell history.
-python PhotoSorter/tools/stage4/snapshot.py capture \
+python PhotoSorter/tools/maintenance/snapshot.py capture \
   --root /path/to/staging-repo \
   --destination /external/offsite-mount/photosorter-snapshot-YYYYMMDD \
   --database-url "$DATABASE_URL" \
   --ack-writers-stopped
-python PhotoSorter/tools/stage4/snapshot.py verify \
+python PhotoSorter/tools/maintenance/snapshot.py verify \
   --archive /external/offsite-mount/photosorter-snapshot-YYYYMMDD
 
 # Для restore-test нужен отдельный существующий ПУСТОЙ PostgreSQL DB,
 # название sorter_restore_*, и НОВЫЙ каталог со специальной меткой родителя.
 mkdir -p /isolated-restore
 printf 'STAGING_ONLY\n' > /isolated-restore/.photosorter-staging-only
-python PhotoSorter/tools/stage4/snapshot.py restore-test \
+python PhotoSorter/tools/maintenance/snapshot.py restore-test \
   --archive /external/offsite-mount/photosorter-snapshot-YYYYMMDD \
   --destination /isolated-restore/project \
   --database-url "$DISPOSABLE_RESTORE_DATABASE_URL" \
@@ -42,12 +42,12 @@ python PhotoSorter/tools/stage4/snapshot.py restore-test \
 ## 3. Проверка модели, реальной производительности и UI
 
 ```bash
-python PhotoSorter/tools/stage4/compare_baseline.py \
+python PhotoSorter/tools/maintenance/compare_baseline.py \
   --baseline-manifest /verified/189/manifest.json \
   --candidate-manifest /staging/189/manifest.json \
   --baseline-zip /verified/189/results.zip \
   --candidate-zip /staging/189/results.zip
-python PhotoSorter/tools/stage4/staging_probe.py \
+python PhotoSorter/tools/maintenance/staging_probe.py \
   --url http://127.0.0.1:8000 --count 200 --concurrency 4 \
   --output /tmp/stage4-health-baseline.json
 ```

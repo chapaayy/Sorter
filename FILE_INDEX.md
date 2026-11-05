@@ -123,11 +123,11 @@
 | `frontend/tests/` | Vitest |
 | `frontend/e2e/navigation.spec.ts`, `playwright.config.ts` | Chromium/WebKit на десктопе и mobile |
 | `PhotoSorter/tools/benchmark_api.py` | API latency |
-| `PhotoSorter/tools/stage4/snapshot.py` | Согласованный backup, verify, disposable restore-test |
-| `PhotoSorter/tools/stage4/ci_restore_drill.py` | CI dump→restore на изолированной PostgreSQL |
-| `PhotoSorter/tools/stage4/compare_baseline.py` | Две реальных MegaLoc manifest/ZIP для сравнения |
-| `PhotoSorter/tools/stage4/staging_probe.py` | Read-only health, latency, resources |
-| `PhotoSorter/tools/stage4/smoke_container.sh` | Только одноразовый CI Docker runtime |
+| `PhotoSorter/tools/maintenance/snapshot.py` | Согласованный backup, verify, disposable restore-test |
+| `PhotoSorter/tools/maintenance/ci_restore_drill.py` | CI dump→restore на изолированной PostgreSQL |
+| `PhotoSorter/tools/maintenance/compare_baseline.py` | Две реальных MegaLoc manifest/ZIP для сравнения |
+| `PhotoSorter/tools/maintenance/staging_probe.py` | Read-only health, latency, resources |
+| `PhotoSorter/tools/maintenance/smoke_container.sh` | Только одноразовый CI Docker runtime |
 | `docs/` | Актуальные API, архитектура, backup, deployment, operations, security, acceptance и rollback |
 
-**Что не входит в актуальный код:** `frontend/static`, маршрут `/v3`, отдельные старые stage CI и второй JS/HTML-фронтенд. Исторические имена `test_stage*.py` и `tools/stage4/` обозначают регрессионное происхождение утилит, а не параллельные версии приложения.
+**Что не входит в актуальный код:** `frontend/static`, маршрут `/v3`, отдельные старые stage CI и второй JS/HTML-фронтенд. Исторические имена `test_stage*.py` остаются регрессионными тестами, а рабочие инструменты находятся в `tools/maintenance/` — параллельных версий приложения нет.

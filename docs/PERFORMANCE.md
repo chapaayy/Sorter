@@ -31,7 +31,7 @@
 
 ## Read-only probe и сравнение реальных результатов
 
-- `PhotoSorter/tools/stage4/staging_probe.py`: локальные GET /api/health, при отдельном cookie-файле (0600) GET /api/system/status и /api/storage/usage, p50/p95 latency, RPS/HTTP codes. Если указать `--docker-stats`, читается `docker stats --no-stream` (CPU%, memory, net/block IO), без SSH/запуска Worker. Удалённый staging хост требует `--allow-remote-staging`; **не запускать против production** без разрешения.
+- `PhotoSorter/tools/maintenance/staging_probe.py`: локальные GET /api/health, при отдельном cookie-файле (0600) GET /api/system/status и /api/storage/usage, p50/p95 latency, RPS/HTTP codes. Если указать `--docker-stats`, читается `docker stats --no-stream` (CPU%, memory, net/block IO), без SSH/запуска Worker. Удалённый staging хост требует `--allow-remote-staging`; **не запускать против production** без разрешения.
 - Инструмент `compare_baseline.py`: два сохранённых manifests, optional ZIP CRC, строгий diff порядка групп, SAM, top candidates, uncertainties, score. Имена одинаковых файлов в разных каталогах требуют явных `--golden-root/--actual-root`, чтобы не склеивать дубликаты.
 - Исторический ориентир ~314s / 1315 фото указан в исходном ТЗ и НЕ является stage4 benchmark. Новый 1315 synthetic ZIP test не измеряет MegaLoc.
 - Рабочий сценарий A/B: одинаковые golden weights+фото, три и более прогона в cpu 8 vs cpu7/cpuset, базовые и нагрузочные p95, upload/ZIP, RSS, disk, сравнение и сохранение JSON evidence. Инференс в CI без модели не производился.

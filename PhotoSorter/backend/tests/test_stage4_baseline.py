@@ -4,7 +4,7 @@ import importlib.util
 import json
 import zipfile
 from pathlib import Path
-MODULE=Path(__file__).resolve().parents[2]/"tools"/"stage4"/"compare_baseline.py"
+MODULE=Path(__file__).resolve().parents[2]/"tools"/"maintenance"/"compare_baseline.py"
 spec=importlib.util.spec_from_file_location("compare_baseline",MODULE)
 compare=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(compare)

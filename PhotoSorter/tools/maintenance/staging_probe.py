@@ -34,7 +34,7 @@ def normalize_url(url,allow_remote=False):
     return parsed.scheme+"://"+parsed.netloc
 
 def make_request(origin,path,*,cookie=None,timeout=7):
-    headers={"User-Agent":"PhotoSorter-stage4-readonly/1","Cache-Control":"no-store"}
+    headers={"User-Agent":"PhotoSorter-ops-readonly/1","Cache-Control":"no-store"}
     if cookie:headers["Cookie"]=cookie
     req=urllib.request.Request(origin+path,headers=headers,method="GET")
     start=time.perf_counter()

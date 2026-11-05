@@ -28,9 +28,9 @@ def main():
         conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(target_name)))
     try:
         with psycopg.connect(source) as conn:
-            conn.execute("CREATE TABLE IF NOT EXISTS stage4_restore_marker (key text PRIMARY KEY, digest text NOT NULL)")
-            conn.execute("INSERT INTO stage4_restore_marker(key,digest) VALUES (%s,%s)",(token,signature))
-        with tempfile.TemporaryDirectory(prefix="photosorter-ci-stage4-") as scratch:
+            conn.execute("CREATE TABLE IF NOT EXISTS ci_restore_marker (key text PRIMARY KEY, digest text NOT NULL)")
+            conn.execute("INSERT INTO ci_restore_marker(key,digest) VALUES (%s,%s)",(token,signature))
+        with tempfile.TemporaryDirectory(prefix="photosorter-ci-restore-") as scratch:
             temp=Path(scratch)
             root=temp/"original"
             a=root/"PhotoSorter"/"data"/"uploads"/"fake-batch"
@@ -39,7 +39,7 @@ def main():
             (root/"Models"/"models"/"megaloc").mkdir(parents=True)
             (root/"Models"/"cache"/"torch"/"hub").mkdir(parents=True)
             (root/".env.generated").write_text("POSTGRES_PASSWORD=test_only_no_real_data\nADMIN_PASSWORD=test_only_no_real_data\n")
-            (root/".env").write_text("DOMAIN=stage4.example.test\n")
+            (root/".env").write_text("DOMAIN=ci.example.test\n")
             (root/"compose.yaml").write_text("name: staging-only\n")
             original=a/"fo.jpg"
             original.write_bytes(data)
@@ -55,9 +55,9 @@ def main():
             assert result_a.read_bytes()==data and result_b.read_bytes()==data
             assert result_a.stat().st_ino==result_b.stat().st_ino
             with psycopg.connect(target) as conn:
-                row=conn.execute("SELECT digest FROM stage4_restore_marker WHERE key=%s",(token,)).fetchone()
+                row=conn.execute("SELECT digest FROM ci_restore_marker WHERE key=%s",(token,)).fetchone()
                 assert row and row[0]==signature
-            print("STAGE4_DISPOSABLE_RESTORE_OK",target_name,result["files"],signature)
+            print("DISPOSABLE_RESTORE_OK",target_name,result["files"],signature)
     finally:
         with psycopg.connect(admin,autocommit=True) as conn:
             conn.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(target_name)))

@@ -18,7 +18,7 @@ Vue UI — клиент существующих серверных состоя
 
 ## Утилита snapshot и границы CI
 
-`PhotoSorter/tools/stage4/snapshot.py`: команды `capture`/`verify`/`restore-test`. Перед backup **оператор выключает всех writers**, после чего явно передаёт `--ack-writers-stopped`. Snapshot включает `PhotoSorter/data`, `Models/models`, `Models/cache`, конфигурацию/секреты, `pg_dump` custom format. SHA-256 каждой записи и всего tar/dump; повторные inode оформляются tar Hard Link. Архив создаётся в другом каталоге, владеет 0700, ни один исходный файл не меняется.
+`PhotoSorter/tools/maintenance/snapshot.py`: команды `capture`/`verify`/`restore-test`. Перед backup **оператор выключает всех writers**, после чего явно передаёт `--ack-writers-stopped`. Snapshot включает `PhotoSorter/data`, `Models/models`, `Models/cache`, конфигурацию/секреты, `pg_dump` custom format. SHA-256 каждой записи и всего tar/dump; повторные inode оформляются tar Hard Link. Архив создаётся в другом каталоге, владеет 0700, ни один исходный файл не меняется.
 
 Restore требует `--confirm-staging`, **новый каталог** и marker `.photosorter-staging-only` со значением `STAGING_ONLY` в его родителе. БД должна существовать, быть пустой и называться `sorter_restore_*`; при некорректном/подменённом tar никакой распаковки до `verify()`.
 

@@ -39,8 +39,8 @@ npm run test:e2e
 - Длительную работу на пользовательской файловой системе/volume, реальный CPU/RAM/disk под нагрузкой.
 
 Скрипты для ручной проверки:
-- `PhotoSorter/tools/stage4/compare_baseline.py` — сравнение предоставленных manifest/ZIP.
-- `PhotoSorter/tools/stage4/staging_probe.py` — только GET; p50/p95 API и resource/worker stats.
-- `PhotoSorter/tools/stage4/snapshot.py` — согласованный backup/verify/isolated restore-test.
+- `PhotoSorter/tools/maintenance/compare_baseline.py` — сравнение предоставленных manifest/ZIP.
+- `PhotoSorter/tools/maintenance/staging_probe.py` — только GET; p50/p95 API и resource/worker stats.
+- `PhotoSorter/tools/maintenance/snapshot.py` — согласованный backup/verify/isolated restore-test.
 
 Выполнение операций на пользовательском VPS возможно лишь с отдельно сохранённой копией и пониманием влияния на данные. См. [ACCEPTANCE](ACCEPTANCE.md), [BACKUP_RESTORE](BACKUP_RESTORE.md), [ROLLOUT](ROLLOUT.md).

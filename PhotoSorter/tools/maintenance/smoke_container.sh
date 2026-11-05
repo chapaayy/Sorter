@@ -63,7 +63,7 @@ if [[ "$ready" -ne 1 ]]; then
 fi
 created="$(curl -kfsS --max-time 8 -b "$cookie_file" \
   -H 'Content-Type: application/json' -H 'Origin: https://localhost' \
-  --data '{"display_name":"STAGE4_CI_SYNTHETIC_ONLY"}' \
+  --data '{"display_name":"PHOTOSORTER_CI_SYNTHETIC_ONLY"}' \
   https://localhost/api/batches)"
 id="$(printf '%s' "$created" | python3 -c 'import json,sys;print(json.load(sys.stdin)["batch_id"])')"
 curl -kfsS --max-time 8 -b "$cookie_file" "https://localhost/api/batches/$id" >/dev/null

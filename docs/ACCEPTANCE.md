@@ -22,10 +22,10 @@
 ## Доказательства CI, которые есть в репозитории
 
 - `.github/workflows/ci.yml`: PostgreSQL17/Python, Bash syntax, Compose config, Caddy config validation, Pytest; отдельная disposable PG dump→restore, checksum и link inode; Vue typecheck, unit, Chromium/WebKit desktop и mobile UI.
-- `PhotoSorter/tools/stage4/compare_baseline.py`: строгая проверка двух предоставленных manifests и двух ZIP. Не создаёт фиктивные 189-ФО результаты.
-- `PhotoSorter/tools/stage4/staging_probe.py`: только HTTP GET, замер p50/p95, rps, API/worker/disk, опционально read-only Docker stats. Удалённые хосты требуют явного opt-in.
+- `PhotoSorter/tools/maintenance/compare_baseline.py`: строгая проверка двух предоставленных manifests и двух ZIP. Не создаёт фиктивные 189-ФО результаты.
+- `PhotoSorter/tools/maintenance/staging_probe.py`: только HTTP GET, замер p50/p95, rps, API/worker/disk, опционально read-only Docker stats. Удалённые хосты требуют явного opt-in.
 - `PhotoSorter/backend/tests/test_stage4_load.py`: 1315 маленьких синтетических ссылок, открытие результата по страницам, zipstream-ng, checksum, однопартийная очистка.
-- `PhotoSorter/tools/stage4/snapshot.py`: snapshot/verify/restore-test с fail-closed ограничениями (только пустой staging DB с именем sorter_restore_*, отдельный каталог с STAGING_ONLY).
+- `PhotoSorter/tools/maintenance/snapshot.py`: snapshot/verify/restore-test с fail-closed ограничениями (только пустой staging DB с именем sorter_restore_*, отдельный каталог с STAGING_ONLY).
 
 ## Приёмочные показатели
 
