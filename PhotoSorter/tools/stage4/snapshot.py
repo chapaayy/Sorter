@@ -2,7 +2,7 @@
 
 No Docker stop/start, schema migration, live deployment or destructive cleanup here.
 Requires PostgreSQL pg_dump/pg_restore/psql clients matching the DB major version.
-This archive is sensitive: it includes .env.generated and originals. Store offsite.
+This archive is sensitive: .env.generated, originals and model caches. Encrypt offsite.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path,PurePosixPath
 from urllib.parse import urlsplit,unquote
 
-INCLUDED_DIRS=("PhotoSorter/data","Models/models")
+INCLUDED_DIRS=("PhotoSorter/data","Models/models","Models/cache")
 INCLUDED_FILES=(".env",".env.generated","compose.yaml","PhotoSorter/docker/caddy/Caddyfile")
 SCHEMA_VERSION=1
 BLOCK=1024*1024

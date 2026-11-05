@@ -22,6 +22,7 @@ def project(tmp_path,monkeypatch):
     (root/"PhotoSorter"/"data"/"references"/"SAM-0001").mkdir(parents=True)
     (root/"PhotoSorter"/"data"/"uploads"/"test-batch").mkdir(parents=True)
     (root/"Models"/"models"/"megaloc").mkdir(parents=True)
+    (root/"Models"/"cache"/"torch"/"hub").mkdir(parents=True)
     (root/".env.generated").write_text("ADMIN_PASSWORD=synthetic\nPOSTGRES_PASSWORD=synthetic\n")
     (root/".env").write_text("DOMAIN=staging.invalid\n")
     (root/"compose.yaml").write_text("name: synthetic\n")

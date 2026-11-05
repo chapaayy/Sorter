@@ -37,6 +37,7 @@ def main():
             b=root/"PhotoSorter"/"data"/"references"/"SAM-0001"
             a.mkdir(parents=True);b.mkdir(parents=True)
             (root/"Models"/"models"/"megaloc").mkdir(parents=True)
+            (root/"Models"/"cache"/"torch"/"hub").mkdir(parents=True)
             (root/".env.generated").write_text("POSTGRES_PASSWORD=test_only_no_real_data\nADMIN_PASSWORD=test_only_no_real_data\n")
             (root/".env").write_text("DOMAIN=stage4.example.test\n")
             (root/"compose.yaml").write_text("name: staging-only\n")
