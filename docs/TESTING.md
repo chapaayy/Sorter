@@ -28,3 +28,11 @@ CI `.github/workflows/ci.yml` поднимает **временный Postgres 1
 ## CI baseline (этап 1)
 
 GitHub Actions runs `41949026787` и `41949033874`: **33 passed**, Python compile и `docker compose config --quiet` successful (commit `cd6a4cf1`). Дополнительно проверяются удаление чужих файлов/symlink escape, структура миграций и конца календарного месяца. Количество тестов в CI может увеличиваться после следующих исправлений; итоговый отчёт должен ссылаться на конкретный SHA. Настоящий `docker compose up` и model inference с большими фотографиями на VPS не выполнялись.
+
+## Stage 2 CI tests и пределы доказательств
+
+`PhotoSorter/backend/tests/test_stage2_platform.py` проверяет финализацию→thumbnail queue, WebP EXIF и 480px, повтор stale-task, checksum cache reuse между партиями, GC после исчезновения всех владельцев, ошибки preview, 1001 синтетическую gallery metadata запись, FIFO/stop/single-running, JSONL rotation/cursor, reserve 507.
+
+`PhotoSorter/backend/tests/test_stage2_transfers.py` проверяет прямой PUT, PATCH offset/resume, mismatch SHA, cancel только pending, ZIP disconnect и release IO lease, original viewer read lease. Все файлы в `tmp_path`, PostgreSQL 17 только disposable CI service. Дополнительно выполняются все регрессии этапа 1 + MegaLoc math (без изменения алгоритмов).
+
+Ручные проверки **не выполнялись**: real 189/1315 photo files, полный Docker build с PyTorch, настоящие 8-vCPU VPS нагрузочные A/B, сеть 350–400 Мбит/с, Safari UI (этап 3), full backup/restore. Замеры будут честно получены только после разрешения. Порядок A/B — в [PERFORMANCE](PERFORMANCE.md).

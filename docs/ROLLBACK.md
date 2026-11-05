@@ -7,3 +7,10 @@
 **Не делать `DROP TABLE` или `DROP COLUMN` автоматически.** Stage1 миграция аддитивна; откат SQL с удалением данных запрещён без анализа и снимка. Для отмены опасной auto-retention прежде всего остановить именно `cleanup` контейнер в staging, не удаляя файлы/DB.
 
 После разницы форматов при смене кода не продолжать необратимые file/delete операции; восстановление до консистентного состояния — только из протестированного backup. `docker compose down -v` запрещён.
+
+## Откат stage2 отдельно от stage1
+
+1. На **тестовом** стенде прекратить новые uploads и queued jobs, остановить `thumbnail`, `cleanup`, `worker`, дождаться окончания ZIP и сделать согласованный backup PG+data.
+2. Вернуть код на коммит stage1 `9eb865d321a67890e414da4d17643ce1d046f51b` (или staging deployment tag) без удаления `Models/`, `PhotoSorter/data/` или PostgreSQL/Caddy Docker volumes.
+3. Аддитивные `thumbnail_tasks`, `uploads.updated_at`, новые индексы, jobs timestamps безопасно **оставить в PostgreSQL**, не выполнять DROP. Старый код игнорирует новые колонки; очередь будущих queued jobs нужно учесть перед откатом, не запускать параллельный model worker.
+4. Проверить старые auth/resumable uploads, manifest/ZIP, чтение output, отсутствие cleanup while rollback. Все реальные данные/снимки — только с отдельным разрешением владельца.
