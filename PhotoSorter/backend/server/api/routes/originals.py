@@ -1,6 +1,6 @@
 """Authenticated original image viewer by UUID, with batch read leases."""
 from __future__ import annotations
-import mimetypes,time,uuid
+import asyncio,mimetypes,time,uuid
 from pathlib import Path
 from fastapi import APIRouter,HTTPException
 from fastapi.responses import StreamingResponse
@@ -33,17 +33,17 @@ def original(photo_id:str):
             raise HTTPException(404,"Фотография не найдена")
         size=path.stat().st_size
         content_type=mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        def stream():
+        async def stream():
             last=time.monotonic()
             try:
                 with path.open("rb") as f:
-                    while chunk:=f.read(512*1024):
+                    while chunk:=await asyncio.to_thread(f.read,512*1024):
                         if token and time.monotonic()-last>=5:
-                            operations.heartbeat(token)
+                            await asyncio.to_thread(operations.heartbeat,token)
                             last=time.monotonic()
                         yield chunk
             finally:
-                if token:operations.finish(token)
+                if token:await asyncio.to_thread(operations.finish,token)
         return StreamingResponse(stream(),media_type=content_type,
             headers={"Content-Length":str(size),"Cache-Control":"no-store"})
     except Exception:

@@ -1,5 +1,6 @@
 """Preserve zipstream-ng output; lease prevents deleting files mid-stream."""
 from __future__ import annotations
+import asyncio
 import time
 import zipfile
 from pathlib import Path
@@ -32,16 +33,19 @@ def download_results(run_id:str,sam:str|None=None):
     except Exception:
         operations.finish(lease)
         raise
-    def body():
+    async def body():
         last=time.monotonic()
+        iterator=iter(stream)
         try:
-            for chunk in stream:
+            while True:
+                chunk=await asyncio.to_thread(next,iterator,None)
+                if chunk is None:break
                 if time.monotonic()-last>=5:
-                    operations.heartbeat(lease)
+                    await asyncio.to_thread(operations.heartbeat,lease)
                     last=time.monotonic()
                 yield chunk
         finally:
-            operations.finish(lease)
+            await asyncio.to_thread(operations.finish,lease)
     headers={"Content-Disposition":f'attachment; filename="photosorter-{run_id}.zip"',
              "Cache-Control":"no-store"}
     return StreamingResponse(body(),media_type="application/zip",headers=headers)
