@@ -38,5 +38,5 @@ jobs:
         run: docker compose config --quiet
       - name: Compile Python
         run: python -m compileall -q PhotoSorter/backend
-      - name: MegaLoc math and stage 1 contract tests
+      - name: MegaLoc math and stage 1+2 contract tests
         run: python -m pytest -q PhotoSorter/backend/tests
