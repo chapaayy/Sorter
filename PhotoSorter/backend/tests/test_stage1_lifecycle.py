@@ -113,7 +113,8 @@ def test_additive_migration_legacy_rows_survive(db):
             migrate(conn)
             assert conn.execute("SELECT display_name FROM batches WHERE id=%s",(old,)).fetchone()[0].startswith("ФО ")
             migrate(conn)
-            assert conn.execute("SELECT count(*) FROM schema_migrations").fetchone()[0]==1
+            assert {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}=={
+                "0001_batch_lifecycle.sql","0002_batch_upload_state.sql"}
             assert conn.execute("SELECT id FROM batches WHERE id=%s",(old,)).fetchone()[0]==old
         finally:
             conn.execute("RESET search_path")
