@@ -1,4 +1,4 @@
--- Stage 4: additive worker presence; no existing jobs or user data changed.
+-- Stage 4: additive worker presence, no existing jobs or user data changed.
 CREATE TABLE IF NOT EXISTS service_heartbeats (
   service TEXT PRIMARY KEY CHECK(service IN ('megaloc','thumbnail','cleanup')),
   instance_id UUID NOT NULL,
