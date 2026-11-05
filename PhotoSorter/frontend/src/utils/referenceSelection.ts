@@ -1,67 +1,87 @@
-/** Preview the entire directory selection BEFORE uploading any references.
- * Keep SAM parsing equivalent to app/photos/labels.py on the server.
+/** Strict, fully-audited selection for bulk construction reference imports.
+ * The server remains authoritative for city codes and existing addresses.
  */
 import {ALLOWED,MAX_IMAGE_UPLOAD_BYTES} from './upload'
 import type {UploadEntry} from './upload'
 
-export interface ReferenceUploadTask{sam:string;entry:UploadEntry}
+export interface ConstructionFolder{
+  folder:string
+  sam:string
+  cityCode:string
+  number:string
+  address:string
+  count:number
+}
+export interface ReferenceUploadTask{
+  sam:string
+  address:string
+  entry:UploadEntry
+}
+export interface ReferenceSelectionError{path:string;reason:string}
 export interface ReferenceSelection{
   tasks:ReferenceUploadTask[]
+  folders:ConstructionFolder[]
+  errors:ReferenceSelectionError[]
   scanned:number
-  unsupported:number
-  missingSam:number
-  empty:number
-  tooLarge:number
-  unrecognizedFolders:string[]
-  unsupportedExtensions:string[]
+  totalBytes:number
 }
 
-const SAM_NUMBER=/^SAM-\d{4}(?!\d)/i
-const SAM_SIDE=/^-([ABCDАБВГ]\d{0,2})(?=$|[-\s,;.(])/i
-const SAM_PANEL=/^-([PР]\d{1,2})(?=$|[-\s,;.(])/i
+const NAME=/^([A-Z]{2,5}) ([0-9]{1,8}) — (.+)$/
+const INVALID_ADDRESS=/[<>:"/\\|?*\x00-\x1f]/
 
-/** A valid folder such as "SAM-0004 Ленина" resolves to "SAM-0004".
- * Sides and panels remain part of the SAM identifier as in the backend.
- */
-export function samFromFolder(folder:string):string|null{
-  const base=SAM_NUMBER.exec(folder)
-  if(!base)return null
-  let tail=folder.slice(base[0].length)
-  if(tail&&!/^[- ,;\t\r\n(]/.test(tail))return null
-  let result=base[0].toUpperCase()
-  const side=SAM_SIDE.exec(tail)
-  if(side){result+='-'+side[1].toUpperCase();tail=tail.slice(side[0].length)}
-  const panel=SAM_PANEL.exec(tail)
-  if(panel)result+='-'+panel[1].toUpperCase()
-  return result
+export function parseConstructionFolder(name:string):ConstructionFolder|null{
+  const match=NAME.exec(name)
+  if(!match)return null
+  const [,cityCode,number,address]=match
+  if(!cityCode||!number||!address||name.length>200||address.length>120||
+     address!==address.trim()||address.endsWith('.')||address.includes('  ')||
+     INVALID_ADDRESS.test(address))return null
+  return {folder:name,sam:cityCode+' '+number,cityCode,number,address,count:0}
 }
 
 export function inspectReferenceDirectory(files:Iterable<File>):ReferenceSelection{
-  const tasks:ReferenceUploadTask[]=[]
-  const unknown=new Set<string>(),extensions=new Set<string>()
-  let scanned=0,unsupported=0,missingSam=0,empty=0,tooLarge=0
+  const tasks:ReferenceUploadTask[]=[],errors:ReferenceSelectionError[]=[]
+  const folders=new Map<string,ConstructionFolder>()
+  let scanned=0,totalBytes=0
   for(const file of files){
     scanned++
     const relative=file.webkitRelativePath||file.name
-    const segments=relative.replace(/\\/g,'/').split('/').filter(Boolean)
-    // Only a directory may identify a SAM; a filename containing SAM-xxxx does not.
-    const folders=segments.slice(0,-1)
-    let sam:string|null=null
-    for(const folder of folders){sam=samFromFolder(folder);if(sam)break}
-    if(!sam){
-      missingSam++
-      if(unknown.size<12)unknown.add(folders.join('/')||'(без папки)')
+    const parts=relative.replace(/\\/g,'/').split('/')
+    // The root may be either a named library or a single construction folder.
+    // No silently ignored nested folders or loose files.
+    const folderName=parts.length===3?parts[1]:parts.length===2?parts[0]:null
+    if(!folderName||parts.some(part=>!part||part==='.'||part==='..')){
+      errors.push({path:relative,reason:'Нужна папка конструкции непосредственно внутри выбранной библиотеки'})
+      continue
+    }
+    const construction=parseConstructionFolder(folderName)
+    if(!construction){
+      errors.push({path:relative,reason:'Неправильное имя папки. Пример: SAM 0004 — Гагарина 64'})
+      continue
+    }
+    const existing=folders.get(construction.sam)
+    if(existing&&existing.address!==construction.address){
+      errors.push({path:relative,reason:'Один номер конструкции указан с разными адресами'})
       continue
     }
     if(!ALLOWED.test(file.name)){
-      unsupported++
-      if(extensions.size<12)extensions.add(file.name.includes('.')?file.name.slice(file.name.lastIndexOf('.')).toLowerCase():'(без расширения)')
+      errors.push({path:relative,reason:'Неподдерживаемый тип файла'})
       continue
     }
-    if(file.size===0){empty++;continue}
-    if(file.size>MAX_IMAGE_UPLOAD_BYTES){tooLarge++;continue}
-    tasks.push({sam,entry:{file,relative}})
+    if(file.size===0){
+      errors.push({path:relative,reason:'Пустой файл'})
+      continue
+    }
+    if(file.size>MAX_IMAGE_UPLOAD_BYTES){
+      errors.push({path:relative,reason:'Размер превышает 60 МБ'})
+      continue
+    }
+    const group=existing||construction
+    group.count++
+    folders.set(group.sam,group)
+    totalBytes+=file.size
+    tasks.push({sam:construction.sam,address:construction.address,
+      entry:{file,relative}})
   }
-  return {tasks,scanned,unsupported,missingSam,empty,tooLarge,
-    unrecognizedFolders:[...unknown],unsupportedExtensions:[...extensions]}
+  return {tasks,folders:[...folders.values()],errors,scanned,totalBytes}
 }
