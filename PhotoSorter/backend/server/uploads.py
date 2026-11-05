@@ -366,12 +366,15 @@ def remove_reference(reference_id:str):
         db.execute('SELECT pg_advisory_xact_lock(723409133)')
         if db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
             raise HTTPException(409,'Нельзя удалять Образцы во время сортировки')
-        row=db.execute("SELECT target_path FROM uploads WHERE id=%s AND kind='reference' AND finalized FOR UPDATE",
+        row=db.execute("SELECT target_path,sam FROM uploads WHERE id=%s AND kind='reference' AND finalized FOR UPDATE",
                        (uid,)).fetchone()
         if row is None:raise HTTPException(404,'Образец не найден')
         file=Path(row['target_path']).resolve()
         if not file.is_relative_to(REFERENCES_DIR.resolve()):raise HTTPException(409,'Неверный путь Образца')
         db.execute('DELETE FROM uploads WHERE id=%s',(uid,))
+        if not db.execute("SELECT 1 FROM uploads WHERE kind='reference' AND sam=%s LIMIT 1",
+                          (row['sam'],)).fetchone():
+            db.execute("DELETE FROM reference_constructions WHERE sam=%s",(row['sam'],))
     # An identical image may be represented by multiple records: keep it if still referenced.
     with connect() as db:
         referenced=db.execute('SELECT 1 FROM uploads WHERE target_path=%s LIMIT 1',(str(file),)).fetchone()
