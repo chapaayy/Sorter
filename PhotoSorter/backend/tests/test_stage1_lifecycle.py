@@ -304,3 +304,51 @@ def test_hardlink_collision_does_not_unlink_original_result(tmp_path):
         link_or_copy(src,destination)
     assert destination.read_bytes()==b"important historical output"
     assert src.read_bytes()==b"new content"
+
+def test_result_export_atomic_hardlink_and_manifest_contract(sandbox):
+    from app.results import repository
+    run="20261105T120000-"+uuid.uuid4().hex[:12]
+    source=sandbox/"uploads"/"source.jpg"
+    source.write_bytes(b"exact immutable pixels")
+    original=sha256(source)
+    stamp=(source.stat().st_size,source.stat().st_mtime_ns)
+    rows=[{"query":str(source),"top":[{"label":"SAM-0045","score":0.95,
+            "reference":"sample.jpg"}],"group_id":"G0001"}]
+    saved=repository.save_model({"id":run,"output":str(sandbox/"outputs")},
+            "megaloc",rows,query_stamps={str(source):stamp})
+    copy=Path(saved[0]["copy"])
+    assert copy.exists() and copy.stat().st_ino==source.stat().st_ino
+    assert sha256(source)==original
+    assert (copy.parents[1]/"manifest.json").is_file()
+    reloaded=repository.load_model(run,"megaloc")
+    assert reloaded[0]["assigned_sam"]=="SAM-0045"
+    assert reloaded[0]["score"]==0.95
+    assert reloaded[0]["copy"]==str(copy)
+    assert not (copy.parents[2]/".megaloc.building").exists()
+    with pytest.raises(FileExistsError):
+        repository.save_model({"id":run,"output":str(sandbox/"outputs")},
+            "megaloc",rows,query_stamps={str(source):stamp})
+    assert sha256(copy)==original
+
+def test_export_crash_does_not_publish_partial_result(sandbox,monkeypatch):
+    from app.results import repository
+    run="20261105T120000-"+uuid.uuid4().hex[:12]
+    source=sandbox/"uploads"/"first.jpg"
+    source.write_bytes(b"first")
+    second=sandbox/"uploads"/"second.jpg"
+    second.write_bytes(b"second")
+    old=repository.copy_photo
+    count={"n":0}
+    def fail_after_first(*args,**kwargs):
+        count["n"]+=1
+        if count["n"]==2:raise RuntimeError("simulated interrupted output")
+        return old(*args,**kwargs)
+    monkeypatch.setattr(repository,"copy_photo",fail_after_first)
+    rows=[{"query":str(source),"top":[]},{"query":str(second),"top":[]}]
+    with pytest.raises(RuntimeError):
+        repository.save_model({"id":run,"output":str(sandbox/"outputs")},
+                              "megaloc",rows)
+    assert not paths.run_dir(run).exists() or not (paths.run_dir(run)/"megaloc").exists()
+    assert not (paths.run_dir(run)/".megaloc.building").exists()
+    assert source.read_bytes()==b"first"
+    assert second.read_bytes()==b"second"

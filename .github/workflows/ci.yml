@@ -30,6 +30,12 @@ jobs:
           python-version: "3.11"
       - name: Install backend test dependencies
         run: pip install pytest numpy==1.26.4 Pillow==11.0.0 fastapi "pydantic>=2,<3" "psycopg[binary]>=3.2,<4" "zipstream-ng>=1.8,<2"
+      - name: Verify Compose syntax (no deployment)
+        env:
+          DOMAIN: stage-test.example.com
+          POSTGRES_PASSWORD: test_only_no_real_data
+          ADMIN_PASSWORD: test_only_no_real_data
+        run: docker compose config --quiet
       - name: Compile Python
         run: python -m compileall -q PhotoSorter/backend
       - name: MegaLoc math and stage 1 contract tests
