@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from PIL import Image, UnidentifiedImageError
 from .database import connect
+from .services import operations
 from app.config import DATA_DIR
 from app.photos.reader import EXTS
 from app.photos.labels import check_label
@@ -47,14 +48,6 @@ class BeginUpload(BaseModel):
     sha256:str|None=None
 
 
-@router.post('/batches')
-def begin_batch():
-    batch_id=uuid.uuid4()
-    with connect() as db:
-        db.execute('INSERT INTO batches(id) VALUES (%s)',(batch_id,))
-    return {'batch_id':str(batch_id)}
-
-
 def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
     if payload.kind not in ('fo','reference'):raise HTTPException(422,'Недопустимый тип загрузки')
     filename=safe_name(payload.filename)
@@ -72,10 +65,12 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
     with connect() as db:
         if payload.kind=='reference' and db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
             raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
-        if batch_id and db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',(batch_id,)).fetchone():
-            raise HTTPException(409,'Партия уже использовалась для сортировки')
-        if batch_id and not db.execute('SELECT 1 FROM batches WHERE id=%s',(batch_id,)).fetchone():
-            raise HTTPException(404,'Партия не найдена')
+        if batch_id:
+            batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR SHARE',(batch_id,)).fetchone()
+            if not batch:raise HTTPException(404,'Партия не найдена')
+            if batch['delete_state']!='active':raise HTTPException(409,'Партия удаляется')
+            if db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',(batch_id,)).fetchone():
+                raise HTTPException(409,'Партия уже использовалась для сортировки')
         db.execute('INSERT INTO uploads(id,kind,batch_id,sam,filename,declared_size,checksum) '
                    'VALUES (%s,%s,%s,%s,%s,%s,%s)',
                    (file_id,payload.kind,batch_id,sam,filename,payload.size,payload.sha256))
@@ -155,21 +150,29 @@ async def upload_chunk(upload_id: str, request: Request):
     # Serialize chunks of the same file, not uploads of different files.
     async with lock_for(upload_id):
         row = await asyncio.to_thread(get_upload, upload_id)
-        if row['finalized']:
-            raise HTTPException(409, 'Файл уже загружен')
-        path = PART_DIR / f'{row["id"]}.part'
-        if not await asyncio.to_thread(path.is_file):
-            raise HTTPException(409, 'Временный файл отсутствует')
-        confirmed = await asyncio.to_thread(
-            _append_chunk, path, offset, payload, row['declared_size'])
-        await asyncio.to_thread(_record_chunk, row['id'], confirmed)
-        return {'offset': confirmed}
+        token = await asyncio.to_thread(operations.start, row['batch_id'], 'upload') if row['batch_id'] else None
+        try:
+            if row['finalized']:
+                raise HTTPException(409, 'Файл уже загружен')
+            path = PART_DIR / f'{row["id"]}.part'
+            if not await asyncio.to_thread(path.is_file):
+                raise HTTPException(409, 'Временный файл отсутствует')
+            confirmed = await asyncio.to_thread(
+                _append_chunk, path, offset, payload, row['declared_size'])
+            await asyncio.to_thread(_record_chunk, row['id'], confirmed)
+            return {'offset': confirmed}
+        finally:
+            if token: await asyncio.to_thread(operations.finish, token)
 
 
 def _finalize_sync(upload_id: str):
     """Hash, verify and register an uploaded photo off the ASGI event loop."""
     row=get_upload(upload_id)
     with connect() as db:
+        if row['batch_id']:
+            batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR SHARE',(row['batch_id'],)).fetchone()
+            if not batch or batch['delete_state']!='active':
+                raise HTTPException(409,'Партия удаляется или удалена')
         if row['kind']=='reference' and db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
             raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
         if row['kind']=='fo' and db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',(row['batch_id'],)).fetchone():
@@ -208,6 +211,7 @@ def _finalize_sync(upload_id: str):
                 raise HTTPException(409,'Конфликт имён')
             path.unlink()
         else:path.replace(target)
+        if row['kind']=='fo': target.chmod(0o444)
         db.execute('UPDATE uploads SET finalized=true,received=declared_size,checksum=%s,target_path=%s '
                    'WHERE id=%s',(digest,str(target),row['id']))
     return {'path':str(target),'sha256':digest,'already_finalized':False}
@@ -216,7 +220,12 @@ def _finalize_sync(upload_id: str):
 @router.post('/uploads/{upload_id}/finish')
 async def finalize(upload_id: str):
     async with lock_for(upload_id):
-        return await asyncio.to_thread(_finalize_sync, upload_id)
+        row=await asyncio.to_thread(get_upload,upload_id)
+        token=await asyncio.to_thread(operations.start,row['batch_id'],'finalize') if row['batch_id'] else None
+        try:
+            return await asyncio.to_thread(_finalize_sync, upload_id)
+        finally:
+            if token:await asyncio.to_thread(operations.finish,token)
 
 
 
@@ -247,44 +256,45 @@ async def direct_upload(
     upload_id: str, request: Request, kind: str, filename: str,
     size: int, batch_id: str = '', sam: str = ''
 ):
-    """Single-request upload; retain the resumable PATCH route for interrupted files."""
-    try:
-        uuid.UUID(upload_id)
-    except ValueError:
-        raise HTTPException(404, 'Загрузка не найдена')
-    payload = BeginUpload(kind=kind, filename=filename, size=size,
-                          batch_id=batch_id or None, sam=sam or None)
+    """Single-request upload; keep the resumable PATCH fallback."""
+    try:uuid.UUID(upload_id)
+    except ValueError:raise HTTPException(404,'Загрузка не найдена')
+    payload=BeginUpload(kind=kind,filename=filename,size=size,
+                        batch_id=batch_id or None,sam=sam or None)
     async with lock_for(upload_id):
-        row = await asyncio.to_thread(_prepare_direct_upload, upload_id, payload)
-        if row['finalized']:
-            return {'already_finalized': True, 'path': row['target_path']}
-
-        path = PART_DIR / f"{row['id']}.part"
-        length = await asyncio.to_thread(path.stat)
-        if length.st_size:
-            raise HTTPException(409, 'Продолжите загрузку через PATCH')
-        offset = 0
-        buffered = bytearray()
-        # Batch disk writes (4 MiB) to reduce open/seek/write/thread handoffs.
-        # Keep bounded memory per active request, not the whole image.
-        write_batch_bytes = 4 * 1024 * 1024
-        async for data in request.stream():
-            if not data:
-                continue
-            if offset + len(buffered) + len(data) > size:
-                raise HTTPException(413, 'Превышен размер файла')
-            buffered.extend(data)
-            if len(buffered) >= write_batch_bytes:
-                offset = await asyncio.to_thread(
-                    _append_chunk, path, offset, bytes(buffered), size)
-                buffered.clear()
-        if buffered:
-            offset = await asyncio.to_thread(
-                _append_chunk, path, offset, bytes(buffered), size)
-        if offset != size:
-            raise HTTPException(409, 'Файл загружен не полностью')
-        # Keep SHA-256, Pillow verification and DB registration exactly as before.
-        return await asyncio.to_thread(_finalize_sync, upload_id)
+        row=await asyncio.to_thread(_prepare_direct_upload,upload_id,payload)
+        token=await asyncio.to_thread(operations.start,row['batch_id'],'upload') if row['batch_id'] else None
+        try:
+            if row['finalized']:
+                return {'already_finalized':True,'path':row['target_path']}
+            path=PART_DIR/f"{row['id']}.part"
+            length=await asyncio.to_thread(path.stat)
+            if length.st_size:
+                raise HTTPException(409,'Продолжите загрузку через PATCH')
+            offset=0
+            buffered=bytearray()
+            write_batch_bytes=4*1024*1024
+            last_heartbeat=asyncio.get_running_loop().time()
+            async for data in request.stream():
+                if not data:continue
+                if offset+len(buffered)+len(data)>size:
+                    raise HTTPException(413,'Превышен размер файла')
+                buffered.extend(data)
+                if len(buffered)>=write_batch_bytes:
+                    offset=await asyncio.to_thread(
+                        _append_chunk,path,offset,bytes(buffered),size)
+                    buffered.clear()
+                if token and asyncio.get_running_loop().time()-last_heartbeat>5:
+                    await asyncio.to_thread(operations.heartbeat,token)
+                    last_heartbeat=asyncio.get_running_loop().time()
+            if buffered:
+                offset=await asyncio.to_thread(
+                    _append_chunk,path,offset,bytes(buffered),size)
+            if offset!=size:
+                raise HTTPException(409,'Файл загружен не полностью')
+            return await asyncio.to_thread(_finalize_sync,upload_id)
+        finally:
+            if token:await asyncio.to_thread(operations.finish,token)
 
 
 @router.get('/references')
@@ -293,17 +303,6 @@ def references_status():
         rows=db.execute('SELECT sam, count(*) AS photos FROM uploads '
                         'WHERE kind=\'reference\' AND finalized GROUP BY sam ORDER BY sam').fetchall()
     return {'sam':rows,'total':sum(row['photos'] for row in rows)}
-
-
-@router.get('/batches/{batch_id}')
-def batch_status(batch_id:str):
-    try: uid=uuid.UUID(batch_id)
-    except ValueError:raise HTTPException(404,'Партия не найдена')
-    with connect() as db:
-        if not db.execute('SELECT 1 FROM batches WHERE id=%s',(uid,)).fetchone():
-            raise HTTPException(404,'Партия не найдена')
-        row=db.execute('SELECT count(*) AS total FROM uploads WHERE batch_id=%s AND finalized',(uid,)).fetchone()
-    return {'batch_id':str(uid),'photos':row['total']}
 
 
 @router.get('/references/files')

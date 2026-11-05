@@ -32,8 +32,9 @@ def enqueue(data:NewRun):
         db.execute('SELECT pg_advisory_xact_lock(723409133)')
         busy=db.execute("SELECT id FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone()
         if busy:raise HTTPException(409,'Уже выполняется другое задание')
-        batch=db.execute('SELECT id FROM batches WHERE id=%s',(data.batch_id,)).fetchone()
+        batch=db.execute('SELECT id,delete_state FROM batches WHERE id=%s FOR UPDATE',(data.batch_id,)).fetchone()
         if not batch:raise HTTPException(404,'Партия ФО не найдена')
+        if batch['delete_state']!='active':raise HTTPException(409,'Партия удаляется')
         count=db.execute('SELECT count(*) AS c FROM uploads WHERE kind=\'fo\' AND finalized AND batch_id=%s',
                          (data.batch_id,)).fetchone()['c']
         pending=db.execute('SELECT count(*) AS c FROM uploads WHERE kind=\'fo\' AND batch_id=%s AND NOT finalized',(data.batch_id,)).fetchone()['c']
@@ -46,6 +47,9 @@ def enqueue(data:NewRun):
               'output':str(DATA_DIR/'outputs'),'batch_id':str(data.batch_id),
               'selected_models':['megaloc'],'grouping_threshold':data.grouping_threshold,
               'models':{},'progress':{},'started_at':datetime.now(timezone.utc).isoformat()}
+        # A new run invalidates the previous whole-archive confirmation.
+        db.execute("""UPDATE batches SET download_confirmed_at=NULL,delete_after_at=NULL,
+            confirmed_run_id=NULL WHERE id=%s""",(data.batch_id,))
         db.execute('INSERT INTO jobs(id,batch_id,status,snapshot) VALUES (%s,%s,%s,%s)',
                    (run_id,data.batch_id,'queued',Jsonb(info)))
     return info

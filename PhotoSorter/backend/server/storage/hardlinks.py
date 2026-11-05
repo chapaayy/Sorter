@@ -24,17 +24,17 @@ def link_or_copy(source: Path, target: Path, *, expected_stamp=None, expected_ha
         raise ValueError("Photo checksum mismatch before export")
     method = "hardlink"
     try:
-        os.link(source, target, follow_symlinks=False)
-    except OSError as error:
-        if error.errno not in COPY_FALLBACK:
-            raise
-        method = "copy"
-        with source.open("rb") as src, target.open("xb") as dst:
-            shutil.copyfileobj(src, dst, 1024 * 1024)
-            dst.flush()
-            os.fsync(dst.fileno())
-        shutil.copystat(source, target)
-    try:
+        try:
+            os.link(source, target, follow_symlinks=False)
+        except OSError as error:
+            if error.errno not in COPY_FALLBACK:
+                raise
+            method = "copy"
+            with source.open("rb") as src, target.open("xb") as dst:
+                shutil.copyfileobj(src, dst, 1024 * 1024)
+                dst.flush()
+                os.fsync(dst.fileno())
+            shutil.copystat(source, target)
         after = source.stat()
         if (before.st_size, before.st_mtime_ns, before.st_ino, before.st_dev) != (
                 after.st_size, after.st_mtime_ns, after.st_ino, after.st_dev):
