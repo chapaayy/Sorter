@@ -98,3 +98,29 @@ PhotoSorter/frontend/
 ```
 
 `server/api/routes/site.py` раздельно выдаёт `/` (legacy) и `/v3/` (Vue SPA history fallback), `/v3/assets` только внутри `frontend/dist/assets`. Python Dockerfile использует multi-stage Node 24 build; runtime без Node. `server/services/references.py` + `api/routes/references.py` обеспечивают явные управляемые rename/delete/cache SAM. `system/cache/cleanup` очищает только orphaned previews.
+
+## Stage 4 — validation, workers, recovery
+
+```text
+server/security/login_throttle.py     -> bounded login failure memory; auth.py/login
+server/services/heartbeat.py          -> 10s role pulse + fresh/stale API state
+server/db/migrations/0007_service_heartbeat.sql -> additive table
+  server/worker.py                    -> MegaLoc heartbeat (separate daemon thread)
+  server/workers/thumbnail.py         -> independent preview heartbeat
+  server/workers/cleanup.py           -> independent retention heartbeat
+server/api/routes/system.py           -> system/status.services.<role>.alive
+frontend/features/settings            -> honest health indicator for all 3 services
+server/api/routes/downloads.py        -> strict safe ZIP member names
+server/services/references.py         -> historic manifest SAM guard
+server/uploads.py                     -> 30M pixel upload limit
+install.sh                            -> --check and upgrade approval, preserve secrets
+PhotoSorter/tools/stage4/
+  snapshot.py                         -> independent backup, hash verify, test restore
+  ci_restore_drill.py                 -> disposable real PG17 dump/restore
+  compare_baseline.py                 -> actual/golden MegaLoc manifest + ZIP diff
+  staging_probe.py                    -> read-only HTTP latency/disk/worker stats
+backend/tests/test_stage4_*.py        -> disposable Linux/PG CI regressions
+.github/workflows/stage4-validation.yml -> 3 jobs: backend/Caddy, restore, Vue/WebKit
+```
+
+Ни одна из утилит не переносит реальные `Models`/фотографии и не запускает deployment без оператора. Без реальных staging acceptance-метрик production остаётся закрытым.

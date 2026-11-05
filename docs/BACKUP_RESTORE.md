@@ -15,3 +15,11 @@
 В резервную копию PostgreSQL входят `thumbnail_tasks`, `uploads.updated_at`, новые jobs timestamps и indexes. `data/cache/thumbnails/v1/` — пересчитываемый WebP cache, но для точного восстановления состояния очереди разумно снимать его согласованно с БД. Общий MegaLoc reference embedding cache сохранять отдельно, не трактовать thumbnails как резерв ФО. Во время snapshot приостановить thumbnail/cleanup/worker и завершить pending uploads. Реальный restore в этой беседе не проводился.
 
 Stage3 UI — исключительно клиент существующих серверных состояний. Он не создает новую резервную систему, а показывает предупреждение, если проверенная внешняя копия неизвестна. Сохранение `package-lock.json` и dist assets **не заменяет** snapshot PostgreSQL+data+Models при реальном обновлении. Rename SAM изменяет пути Образцов — перед production тестом понадобится согласованная копия данных и проверка зависимостей старых manifests.
+
+## Stage 4 — реализованная утилита и границы CI
+
+`PhotoSorter/tools/stage4/snapshot.py`: команды `capture`/`verify`/`restore-test`. Перед backup **оператор выключает всех writers**, после чего явно передаёт `--ack-writers-stopped`. Snapshot включает `PhotoSorter/data`, `Models/models`, `Models/cache`, конфигурацию/секреты, `pg_dump` custom format. SHA-256 каждой записи и всего tar/dump; повторные inode оформляются tar Hard Link. Архив создаётся в другом каталоге, владеет 0700, ни один исходный файл не меняется.
+
+Restore требует `--confirm-staging`, **новый каталог** и marker `.photosorter-staging-only` со значением `STAGING_ONLY` в его родителе. БД должна существовать, быть пустой и называться `sorter_restore_*`; при некорректном/подменённом tar никакой распаковки до `verify()`.
+
+CI `ci_restore_drill.py` действительно вызывает `pg_dump` и `pg_restore` с PostgreSQL17 на двух disposable базах и проверяет SHA файлов, запись БД и inode. **Это не снимок VPS**. Настоящая резервная копия должна быть зашифрована offsite (внутри находятся пароли `.env.generated` и фотографии). Caddy Docker volume с TLS private keys нужно отдельно копировать и восстанавливать. Без offsite restore-test не давать согласие на production rollout. Команды: [STAGE4_ROLLOUT](STAGE4_ROLLOUT.md).

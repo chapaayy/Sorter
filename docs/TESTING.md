@@ -66,3 +66,19 @@ npm run test:e2e
 - Первый browser run выявил баг *тестового* page-route mock: glob `**/api/**` случайно перехватывал `/v3/src/api/client.ts` и отдавал 404. Исправлено на anchored regexp matching только root `/api/`; повторные тесты зелёные.
 
 Эта проверка **не** подтверждает реальные загрузки 6ГБ, работу на физическом iPhone, backup/restore или время инференса на производственном VPS.
+
+## Этап 4 — самостоятельный pipeline
+
+`.github/workflows/stage4-validation.yml`: три изолированных jobs: (1) backend + временная PostgreSQL17, Bash, Compose, Caddy validate, (2) `pg_dump`+истинный `pg_restore` на второй БД и hash/inode, (3) Vue typecheck+Vitest+Playwright Chromium/WebKit desktop/mobile.
+
+```bash
+PYTHONPATH=PhotoSorter/backend python -m pytest -q PhotoSorter/backend/tests
+python -m compileall -q PhotoSorter/backend PhotoSorter/tools
+bash -n install.sh
+docker compose --env-file .env --env-file .env.generated config --quiet  # только при доступных staging secrets
+cd PhotoSorter/frontend && npm ci && npm run build && npm run test && npm run test:e2e
+```
+
+Synthetic 1315-photo result/ZIP roundtrip (маленькие одинаковые файлы, Hard Links) — не benchmark MegaLoc. Реальный 189 baseline и 1315 photo/6.4GiB dataset в инструменты не загружались; все неисполненные test gates и их приоритеты: [STAGE4_ACCEPTANCE](STAGE4_ACCEPTANCE.md).
+
+Типичные команды: `python PhotoSorter/tools/stage4/staging_probe.py --url http://127.0.0.1:8000 --output probe.json` (только GET) и `python PhotoSorter/tools/stage4/compare_baseline.py --baseline-manifest golden.json --candidate-manifest current.json` (ничего не модифицируют).

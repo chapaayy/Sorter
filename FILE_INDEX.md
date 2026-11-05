@@ -146,3 +146,40 @@
 | `.github/workflows/stage3-vue.yml` | npm ci + vue-tsc/Vite + Vitest + Playwright |
 
 | `frontend/src/components/gallery/VirtualThumbnailGrid.vue` | Intersection/viewport-based virtual row window, rendering only visible FO/SAM/results cards (keeps full index for viewer) |
+
+## Stage 4 — каталог новых модулей
+
+| Файл | Ответственность |
+|---|---|
+| `PhotoSorter/backend/server/security/login_throttle.py` | Ограничение неверных логинов в single-process API, хэшированные ключи |
+| `PhotoSorter/backend/server/security/__init__.py` | Пакет security primitives |
+| `PhotoSorter/backend/server/services/heartbeat.py` | Запись процессов, вычисление свежести, фоновые потоки |
+| `PhotoSorter/backend/server/db/migrations/0007_service_heartbeat.sql` | Новая отдельная таблица service_heartbeats, additive migration |
+| `PhotoSorter/backend/server/db/migration_runner.py` | Игнорировать полнострочные SQL комментарии при разбивке простых SQL миграций |
+| `PhotoSorter/backend/server/worker.py` | MegaLoc inference + роль worker heartbeat |
+| `PhotoSorter/backend/server/workers/thumbnail.py` | Preview queue consumer + heartbeat |
+| `PhotoSorter/backend/server/workers/cleanup.py` | Retention/GC worker + heartbeat |
+| `PhotoSorter/backend/server/api/routes/system.py` | API живых heartbeat statuses для UI |
+| `PhotoSorter/backend/server/api/routes/downloads.py` | ZIP path member validation, сохранён поток и lease |
+| `PhotoSorter/backend/server/services/references.py` | Reject mutation of SAM referenced by historical published manifests |
+| `PhotoSorter/backend/server/uploads.py` | Pillow upload pixel cap before finalizing |
+| `PhotoSorter/frontend/src/types/api.ts` | Контракт heartbeat JSON |
+| `PhotoSorter/frontend/src/features/settings/SettingsView.vue` | Реальная индикация живых megaloc,thumbnail,cleanup |
+| `PhotoSorter/tools/stage4/snapshot.py` | Consistent PG custom-format + independent filesystem full backup, SHA, hardlinks, verify, isolated restore |
+| `PhotoSorter/tools/stage4/ci_restore_drill.py` | Real disposable PG backup/restore in GitHub CI, restored file hash/inode checks |
+| `PhotoSorter/tools/stage4/compare_baseline.py` | Проверка verified/golden MegaLoc SAM/group/rankings/score и ZIP CRC |
+| `PhotoSorter/tools/stage4/staging_probe.py` | GET-only concurrency/p50/p95/rps and worker/disk monitoring |
+| `PhotoSorter/backend/tests/test_stage4_security.py` | Zip Slip, SAM path, pixel cap, rate limit |
+| `PhotoSorter/backend/tests/test_stage4_snapshots.py` | Synthetic hardlink archive/restore/secret safeguards |
+| `PhotoSorter/backend/tests/test_stage4_installer.py` | Mocked Docker installer, no credential reset |
+| `PhotoSorter/backend/tests/test_stage4_load.py` | Synthetic 1315 FO cursor/ZIP/cleanup; retention UTC calendar edges |
+| `PhotoSorter/backend/tests/test_stage4_baseline.py` | Golden diff and ZIP mismatch detection |
+| `PhotoSorter/backend/tests/test_stage4_heartbeat.py` | Worker fresh/stale status |
+| `PhotoSorter/backend/tests/test_stage4_probe.py` | GET-only local threaded HTTP service for latency |
+| `PhotoSorter/backend/tests/test_stage4_migration.py` | Semicolons in SQL comment do not break additive migrations |
+| `install.sh` | Safe check, backup-gated update, preserve secrets and existing data UID |
+| `.github/workflows/stage4-validation.yml` | Backend/DB/Compose/Caddy, disposable PG restoration, Vue/Chromium/WebKit jobs |
+| `docs/STAGE4_ACCEPTANCE.md` | Финальные P0/P1 приёмочные условия и блокеры |
+| `docs/STAGE4_ROLLOUT.md` | Ручной staging→production workflow только после разрешения |
+| `docs/STAGE4_SECURITY.md` | Аудит и ограничения security |
+| `docs/CHANGELOG.md` | Что сделано по 4 этапам |

@@ -1,4 +1,4 @@
-# OUTDOOR PhotoSorter — VPS / MegaLoc (этапы 1–3)
+# OUTDOOR PhotoSorter — VPS / MegaLoc (этапы 1–4, Stage 4 pending production acceptance)
 
 Приватный фотоотчёт рекламных конструкций. MegaLoc сначала группирует **только ФО** (порог по умолчанию 0.50), затем сопоставляет группы с общей библиотекой SAM. Нейронная математика, постоянные модели и кэш эталонов в этапе 1 не изменялись.
 
@@ -107,3 +107,18 @@ Vite dev server на порту 5173, backend `/api` проксируется н
 
 - [GitHub Actions — backend](https://github.com/chapaayy/Sorter/actions/runs/41969359100)
 - [GitHub Actions — Vue/Chromium/WebKit](https://github.com/chapaayy/Sorter/actions/runs/41969359113)
+
+## Этап 4 — проверка безопасности, backup/restore и gate перед production
+
+**Ветка:** `stage4/validation-backup-rollout`. Этапы 1–3 остались отдельными draft PR и **не слиты в `vps/docker-rebuild`**. **Production VPS, реальные пользовательские ФО и веса не изменены**.
+
+Добавлены: полноценный CLI снимка с версированным manifest + SHA, снимок PostgreSQL custom-format, Models/models и Models/cache, изолированный восстановительный прогон в CI; comparator реального MegaLoc baseline/ZIP; synthetic 1315-FО zip/hardlink/storage lifecycle; только read-only staging probe; ограничение попыток логина и архивных путей, защита исторических SAM и проверки слишком больших изображений; реальный heartbeat трёх background workers (additive migration 0007); безопасный installer `--check`, no password reset, резервные условия upgrade.
+
+**Статус:** код и доступные CI тесты могут быть зелёными, но система **НЕ объявлена production-ready**. Для этого всё ещё необходимы одинаковый реальный эталон 189 фото, 1315 реальных ФО (~6,4 ГБ), CPU A/B, полная Docker-runtime и TLS smoke, offsite backup/restore реального окружения, физический iPhone Safari и явное согласование запуска.
+
+- [Матрица приёмки](docs/STAGE4_ACCEPTANCE.md)
+- [Развёртывание и откат](docs/STAGE4_ROLLOUT.md)
+- [Аудит безопасности](docs/STAGE4_SECURITY.md)
+- [Changelog](docs/CHANGELOG.md)
+
+Рабочее `/` по-прежнему отдаёт прежний интерфейс, `/v3/` — opt-in Vue после сборки. Математика MegaLoc `app/recognition/` не изменялась.

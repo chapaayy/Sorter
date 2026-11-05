@@ -32,3 +32,14 @@
 24. Компоненты должны оставаться модульными; один файл — одна задача/экран. Для каждого нового Vue модуля обновлять FILE_INDEX и PROJECT_MAP.
 25. Интерфейс адаптивен, touch target ≥44px, keyboard/Escape, light/dark tokens едины, не использовать хардкод абсолютных CDN/FS URL и фиктивные модели/оценки/прогресс.
 26. Перед PR гонять `npm ci && npm run build && npm run test`, backend CI и Playwright chromium/webkit; production VPS/реальные SAM/веса по-прежнему off limits.
+
+## Stage 4 — обязательные ворота production
+
+27. Не объявлять «production ready» только по GitHub CI: нужны **реальный 189/1315 baseline** из того же набора, сопоставимый MegaLoc checkpoint/signature, real restore и отдельное согласие пользователя. Синтетические fixtures не считать реальными фото.
+28. Backup CLI не останавливает пишетущие сервисы: оператор обязан добиться quiesced state до `--ack-writers-stopped`. Внешний storage должен быть независимым, зашифрованным; `.env.generated` ни в какие CI artifacts не загружать.
+29. Система кода не должна выполнять deployment, SSH к VPS или удаление реальных файлов без отдельно выраженного владельцем разрешения; `install.sh --check` безопасен и read-only, для апгрейда `PHOTOSORTER_APPROVE_UPGRADE=VERIFIED_BACKUP_AND_ROLLBACK` только после проверки, не автоматизировать установку этого токена.
+30. В исторически опубликованных runs не уничтожать и не перемещать SAM reference-paths; текущий SAM rename/delete при ссылке в manifest возвращает 409 (fail closed).
+31. Изображения, ZIP path и распаковка резервной копии ограничены; не доверять клиентским путям, symlink, `../`, `\x00`. Для restore нужен пустой `sorter_restore_*` DB и staging marker.
+32. `0007_service_heartbeat.sql` — **только additive schema**; старые данные/sessions/jobs не менять. Здоровье worker=heartbeat, а не `0 queued`.
+33. Никакого удаления старого `frontend/static` до доказанной работы нового UI после реального switch и отдельного rollback window. `Models/models` и `Models/cache` по-прежнему независимые каталоги.
+34. Изменения `app/recognition/` запретить и в Stage4, без отдельного benchmark+approval.
