@@ -6,6 +6,9 @@ def test_fastapi_all_routers_import_on_fresh_python_interpreter():
     import sys
     script = """
 from server.main import app
+from server.main import auth,batches,downloads,site,system
+print("ROUTE_DIAGNOSTIC",[(type(r).__name__,getattr(r,'path',None)) for r in app.routes],
+      "module_routes", [(m.__name__,len(m.router.routes)) for m in (auth,batches,downloads,site,system)])
 routes = {getattr(route,'path',None) for route in app.routes}
 for url in ('/', '/v3', '/v3/{path:path}', '/api/health',
             '/api/system/status', '/api/storage/usage', '/api/runs',
