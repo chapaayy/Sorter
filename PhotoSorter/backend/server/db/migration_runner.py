@@ -11,8 +11,12 @@ def migrate(db):
     for file in sorted(MIGRATIONS.glob("*.sql")):
         if file.name in applied:
             continue
-        script = file.read_text(encoding="utf-8")
-        # The simple SQL format intentionally prohibits procedural blocks with semicolons.
+        # Remove whole-line SQL comments before splitting statements. A semicolon
+        # in a --comment must never be parsed as a new SQL command. Complex SQL
+        # (procedural blocks, semicolons inside strings) is not supported by this
+        # additive migration format.
+        script = "\\n".join(line for line in file.read_text(encoding="utf-8").splitlines()
+                           if not line.lstrip().startswith("--"))
         for statement in script.split(";"):
             if statement.strip():
                 db.execute(statement)
