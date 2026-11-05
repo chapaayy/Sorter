@@ -88,3 +88,27 @@ def test_restore_rejects_unmarked_parent_and_original_database(project,tmp_path)
     (tmp_path/".photosorter-staging-only").write_text("STAGING_ONLY")
     with pytest.raises(ValueError):snapshot.restore_test(archive,tmp_path/"other",TEST_DB,confirmed=True)
     with pytest.raises(ValueError):snapshot.restore_test(archive,root/"PhotoSorter"/"data"/"secret",RESTORE_DB,confirmed=True)
+
+def test_huggingface_internal_symlink_round_trip_and_external_symlink_rejected(project,tmp_path):
+    root,source,target,commands=project
+    cache=root/"Models"/"cache"/"huggingface"/"hub"/"models--gberton--MegaLoc"
+    blob=cache/"blobs"/"0123456789abcdef"
+    blob.parent.mkdir(parents=True)
+    blob.write_bytes(b"fake-model-weight")
+    pointer=cache/"snapshots"/"fake-revision"/"model.safetensors"
+    pointer.parent.mkdir(parents=True)
+    pointer.symlink_to("../../blobs/0123456789abcdef")
+    archive=tmp_path/"hf-backup"
+    snapshot.capture(root,archive,TEST_DB,quiesced=True)
+    assert snapshot.verify(archive)["verified"]
+    (tmp_path/".photosorter-staging-only").write_text("STAGING_ONLY")
+    restored=tmp_path/"hf-restored"
+    snapshot.restore_test(archive,restored,RESTORE_DB,confirmed=True)
+    copied=restored/pointer.relative_to(root)
+    assert copied.is_symlink() and copied.read_bytes()==b"fake-model-weight"
+    assert copied.readlink().as_posix()=="../../blobs/0123456789abcdef"
+
+    unsafe=cache/"snapshots"/"fake-revision"/"escape"
+    unsafe.symlink_to("../../../../../../../outside-secret")
+    with pytest.raises(ValueError):
+        snapshot.capture(root,tmp_path/"unsafe-archive",TEST_DB,quiesced=True)

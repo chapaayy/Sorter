@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import posixpath
 import shutil
 import stat
 import subprocess
@@ -61,6 +62,20 @@ def validate_rel(name):
         raise ValueError("Unexpected backup member: "+name)
     return posix
 
+def safe_model_symlink(name,target):
+    """Only relative, internal Models/cache or Models/models symlinks are preserved.
+
+    Hugging Face snapshot refs commonly link to ../../blobs/<sha> inside its cache.
+    Block symlinks in user photographs/secret config and links out of Models.
+    """
+    if (not name.startswith("Models/") or not target or
+            posixpath.isabs(target) or "\\\\" in target or "\\x00" in target):
+        raise ValueError("Unsafe model symlink")
+    destination=posixpath.normpath(posixpath.join(posixpath.dirname(name),target))
+    if not any(destination.startswith(prefix+"/") for prefix in ("Models/cache","Models/models")):
+        raise ValueError("Model symlink escapes model storage")
+    return target
+
 def enumerate_files(root):
     files=[]
     for rel in INCLUDED_DIRS:
@@ -68,8 +83,12 @@ def enumerate_files(root):
         if folder.is_symlink() or not folder.is_dir():
             raise ValueError("Missing or symlinked backup directory: "+rel)
         for p in sorted(folder.rglob("*")):
-            if p.is_symlink():raise ValueError("Symlink not allowed in snapshot: "+str(p))
-            if p.is_file():
+            if p.is_symlink():
+                safe_model_symlink(p.relative_to(root).as_posix(),os.readlink(p))
+                if not p.resolve(strict=True).is_relative_to((root/"Models").resolve()):
+                    raise ValueError("Model symlink outside Models")
+                files.append(p)
+            elif p.is_file():
                 if not p.is_relative_to(folder):raise ValueError("Unsafe source")
                 files.append(p)
             elif not p.is_dir():raise ValueError("Unsupported source object: "+str(p))
@@ -88,28 +107,43 @@ def write_payload(root,tar_path):
         for path in enumerate_files(root):
             relative=path.relative_to(root).as_posix()
             validate_rel(relative)
-            before=path.stat()
-            if not stat.S_ISREG(before.st_mode):raise ValueError("Non-regular file in backup")
-            key=(before.st_dev,before.st_ino)
+            before=path.lstat()
             info=tar.gettarinfo(str(path),arcname=relative)
             info.uid=10001;info.gid=10001;info.uname="";info.gname=""
             info.mode=0o600 if relative.startswith(".env") else (before.st_mode&0o777)
-            if key in seen:
-                first,sha=seen[key]
-                info.type=tarfile.LNKTYPE
-                info.linkname=first
+            symlink_target=None
+            if stat.S_ISLNK(before.st_mode):
+                symlink_target=safe_model_symlink(relative,os.readlink(path))
+                raw=symlink_target.encode("utf8")
+                sha=hashlib.sha256(raw).hexdigest()
+                info.type=tarfile.SYMTYPE
+                info.linkname=symlink_target
                 info.size=0
                 tar.addfile(info)
+                size=len(raw)
+                hardlink_of=None
+            elif stat.S_ISREG(before.st_mode):
+                key=(before.st_dev,before.st_ino)
+                if key in seen:
+                    first,sha=seen[key]
+                    info.type=tarfile.LNKTYPE
+                    info.linkname=first
+                    info.size=0
+                    tar.addfile(info)
+                else:
+                    sha=digest(path)
+                    with path.open("rb") as stream:tar.addfile(info,stream)
+                    seen[key]=(relative,sha)
+                size=before.st_size
+                hardlink_of=seen[key][0] if seen[key][0]!=relative else None
             else:
-                sha=digest(path)
-                with path.open("rb") as stream:tar.addfile(info,stream)
-                seen[key]=(relative,sha)
-            after=path.stat()
+                raise ValueError("Non-regular source in backup")
+            after=path.lstat()
             if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns)!=(
                 after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):
                 raise RuntimeError("File changed while snapshot was being created: "+relative)
-            manifest.append({"path":relative,"bytes":before.st_size,"sha256":sha,
-                             "hardlink_of":seen[key][0] if seen[key][0]!=relative else None})
+            manifest.append({"path":relative,"bytes":size,"sha256":sha,
+                             "hardlink_of":hardlink_of,"symlink_target":symlink_target})
     return manifest
 
 def capture(root,destination,url,*,quiesced=False):
@@ -153,11 +187,25 @@ def verify(archive):
         if item["path"] in listed:raise ValueError("Duplicate backup member")
         listed[item["path"]]=item
     with tarfile.open(archive/"files.tar","r") as tar:
-        members={m.name:m for m in tar.getmembers()}
-        if set(members)!=set(listed):raise ValueError("Archive file list mismatch")
+        entries=tar.getmembers()
+        members={m.name:m for m in entries}
+        if len(members)!=len(entries) or set(members)!=set(listed):
+            raise ValueError("Archive file list mismatch")
         for name,item in listed.items():
             member=members[name]
-            if not (member.isfile() or member.islnk()):raise ValueError("Unsafe tar member type")
+            if not (member.isfile() or member.islnk() or member.issym()):
+                raise ValueError("Unsafe tar member type")
+            if member.issym():
+                link=item.get("symlink_target")
+                if link is None or link!=member.linkname:
+                    raise ValueError("Invalid symlink in archive")
+                safe_model_symlink(name,link)
+                raw=link.encode("utf8")
+                if len(raw)!=item["bytes"] or hashlib.sha256(raw).hexdigest()!=item["sha256"]:
+                    raise ValueError("Symlink checksum mismatch")
+                continue
+            if item.get("symlink_target") is not None:
+                raise ValueError("Unexpected regular file instead of model symlink")
             if member.islnk():
                 link=item["hardlink_of"]
                 if not link or member.linkname!=link or link not in listed:
@@ -196,6 +244,8 @@ def restore_test(archive,destination,url,*,confirmed=False):
     if rows.stdout.strip()!=b"0":raise ValueError("Restore target database must contain no user tables")
     # No extraction through tarfile.extractall: reject traversal and symlink entries.
     destination.mkdir(mode=0o700)
+    for folder in INCLUDED_DIRS:
+        (destination/folder).mkdir(parents=True,exist_ok=True)
     try:
         with tarfile.open(archive/"files.tar","r") as tar:
             for member in tar:
@@ -211,12 +261,23 @@ def restore_test(archive,destination,url,*,confirmed=False):
                     origin=destination.joinpath(*linked.parts)
                     if not origin.is_file():raise ValueError("Invalid hardlink order")
                     os.link(origin,dest,follow_symlinks=False)
+                elif member.issym():
+                    safe_model_symlink(member.name,member.linkname)
+                    os.symlink(member.linkname,dest)
                 else:raise ValueError("Unsupported archive item")
         pg_run(["pg_restore","--exit-on-error","--no-owner","--no-acl",
                 "--dbname",db,str(archive/"database.dump")],url)
         for item in manifest["files"]:
             path=destination/item["path"]
-            if digest(path)!=item["sha256"]:raise ValueError("Restore checksum failure: "+item["path"])
+            if item.get("symlink_target") is not None:
+                target=os.readlink(path)
+                safe_model_symlink(item["path"],target)
+                if not path.resolve(strict=True).is_relative_to((destination/"Models").resolve()):
+                    raise ValueError("Model symlink escaped restored Models")
+                actual=hashlib.sha256(target.encode("utf8")).hexdigest()
+            else:
+                actual=digest(path)
+            if actual!=item["sha256"]:raise ValueError("Restore checksum failure: "+item["path"])
         return {"restored":True,"db_name":db,"files":len(manifest["files"])}
     except Exception:
         # Leave the isolated target for inspection; NEVER touch the source/production.
