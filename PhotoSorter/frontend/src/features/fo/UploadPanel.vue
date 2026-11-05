@@ -3,6 +3,8 @@ import {computed,ref} from 'vue'
 import {batchApi} from '../../api/batches'
 import {canResumeUpload} from '../../utils/batches'
 import {directoryEntries,uploadOne} from '../../utils/upload'
+import {runUploadQueue} from '../../utils/uploadQueue'
+import {useUploadSettingsStore} from '../../stores/uploadSettings'
 import type {UploadEntry} from '../../utils/upload'
 import {bytes,errorText} from '../../utils/format'
 import {useNoticeStore} from '../../stores/notice'
@@ -14,7 +16,7 @@ let controller:AbortController|null=null
 const total=computed(()=>entries.value.reduce((s,e)=>s+e.file.size,0))
 const uploaded=computed(()=>amounts.value.reduce((a,b)=>a+b,0))
 const percent=computed(()=>total.value?Math.min(100,100*uploaded.value/total.value):0)
-const notice=useNoticeStore()
+const notice=useNoticeStore(),uploadSettings=useUploadSettingsStore()
 function choose(e:Event){
   const files=(e.target as HTMLInputElement).files
   if(!files)return
@@ -39,22 +41,20 @@ async function start(){
       if(old && canResumeUpload(old))batchId.value=saved
     }
     if(!batchId.value){const created=await batchApi.create(folder.value);batchId.value=created.batch_id;saveId(batchId.value)}
-    const signal=controller.signal,queue=entries.value.map((_,i)=>i)
-    let done=0
-    async function worker(){
-      while(queue.length){
-        if(signal.aborted)throw new DOMException('Пауза','AbortError')
-        const idx=queue.shift()
-        if(idx===undefined)break
-        const entry=entries.value[idx]
-        if(!entry)continue
-        await uploadOne({kind:'fo',batchId:batchId.value},entry,signal,n=>{
-          amounts.value[idx]=n
-        })
-        done++;finished.value=done;amounts.value[idx]=entry.file.size
-      }
+    const signal=controller.signal
+    const failures=await runUploadQueue(entries.value.length,uploadSettings.parallelUploads,signal,async idx=>{
+      const entry=entries.value[idx]
+      if(!entry)return
+      await uploadOne({kind:'fo',batchId:batchId.value},entry,signal,n=>{
+        amounts.value[idx]=n
+      })
+      finished.value++;amounts.value[idx]=entry.file.size
+    })
+    if(failures.length){
+      const details=failures.slice(0,3).map(({index,error})=>
+        entries.value[index]?.file.name+': '+errorText(error)).join('; ')
+      throw new Error('Не загружено '+failures.length+' из '+entries.value.length+' файлов: '+details)
     }
-    await Promise.all(Array.from({length:Math.min(3,queue.length)},worker))
     notice.add('Папка загружена. Миниатюры формируются отдельно.','ok')
     emit('finished',batchId.value)
   }catch(err){
@@ -79,7 +79,7 @@ function stop(){controller?.abort()}
   <div v-if="running||uploaded" class="stack-sm">
     <div class="row between meta"><span>Передано {{bytes(uploaded)}} / {{bytes(total)}}</span><span>{{percent.toFixed(1)}}%</span></div>
     <div class="progress-track" role="progressbar" :aria-valuenow="percent" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill" :style="{width:percent+'%'}"/></div>
-    <div class="meta">{{finished}} из {{entries.length}} файлов · до 3 передач одновременно</div>
+    <div class="meta">{{finished}} из {{entries.length}} файлов · до {{uploadSettings.parallelUploads}} передач одновременно</div>
   </div>
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
 </section>
