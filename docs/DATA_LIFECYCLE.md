@@ -19,7 +19,7 @@
 | `data/cache/megaloc/references` | общий reference cache | **НИКОГДА** |
 | `Models/**`, users/sessions, Caddy volume | система | **НИКОГДА** |
 
-Удаление вычисляет список run/upload IDs **только из PostgreSQL**, не из произвольного client path, проверяет UUID/run pattern, symlink/path scope. Сначала `deleting` и stop jobs, затем ожидание live `batch_operations` и `running/stopping`; затем idempotent unlink/rmtree **только owned paths**, очистка строк uploads/jobs/confirmations, запись tombstone. Crash после удаления части путей не удаляет чужое. `delete_failed` виден по API; восстановление после устранения причины — повтор DELETE.
+Удаление вычисляет список run/upload IDs **только из PostgreSQL**, не из произвольного client path, проверяет UUID/run pattern, symlink/path scope. Сначала `deleting` и stop jobs, затем ожидание live `batch_operations` и `running/stopping`; затем idempotent unlink/rmtree **только owned paths**, очистка строк uploads/jobs/confirmations, запись tombstone. Crash после удаления части путей не удаляет чужое. Старые неопубликованные `.megaloc.building` фрагменты автоматически очищаются **только для terminal run** после grace period; работающий MegaLoc не затрагивается. `delete_failed` виден по API; восстановление после устранения причины — повтор DELETE.
 
 ## Hard Links
 

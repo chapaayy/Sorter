@@ -125,3 +125,36 @@ def process_pending(limit=20):
             WHERE state IN ('pending','running') ORDER BY requested_at LIMIT %s""",
             (limit,)).fetchall()
     return [(str(r["batch_id"]),cleanup_one(r["batch_id"])) for r in rows]
+
+def reconcile_incomplete_exports(limit=100, grace_seconds=3600):
+    """Remove stale unpublished staging only for confirmed terminal runs.
+
+    No generic recursive temp purge: a running inference may still be writing.
+    """
+    import time
+    from ..storage.paths import owned_directory
+    with connect() as db:
+        rows=db.execute("""SELECT j.id FROM jobs j
+             WHERE j.status IN ('completed','completed_with_errors','failed',
+                                'interrupted','stopped')
+             ORDER BY j.updated_at DESC LIMIT %s""",(limit,)).fetchall()
+    removed=[]
+    for record in rows:
+        try:
+            staging=run_dir(record["id"])/".megaloc.building"
+            staging=owned_directory(staging,DATA_DIR/"outputs")
+            if not staging.is_dir():continue
+            if time.time()-staging.stat().st_mtime<grace_seconds:continue
+            # A late worker update must not race the final cleanup decision.
+            with connect() as db:
+                current=db.execute("SELECT status FROM jobs WHERE id=%s",(record["id"],)).fetchone()
+                if not current or current["status"] in IN_USE:continue
+                if db.execute("""SELECT 1 FROM batch_operations b
+                    JOIN jobs j ON j.batch_id=b.batch_id WHERE j.id=%s LIMIT 1""",
+                    (record["id"],)).fetchone():continue
+            shutil.rmtree(staging)
+            removed.append(record["id"])
+        except (OSError,ValueError):
+            # Never delete an untrusted or inaccessible path; leave for inspection.
+            continue
+    return removed

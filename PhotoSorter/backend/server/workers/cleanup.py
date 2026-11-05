@@ -18,6 +18,8 @@ def run_cycle():
         cleanup.request(batch_id,only_if_due=True)
     for batch_id,result in cleanup.process_pending():
         logging.info("Batch cleanup %s: %s",batch_id,result)
+    removed=cleanup.reconcile_incomplete_exports()
+    if removed:logging.info("Removed %s orphaned unpublished exports",len(removed))
 
 def main():
     signal.signal(signal.SIGTERM,stop)

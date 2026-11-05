@@ -375,3 +375,25 @@ def test_cannot_reconfirm_old_zip_after_a_newer_run(sandbox):
     with connect() as db:
         db.execute("UPDATE jobs SET status='stopped' WHERE id=%s",(new,))
     cleanup.cleanup_one(own)
+
+def test_orphan_unpublished_export_only_terminal_jobs(sandbox):
+    import time
+    from server.services import cleanup
+    own=_batch(sandbox)
+    finished=_job(sandbox,own,"interrupted")
+    running=_job(sandbox,own,"running")
+    folder1=paths.run_dir(finished)/".megaloc.building"
+    folder2=paths.run_dir(running)/".megaloc.building"
+    for folder in (folder1,folder2):
+        folder.mkdir(parents=True)
+        (folder/"unfinished.jpg").write_bytes(b"temporary")
+        os.utime(folder,(time.time()-7200,time.time()-7200))
+    removed=cleanup.reconcile_incomplete_exports(grace_seconds=3600)
+    assert finished in removed
+    assert not folder1.exists()
+    assert folder2.exists(), "Do not clear still-running inference outputs"
+    cleanup.request(own)
+    from server.database import connect
+    with connect() as db:
+        db.execute("UPDATE jobs SET status='stopped' WHERE id=%s",(running,))
+    cleanup.cleanup_one(own)
