@@ -1,5 +1,11 @@
 # Changelog OUTDOOR PhotoSorter (ветки разработки)
 
+## Release — single-ui-root
+- Единственный Vue 3 сайт на `/`, разделы `/fo`, `/references`, `/processing`, `/results`, `/logs`, `/settings`, `/login`.
+- Старый `frontend/static` удалён; `/v3/` и `/static/*` не обслуживаются. Vite, Vue Router, Playwright, pytest и Docker smoke проверяют единый root-адрес.
+- API, PostgreSQL, MegaLoc math и физические фотографии не изменяются этой правкой GitHub. Live VPS обновляется отдельно.
+
+
 ## Stage 4 — validation-backup-rollout (не развёрнуто)
 - CLI `snapshot.py`: согласованный снимок данных, PostgreSQL custom dump, Models/models+cache, учет Hard Links, SHA-256, verify и только изолированное восстановление.
 - CI PostgreSQL17: реальный pg_dump→pg_restore на disposable DB, восстановление тестовых фото/Образцов, контроль записи и inode.

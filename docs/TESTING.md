@@ -47,23 +47,23 @@ Frontend commands:
 ```bash
 cd PhotoSorter/frontend
 npm ci
-npm run build  # vue-tsc --noEmit + Vite static /v3/ bundle
+npm run build  # vue-tsc --noEmit + Vite static / bundle
 npm run test   # Vitest contracts in tests/
 npx playwright install chromium webkit
 npm run test:e2e
 ```
 `.github/workflows/stage3-vue.yml` запускает Node 24, npm ci с точным package-lock, TypeScript/Vite, Vitest и Playwright Chrome desktop, WebKit desktop, iPhone-size WebKit. E2E подменяет `/api` тестовыми ответами; **это проверка фронтенд-потоков, не реальных сетевых фото**.
 
-`backend/tests/test_stage3_ui_api.py` на временных директориях и тестовой PostgreSQL проверяет rename/delete SAM, запрет во время queued обработки, защиту от traversal и раздельность legacy `/` и Vue `/v3/`.
+`backend/tests/test_stage3_ui_api.py` на временных директориях и тестовой PostgreSQL проверяет rename/delete SAM, запрет во время queued обработки, защиту от traversal и единственный Vue `/` с проверкой неизвестных маршрутов.
 
-Не подтверждено: реальный iPhone Safari, реальные 189/1315 изображений, полноценный Docker build с CPU PyTorch, реальная сеть/диск/время финиша ZIP, отказоустойчивость прерывания на нескольких API workers, production backup/restore. **Этап 4 — обязательная приёмка**; приложение пока opt-in и не стало основным UI.
+Не подтверждено: реальный iPhone Safari, реальные 189/1315 изображений, полноценный Docker build с CPU PyTorch, реальная сеть/диск/время финиша ZIP, отказоустойчивость прерывания на нескольких API workers, production backup/restore. **Этап 4 — обязательная приёмка**; в release-ветке Vue стал единственным UI на `/`, но реальные фото/мобильные сценарии требуют проверки.
 
 ### Фактический CI после исправления браузерной маски
 
 На коммите `c0c1592b2f70db927498c9ffb9ca0f4f2770f453`:
 - [backend run 41969359100](https://github.com/chapaayy/Sorter/actions/runs/41969359100): **56 passed**, временная PostgreSQL 17 и старые regressions.
 - [Vue run 41969359113](https://github.com/chapaayy/Sorter/actions/runs/41969359113): `vue-tsc` strict, Vite production bundle, Vitest **9 passed**, Chromium desktop / WebKit desktop / mobile WebKit Playwright **13 passed + 2 skipped**. Пропуски относятся к тесту меню, применимому только к мобильному проекту.
-- Первый browser run выявил баг *тестового* page-route mock: glob `**/api/**` случайно перехватывал `/v3/src/api/client.ts` и отдавал 404. Исправлено на anchored regexp matching только root `/api/`; повторные тесты зелёные.
+- Первый browser run выявил баг *тестового* page-route mock: glob `**/api/**` случайно перехватывал `/v3/src/api/client.ts` (в старой опциональной сборке; теперь Vite base `/`) и отдавал 404. Исправлено на anchored regexp matching только root `/api/`; повторные тесты зелёные.
 
 Эта проверка **не** подтверждает реальные загрузки 6ГБ, работу на физическом iPhone, backup/restore или время инференса на производственном VPS.
 

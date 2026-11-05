@@ -9,7 +9,7 @@
 3. Получить код строго из отдельной release ветки/коммита, доступные weights (с подписью), копию тестовых 189/1315 фото/Образцов **только с разрешения**.
 4. На staging выполнить `./install.sh --check` (только чтение). Если секреты/Compose/CPU не подходят — исправить до запуска.
 5. На пустом staging настроить .env и установить `./install.sh --deploy`. Не направлять DNS на боевой VPS. Для уже существующего volume обновление требует отдельного `PHOTOSORTER_APPROVE_UPGRADE=VERIFIED_BACKUP_AND_ROLLBACK`.
-6. Проверить `docker compose ps`, `GET /api/health`, авторизованный `GET /api/system/status` и heartbeat `services.megaloc/thumbnail/cleanup`. Проверить `/v3/` и старый `/` отдельно. Пустая очередь не является доказательством работы Worker.
+6. Проверить `docker compose ps`, `GET /api/health`, авторизованный `GET /api/system/status` и heartbeat `services.megaloc/thumbnail/cleanup`. Проверить единый Vue на `/`, deep links `/fo`/`/references`, assets `/assets/*`, старые `/v3/` и `/static/*` должны отвечать 404. Пустая очередь не является доказательством работы Worker.
 
 ## 2. Согласованный архив и восстановление
 
@@ -59,7 +59,7 @@ python PhotoSorter/tools/stage4/staging_probe.py \
 После зафиксированных approval+offsite backup/restore:
 1. Read-only audit `./install.sh --check`, snapshot и подтверждение целостности. Обязательно сохранить исходный git SHA, `.env.generated` и Docker volume IDs.
 2. На выделенном окне обслуживания остановить пишущие операции согласованно. Сначала additive DB migrations, затем сервисы и новый UI. Запускать только зафиксированный проверенный коммит, не latest main.
-3. Сохранить старый UI на `/` на период проверки; новый доступен отдельно на `/v3/`. Не удалять старый UI до реальной приёмки.
+3. Единственный UI — Vue на `/`; разделы имеют чистые адреса (`/fo`, `/references`, `/processing`, `/results`, `/logs`, `/settings`). Legacy UI удалён из release-кода; откат возможен на сохранённый прежний commit/image. Не удалять реальные данные и Docker volumes.
 4. Smoke: login, старые batches/runs/ZIP, новый upload на тестовой партии, preview, Queue, log, retention без реального удаления, состояние Worker/DB/TLS. Проверить свободное место и журналы.
 5. Мониторинг p95/error rate/disk/worker heartbeat, сравнение с staging, откат при ухудшении.
 
