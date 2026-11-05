@@ -20,6 +20,7 @@ FastAPI server/main.py (lifespan, session+Origin middleware)
 PostgreSQL (server/database.py + db/migration_runner.py + migrations/)
     |-- batches,uploads,jobs,users,sessions,reference_cache (legacy retained)
     |-- schema_migrations,download_confirmations,batch_operations,cleanup_tasks
+    |-- db/repositories/batches.py   => SQL reads/writes separated from services
     |
     +-- server/worker.py            => app/jobs/* => app/recognition/* (unchanged)
     |      |                         => app/results/copier.py => storage/hardlinks.py

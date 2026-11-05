@@ -30,6 +30,7 @@
 | `server/auth.py` | scrypt/session/origin; auth route/middleware |
 | `server/database.py` | legacy schema, connect, init и snapshots; services/jobs |
 | `server/db/migration_runner.py` | versioned forward-only SQL; database.initialize |
+| `server/db/repositories/batches.py` | batch/photo metadata queries; services/batches.py |
 | `server/db/migrations/0001_batch_lifecycle.sql` | display_name, retention, leases, cleanup tracking; runner |
 | `server/uploads.py` | legacy resumable API/sha+Pillow+direct transfer; main и UI |
 | `server/jobs.py` | старый `/api/runs` и stop; main, worker |

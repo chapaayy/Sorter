@@ -397,3 +397,32 @@ def test_orphan_unpublished_export_only_terminal_jobs(sandbox):
     with connect() as db:
         db.execute("UPDATE jobs SET status='stopped' WHERE id=%s",(running,))
     cleanup.cleanup_one(own)
+
+def test_delete_refuses_symlink_escape_and_leaves_external_files(sandbox,tmp_path):
+    from server.services import cleanup
+    own=_batch(sandbox,with_photo=False)
+    external=tmp_path/"outside_uploads"
+    external.mkdir()
+    (external/"protected.jpg").write_bytes(b"never delete")
+    batchfolder=paths.batch_dir(own)
+    batchfolder.symlink_to(external,target_is_directory=True)
+    cleanup.request(own)
+    assert cleanup.cleanup_one(own)=="failed"
+    assert (external/"protected.jpg").read_bytes()==b"never delete"
+    assert cleanup.get_status(own)["delete_state"]=="delete_failed"
+    batchfolder.unlink()
+    cleanup.request(own)
+    assert cleanup.cleanup_one(own)=="completed"
+    assert (external/"protected.jpg").read_bytes()==b"never delete"
+
+def test_calendar_months_are_not_sixty_days(db):
+    from server.database import connect
+    with connect() as conn:
+        rows=conn.execute("""SELECT
+            (timestamp '2027-12-31 15:00:00' + interval '2 months')::date AS feb,
+            (timestamp '2028-01-31 15:00:00' + interval '2 months')::date AS march,
+            (timestamp '2028-02-29 15:00:00' + interval '2 months')::date AS april
+        """).fetchone()
+    assert str(rows["feb"])=="2028-02-29"
+    assert str(rows["march"])=="2028-03-31"
+    assert str(rows["april"])=="2028-04-29"
