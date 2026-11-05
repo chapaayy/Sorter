@@ -8,11 +8,11 @@
 |---|---|---|
 | GET | `/health` | версия/status |
 | POST/POST/GET | `/auth/login`, `/auth/logout`, `/auth/me` | sessions (не менялись) |
-| POST | `/uploads` | init kind/filename/size/batch_id/sam/checksum |
+| POST | `/uploads` | init kind/filename/size/batch_id/sam/address/checksum; `address` нужен для новой конструкции |
 | GET/PATCH | `/uploads/{upload_id}` | offsets и докачка |
 | PUT | `/uploads/direct/{upload_id}` | быстрый single request, fallback PATCH |
 | POST | `/uploads/{upload_id}/finish` | final SHA/Pillow validation |
-| GET | `/references`, `/references/files` | список SAM/референсов |
+| GET | `/references`, `/references/files` | список конструкций (`sam`, `display_name`, `address`, `city_code`, `construction_number`, `photos`) и файлов |
 | DELETE | `/references/files/{reference_id}` | защищённое удаление общего образца |
 | GET/POST | `/runs` | история / enqueue (всё ещё одна текущая job; очередь этапа 2) |
 | GET | `/runs/{run_id}` | progress |
@@ -75,7 +75,7 @@
 | Метод | URI | Назначение |
 |---|---|---|
 | GET | `/api/references/cache/status` | total/cached по текущей подписи модели, если доступна |
-| PATCH | `/api/references/sam/{sam}` | `{"new_sam":"SAM-XXXX"}`, rename SAM после подтверждения UI |
+| PATCH | `/api/references/sam/{sam}` | Историческая операция переименования старого `SAM-xxxx`; не применяется к новому ключу |
 | DELETE | `/api/references/sam/{sam}` | удалить всю SAM и принадлежащие эталонные фото |
 | GET | `/api/logs/{run_id}/page?tail_mode=true` | последние ограниченные события плюс курсор от конца |
 | POST | `/api/system/cache/cleanup` | только cache WebP без checksum owner и устаревшие временные файлы |
@@ -85,6 +85,17 @@
 **Сохранённый API:** `/api/auth/login`, `/api/auth/logout`, streaming ZIP, batch CRUD, очереди и API этапов 1–4. API защищён cookie/Origin middleware; root Vue не ослабляет авторизацию. Если Vue dist отсутствует, `/` и SPA deep links возвращают 503, а `/api/health` продолжает работать. Старые `/v3/` и `/static/*` возвращают 404.
 
 **SAM rename safety:** запрещён при queued/running/stopping MegaLoc и незавершённых загрузках данной SAM. Исторические manifests с исходными путями требуют отдельной проверки/миграции при переименовании библиотеки, прежде чем включать эту функцию на рабочем VPS. Это не изменяет MegaLoc math.
+
+## Строгий массовый импорт конструкций
+
+| Метод | Путь | Контракт |
+|---|---|---|
+| POST | `/api/references/import/preview` | `{"folders":["SAM 0004 — Гагарина 64"]}` → `entries` (new/existing/адрес/фото), `errors`, `cities`; без записи в БД |
+| POST | `/api/uploads` | `kind=reference`, `sam="SAM 0004"`, `address="Гагарина 64"`, filename/size; создание или дополнение без изменения существующего адреса |
+| PATCH | `/api/references/constructions/{sam}/address` | `{"address":"Гагарина 64А"}` → новое отображаемое имя без смены идентификатора |
+| GET | `/api/references` | Отдаёт новое отображаемое имя и прежние `sam` для старых записей |
+
+Уникальность конструкции: `city_code + construction_number` (строка, ведущие нули сохраняются). Старые `SAM-xxxx` не переименовываются и не принимаются как названия папок при новом массовом импорте. Дубликат фотографии по SHA-256 в одной конструкции не сохраняется второй раз. Неправильный адрес возвращает 409/422; активная MegaLoc блокирует изменения. Миграция `0008_reference_constructions.sql` добавляет каталог конструкций без удаления старых данных. Полные правила: [REFERENCE_IMPORT](REFERENCE_IMPORT.md).
 
 **Предупреждение о ZIP:** `GET /api/download/{run_id}` только начинает поток; отдельный пользовательский `POST /api/batches/{id}/downloads/confirm` требуется после проверки файла. UI не пытается автоматически подтвердить получение архива.
 
