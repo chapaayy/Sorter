@@ -1,3 +1,4 @@
+import {parseConstructionFolder,inspectReferenceDirectory} from '../src/utils/referenceSelection'
 import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest'
 import {directoryEntries,ALLOWED,UPLOAD_CHUNK_BYTES,uploadOne} from '../src/utils/upload'
 import {runUploadQueue} from '../src/utils/uploadQueue'
@@ -147,5 +148,47 @@ describe('upload outage visibility',()=>{
     },{haltAfterFailuresWithoutSuccess:3})
     expect(done).toHaveLength(6)
     expect(failures.map(f=>f.index)).toEqual([2])
+  })
+})
+
+describe('strict construction library imports',()=>{
+  function file(path:string,name:string,contents='photo'){
+    const image=new File([contents],name)
+    Object.defineProperty(image,'webkitRelativePath',{value:path})
+    return image
+  }
+  it('accepts the strict city, number and address without losing leading zeros',()=>{
+    expect(parseConstructionFolder('SAM 0004 — Гагарина 64')).toMatchObject({
+      sam:'SAM 0004',number:'0004',address:'Гагарина 64'
+    })
+    expect(parseConstructionFolder('TLT 01 — Ленина 25')?.sam).toBe('TLT 01')
+    expect(parseConstructionFolder('SAM-0004 — Гагарина 64')).toBeNull()
+    expect(parseConstructionFolder('SAM 0004 - Гагарина 64')).toBeNull()
+    expect(parseConstructionFolder('SAM 0004')).toBeNull()
+  })
+  it('accounts for every file and reports forbidden folders, nested paths and formats',()=>{
+    const result=inspectReferenceDirectory([
+      file('Образцы/SAM 0004 — Гагарина 64/a.jpg','a.jpg'),
+      file('Образцы/SAM 0004 — Гагарина 64/b.png','b.png'),
+      file('Образцы/TLT 3245 — Южное шоссе 10/c.jpg','c.jpg'),
+      file('Образцы/SAM-0005/invalid.jpg','invalid.jpg'),
+      file('Образцы/SAM 0004 — Гагарина 64/notes.txt','notes.txt'),
+      file('Образцы/SAM 0004 — Гагарина 64/nested/x.jpg','x.jpg')
+    ])
+    expect(result.scanned).toBe(6)
+    expect(result.tasks).toHaveLength(3)
+    expect(result.errors).toHaveLength(3)
+    expect(result.tasks.length+result.errors.length).toBe(result.scanned)
+    expect(result.folders).toHaveLength(2)
+    expect(result.folders.find(x=>x.sam==='SAM 0004')?.count).toBe(2)
+  })
+  it('rejects conflicting addresses for the same city and construction number',()=>{
+    const result=inspectReferenceDirectory([
+      file('Образцы/SAM 003 — Полевая 10/a.jpg','a.jpg'),
+      file('Образцы/SAM 003 — Полевая 12/b.jpg','b.jpg')
+    ])
+    expect(result.errors).toHaveLength(1)
+    expect(result.folders).toHaveLength(1)
+    expect(result.tasks).toHaveLength(1)
   })
 })
