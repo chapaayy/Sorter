@@ -101,3 +101,20 @@ def test_new_construction_cannot_be_created_without_an_address(thumbs):
         uploads._create_upload(uploads.BeginUpload(
             kind="reference",sam="TLT "+number,filename="image.jpg",size=100),uuid.uuid4())
     assert exc.value.status_code==422
+
+def test_new_construction_keys_reach_megaloc_scanner_and_zip(tmp_path):
+    from app.photos.scanner import references as scan_references
+    from app.results.copier import copy_photo
+    from server.api.routes.downloads import archive_member
+    root=tmp_path/"references"
+    sam="TLT 3245"
+    folder=root/sam
+    folder.mkdir(parents=True)
+    photo=folder/"sample.jpg"
+    photo.write_bytes(_jpg())
+    scanned=scan_references(root)
+    assert scanned==[(photo,sam)]
+    published=copy_photo(photo,tmp_path/"result",sam)
+    assert published.is_file()
+    assert published.parent.name==sam
+    assert archive_member(sam,published.name).startswith("TLT 3245/")
