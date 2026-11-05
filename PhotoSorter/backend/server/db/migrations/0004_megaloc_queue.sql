@@ -1,4 +1,4 @@
--- Queue metadata; no historical job rewrite or loss of prior runs.
+-- Queue metadata — no historical job rewrite or loss of prior runs.
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_jobs_queue_order ON jobs(created_at,id)

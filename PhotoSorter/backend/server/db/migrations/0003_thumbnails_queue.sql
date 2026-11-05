@@ -1,4 +1,4 @@
--- Durable, additive, foreign-key-owned preview queue; legacy rows backfilled.
+-- Durable, additive, foreign-key-owned preview queue — legacy rows backfilled.
 ALTER TABLE uploads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE TABLE IF NOT EXISTS thumbnail_tasks (
  upload_id UUID PRIMARY KEY REFERENCES uploads(id) ON DELETE CASCADE,
