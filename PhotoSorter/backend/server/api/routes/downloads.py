@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 import zipfile
-from pathlib import Path
+from pathlib import Path,PurePosixPath
 from fastapi import APIRouter,HTTPException
 from fastapi.responses import StreamingResponse
 from ...database import connect
@@ -12,6 +12,17 @@ from .results import safe_manifest
 from .images import file_allowed
 
 router=APIRouter(prefix="/api/download",tags=["downloads"])
+
+def archive_member(sam:str,filename:str)->str:
+    """Reject Zip Slip even if a persisted manifest has been compromised."""
+    if not sam or sam in (".","..") or any(c in sam for c in "/\\\\\x00"):
+        raise HTTPException(422,"Недопустимый SAM в архиве")
+    if not filename or filename in (".","..") or any(c in filename for c in "/\\\\\x00"):
+        raise HTTPException(422,"Недопустимый файл в архиве")
+    name=PurePosixPath(sam)/filename
+    if name.is_absolute() or ".." in name.parts:
+        raise HTTPException(422,"Недопустимый путь ZIP")
+    return name.as_posix()
 
 @router.get("/{run_id}")
 def download_results(run_id:str,sam:str|None=None):
@@ -26,7 +37,7 @@ def download_results(run_id:str,sam:str|None=None):
         for item in rows:
             if sam and item["assigned_sam"]!=sam:continue
             file=file_allowed(Path(item["copy"]))
-            selected.append((file,f'{item["assigned_sam"]}/{file.name}'))
+            selected.append((file,archive_member(item['assigned_sam'],file.name)))
         if not selected:raise HTTPException(404,"Нет фотографий для архива")
         stream=zipstream.ZipStream(compress_type=zipfile.ZIP_STORED)
         for file,name in selected:stream.add_path(file,arcname=name)

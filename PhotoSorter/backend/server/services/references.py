@@ -4,6 +4,7 @@ import errno,os,re,shutil
 from pathlib import Path
 from fastapi import HTTPException
 from app.config import DATA_DIR
+from ..storage.paths import run_dir
 from app.photos.labels import check_label
 from app.system.model_store import signature
 from ..database import connect
@@ -25,6 +26,31 @@ def _editable(db,source):
     if db.execute("""SELECT 1 FROM uploads WHERE kind='reference' AND sam=%s
                    AND NOT finalized LIMIT 1""",(source,)).fetchone():
         raise HTTPException(409,"Дождитесь окончания загрузок этой SAM")
+
+def _historical_reference_guard(db,sam):
+    """Fail closed if a published run still names this SAM in its immutable manifest.
+
+    Rename/delete must not silently invalidate a historic score/reference path.
+    No modification to MegaLoc output manifests or model weights.
+    """
+    rows=db.execute("""SELECT id FROM jobs
+        WHERE status IN ('completed','completed_with_errors')""").fetchall()
+    marker=sam.encode('utf-8')
+    for row in rows:
+        try:
+            manifest=run_dir(row["id"],DATA_DIR/"outputs")/"megaloc"/"manifest.json"
+        except ValueError:
+            raise HTTPException(409,"Исторический запуск с неверным ID; SAM не изменена")
+        if manifest.is_symlink():
+            raise HTTPException(409,"Недоверенный исторический manifest; SAM не изменена")
+        if not manifest.is_file():
+            continue
+        with manifest.open("rb") as stream:
+            carry=b""
+            while chunk:=stream.read(256*1024):
+                if marker in carry+chunk:
+                    raise HTTPException(409,"SAM используется в сохранённых результатах. Сначала сохраните архивы и согласуйте миграцию.")
+                carry=chunk[-len(marker):]
 
 def cache_status():
     try:sig=signature()
@@ -50,6 +76,7 @@ def rename(source,target):
     try:
         with connect() as db:
             _editable(db,source)
+            _historical_reference_guard(db,source)
             if db.execute("""SELECT 1 FROM uploads WHERE kind='reference' AND sam=%s LIMIT 1""",
                           (target,)).fetchone():
                 raise HTTPException(409,"SAM с таким именем уже существует")
@@ -99,6 +126,7 @@ def delete(source):
     root=owned_directory(REFS/source,REFS)
     with connect() as db:
         _editable(db,source)
+        _historical_reference_guard(db,source)
         rows=db.execute("""SELECT id,target_path FROM uploads
             WHERE kind='reference' AND sam=%s AND finalized FOR UPDATE""",
             (source,)).fetchall()

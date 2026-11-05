@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from PIL import Image, UnidentifiedImageError
+from .storage.thumbnail_cache import PIXEL_LIMIT
 from .database import connect
 from .services import operations
 from .db.repositories import batches as batch_repository
@@ -207,7 +208,10 @@ def _finalize_sync(upload_id: str):
         digest=hashlib.file_digest(stream,'sha256').hexdigest()
     if row['checksum'] and digest!=row['checksum']:raise HTTPException(422,'SHA-256 не совпадает')
     try:
-        with Image.open(path) as im:im.verify()
+        with Image.open(path) as im:
+            if im.width*im.height>PIXEL_LIMIT:
+                raise HTTPException(422,'Слишком большое разрешение изображения')
+            im.verify()
     except (OSError,UnidentifiedImageError,ValueError):
         raise HTTPException(422,'Файл не является корректным изображением')
     # Prevent duplicates when a SAM folder upload is restarted after an error.

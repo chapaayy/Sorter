@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from .database import connect
+from .security.login_throttle import limiter
 
 SESSION_DAYS = 7
 COOKIE_NAME = 'photosorter_session'
@@ -27,19 +28,22 @@ def bootstrap_admin():
                    ('admin',salt.hex(),hash_password(initial,salt)))
 
 
-def login(username: str, password: str) -> str:
+def login(username: str, password: str, client_key: str = "") -> str:
+    limiter.check(username, client_key)
     with connect() as db:
         user=db.execute('SELECT * FROM users WHERE username=%s',(username,)).fetchone()
         # Match timing regardless of account existence.
         salt=bytes.fromhex(user['password_salt']) if user else b'0'*16
         candidate=hash_password(password,salt)
         if not user or not hmac.compare_digest(candidate,user['password_hash']):
+            limiter.fail(username,client_key)
             raise HTTPException(401,'Неправильный логин или пароль')
         token=secrets.token_urlsafe(40)
         db.execute('DELETE FROM sessions WHERE expires_at < now()')
         db.execute('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES (%s,%s,%s)',
                    (hashlib.sha256(token.encode()).hexdigest(),user['id'],
                     datetime.now(timezone.utc)+timedelta(days=SESSION_DAYS)))
+        limiter.succeed(username,client_key)
         return token
 
 
