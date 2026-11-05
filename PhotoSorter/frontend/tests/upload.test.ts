@@ -199,7 +199,7 @@ describe('reference duplicate detection before transfer',()=>{
     const hash='a'.repeat(64)
     const index=indexReferenceHashes([{id:'1',sam:'SAM 0004',name:'old.jpg',sha256:hash}])
     expect(index.get('SAM 0004')?.has(hash)).toBe(true)
-    expect(index.get('TLT 0004')?.has(hash)).toBe(false)
+    expect(index.has('TLT 0004')).toBe(false)
   })
   it('hashes actual file bytes with SHA-256 when browser crypto is available',async()=>{
     const digest=await fileSha256(new File(['abc'],'new.jpg'))
