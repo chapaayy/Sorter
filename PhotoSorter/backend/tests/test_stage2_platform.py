@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image
 import pytest
 from fastapi import HTTPException
-from .test_stage1_lifecycle import sandbox,_batch,_job
+from .test_stage1_lifecycle import sandbox,_batch,_job,db
 from server.database import connect
 from server.services import thumbnails
 from server.storage import thumbnail_cache as cache
