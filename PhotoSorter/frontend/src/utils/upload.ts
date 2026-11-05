@@ -60,10 +60,14 @@ export async function uploadOne(t:UploadTarget,e:UploadEntry,signal:AbortSignal,
   if(e.file.size===0)throw new Error('Пустой файл: '+e.file.name)
   const storage=key(t,e)
   const previous=saved(storage)
-  if(previous==='done'){progress(e.file.size);return {path:'',already_finalized:true,already_present:true}}
-  // Restore the original 16 MiB offset-based protocol (5 workers by default).
-  // Existing direct-transfer upload IDs are also resumed safely via GET.
-  const result=await resume(previous||'',t,e,signal,progress)
+  // A finished FO belongs to a fixed batch, but references are editable.
+  // Re-check a reference against the server on every new import: the user may
+  // have removed that same photo since the previous local "done" marker.
+  if(previous==='done'&&t.kind==='fo'){
+    progress(e.file.size)
+    return {path:'',already_finalized:true,already_present:true}
+  }
+  const result=await resume(previous==='done'?'':previous||'',t,e,signal,progress)
   remember(storage,'done')
   progress(e.file.size)
   return result
