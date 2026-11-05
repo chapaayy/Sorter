@@ -14,3 +14,9 @@
 2. Вернуть код на коммит stage1 `9eb865d321a67890e414da4d17643ce1d046f51b` (или staging deployment tag) без удаления `Models/`, `PhotoSorter/data/` или PostgreSQL/Caddy Docker volumes.
 3. Аддитивные `thumbnail_tasks`, `uploads.updated_at`, новые индексы, jobs timestamps безопасно **оставить в PostgreSQL**, не выполнять DROP. Старый код игнорирует новые колонки; очередь будущих queued jobs нужно учесть перед откатом, не запускать параллельный model worker.
 4. Проверить старые auth/resumable uploads, manifest/ZIP, чтение output, отсутствие cleanup while rollback. Все реальные данные/снимки — только с отдельным разрешением владельца.
+
+## Stage 3 UI rollback
+
+Самый безопасный откат UI — **перестать открывать `/v3/`**, продолжить работу на существующем `/`. Ни старый `frontend/static`, ни работающие upload/ZIP API для этого не нужно менять. Если нужно откатить Docker образ, использовать stage2 commit `9ecb75194a9e388ba8e0391fa6d6e56529dea0c0` **на staging**, сохранив volume PostgreSQL и data.
+
+Новые rename/delete SAM требуют аккуратной приёмки: исторические результаты могут ссылаться на старые пути Образцов. Не проводить переименование реальных SAM до проверки старых manifests; при неудачном тесте восстановить из согласованного backup. Не запускать full-production rollback только ради смены темы.

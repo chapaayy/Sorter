@@ -69,3 +69,21 @@
 **API backwards compatibility:** `GET /results/{run_id}/megaloc` до сих пор возвращает прежний manifest, `GET /download/{run_id}?sam=` стримит ZIP без постоянного файла; POST auth/cookies/Origin остаются. Browser не передаёт filesystem paths. Старые completed runs без `manifest.rows.jsonl` поддерживаются legacy fallback, но могут требовать чтения полного manifest.
 
 **Состояния:** after upload original ready сразу, thumbnail queued/running/ready/failed независимо; `queue_position` появляется только у queued job. После crash running→interrupted; никаких ложных восстановлений промежуточных нейронных embedding. ENOSPC → HTTP 507 для новых загрузок, не удаляет completed файлы.
+
+## Stage 3 — Vue адаптеры, новые узкие endpoints
+
+| Метод | URI | Назначение |
+|---|---|---|
+| GET | `/api/references/cache/status` | total/cached по текущей подписи модели, если доступна |
+| PATCH | `/api/references/sam/{sam}` | `{"new_sam":"SAM-XXXX"}`, rename SAM после подтверждения UI |
+| DELETE | `/api/references/sam/{sam}` | удалить всю SAM и принадлежащие эталонные фото |
+| GET | `/api/logs/{run_id}/page?tail_mode=true` | последние ограниченные события плюс курсор от конца |
+| POST | `/api/system/cache/cleanup` | только cache WebP без checksum owner и устаревшие временные файлы |
+| GET | `/v3/`, `/v3/fo/:id` и другие SPA пути | Vue bundle с истории маршрутов, только read-only HTML |
+| GET | `/v3/assets/*` | только уже собранные Vite assets внутри `frontend/dist/assets`, без path traversal |
+
+**Сохранённые пути:** `/` (старый интерфейс), `/static/app.js`, `/static/style.css`, login/logout, streaming ZIP, batch CRUD, queues и Base API этапов 1–2. Новые методы защищены теми же cookie/Origin middleware. При несуществующем Vue dist `/v3/` возвращает 503 и не ломает legacy `/`.
+
+**SAM rename safety:** запрещён при queued/running/stopping MegaLoc и незавершённых загрузках данной SAM. Исторические manifests с исходными путями требуют отдельной проверки/миграции при переименовании библиотеки, прежде чем включать эту функцию на рабочем VPS. Это не изменяет MegaLoc math.
+
+**Предупреждение о ZIP:** `GET /api/download/{run_id}` только начинает поток; отдельный пользовательский `POST /api/batches/{id}/downloads/confirm` требуется после проверки файла. UI не пытается автоматически подтвердить получение архива.

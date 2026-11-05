@@ -13,3 +13,5 @@
 ## Дополнительный stage2 backup scope
 
 В резервную копию PostgreSQL входят `thumbnail_tasks`, `uploads.updated_at`, новые jobs timestamps и indexes. `data/cache/thumbnails/v1/` — пересчитываемый WebP cache, но для точного восстановления состояния очереди разумно снимать его согласованно с БД. Общий MegaLoc reference embedding cache сохранять отдельно, не трактовать thumbnails как резерв ФО. Во время snapshot приостановить thumbnail/cleanup/worker и завершить pending uploads. Реальный restore в этой беседе не проводился.
+
+Stage3 UI — исключительно клиент существующих серверных состояний. Он не создает новую резервную систему, а показывает предупреждение, если проверенная внешняя копия неизвестна. Сохранение `package-lock.json` и dist assets **не заменяет** snapshot PostgreSQL+data+Models при реальном обновлении. Rename SAM изменяет пути Образцов — перед production тестом понадобится согласованная копия данных и проверка зависимостей старых manifests.

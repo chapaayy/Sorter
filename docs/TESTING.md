@@ -40,3 +40,20 @@ GitHub Actions runs `41949026787` и `41949033874`: **33 passed**, Python compil
 ## Фактически выполненный CI для stage2
 
 GitHub Actions workflow `41954580354` на `4f6212729ef7277091eb134141f4a18b80375134`: `52 passed in 4.52s`, `python -m compileall` и `docker compose config --quiet` прошли. Тестовая PostgreSQL 17 — временный CI service, а не действующий VPS. Ни один файл `app/recognition/` в diff stage1→stage2 не менялся.
+
+## Stage 3 — browser/API verification
+
+Frontend commands:
+```bash
+cd PhotoSorter/frontend
+npm ci
+npm run build  # vue-tsc --noEmit + Vite static /v3/ bundle
+npm run test   # Vitest contracts in tests/
+npx playwright install chromium webkit
+npm run test:e2e
+```
+`.github/workflows/stage3-vue.yml` запускает Node 24, npm ci с точным package-lock, TypeScript/Vite, Vitest и Playwright Chrome desktop, WebKit desktop, iPhone-size WebKit. E2E подменяет `/api` тестовыми ответами; **это проверка фронтенд-потоков, не реальных сетевых фото**.
+
+`backend/tests/test_stage3_ui_api.py` на временных директориях и тестовой PostgreSQL проверяет rename/delete SAM, запрет во время queued обработки, защиту от traversal и раздельность legacy `/` и Vue `/v3/`.
+
+Не подтверждено: реальный iPhone Safari, реальные 189/1315 изображений, полноценный Docker build с CPU PyTorch, реальная сеть/диск/время финиша ZIP, отказоустойчивость прерывания на нескольких API workers, production backup/restore. **Этап 4 — обязательная приёмка**; приложение пока opt-in и не стало основным UI.
