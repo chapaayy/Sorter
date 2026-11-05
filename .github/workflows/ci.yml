@@ -1,0 +1,36 @@
+name: Stage 1 Python checks
+
+on:
+  push:
+    branches: ["stage1/**"]
+  pull_request:
+    branches: ["vps/docker-rebuild"]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: sorter_test
+          POSTGRES_USER: sorter_test
+          POSTGRES_PASSWORD: test_only_no_real_data
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sorter_test -d sorter_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://sorter_test:test_only_no_real_data@localhost:5432/sorter_test
+      PYTHONPATH: PhotoSorter/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend test dependencies
+        run: pip install pytest numpy==1.26.4 Pillow==11.0.0 fastapi "pydantic>=2,<3" "psycopg[binary]>=3.2,<4" "zipstream-ng>=1.8,<2"
+      - name: Compile Python
+        run: python -m compileall -q PhotoSorter/backend
+      - name: MegaLoc math and stage 1 contract tests
+        run: python -m pytest -q PhotoSorter/backend/tests
