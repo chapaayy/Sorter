@@ -5,6 +5,7 @@ import {systemApi} from '../../api/system'
 import {logApi} from '../../api/logs'
 import {runApi} from '../../api/runs'
 import {useThemeStore} from '../../stores/theme'
+import {useUploadSettingsStore} from '../../stores/uploadSettings'
 import {useNoticeStore} from '../../stores/notice'
 import {usePolling} from '../../composables/usePolling'
 import type {Batch,StorageUsage,SystemStatus,ModelInfo,ThemeChoice} from '../../types/api'
@@ -12,7 +13,7 @@ import {bytes,date,errorText} from '../../utils/format'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
-const theme=useThemeStore(),notice=useNoticeStore()
+const theme=useThemeStore(),notice=useNoticeStore(),uploadSettings=useUploadSettingsStore()
 const usage=ref<StorageUsage|null>(null),system=ref<SystemStatus|null>(null),logs=ref<{bytes:number;budget_bytes:number}|null>(null),
  model=ref<ModelInfo|null>(null),batches=ref<Batch[]>([]),error=ref(''),busy=ref(false),cleanConfirm=ref(false)
 const due=computed(()=>batches.value.filter(b=>b.delete_state==='active'&&b.delete_after_at).sort((a,b)=>(a.delete_after_at||'').localeCompare(b.delete_after_at||'')))
@@ -48,6 +49,17 @@ async function cleanup(){
     <div class="segment" role="radiogroup" aria-label="Тема сайта">
       <button v-for="value in (['system','dark','light'] as ThemeChoice[])" :key="value" role="radio" :aria-checked="theme.choice===value" :class="{active:theme.choice===value}" @click="theme.choice=value">{{value==='system'?'Системная':value==='dark'?'Тёмная':'Светлая'}}</button>
     </div>
+  </section>
+  <section class="panel stack">
+    <h2>Передача файлов</h2>
+    <p class="meta">Общая настройка для загрузки ФО и Образцов. Изменения применяются при следующем запуске передачи.</p>
+    <div class="row between wrap">
+      <label for="parallel-uploads"><strong>Параллельная загрузка</strong><span class="meta" style="display:block;margin-top:4px">Количество файлов, отправляемых одновременно</span></label>
+      <select id="parallel-uploads" v-model.number="uploadSettings.parallelUploads" style="width:140px" aria-label="Количество параллельных загрузок">
+        <option v-for="count in 10" :key="count" :value="count">{{count}} {{count===1?'поток':count<5?'потока':'потоков'}}</option>
+      </select>
+    </div>
+    <p class="meta" style="margin:0">По умолчанию — 5. Файлы передаются блоками по 16 МБ с возможностью продолжить после обрыва. Настройка хранится в этом браузере.</p>
   </section>
   <section class="panel stack">
     <div class="panel-header"><h2>Хранилище</h2><span v-if="usage?.disk.warning" class="status" :class="usage.disk.warning==='critical'?'danger':''">{{usage.disk.warning==='critical'?'Критично: ≥90%':'Предупреждение: ≥80%'}}</span></div>
