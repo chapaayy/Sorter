@@ -43,13 +43,22 @@ async function start(){
     }
     if(!batchId.value){const created=await batchApi.create(folder.value);batchId.value=created.batch_id;saveId(batchId.value)}
     const signal=controller.signal
+    const reconnecting=new Set<number>()
     phase.value='Передача файлов'
     const failures=await runUploadQueue(entries.value.length,uploadSettings.parallelUploads,signal,async idx=>{
       const entry=entries.value[idx]
       if(!entry)return
       await uploadOne({kind:'fo',batchId:batchId.value},entry,signal,n=>{
         amounts.value[idx]=n
+      },state=>{
+        if(state.state==='waiting')reconnecting.add(idx)
+        else reconnecting.delete(idx)
+        phase.value=reconnecting.size
+          ?'Ожидание соединения · '+reconnecting.size+' файлов восстанавливаются'
+          :'Передача файлов'
       })
+      reconnecting.delete(idx)
+      phase.value=reconnecting.size?'Ожидание соединения':'Передача файлов'
       finished.value++;amounts.value[idx]=entry.file.size
     },{
       haltAfterFailuresWithoutSuccess:Math.min(3,uploadSettings.parallelUploads),
@@ -93,7 +102,7 @@ function stop(){controller?.abort()}
   <div v-if="running||uploaded" class="stack-sm">
     <div class="row between meta"><span>Передано {{bytes(uploaded)}} / {{bytes(total)}}</span><span>{{percent.toFixed(1)}}%</span></div>
     <div class="progress-track" role="progressbar" :aria-valuenow="percent" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill" :style="{width:percent+'%'}"/></div>
-    <div class="meta">{{phase}} · {{finished}} из {{entries.length}} файлов · до {{uploadSettings.parallelUploads}} передач одновременно</div>
+    <div class="meta" role="status">{{phase}} · {{finished}} из {{entries.length}} файлов · до {{uploadSettings.parallelUploads}} передач одновременно</div>
   </div>
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
 </section>
