@@ -232,7 +232,7 @@ test('explicit cancellation only removes one selected unfinished transfer',async
   await page.goto('/fo/'+bid)
   await expect(page.getByText('IMG_2828.JPG')).toBeVisible()
   await page.getByRole('button',{name:'Отменить',exact:true}).click()
-  await expect(page.getByRole('dialog',{name:'Отменить незавершённую передачу?'})).toBeVisible()
+  await expect(page.getByRole('alertdialog',{name:'Отменить незавершённую передачу?'})).toBeVisible()
   await page.getByRole('button',{name:'Отменить передачу',exact:true}).click()
   await expect.poll(()=>deleteCount).toBe(1)
   await expect(page.getByRole('region',{name:'Незавершённые загрузки'})).toBeHidden()
