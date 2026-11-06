@@ -1,9 +1,11 @@
 import {parseConstructionFolder,inspectReferenceDirectory} from '../src/utils/referenceSelection'
 import {indexReferenceHashes,fileSha256} from '../src/utils/referenceDuplicates'
 import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest'
-import {directoryEntries,ALLOWED,UPLOAD_CHUNK_BYTES,uploadOne} from '../src/utils/upload'
+import {directoryEntries,ALLOWED,UPLOAD_CHUNK_BYTES,uploadOne,resumePendingUpload} from '../src/utils/upload'
 import {runUploadQueue} from '../src/utils/uploadQueue'
 import {normalizeParallelUploads} from '../src/stores/uploadSettings'
+import {withUploadRetry} from '../src/utils/uploadRetry'
+import {ApiError} from '../src/api/client'
 
 const saved=new Map<string,string>()
 beforeEach(()=>{
@@ -32,11 +34,15 @@ describe('folder input',()=>{
 describe('resumable upload transport',()=>{
   it('uses PATCH chunks of 16 MiB, never direct PUT, for a new photo',async()=>{
     const chunkSizes:number[]=[]
-    let offset=0
+    let offset=0,id=''
     const fetch=vi.fn(async(url:string,opts:RequestInit={})=>{
-      if(url==='/api/uploads'&&opts.method==='POST')
-        return Response.json({id:'new-id'})
-      if(url==='/api/uploads/new-id'&&opts.method==='PATCH'){
+      if(url==='/api/uploads'&&opts.method==='POST'){
+        const body=JSON.parse(String(opts.body))
+        id=body.client_upload_id
+        expect(id).toMatch(/^[0-9a-f-]{36}$/)
+        return Response.json({id,size:body.size,offset:0,finalized:false})
+      }
+      if(url==='/api/uploads/'+id&&opts.method==='PATCH'){
         const chunk=opts.body as Blob
         expect(opts.headers).toBeInstanceOf(Headers)
         chunkSizes.push(chunk.size)
@@ -44,7 +50,7 @@ describe('resumable upload transport',()=>{
         offset+=chunk.size
         return Response.json({offset})
       }
-      if(url==='/api/uploads/new-id/finish'&&opts.method==='POST')
+      if(url==='/api/uploads/'+id+'/finish'&&opts.method==='POST')
         return Response.json({path:'/uploaded/image.jpg'})
       throw Error('Unexpected '+opts.method+' '+url)
     })
@@ -208,5 +214,91 @@ describe('reference duplicate detection before transfer',()=>{
     }else{
       expect(digest).toBeNull()
     }
+  })
+})
+
+describe('resilience after a network/VPN interruption',()=>{
+  it('reuses one session when the creation response is lost',async()=>{
+    let id='',creates=0
+    const fetch=vi.fn(async(url:string,opts:RequestInit={})=>{
+      if(url==='/api/uploads'&&opts.method==='POST'){
+        const body=JSON.parse(String(opts.body))
+        creates++
+        expect(id===''||id===body.client_upload_id).toBe(true)
+        id=body.client_upload_id
+        if(creates===1)throw new TypeError('VPN switched')
+        return Response.json({id,size:3,offset:0,finalized:false})
+      }
+      if(url==='/api/uploads/'+id&&opts.method==='PATCH')
+        return Response.json({offset:3})
+      if(url==='/api/uploads/'+id+'/finish'&&opts.method==='POST')
+        return Response.json({path:'/data/photo.jpg'})
+      throw Error('Unexpected '+url)
+    })
+    vi.stubGlobal('fetch',fetch)
+    const state:string[]=[]
+    await uploadOne({kind:'fo',batchId:'a'}, {file:new File(['abc'],'photo.jpg'),relative:'f/photo.jpg'},
+      new AbortController().signal,()=>{},status=>state.push(status.state))
+    expect(creates).toBe(2)
+    expect(state).toContain('waiting')
+    expect(state).toContain('active')
+    expect(saved.values().next().value).toBe('done')
+  })
+  it('only finalizes a complete file after a broken PATCH reply',async()=>{
+    const file=new File(['photo bytes'],'img.jpg')
+    let createId='',patches=0,finished=0
+    const fetch=vi.fn(async(url:string,opts:RequestInit={})=>{
+      if(url==='/api/uploads'&&opts.method==='POST'){
+        createId=JSON.parse(String(opts.body)).client_upload_id
+        return Response.json({id:createId,size:file.size,offset:0,finalized:false})
+      }
+      if(url==='/api/uploads/'+createId&&opts.method==='PATCH'){
+        patches++
+        if(patches===1)throw new TypeError('Connection reset after chunk accepted')
+        return Response.json({offset:file.size})
+      }
+      if(url==='/api/uploads/'+createId+'/finish'&&opts.method==='POST'){
+        finished++
+        return Response.json({path:'/data/img.jpg'})
+      }
+      throw Error('Unexpected '+url)
+    })
+    vi.stubGlobal('fetch',fetch)
+    await uploadOne({kind:'fo',batchId:'a'}, {file,relative:'f/img.jpg'},
+      new AbortController().signal,()=>{})
+    expect(patches).toBe(2)
+    expect(finished).toBe(1)
+  })
+  it('finishes after reopening with all bytes already on the server',async()=>{
+    const file=new File(['abc'],'reopen.jpg')
+    const storage='ps.up.v3.fo:batch-a:f/reopen.jpg:'+file.size+':'+file.lastModified
+    saved.set(storage,'existing-id')
+    const fetch=vi.fn(async(url:string,opts:RequestInit={})=>{
+      if(url==='/api/uploads/existing-id'&&!opts.method)
+        return Response.json({id:'existing-id',size:file.size,offset:file.size,finalized:false})
+      if(url==='/api/uploads/existing-id/finish'&&opts.method==='POST')
+        return Response.json({path:'/data/reopen.jpg'})
+      throw Error('Unexpected '+url)
+    })
+    vi.stubGlobal('fetch',fetch)
+    await uploadOne({kind:'fo',batchId:'batch-a'},{file,relative:'f/reopen.jpg'},
+      new AbortController().signal,()=>{})
+    expect(fetch.mock.calls.some(([,opts])=>opts?.method==='PATCH')).toBe(false)
+  })
+  it('will not resume an unrelated image with same name and size',async()=>{
+    const file=new File(['abcdef'],'img.jpg')
+    await expect(resumePendingUpload('my-id',{kind:'fo',batchId:'a'},
+      {file,relative:file.name},{
+        filename:'img.jpg',size:file.size,has_part:true,prefix_bytes:3,
+        prefix_sha256:'0'.repeat(64)
+      },new AbortController().signal,()=>{})).rejects.toThrow(/отличается|HTTPS/)
+  })
+  it('waits for network recovery and can be cancelled instantly',async()=>{
+    const controller=new AbortController()
+    const statuses:string[]=[]
+    const wait=withUploadRetry(async()=>{throw new ApiError(0,'offline')},
+      controller.signal,state=>{statuses.push(state.state);controller.abort()})
+    await expect(wait).rejects.toMatchObject({name:'AbortError'})
+    expect(statuses).toContain('waiting')
   })
 })
