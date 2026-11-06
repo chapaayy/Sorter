@@ -54,8 +54,8 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 | Vue app | `PhotoSorter/frontend/src/app/` | Auth gate, Vue history router, единый layout |
 | Vue API | `PhotoSorter/frontend/src/api/` | Типизированные запросы по `/api` |
 | Vue features | `PhotoSorter/frontend/src/features/` | Разделы и подстраницы без дублирования общего UI |
-| Vue components | `PhotoSorter/frontend/src/components/` | Общие кнопки, modal, gallery, grid, sidebar |
-| Vue stores | `PhotoSorter/frontend/src/stores/` | Сессия, theme, уведомления |
+| Vue components | `PhotoSorter/frontend/src/components/` | Общие кнопки, modal, gallery, grid, свёрнутая desktop-панель и общий список GroupPicker |
+| Vue stores | `PhotoSorter/frontend/src/stores/` | Сессия, theme, уведомления, локальное состояние бокового меню |
 | Backend API | `PhotoSorter/backend/server/api/routes/` | HTTP контракты, проверка доступа |
 | Backend services | `PhotoSorter/backend/server/services/` | Работа с состоянием, безопасное удаление, архивы, очередь |
 | PostgreSQL | `PhotoSorter/backend/server/db/` | Аддитивные миграции и read/write репозитории |
@@ -81,6 +81,7 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 ## Инварианты
 
 - Веб-интерфейс **ровно один**: Vue SPA по `/`; старых `/v3/` и `/static/*` нет.
+- Боковая навигация desktop сохраняет предпочтение `ps.sidebar.collapsed` локально; мобильный drawer работает независимо. Общий `GroupPicker` показывает одну строку на элемент, обрезает длинный текст и сохраняет полное название в подсказке.
 - `PhotoSorter/frontend/dist/` собирается в Docker на Node 24, runtime использует Python/FastAPI, без сервера Node.
 - Под `Models/` только веса/загрузчики, под `PhotoSorter/data/` пользовательские оригиналы и результаты; исходники из Git не пересоздают эти каталоги произвольно.
 - Математику MegaLoc, бизнес-правила сохранения ZIP и защиту API не менять ради косметического рефакторинга.
