@@ -14,10 +14,16 @@ const filtered=computed(()=>props.items.filter(i=>i.label.toLowerCase().includes
       placeholder="Выберите группу" :disabled="!items.length" @update:model-value="emit('update:modelValue',$event)"/>
   </div>
   <aside class="panel split-aside">
-    <input v-model="search" :placeholder="placeholder||'Найти…'" aria-label="Поиск групп" style="margin-bottom:14px"/>
+    <input v-model="search" class="split-search" :placeholder="placeholder||'Найти…'"
+      aria-label="Поиск групп"/>
     <nav class="split-list" aria-label="Выбор группы">
-      <button v-for="item in filtered" :key="item.id" class="split-item" :class="{active:item.id===modelValue}" :aria-current="item.id===modelValue?'true':undefined" @click="emit('update:modelValue',item.id)">
-        <span>{{item.label}}</span><span class="meta">{{item.count}}</span>
+      <button v-for="item in filtered" :key="item.id" class="split-item"
+        :class="{active:item.id===modelValue}"
+        :aria-current="item.id===modelValue?'true':undefined"
+        :aria-label="item.label+' · '+item.count"
+        :title="item.label" @click="emit('update:modelValue',item.id)">
+        <span class="split-item-label">{{item.label}}</span>
+        <span class="split-item-count" aria-hidden="true">{{item.count}}</span>
       </button>
       <p v-if="!filtered.length" class="meta">Ничего не найдено</p>
     </nav>
