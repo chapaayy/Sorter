@@ -23,6 +23,8 @@ describe('batch eligibility with empty history and deleted tombstones',()=>{
   })
   it('does not offer unfinished, empty or deleting batches',()=>{
     expect(canProcessBatch(batch({pending:1}))).toBe(false)
+    expect(canProcessBatch(batch({upload_manifest_state:'waiting',pending:0}))).toBe(false)
+    expect(canProcessBatch(batch({upload_manifest_state:'complete',pending:0}))).toBe(true)
     expect(canProcessBatch(batch({photos:0}))).toBe(false)
     expect(canProcessBatch(batch({delete_state:'deleting'}))).toBe(false)
     expect(canResumeUpload(batch({delete_state:'deleted'}))).toBe(false)

@@ -13,6 +13,7 @@ from PIL import Image, UnidentifiedImageError
 from .storage.thumbnail_cache import PIXEL_LIMIT
 from .database import connect
 from .services import operations
+from .services import upload_manifest
 from .db.repositories import batches as batch_repository
 from .services import thumbnails
 from .services import construction_catalog
@@ -28,12 +29,18 @@ PART_DIR=DATA_DIR/'incoming'
 CHUNK_LIMIT=16*1024*1024
 MAX_FILE_BYTES=60*1024*1024
 _LOCKS:dict[str,asyncio.Lock]={}
+_INIT_LOCKS:dict[str,threading.Lock]={}
 _LOCKS_LOCK=threading.Lock()
 
 
 def lock_for(upload_id):
     with _LOCKS_LOCK:
         return _LOCKS.setdefault(str(upload_id),asyncio.Lock())
+
+
+def init_lock_for(upload_id):
+    with _LOCKS_LOCK:
+        return _INIT_LOCKS.setdefault(str(upload_id),threading.Lock())
 
 
 def safe_name(value:str)->str:
@@ -92,6 +99,7 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
                 if db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',
                               (batch_id,)).fetchone():
                     raise HTTPException(409,'Партия уже использовалась для сортировки')
+                upload_manifest.require_expected_upload(db,batch_id,file_id,filename,payload.size)
             db.execute('INSERT INTO uploads(id,kind,batch_id,sam,filename,declared_size,checksum) '
                        'VALUES (%s,%s,%s,%s,%s,%s,%s)',
                        (file_id,payload.kind,batch_id,sam,filename,payload.size,payload.sha256))
@@ -223,6 +231,9 @@ def _finalize_sync(upload_id: str):
     if row['finalized']:return {'path':row['target_path'],'already_finalized':True}
     path=PART_DIR/f'{row["id"]}.part'
     if not path.exists() or path.stat().st_size!=row['declared_size']:
+        current=get_upload(upload_id)
+        if current['finalized']:
+            return {'path':current['target_path'],'already_finalized':True}
         raise HTTPException(409,'Файл загружен не полностью')
     with path.open('rb') as stream:
         digest=hashlib.file_digest(stream,'sha256').hexdigest()
@@ -237,6 +248,16 @@ def _finalize_sync(upload_id: str):
     # Prevent duplicates when a SAM folder upload is restarted after an error.
     # The transaction lock covers both the duplicate check and registration.
     with connect() as db:
+        if row['kind']=='fo':
+            # Serialize commit/reconciliation with other finishes and enqueue.
+            batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR UPDATE',
+                             (row['batch_id'],)).fetchone()
+            if not batch or batch['delete_state']!='active':
+                raise HTTPException(409,'Партия удаляется или удалена')
+            current=db.execute('SELECT finalized,target_path FROM uploads WHERE id=%s FOR UPDATE',
+                               (row['id'],)).fetchone()
+            if current['finalized']:
+                return {'path':current['target_path'],'already_finalized':True}
         if row['kind']=='reference':
             db.execute('SELECT pg_advisory_xact_lock(723409133)')
             db.execute('SELECT pg_advisory_xact_lock(723409134)')
@@ -256,13 +277,20 @@ def _finalize_sync(upload_id: str):
                 previous_digest=hashlib.file_digest(stream,'sha256').hexdigest()
             if previous_digest!=digest:
                 raise HTTPException(409,'Конфликт имён')
-            path.unlink()
+            if row['kind']!='fo': path.unlink()
+        elif row['kind']=='fo':
+            # Keep .part until the DB transaction commits. A crash between
+            # file placement and commit can then be retried without source bytes.
+            os.link(path,target)
         else:path.replace(target)
         if row['kind']=='fo': target.chmod(0o444)
         db.execute('UPDATE uploads SET finalized=true,received=declared_size,checksum=%s,target_path=%s '
                    'WHERE id=%s',(digest,str(target),row['id']))
         thumbnails.enqueue(db,row['id'],digest)
-        if row['batch_id']:batch_repository.refresh_upload_state(db,row['batch_id'])
+        if row['batch_id']:
+            upload_manifest.reconcile_locked(db,row['batch_id'])
+            batch_repository.refresh_upload_state(db,row['batch_id'])
+    if row['kind']=='fo':path.unlink(missing_ok=True)
     return {'path':str(target),'sha256':digest,'already_finalized':False}
 
 
@@ -279,6 +307,12 @@ async def finalize(upload_id: str):
 
 
 def _prepare_direct_upload(upload_id: str, payload: BeginUpload) -> dict:
+    """Serialize concurrent POST/PUT registration of the same client UUID."""
+    with init_lock_for(upload_id):
+        return _prepare_direct_upload_locked(upload_id,payload)
+
+
+def _prepare_direct_upload_locked(upload_id: str, payload: BeginUpload) -> dict:
     """Create an idempotent upload id, or check the matching existing upload."""
     uid = uuid.UUID(upload_id)
     try:

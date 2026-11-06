@@ -1,7 +1,7 @@
 import {parseConstructionFolder,inspectReferenceDirectory} from '../src/utils/referenceSelection'
 import {indexReferenceHashes,fileSha256} from '../src/utils/referenceDuplicates'
 import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest'
-import {directoryEntries,ALLOWED,UPLOAD_CHUNK_BYTES,uploadOne,resumePendingUpload} from '../src/utils/upload'
+import {directoryEntries,ALLOWED,UPLOAD_CHUNK_BYTES,uploadOne,resumePendingUpload,expectedUploadId} from '../src/utils/upload'
 import {runUploadQueue} from '../src/utils/uploadQueue'
 import {normalizeParallelUploads} from '../src/stores/uploadSettings'
 import {withUploadRetry} from '../src/utils/uploadRetry'
@@ -86,6 +86,28 @@ describe('resumable upload transport',()=>{
       new AbortController().signal,()=>{})
     expect(chunks).toEqual([5])
     expect(fetch.mock.calls.some(([url])=>url==='/api/uploads')).toBe(false)
+  })
+})
+
+describe('manifest-backed uploads',()=>{
+  it('keeps one UUID and asks the server whether the photo was finalized',async()=>{
+    const file=new File(['photo'],'proof.jpg')
+    const entry={file,relative:'SD/proof.jpg'}
+    const target={kind:'fo' as const,batchId:'batch-manifest'}
+    const id=expectedUploadId(target,entry)
+    expect(expectedUploadId(target,entry)).toBe(id)
+    const fetch=vi.fn(async(url:string,opts:RequestInit={})=>{
+      expect(url).toBe('/api/uploads/'+id)
+      expect(opts.method).toBeUndefined()
+      return Response.json({id,offset:file.size,size:file.size,finalized:true})
+    })
+    vi.stubGlobal('fetch',fetch)
+    const signal=new AbortController().signal
+    await uploadOne(target,entry,signal,()=>{},undefined,id)
+    await uploadOne(target,entry,signal,()=>{},undefined,id)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(Array.from(saved.values())).toContain(id)
+    expect(Array.from(saved.values())).not.toContain('done')
   })
 })
 

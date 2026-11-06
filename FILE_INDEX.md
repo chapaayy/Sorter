@@ -25,13 +25,13 @@
 | `backend/server/main.py` | FastAPI assembly, auth middleware, lifespan, health |
 | `backend/server/auth.py` | Cookies, scrypt password, login, origin checks |
 | `backend/server/database.py` | PostgreSQL connect, initial schema and migrations |
-| `backend/server/uploads.py` | Докачка, идемпотентная инициализация, финализация и выборочная отмена незавершённого upload |
+| `backend/server/uploads.py` | Докачка, проверка принадлежности манифесту, финализация с сохранением `.part` до commit и выборочная отмена |
 | `backend/server/jobs.py` | Создание/отмена заданий, API очереди |
 | `backend/server/worker.py` | Однопоточный lifecycle MegaLoc Worker и heartbeat |
 | `backend/server/reference_cache.py` | Индекс и доступ к embeddings образцов |
 | `backend/server/api/routes/site.py` | **Один** Vue сайт на `/`, `/assets/*` и history fallback |
 | `backend/server/api/routes/auth.py` | Login/logout/current user endpoints |
-| `backend/server/api/routes/batches.py` | Партии, состояние незавершённых загрузок (`/pending`) и безопасное удаление |
+| `backend/server/api/routes/batches.py` | Партии, серверный манифест (`/upload-manifest`), незавершённые загрузки (`/pending`) и безопасное удаление |
 | `backend/server/api/routes/references.py` | Галерея, проверка пакета, адрес конструкции и удаление образцов |
 | `backend/server/api/routes/models.py` | Модели, скачивание и состояние |
 | `backend/server/api/routes/results.py` | История прогонов и результаты |
@@ -48,6 +48,7 @@
 | Файл / каталог | Назначение |
 |---|---|
 | `backend/server/services/batches.py` | Состояния/CRUD партий, список незавершённых с реальными offsets и SHA-256 всей уже переданной части |
+| `backend/server/services/upload_manifest.py` | Неизменяемый состав новой партии, регистрация UUID, проверка каждого финализированного оригинала и завершение `waiting/complete` в PostgreSQL |
 | `backend/server/services/references.py` | Безопасное редактирование и удаление конструкций, защита исторических manifests |
 | `backend/server/services/construction_catalog.py` | Серверная проверка массового импорта, метаданные и адреса конструкций |
 | `backend/server/services/retention.py` | Подтверждение ZIP, срок хранения, предупреждения |
@@ -62,8 +63,8 @@
 | `backend/server/services/heartbeat.py` | Пульс процессов worker/thumbnail/cleanup |
 | `backend/server/security/login_throttle.py` | Ограничение неверных логинов |
 | `backend/server/db/migration_runner.py` | Пошаговая миграция PostgreSQL |
-| `backend/server/db/migrations/0001…0008*.sql` | **Аддитивная история схемы БД**, включая каталог конструкций |
-| `backend/server/db/repositories/batches.py` | SQL для партий |
+| `backend/server/db/migrations/0001…0009*.sql` | **Аддитивная история схемы БД**, включая манифест ожидаемых ФО |
+| `backend/server/db/repositories/batches.py` | SQL для партий, совместимые с манифестом правила `upload_state` |
 | `backend/server/db/repositories/queue.py` | Очередь MegaLoc и лидер |
 | `backend/server/db/repositories/pagination.py` | Cursor pagination для галерей |
 | `backend/server/storage/paths.py` | Проверенные доверенные пути |

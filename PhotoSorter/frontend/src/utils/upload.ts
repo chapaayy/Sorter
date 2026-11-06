@@ -88,13 +88,31 @@ async function resume(id:string,t:UploadTarget,e:UploadEntry,signal:AbortSignal,
   return request(()=>api<UploadResult>('/uploads/'+id+'/finish',{method:'POST',signal}))
 }
 
+export function expectedUploadId(t:UploadTarget,e:UploadEntry):string{
+  const storage=key(t,e)
+  const current=saved(storage)
+  if(current&&/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(current))return current
+  const id=newUploadId()
+  remember(storage,id)
+  return id
+}
+
 export async function uploadOne(t:UploadTarget,e:UploadEntry,signal:AbortSignal,
-  progress:(n:number)=>void,onState?:(state:TransferState)=>void):Promise<UploadResult>{
+  progress:(n:number)=>void,onState?:(state:TransferState)=>void,
+  registeredId?:string):Promise<UploadResult>{
   if(!ALLOWED.test(e.file.name))throw new Error('Неподдерживаемое изображение: '+e.file.name)
   if(e.file.size>MAX_IMAGE_UPLOAD_BYTES)throw new Error('Файл превышает лимит 60 МБ: '+e.file.name)
   if(e.file.size===0)throw new Error('Пустой файл: '+e.file.name)
   const storage=key(t,e)
   const previous=saved(storage)
+  if(registeredId){
+    remember(storage,registeredId)
+    const result=await resume(registeredId,t,e,signal,progress,onState)
+    // Keep the UUID, not the old 'done' sentinel: after a refresh the
+    // server is authoritative about whether this exact file was finalized.
+    progress(e.file.size)
+    return result
+  }
   if(previous==='done'&&t.kind==='fo'){
     progress(e.file.size)
     return {path:'',already_finalized:true,already_present:true}

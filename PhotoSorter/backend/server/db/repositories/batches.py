@@ -58,8 +58,11 @@ def refresh_upload_state(db,batch_id):
     """Derived from the actual uploads and jobs, never a UI-only flag."""
     db.execute("""UPDATE batches SET upload_state=CASE
        WHEN EXISTS (SELECT 1 FROM jobs WHERE batch_id=%s) THEN 'sealed'
+       WHEN EXISTS (SELECT 1 FROM batches WHERE id=%s AND upload_manifest_state IS NOT NULL)
+            THEN CASE WHEN EXISTS (SELECT 1 FROM batches WHERE id=%s
+                  AND upload_manifest_state='complete') THEN 'ready' ELSE 'open' END
        WHEN EXISTS (SELECT 1 FROM uploads WHERE kind='fo' AND batch_id=%s
             AND NOT finalized) THEN 'open'
        WHEN EXISTS (SELECT 1 FROM uploads WHERE kind='fo' AND batch_id=%s
             AND finalized) THEN 'ready'
-       ELSE 'open' END WHERE id=%s""",(batch_id,batch_id,batch_id,batch_id))
+       ELSE 'open' END WHERE id=%s""",(batch_id,batch_id,batch_id,batch_id,batch_id,batch_id))

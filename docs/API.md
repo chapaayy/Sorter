@@ -31,6 +31,8 @@
 | GET | `/batches?limit=100&offset=0` | `{batches,total}` (limit 1–200) |
 | GET | `/batches/{id}` | `batch_id,photos,size_bytes,pending,runs,display_name,*_state,*_at` |
 | GET | `/batches/{id}/pending` | Незафиксированные загрузки ФО: UUID, имя, фактический offset на диске, размер, наличие `.part`, `can_finalize`, SHA-256 всей полученной части (только для незавершённого файла) для безопасной ручной докачки |
+| PUT | `/batches/{id}/upload-manifest` | Для новой пустой партии: `{files:[{upload_id: UUID, relative_path, filename, size}]}` (1–20000 фото). Идемпотентен только с **точно тем же** набором; иные наборы → 409. Старые партии с уже существующими uploads не изменяются. |
+| GET | `/batches/{id}/upload-manifest` | `{state:legacy/waiting/complete, expected, finalized, missing, pending, files:[{upload_id,relative_path,filename,size,state,received}]}`. `state=legacy` означает отсутствие подтверждённого манифеста, а НЕ автоматически завершённую загрузку. |
 | PATCH | `/batches/{id}` | `{display_name}`, 1–120 символов |
 | GET | `/batches/{id}/photos` | пагинация метаданных ФО |
 | DELETE | `/batches/{id}/photos/{photo_id}` | только пока нет run |
@@ -40,6 +42,8 @@
 | POST | `/batches/{id}/retention/extend` | новая дата, +2 календарных месяца |
 | GET | `/batches/{id}/retention` | даты и предупреждение за 7 дней |
 | GET | `/storage/usage` | mount total/used/available, inode-counted categories |
+
+**Инвариант этапа 1:** для новых партий `POST /uploads` принимает только зарегистрированный `client_upload_id`, имя и размер; в `finish` сервер сверяет весь манифест и фиксирует `complete`, только когда подтверждены все оригиналы. `POST /runs` для `waiting` возвращает 422 даже при `pending=0`. Старые партии используют прежнюю семантику. Автоматическая очередь MegaLoc пока НЕ включена.
 
 Ошибки: `401` сессия, `403` Origin, `404` не найден, `409` несовместимое состояние (после run нельзя удалить одну ФО, deleting запрещает upload/run/ZIP), `422` invalid field/threshold. `DELETE batch` фактически выполняет maintenance worker, не блокирует HTTP. Веб-UI будет использовать новые endpoints в этапе 3, до него старые вкладки остаются.
 

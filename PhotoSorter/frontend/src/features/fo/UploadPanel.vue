@@ -3,10 +3,12 @@ import {computed,onUnmounted,ref} from 'vue'
 import {batchApi} from '../../api/batches'
 import {ApiError} from '../../api/client'
 import {canResumeUpload} from '../../utils/batches'
-import {directoryEntries,uploadOne} from '../../utils/upload'
+import {directoryEntries,uploadOne,expectedUploadId} from '../../utils/upload'
+import {withUploadRetry} from '../../utils/uploadRetry'
 import {runUploadQueue} from '../../utils/uploadQueue'
 import {useUploadSettingsStore} from '../../stores/uploadSettings'
 import type {UploadEntry} from '../../utils/upload'
+import type {BatchUploadManifest,UploadManifestFile} from '../../types/api'
 import {bytes,errorText} from '../../utils/format'
 import {useNoticeStore} from '../../stores/notice'
 import UiButton from '../../components/ui/UiButton.vue'
@@ -36,13 +38,53 @@ async function start(){
   if(!entries.value.length||running.value)return
   error.value='';running.value=true;phase.value='Подготовка партии…';controller=new AbortController()
   try{
-    const saved=storedId()
-    if(saved){
-      const old=await batchApi.one(saved).catch(()=>null)
-      if(old && canResumeUpload(old))batchId.value=saved
-    }
-    if(!batchId.value){const created=await batchApi.create(folder.value);batchId.value=created.batch_id;saveId(batchId.value)}
     const signal=controller.signal
+    const request=<T,>(fn:()=>Promise<T>)=>withUploadRetry(fn,signal)
+    const matches=(manifest:BatchUploadManifest)=>{
+      if(manifest.files.length!==entries.value.length)return false
+      const files=new Map(manifest.files.map(file=>[file.relative_path,file]))
+      return entries.value.every(e=>{
+        const match=files.get(e.relative)
+        return match?.filename===e.file.name && match.size===e.file.size
+      })
+    }
+    const saved=storedId()
+    if(saved&&!batchId.value){
+      const old=await request(()=>batchApi.one(saved)).catch(err=>{
+        if(err instanceof ApiError&&err.status===404)return null
+        throw err
+      })
+      if(old&&canResumeUpload(old)){
+        if(old.upload_manifest_state){
+          const previous=await request(()=>batchApi.manifest(saved))
+          if(matches(previous))batchId.value=saved
+        }else batchId.value=saved
+      }
+    }
+    if(!batchId.value){
+      const created=await batchApi.create(folder.value)
+      batchId.value=created.batch_id;saveId(batchId.value)
+    }
+    phase.value='Проверка состава папки…'
+    let manifestIds:string[]|null=null
+    const current=await request(()=>batchApi.manifest(batchId.value))
+    if(current.state!=='legacy'){
+      if(!matches(current))throw new Error('Выбранная папка не совпадает с манифестом партии. Создайте новую партию.')
+      const ids=new Map(current.files.map(file=>[file.relative_path,file.upload_id]))
+      manifestIds=entries.value.map(e=>ids.get(e.relative)!)
+    }else{
+      const batch=await request(()=>batchApi.one(batchId.value))
+      if((batch.photos??0)===0&&(batch.pending??0)===0&&(batch.runs??0)===0){
+        const target={kind:'fo' as const,batchId:batchId.value}
+        const plan:UploadManifestFile[]=entries.value.map(e=>({
+          upload_id:expectedUploadId(target,e),relative_path:e.relative,
+          filename:e.file.name,size:e.file.size
+        }))
+        await request(()=>batchApi.registerManifest(batchId.value,plan))
+        manifestIds=plan.map(e=>e.upload_id)
+      }
+      // Existing partially uploaded legacy batches remain on their old flow.
+    }
     const reconnecting=new Set<number>()
     phase.value='Передача файлов'
     const failures=await runUploadQueue(entries.value.length,uploadSettings.parallelUploads,signal,async idx=>{
@@ -56,7 +98,7 @@ async function start(){
         phase.value=reconnecting.size
           ?'Ожидание соединения · '+reconnecting.size+' файлов восстанавливаются'
           :'Передача файлов'
-      })
+      },manifestIds?.[idx])
       reconnecting.delete(idx)
       phase.value=reconnecting.size?'Ожидание соединения':'Передача файлов'
       finished.value++;amounts.value[idx]=entry.file.size
@@ -71,11 +113,20 @@ async function start(){
       }
     })
     if(failures.length){
-      const details=failures.slice(0,3).map(({index,error})=>
-        entries.value[index]?.file.name+': '+errorText(error)).join('; ')
-      throw new Error('Не загружено '+failures.length+' из '+entries.value.length+' файлов: '+details)
+      const last=manifestIds?await request(()=>batchApi.manifest(batchId.value)):null
+      if(last?.state!=='complete'){
+        const details=failures.slice(0,3).map(({index,error})=>
+          entries.value[index]?.file.name+': '+errorText(error)).join('; ')
+        throw new Error('Не загружено '+failures.length+' из '+entries.value.length+' файлов: '+details)
+      }
     }
-    notice.add('Папка загружена. Миниатюры формируются отдельно.','ok')
+    if(manifestIds){
+      phase.value='Проверка полноты партии…'
+      const confirmed=await request(()=>batchApi.manifest(batchId.value))
+      if(confirmed.state!=='complete')
+        throw new Error('Сервер ожидает ещё '+confirmed.pending+' файлов. Выберите эту папку для продолжения.')
+    }
+    notice.add('Все фотографии партии сохранены. Миниатюры формируются отдельно.','ok')
     emit('finished',batchId.value)
   }catch(err){
     const firstError=error.value

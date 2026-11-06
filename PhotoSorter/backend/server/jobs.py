@@ -35,10 +35,12 @@ def enqueue(data:NewRun):
         db.execute("SELECT pg_advisory_xact_lock(723409133)")
         if queue.queue_count(db)>=queue.MAX_WAITING:
             raise HTTPException(429,"Очередь заполнена: максимум 20 ожидающих запусков")
-        batch=db.execute("SELECT id,delete_state FROM batches WHERE id=%s FOR UPDATE",
+        batch=db.execute("SELECT id,delete_state,upload_manifest_state FROM batches WHERE id=%s FOR UPDATE",
                          (data.batch_id,)).fetchone()
         if not batch:raise HTTPException(404,"Партия ФО не найдена")
         if batch["delete_state"]!="active":raise HTTPException(409,"Партия удаляется")
+        if batch['upload_manifest_state']=='waiting':
+            raise HTTPException(422,'Дождитесь завершения всех файлов манифеста ФО')
         if db.execute("""SELECT 1 FROM jobs WHERE batch_id=%s
                    AND status IN ('queued','running','stopping') LIMIT 1""",
                    (data.batch_id,)).fetchone():

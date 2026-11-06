@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {onMounted,onUnmounted,ref} from 'vue'
 import {batchApi} from '../../api/batches'
-import type {PendingUpload} from '../../types/api'
+import type {PendingUpload,BatchUploadManifest} from '../../types/api'
 import {resumePendingUpload} from '../../utils/upload'
 import {bytes,errorText} from '../../utils/format'
 import {usePolling} from '../../composables/usePolling'
@@ -10,7 +10,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 
 const props=defineProps<{batchId:string;disabled?:boolean}>()
 const emit=defineEmits<{(e:'changed'):void}>()
-const items=ref<PendingUpload[]>([]),loading=ref(true),error=ref('')
+const items=ref<PendingUpload[]>([]),manifest=ref<BatchUploadManifest|null>(null),loading=ref(true),error=ref('')
 const activeId=ref(''),activeStatus=ref(''),confirmCancel=ref<PendingUpload|null>(null)
 const errors=ref<Record<string,string>>({})
 const progress=ref<Record<string,number>>({})
@@ -19,8 +19,8 @@ let controller:AbortController|null=null
 async function load(autoFinish=false){
   if(activeId.value)return
   try{
-    const result=await batchApi.pending(props.batchId)
-    items.value=result.uploads
+    const [result,state]=await Promise.all([batchApi.pending(props.batchId),batchApi.manifest(props.batchId)])
+    items.value=result.uploads;manifest.value=state
     error.value=''
     if(autoFinish&&!props.disabled){
       // Fully transferred bytes are safe to finalize with no local file input.
@@ -38,7 +38,8 @@ async function finish(item:PendingUpload,automatic=false){
   try{
     await batchApi.finishPending(item.id)
     delete errors.value[item.id]
-    await batchApi.pending(props.batchId).then(result=>{items.value=result.uploads})
+    await Promise.all([batchApi.pending(props.batchId).then(result=>{items.value=result.uploads}),
+      batchApi.manifest(props.batchId).then(state=>{manifest.value=state})])
     emit('changed')
   }catch(err){
     errors.value[item.id]=(automatic?'Автозавершение: ':'')+errorText(err)
@@ -63,7 +64,8 @@ async function continueFile(item:PendingUpload,event:Event){
         ?'Ожидание соединения · повтор через '+Math.ceil((state.delayMs||1000)/1000)+' с'
         :'Передача восстановлена'})
     delete errors.value[item.id]
-    await batchApi.pending(props.batchId).then(result=>{items.value=result.uploads})
+    await Promise.all([batchApi.pending(props.batchId).then(result=>{items.value=result.uploads}),
+      batchApi.manifest(props.batchId).then(state=>{manifest.value=state})])
     emit('changed')
   }catch(err){
     errors.value[item.id]=controller.signal.aborted?'Передача приостановлена. Можно продолжить позже.':errorText(err)
@@ -77,7 +79,8 @@ async function cancel(){
     await batchApi.cancelPending(item.id)
     confirmCancel.value=null
     delete errors.value[item.id]
-    await batchApi.pending(props.batchId).then(result=>{items.value=result.uploads})
+    await Promise.all([batchApi.pending(props.batchId).then(result=>{items.value=result.uploads}),
+      batchApi.manifest(props.batchId).then(state=>{manifest.value=state})])
     emit('changed')
   }catch(err){errors.value[item.id]=errorText(err)}
   finally{activeId.value='';activeStatus.value=''}
@@ -85,11 +88,11 @@ async function cancel(){
 function online(){if(!activeId.value)void load(true)}
 onMounted(()=>{void load(true);window.addEventListener('online',online)})
 onUnmounted(()=>{controller?.abort();window.removeEventListener('online',online)})
-usePolling(async()=>{if(items.value.length&&!activeId.value)await load()},12000)
+usePolling(async()=>{if((items.value.length||manifest.value?.state==='waiting')&&!activeId.value)await load()},12000)
 </script>
 
 <template>
-<section v-if="loading||items.length||error" class="panel stack" aria-label="Незавершённые загрузки" style="margin-bottom:19px">
+<section v-if="loading||items.length||manifest?.state==='waiting'||error" class="panel stack" aria-label="Незавершённые загрузки" style="margin-bottom:19px">
   <div class="panel-header">
     <div>
       <h2>Незавершённые загрузки</h2>
@@ -99,6 +102,15 @@ usePolling(async()=>{if(items.value.length&&!activeId.value)await load()},12000)
   </div>
   <div v-if="loading" class="meta">Проверяем незавершённые файлы…</div>
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
+  <div v-if="manifest?.state==='waiting'" class="alert warning">
+    Партия ещё не полная: сервер сохранил {{manifest.finalized}} из {{manifest.expected}} ожидаемых фотографий.
+    <template v-if="manifest.missing">Не начиналась передача {{manifest.missing}} файлов.</template>
+    Выберите ту же папку в загрузчике ФО для продолжения.
+    <div v-for="item in manifest.files.filter(file=>file.state==='not_started'||file.state==='missing_saved').slice(0,10)" :key="item.upload_id" class="meta" style="margin-top:5px;overflow-wrap:anywhere">
+      {{item.relative_path}} · {{item.state==='missing_saved'?'оригинал отсутствует на сервере':'ещё не передан'}}
+    </div>
+    <div v-if="manifest.files.filter(file=>file.state==='not_started'||file.state==='missing_saved').length>10" class="meta">И другие отсутствующие фотографии…</div>
+  </div>
   <div v-if="items.length" class="alert warning">
     {{items.length}} файлов ещё не завершены. Пока они есть, обработка партии недоступна.
     Полностью загруженные файлы автоматически проходят проверку и сохранение.

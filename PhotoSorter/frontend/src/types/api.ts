@@ -5,6 +5,13 @@ export interface Batch {
   thumbnail_state: string; delete_state: string; deleted_at?: string | null
   download_confirmed_at?: string | null; confirmed_run_id?: string | null
   delete_after_at?: string | null; photos?: number; size_bytes?: number; runs?: number; pending?: number
+  upload_manifest_state?: 'waiting'|'complete'|null;upload_manifest_completed_at?: string|null
+}
+export interface UploadManifestFile {upload_id:string;relative_path:string;filename:string;size:number}
+export interface BatchUploadManifest {
+  state:'legacy'|'waiting'|'complete';completed_at?:string|null
+  expected:number;finalized:number;missing:number;pending:number
+  files:Array<UploadManifestFile & {state:'not_started'|'unfinished'|'finalized'|'missing_saved';received:number}>
 }
 export interface PendingUpload {
   id:string;filename:string;size:number;received:number;updated_at:string

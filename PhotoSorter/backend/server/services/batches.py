@@ -32,6 +32,7 @@ def create(display_name=None):
 def _serialize(row,counters=None):
     fields=("display_name","created_at","upload_state","thumbnail_state",
             "delete_state","download_confirmed_at","confirmed_run_id",
+            "upload_manifest_state","upload_manifest_completed_at",
             "delete_after_at","deleted_at")
     data={"batch_id":str(row["id"])}
     for field in fields:data[field]=row[field]
@@ -147,5 +148,9 @@ def remove_unprocessed_photo(batch_id,photo_id):
             path=owned_file(DATA_DIR/"incoming"/f"{photo_id}.part",DATA_DIR/"incoming")
             path.unlink(missing_ok=True)
         repository.delete_photo_row(db,photo_id)
+        # Deleting a registered original invalidates proof of complete upload.
+        db.execute("""UPDATE batches SET upload_manifest_state='waiting',
+            upload_manifest_completed_at=NULL WHERE id=%s
+            AND upload_manifest_state IS NOT NULL""",(batch_id,))
         repository.refresh_upload_state(db,batch_id)
     return {"deleted":True}

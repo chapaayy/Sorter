@@ -1,8 +1,9 @@
 """Batch list/detail/update, safe deletion and explicit archive confirmation."""
 from __future__ import annotations
+import uuid
 from fastapi import APIRouter,HTTPException
 from pydantic import BaseModel,Field
-from ...services import batches,cleanup,retention
+from ...services import batches,cleanup,retention,upload_manifest
 from ...database import connect
 from ...db.repositories.pagination import page
 
@@ -15,6 +16,15 @@ class RenameBatch(BaseModel):
 class ConfirmDownload(BaseModel):
     run_id:str
 
+class ManifestFile(BaseModel):
+    upload_id:uuid.UUID
+    relative_path:str=Field(min_length=1,max_length=1024)
+    filename:str=Field(min_length=1,max_length=200)
+    size:int=Field(gt=0,le=60*1024*1024)
+
+class BatchManifest(BaseModel):
+    files:list[ManifestFile]=Field(min_length=1,max_length=20000)
+
 @router.post("")
 def create(payload:NewBatch|None=None):
     return batches.create(payload.display_name if payload else None)
@@ -23,6 +33,14 @@ def create(payload:NewBatch|None=None):
 def list_batches(limit:int=100,offset:int=0):
     if not 1<=limit<=200 or offset<0:raise HTTPException(422,"Неверная пагинация")
     return batches.list_all(limit,offset)
+
+@router.put("/{batch_id}/upload-manifest")
+def register_manifest(batch_id:str,payload:BatchManifest):
+    return upload_manifest.register(batch_id,payload.files)
+
+@router.get("/{batch_id}/upload-manifest")
+def manifest(batch_id:str):
+    return upload_manifest.status(batch_id)
 
 @router.get("/{batch_id}/pending")
 def pending(batch_id:str):

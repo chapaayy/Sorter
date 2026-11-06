@@ -66,6 +66,10 @@ async function install(){
     <label class="field"><span class="label">Порог группировки: {{threshold.toFixed(2)}}</span><input v-model.number="threshold" type="range" min=".50" max=".99" step=".01" aria-label="Порог группировки"/></label>
   </div>
   <p v-if="!selectable.length" class="meta">Нет партий с фотографиями. Загрузите ФО во вкладке «Фотоотчёты».</p>
+  <div v-if="selectedBatch?.upload_manifest_state==='waiting'" class="alert warning">
+    Загрузка партии ещё не завершена: сервер ожидает все фотографии из исходной папки.
+    <RouterLink :to="'/fo/'+selectedBatch.batch_id">Откройте партию</RouterLink> для проверки.
+  </div>
   <div v-if="selectedBatch&&(selectedBatch.pending??0)>0" class="alert warning">
     {{selectedBatch.photos}} фотографий готовы, но {{selectedBatch.pending}} файлов ещё не завершены.
     <RouterLink :to="'/fo/'+selectedBatch.batch_id">Откройте партию</RouterLink>,
