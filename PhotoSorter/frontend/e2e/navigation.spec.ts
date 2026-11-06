@@ -274,7 +274,7 @@ test('FO cards show live MegaLoc progress and a confirmed stop action',async({pa
   await page.goto('/fo')
   const card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
   await expect(card.getByText('Обработка', {exact:true})).toBeVisible()
-  await expect(card.getByText('Группировка ФО')).toBeVisible()
+  await expect(card.getByText('Группировка ФО',{exact:true})).toBeVisible()
   await expect(card.getByText('17 из 40 на этапе')).toBeVisible()
   await expect(card.getByRole('progressbar',{name:'Общий прогресс MegaLoc'})).toHaveAttribute('aria-valuenow','23.1')
   await card.getByRole('button',{name:'Остановить'}).click()
@@ -320,7 +320,17 @@ test('failed retry preserves prior successful results and paged batch history',a
   const last={...run,id:'20261106T000000-deadbeefeeee',status:'failed',error:'Synthetic error'}
   const detail={...batch,runs:2,latest_run:last,last_result_run_id:rid}
   await page.route('**/api/batches/'+bid,route=>respond(route,detail))
-  await page.route('**/api/batches/'+bid+'/runs',route=>
+  await page.route(new RegExp('^https?://[^/]+/api/batches/'+bid+'/runs(?:\\?.*)?
+  await page.goto('/fo/'+bid)
+  await expect(page.getByRole('region',{name:'Обработка MegaLoc для партии'})
+    .getByTestId('fo-processing-status')).toHaveText('Ошибка')
+  await expect(page.getByRole('link',{name:'Прошлые результаты'})).toHaveAttribute('href','/results/'+rid)
+  await page.getByRole('button',{name:'История запусков (2)'}).click()
+  const history=page.getByRole('region',{name:'История обработок партии'})
+  await expect(history.getByText('Ошибка', {exact:true})).toBeVisible()
+  await expect(history.getByRole('link',{name:'Результаты'})).toHaveAttribute('href','/results/'+rid)
+})
+),route=>
     respond(route,{runs:[last,run],total:2}))
   await page.goto('/fo/'+bid)
   await expect(page.getByRole('region',{name:'Обработка MegaLoc для партии'})
