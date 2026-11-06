@@ -8,7 +8,7 @@
 |---|---|---|
 | GET | `/health` | версия/status |
 | POST/POST/GET | `/auth/login`, `/auth/logout`, `/auth/me` | sessions (не менялись) |
-| POST | `/uploads` | init kind/filename/size/batch_id/sam/address/checksum; `address` нужен для новой конструкции |
+| POST | `/uploads` | init kind/filename/size/batch_id/sam/address/checksum; optional `client_upload_id` (UUID) makes POST idempotent after lost network response |
 | GET/PATCH | `/uploads/{upload_id}` | offsets и докачка |
 | PUT | `/uploads/direct/{upload_id}` | быстрый single request, fallback PATCH |
 | POST | `/uploads/{upload_id}/finish` | final SHA/Pillow validation |
@@ -30,6 +30,7 @@
 | POST | `/batches` | optional `{display_name}`; `{batch_id,display_name}` |
 | GET | `/batches?limit=100&offset=0` | `{batches,total}` (limit 1–200) |
 | GET | `/batches/{id}` | `batch_id,photos,size_bytes,pending,runs,display_name,*_state,*_at` |
+| GET | `/batches/{id}/pending` | Незафиксированные загрузки ФО: UUID, имя, фактический offset на диске, размер, наличие `.part`, `can_finalize`, SHA-256 первых 64 КиБ для безопасной ручной докачки |
 | PATCH | `/batches/{id}` | `{display_name}`, 1–120 символов |
 | GET | `/batches/{id}/photos` | пагинация метаданных ФО |
 | DELETE | `/batches/{id}/photos/{photo_id}` | только пока нет run |
@@ -48,7 +49,7 @@
 
 | HTTP | Путь | Контракт |
 |---|---|---|
-| DELETE | `/uploads/{upload_id}` | только unfinished .part, finalized→409 |
+| DELETE | `/uploads/{upload_id}` | только unfinished .part, finalized→409; используется для адресной подтверждаемой отмены одного недогруженного ФО |
 | GET | `/batches/{id}/gallery?limit=&cursor=` | keyset 1–200, photos/next_cursor, thumbnails и original URLs |
 | GET | `/references/{sam}/photos?limit=&cursor=` | keyset SAM gallery |
 | GET | `/results/{run_id}/photos?sam=&group=&limit=&cursor=` | постраничные photos с реальными score/group/index |
