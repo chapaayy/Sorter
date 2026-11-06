@@ -25,7 +25,7 @@ async function load(more=false){
 onMounted(()=>{void load()})
 // Poll while deletion or interrupted transfers need attention.
 usePolling(async()=>{
-  if(batches.value.some(b=>b.delete_state==='deleting'))await load()
+  if(batches.value.some(b=>b.delete_state==='deleting'||(b.pending??0)>0))await load()
 },3000)
 function status(b:Batch){
   if(b.delete_state!=='active')return 'Удаление: '+b.delete_state
