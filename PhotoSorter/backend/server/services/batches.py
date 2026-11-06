@@ -87,11 +87,21 @@ def pending_uploads(batch_id):
         part=base/f"{row['id']}.part"
         exists=part.is_file() and not part.is_symlink()
         actual=part.stat().st_size if exists else 0
-        prefix_bytes=min(actual,65536)
+        # Full received-prefix verification prevents stitching together two
+        # different originals with the same filename and a similar JPEG header.
+        # Completed .part files need no source-file verification to finalize.
+        prefix_bytes=actual if 0<actual<row["declared_size"] else 0
         prefix_hash=None
         if prefix_bytes:
+            digest=hashlib.sha256()
             with part.open("rb") as stream:
-                prefix_hash=hashlib.sha256(stream.read(prefix_bytes)).hexdigest()
+                remaining=prefix_bytes
+                while remaining:
+                    chunk=stream.read(min(1024*1024,remaining))
+                    if not chunk:break
+                    digest.update(chunk)
+                    remaining-=len(chunk)
+            if remaining==0:prefix_hash=digest.hexdigest()
         result.append({
             "id":str(row["id"]),"filename":row["filename"],
             "size":row["declared_size"],"received":actual,
