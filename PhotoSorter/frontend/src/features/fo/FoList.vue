@@ -25,12 +25,14 @@ async function load(more=false){
 onMounted(()=>{void load()})
 // Poll while deletion or interrupted transfers need attention.
 usePolling(async()=>{
-  if(batches.value.some(b=>b.delete_state==='deleting'||(b.pending??0)>0||b.upload_manifest_state==='waiting'))await load()
+  if(batches.value.some(b=>b.delete_state==='deleting'||(b.pending??0)>0||b.upload_manifest_state==='waiting'||b.auto_process_state==='waiting'))await load()
 },3000)
 function status(b:Batch){
   if(b.delete_state!=='active')return 'Удаление: '+b.delete_state
   if(b.upload_manifest_state==='waiting')return '◌ Загрузка партии не завершена'
   if((b.pending??0)>0)return '◌ '+b.pending+' незавершённых загрузок'
+  if(b.auto_process_state==='waiting')return '◌ Ожидает автоматической обработки'
+  if(b.auto_process_run_id)return '✓ Автоматическое задание создано'
   if(b.thumbnail_state==='ready')return '✓ Миниатюры готовы'
   if(b.photos!=null&&b.photos>0)return '◌ Подготовка миниатюр'
   return '○ Ожидает фотографии'

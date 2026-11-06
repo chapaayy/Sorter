@@ -1,6 +1,7 @@
 import {describe,it,expect,vi,afterEach} from 'vitest'
 import {api,query} from '../src/api/client'
 import {batchApi} from '../src/api/batches'
+import {runApi} from '../src/api/runs'
 import {referenceApi} from '../src/api/references'
 import {resultApi} from '../src/api/results'
 import {logApi} from '../src/api/logs'
@@ -16,6 +17,15 @@ describe('typed API contracts',()=>{
     vi.stubGlobal('fetch',fetch)
     await expect(api('/runs')).rejects.toMatchObject({status:409,message:'Busy'})
     expect(fetch.mock.calls[0]?.[1]?.credentials).toBe('same-origin')
+  })
+  it('persists automatic processing preferences through the existing authenticated API',async()=>{
+    const fetch=vi.fn(async(_url:string,opts:RequestInit)=>new Response(JSON.stringify({auto_process_new_batches:false,grouping_threshold:.50,model:'megaloc'}),{status:200,headers:{'content-type':'application/json'}}))
+    vi.stubGlobal('fetch',fetch)
+    await runApi.saveAutoSettings(false,.50)
+    const call=fetch.mock.calls[0]
+    expect(call[0]).toBe('/api/processing-settings')
+    expect(call[1].method).toBe('PATCH')
+    expect(JSON.parse(String(call[1].body))).toEqual({auto_process_new_batches:false,grouping_threshold:.50})
   })
   it('constructs same-origin archive URL without source paths',()=>{
     expect(resultApi.download('20261105T000000-abcdef123456','SAM-0001')).toBe('/api/download/20261105T000000-abcdef123456?sam=SAM-0001')

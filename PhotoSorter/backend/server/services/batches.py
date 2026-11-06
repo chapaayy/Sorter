@@ -33,6 +33,7 @@ def _serialize(row,counters=None):
     fields=("display_name","created_at","upload_state","thumbnail_state",
             "delete_state","download_confirmed_at","confirmed_run_id",
             "upload_manifest_state","upload_manifest_completed_at",
+            "auto_process_state","auto_process_threshold","auto_process_run_id","auto_process_error",
             "delete_after_at","deleted_at")
     data={"batch_id":str(row["id"])}
     for field in fields:data[field]=row[field]

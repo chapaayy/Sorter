@@ -26,12 +26,12 @@
 | `backend/server/auth.py` | Cookies, scrypt password, login, origin checks |
 | `backend/server/database.py` | PostgreSQL connect, initial schema and migrations |
 | `backend/server/uploads.py` | Докачка, проверка принадлежности манифесту, финализация с сохранением `.part` до commit и выборочная отмена |
-| `backend/server/jobs.py` | Создание/отмена заданий, API очереди |
+| `backend/server/jobs.py` | Единое транзакционное создание ручных/автоматических заданий, API очереди и остановки |
 | `backend/server/worker.py` | Однопоточный lifecycle MegaLoc Worker и heartbeat |
 | `backend/server/reference_cache.py` | Индекс и доступ к embeddings образцов |
 | `backend/server/api/routes/site.py` | **Один** Vue сайт на `/`, `/assets/*` и history fallback |
 | `backend/server/api/routes/auth.py` | Login/logout/current user endpoints |
-| `backend/server/api/routes/batches.py` | Партии, серверный манифест (`/upload-manifest`), незавершённые загрузки (`/pending`) и безопасное удаление |
+| `backend/server/api/routes/batches.py` | Партии, серверный манифест, отмена ожидаемой автообработки, незавершённые загрузки и безопасное удаление |
 | `backend/server/api/routes/references.py` | Галерея, проверка пакета, адрес конструкции и удаление образцов |
 | `backend/server/api/routes/models.py` | Модели, скачивание и состояние |
 | `backend/server/api/routes/results.py` | История прогонов и результаты |
@@ -42,13 +42,15 @@
 | `backend/server/api/routes/logs.py` | Cursor/log tail, скачивание |
 | `backend/server/api/routes/storage.py` | Статистика физического места |
 | `backend/server/api/routes/system.py` | Worker heartbeat, system health и служебная очистка |
+| `backend/server/api/routes/processing_settings.py` | Общие PostgreSQL-настройки автообработки и порога: GET/PATCH |
 
 ## Backend / services, storage, DB
 
 | Файл / каталог | Назначение |
 |---|---|
 | `backend/server/services/batches.py` | Состояния/CRUD партий, список незавершённых с реальными offsets и SHA-256 всей уже переданной части |
-| `backend/server/services/upload_manifest.py` | Неизменяемый состав новой партии, регистрация UUID, проверка каждого финализированного оригинала и завершение `waiting/complete` в PostgreSQL |
+| `backend/server/services/upload_manifest.py` | Неизменяемый состав новой партии, индивидуальная настройка auto-MegaLoc, проверка оригиналов и завершение `waiting/complete` |
+| `backend/server/services/auto_processing.py` | Защищённая отмена, общие настройки, серверная постановка opt-in партий через общую очередь (idempotent DB lock) |
 | `backend/server/services/references.py` | Безопасное редактирование и удаление конструкций, защита исторических manifests |
 | `backend/server/services/construction_catalog.py` | Серверная проверка массового импорта, метаданные и адреса конструкций |
 | `backend/server/services/retention.py` | Подтверждение ZIP, срок хранения, предупреждения |
@@ -63,7 +65,7 @@
 | `backend/server/services/heartbeat.py` | Пульс процессов worker/thumbnail/cleanup |
 | `backend/server/security/login_throttle.py` | Ограничение неверных логинов |
 | `backend/server/db/migration_runner.py` | Пошаговая миграция PostgreSQL |
-| `backend/server/db/migrations/0001…0009*.sql` | **Аддитивная история схемы БД**, включая манифест ожидаемых ФО |
+| `backend/server/db/migrations/0001…0010*.sql` | **Аддитивная история схемы БД**, включая манифест ФО и настройки opt-in автообработки |
 | `backend/server/db/repositories/batches.py` | SQL для партий, совместимые с манифестом правила `upload_state` |
 | `backend/server/db/repositories/queue.py` | Очередь MegaLoc и лидер |
 | `backend/server/db/repositories/pagination.py` | Cursor pagination для галерей |
@@ -71,7 +73,7 @@
 | `backend/server/storage/hardlinks.py` | Hard Link с безопасным fallback |
 | `backend/server/storage/thumbnail_cache.py` | Дисковый WebP cache |
 | `backend/server/workers/thumbnail.py` | Цикл генерации WebP |
-| `backend/server/workers/cleanup.py` | Фоновый retention и trash cleanup |
+| `backend/server/workers/cleanup.py` | Фоновая постановка готовых opt-in партий в MegaLoc FIFO, retention и trash cleanup |
 
 ## MegaLoc и фотологика
 
@@ -138,6 +140,7 @@
 | `backend/tests/test_batch_listing_regressions.py` | Счётчики нулевых запусков, список ФО после удаления, PostgreSQL |
 | `backend/tests/test_construction_import.py` | Новый формат конструкций, повторные импорты, SHA-256, адреса |
 | `backend/tests/test_pending_upload_recovery.py` | Изолированные проверки автозавершения `.part`, idempotent init и отмены без потери готовых фото |
+| `backend/tests/test_auto_processing.py` | Новая opt-in очередь, отмена до enqueue, ручной запуск, queue full, terminal job, конкурентная отправка, старые партии |
 | `frontend/tests/` | Vitest |
 | `frontend/e2e/navigation.spec.ts`, `playwright.config.ts` | Chromium/WebKit на десктопе и mobile |
 | `PhotoSorter/tools/benchmark_api.py` | API latency |

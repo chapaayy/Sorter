@@ -5,7 +5,7 @@ import signal
 import time
 from ..database import wait_and_initialize
 from ..services import heartbeat
-from ..services import cleanup,retention,thumbnail_gc,temp_cleanup
+from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
 RUN=True
@@ -17,6 +17,8 @@ def stop(*_):
 
 def run_cycle():
     global NEXT_GC
+    for batch_id,run_id in auto_processing.schedule_ready():
+        logging.info('Auto processing queued for %s: %s',batch_id,run_id)
     for batch_id in retention.due_batch_ids():
         cleanup.request(batch_id,only_if_due=True)
     for batch_id,result in cleanup.process_pending():

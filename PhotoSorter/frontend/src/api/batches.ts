@@ -5,10 +5,12 @@ export const batchApi={
   one:(id:string)=>api<Batch>('/batches/'+encodeURIComponent(id)),
   pending:(id:string)=>api<PendingUploadList>('/batches/'+encodeURIComponent(id)+'/pending'),
   manifest:(id:string)=>api<BatchUploadManifest>('/batches/'+encodeURIComponent(id)+'/upload-manifest'),
-  registerManifest:(id:string,files:UploadManifestFile[])=>
+  registerManifest:(id:string,files:UploadManifestFile[],autoProcess=false,threshold=.50)=>
     api<BatchUploadManifest>('/batches/'+encodeURIComponent(id)+'/upload-manifest',{
-      method:'PUT',body:JSON.stringify({files})
+      method:'PUT',body:JSON.stringify({files,auto_process:autoProcess,grouping_threshold:threshold})
     }),
+  cancelAutomatic:(id:string)=>post<{batch_id:string;auto_process_state:string}>(
+    '/batches/'+encodeURIComponent(id)+'/auto-processing/cancel',{}),
   finishPending:(uploadId:string)=>api<{path:string;already_finalized?:boolean}>('/uploads/'+encodeURIComponent(uploadId)+'/finish',{method:'POST'}),
   cancelPending:(uploadId:string)=>del<{cancelled:boolean}>('/uploads/'+encodeURIComponent(uploadId)),
   create:(name:string)=>post<{batch_id:string;display_name:string}>('/batches',{display_name:name}),

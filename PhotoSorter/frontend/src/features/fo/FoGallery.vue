@@ -29,6 +29,7 @@ const {refresh:tick}=usePolling(async()=>{
   if(!batch.value||batch.value.delete_state!=='active')return
   const prior=count.value?.ready||0
   count.value=await batchApi.thumbs(id)
+  if(batch.value.auto_process_state==='waiting')batch.value=await batchApi.one(id)
   if(count.value.ready>prior && items.value.length){
     const next=await batchApi.gallery(id)
     const map=new Map(next.photos.map(p=>[p.id,p]))

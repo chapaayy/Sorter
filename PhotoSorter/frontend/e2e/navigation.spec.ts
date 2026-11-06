@@ -8,6 +8,7 @@ const photo={id:pid,name:'screen_001.jpg',bytes:1024,created_at:'2026-11-05T06:0
 const output={index:0,assigned_sam:'SAM-0001',group_id:'G0001',score:.921,thumbnail_url:'/api/thumbnails/'+pid,image_url:'/api/images/'+rid+'/megaloc/0?kind=query'}
 function respond(route:any,data:unknown){return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)})}
 async function mock(page:Page){
+  const defaults={auto_process_new_batches:false,grouping_threshold:.50,model:'megaloc'}
   await page.route(/^https?:\/\/[^/]+\/api\//,async route=>{
     const url=new URL(route.request().url()),p=url.pathname,method=route.request().method()
     if(p==='/api/auth/me')return respond(route,{username:'admin'})
@@ -25,6 +26,10 @@ async function mock(page:Page){
     if(p==='/api/references/SAM-0001/photos')return respond(route,{photos:[photo],next_cursor:null})
     if(p==='/api/runs')return respond(route,{runs:[run],total:1})
     if(p==='/api/runs/'+rid)return respond(route,run)
+    if(p==='/api/processing-settings'){
+      if(method==='PATCH')Object.assign(defaults,JSON.parse(route.request().postData()||'{}'))
+      return respond(route,defaults)
+    }
     if(p==='/api/models')return respond(route,{models:[{id:'megaloc',title:'MegaLoc',available:true,downloadable:true}],device:'cpu'})
     if(p==='/api/results/'+rid)return respond(route,run)
     if(p==='/api/results/'+rid+'/sam')return respond(route,{'SAM-0001':1,'_Неопределено':1})
@@ -68,6 +73,15 @@ test('full ZIP confirmation is separate from download with required phrase',asyn
   await expect(confirm).toBeEnabled()
   await confirm.click()
   await expect(page.getByText('Архив подтверждён')).toBeVisible()
+})
+test('auto-processing preference defaults off and saves on the server',async({page})=>{
+  await page.goto('/settings')
+  const enabled=page.getByRole('checkbox',{name:'Автоматически обрабатывать новые партии'})
+  await expect(enabled).not.toBeChecked()
+  await enabled.check()
+  await expect(enabled).toBeChecked()
+  await page.reload()
+  await expect(enabled).toBeChecked()
 })
 test('theme setting works in light and dark',async({page})=>{
   await page.goto('/settings')

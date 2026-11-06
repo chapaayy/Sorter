@@ -17,16 +17,29 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 const theme=useThemeStore(),notice=useNoticeStore(),uploadSettings=useUploadSettingsStore()
 const usage=ref<StorageUsage|null>(null),system=ref<SystemStatus|null>(null),logs=ref<{bytes:number;budget_bytes:number}|null>(null),
  model=ref<ModelInfo|null>(null),batches=ref<Batch[]>([]),error=ref(''),busy=ref(false),cleanConfirm=ref(false)
+const autoEnabled=ref(false),autoThreshold=ref(.50),autoBusy=ref(false),autoReady=ref(false)
 const due=computed(()=>batches.value.filter(b=>b.delete_state==='active'&&b.delete_after_at).sort((a,b)=>(a.delete_after_at||'').localeCompare(b.delete_after_at||'')))
 const categoryNames:Record<string,string>={photos:'Оригиналы ФО',results:'Готовые результаты',references:'Образцы',thumbnails:'Миниатюры',reference_cache:'Кэш MegaLoc',models:'Модели',logs:'Журналы',runs:'Состояния запусков',incoming:'Временные загрузки',other:'Прочее'}
 async function refresh(){
   try{
-    const [u,s,l,m,b]=await Promise.all([systemApi.usage(),systemApi.status(),logApi.usage(),runApi.models(),batchApi.list(200)])
+    const [u,s,l,m,b,a]=await Promise.all([systemApi.usage(),systemApi.status(),logApi.usage(),runApi.models(),batchApi.list(200),runApi.autoSettings()])
     usage.value=u;system.value=s;logs.value=l;model.value=m;batches.value=b.batches;error.value=''
+    if(!autoBusy.value){autoEnabled.value=a.auto_process_new_batches;autoThreshold.value=a.grouping_threshold}
+    autoReady.value=true
   }catch(e){error.value=errorText(e)}
 }
 onMounted(()=>{void refresh()})
 usePolling(refresh,15000)
+async function saveAuto(){
+  if(!autoReady.value||autoBusy.value)return
+  autoBusy.value=true
+  try{
+    const next=await runApi.saveAutoSettings(autoEnabled.value,autoThreshold.value)
+    autoEnabled.value=next.auto_process_new_batches;autoThreshold.value=next.grouping_threshold
+    notice.add('Настройки автоматической обработки сохранены','ok')
+  }catch(e){error.value=errorText(e);await refresh()}
+  finally{autoBusy.value=false}
+}
 async function extend(batchId:string){
   busy.value=true
   try{await batchApi.extend(batchId);notice.add('Хранение продлено ещё на 2 месяца','ok');await refresh()}
@@ -61,6 +74,18 @@ async function cleanup(){
         @update:model-value="uploadSettings.parallelUploads=Number($event)"/></div>
     </div>
     <p class="meta" style="margin:0">По умолчанию — 5. Файлы передаются блоками по 16 МБ с возможностью продолжить после обрыва. Настройка хранится в этом браузере.</p>
+  </section>
+  <section class="panel stack">
+    <h2>Автоматическая обработка MegaLoc</h2>
+    <p class="meta">Общие значения для новых партий. Уже загружающиеся и старые партии, задания и результаты не меняются.</p>
+    <label class="row wrap" style="gap:10px">
+      <input type="checkbox" v-model="autoEnabled" :disabled="!autoReady||autoBusy" aria-label="Автоматически обрабатывать новые партии" @change="saveAuto"/>
+      <strong>Автоматически обрабатывать новые партии</strong>
+    </label>
+    <label class="field" style="max-width:300px">Порог группировки по умолчанию: {{autoThreshold.toFixed(2)}}
+      <input type="range" min=".50" max=".99" step=".01" v-model.number="autoThreshold" :disabled="!autoReady||autoBusy" aria-label="Порог группировки по умолчанию" @change="saveAuto"/>
+    </label>
+    <div class="meta">По умолчанию автозапуск выключен. При загрузке каждой новой папки можно включить или отключить галочку отдельно. После полной загрузки создаётся только одно автоматическое задание.</div>
   </section>
   <section class="panel stack">
     <div class="panel-header"><h2>Хранилище</h2><span v-if="usage?.disk.warning" class="status" :class="usage.disk.warning==='critical'?'danger':''">{{usage.disk.warning==='critical'?'Критично: ≥90%':'Предупреждение: ≥80%'}}</span></div>

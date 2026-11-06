@@ -6,10 +6,18 @@ export interface Batch {
   download_confirmed_at?: string | null; confirmed_run_id?: string | null
   delete_after_at?: string | null; photos?: number; size_bytes?: number; runs?: number; pending?: number
   upload_manifest_state?: 'waiting'|'complete'|null;upload_manifest_completed_at?: string|null
+  auto_process_state?: 'waiting'|'queued'|'cancelled'|'manual'|null
+  auto_process_run_id?: string|null; auto_process_error?: string|null
+  auto_process_threshold?: number
 }
 export interface UploadManifestFile {upload_id:string;relative_path:string;filename:string;size:number}
+export interface ProcessingSettings {
+  model:'megaloc';auto_process_new_batches:boolean;grouping_threshold:number
+}
 export interface BatchUploadManifest {
   state:'legacy'|'waiting'|'complete';completed_at?:string|null
+  auto_process_state?: 'waiting'|'queued'|'cancelled'|'manual'|null
+  auto_process_run_id?:string|null;auto_process_error?:string|null;auto_process_threshold?:number
   expected:number;finalized:number;missing:number;pending:number
   files:Array<UploadManifestFile & {state:'not_started'|'unfinished'|'finalized'|'missing_saved';received:number}>
 }
@@ -35,7 +43,7 @@ export interface RunProgress {
 export interface Run {
   id: string; batch_id: string; status: string; started_at?: string
   actual_started_at?: string; finished_at?: string; actual_finished_at?: string
-  grouping_threshold?: number; selected_models?: string[]
+  grouping_threshold?: number; selected_models?: string[];source?:'manual'|'automatic'
   queue_position?: number | null; models?: Record<string, { status?: string; count?: number; groups?: number }>
   progress?: RunProgress; error?: string
 }

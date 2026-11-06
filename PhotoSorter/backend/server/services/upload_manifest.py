@@ -42,7 +42,7 @@ def _validated(files):
     return sorted(result, key=lambda row: (row[1], str(row[0])))
 
 
-def register(batch_id, files):
+def register(batch_id, files, *, auto_process=False, grouping_threshold=0.50):
     """Register exactly once; identical POSTs are safe after a lost response."""
     batch_id = batch_service.uid(batch_id)
     expected = _validated(files)
@@ -73,7 +73,10 @@ def register(batch_id, files):
                     [(batch_id, *item) for item in expected])
             db.execute("""UPDATE batches SET upload_manifest_signature=%s,
                 upload_manifest_state='waiting', upload_manifest_completed_at=NULL,
-                upload_state='open' WHERE id=%s""", (signature, batch_id))
+                auto_process_state=%s,auto_process_threshold=%s,
+                auto_process_run_id=NULL,auto_process_error=NULL,
+                upload_state='open' WHERE id=%s""",
+                (signature,'waiting' if auto_process else None,grouping_threshold,batch_id))
     return status(batch_id)
 
 
@@ -129,13 +132,16 @@ def status(batch_id):
     """Report new, unfinished and missing files, including uploads never started."""
     batch_id = batch_service.uid(batch_id)
     with connect() as db:
-        batch = db.execute("""SELECT upload_manifest_state,upload_manifest_completed_at
+        batch = db.execute("""SELECT upload_manifest_state,upload_manifest_completed_at,
+                auto_process_state,auto_process_run_id,auto_process_error,auto_process_threshold
             FROM batches WHERE id=%s""", (batch_id,)).fetchone()
         if not batch:
             raise HTTPException(404, "Партия не найдена")
         if batch["upload_manifest_state"] is None:
             return {"state": "legacy", "expected": 0, "finalized": 0,
-                    "missing": 0, "pending": 0, "files": []}
+                    "missing": 0, "pending": 0, "files": [], "auto_process_state": None,
+                    "auto_process_run_id":None,"auto_process_error":None,
+                    "auto_process_threshold":0.50}
         rows = db.execute("""SELECT m.upload_id,m.relative_path,m.filename,m.declared_size,
             u.id AS saved_id,u.finalized,u.target_path,u.received
             FROM batch_upload_manifest_files m LEFT JOIN uploads u ON u.id=m.upload_id
@@ -152,7 +158,8 @@ def status(batch_id):
             reconcile_locked(db, batch_id)
             from ..db.repositories.batches import refresh_upload_state
             refresh_upload_state(db, batch_id)
-            batch = db.execute("""SELECT upload_manifest_state,upload_manifest_completed_at
+            batch = db.execute("""SELECT upload_manifest_state,upload_manifest_completed_at,
+                    auto_process_state,auto_process_run_id,auto_process_error,auto_process_threshold
                 FROM batches WHERE id=%s""", (batch_id,)).fetchone()
         files = []
         missing = finalized = 0
@@ -177,5 +184,9 @@ def status(batch_id):
         return {"state": batch["upload_manifest_state"],
                 "completed_at": batch["upload_manifest_completed_at"],
                 "expected": len(rows), "finalized": finalized,
+                "auto_process_state":batch["auto_process_state"],
+                "auto_process_run_id":batch["auto_process_run_id"],
+                "auto_process_error":batch["auto_process_error"],
+                "auto_process_threshold":batch["auto_process_threshold"],
                 "missing": missing, "pending": len(rows)-finalized,
                 "files": files}

@@ -31,7 +31,7 @@
 | GET | `/batches?limit=100&offset=0` | `{batches,total}` (limit 1–200) |
 | GET | `/batches/{id}` | `batch_id,photos,size_bytes,pending,runs,display_name,*_state,*_at` |
 | GET | `/batches/{id}/pending` | Незафиксированные загрузки ФО: UUID, имя, фактический offset на диске, размер, наличие `.part`, `can_finalize`, SHA-256 всей полученной части (только для незавершённого файла) для безопасной ручной докачки |
-| PUT | `/batches/{id}/upload-manifest` | Для новой пустой партии: `{files:[{upload_id: UUID, relative_path, filename, size}]}` (1–20000 фото). Идемпотентен только с **точно тем же** набором; иные наборы → 409. Старые партии с уже существующими uploads не изменяются. |
+| PUT | `/batches/{id}/upload-manifest` | Для новой пустой партии: `{files:[{upload_id: UUID, relative_path, filename, size}], auto_process?:bool, grouping_threshold?:0.50…0.99}` (1–20000 фото). Указанные auto-параметры фиксируются **только при первой регистрации**; идемпотентный повтор с тем же манифестом не включает заново отменённый автозапуск. Старые партии с уже существующими uploads не изменяются. |
 | GET | `/batches/{id}/upload-manifest` | `{state:legacy/waiting/complete, expected, finalized, missing, pending, files:[{upload_id,relative_path,filename,size,state,received}]}`. `state=legacy` означает отсутствие подтверждённого манифеста, а НЕ автоматически завершённую загрузку. |
 | PATCH | `/batches/{id}` | `{display_name}`, 1–120 символов |
 | GET | `/batches/{id}/photos` | пагинация метаданных ФО |
@@ -43,7 +43,19 @@
 | GET | `/batches/{id}/retention` | даты и предупреждение за 7 дней |
 | GET | `/storage/usage` | mount total/used/available, inode-counted categories |
 
-**Инвариант этапа 1:** для новых партий `POST /uploads` принимает только зарегистрированный `client_upload_id`, имя и размер; в `finish` сервер сверяет весь манифест и фиксирует `complete`, только когда подтверждены все оригиналы. `POST /runs` для `waiting` возвращает 422 даже при `pending=0`. Старые партии используют прежнюю семантику. Автоматическая очередь MegaLoc пока НЕ включена.
+## Этап 2 — серверный автоматический MegaLoc
+
+| HTTP | Путь | Контракт |
+|---|---|---|
+| GET | `/processing-settings` | `{auto_process_new_batches:false,grouping_threshold:0.50,model:"megaloc"}` по умолчанию; хранится на сервере |
+| PATCH | `/processing-settings` | `{auto_process_new_batches:bool,grouping_threshold:number}`; новые настройки действуют только на новые партии |
+| POST | `/batches/{id}/auto-processing/cancel` | Для новой партии с манифестом отменяет ожидание перед enqueue; после создания job → 409, дальше используйте `/runs/{id}/stop` |
+| GET | `/batches/{id}` | Доп. поля `auto_process_state`, `auto_process_threshold`, `auto_process_run_id`, `auto_process_error` |
+| GET | `/batches/{id}/upload-manifest` | Доп. поля автообработки: state, run_id, error, threshold. Для legacy не означает согласия на автоматический запуск |
+
+Общий default OFF. Никаких авто-заданий для legacy, старых результатов или партии без явного нового opt-in. Фоновый `cleanup` раз в ~30 секунд проверяет `waiting + complete`, оригиналы, SAM и очередь и вызывает общий транзакционный enqueue под advisory lock с `source=automatic` и сохранённым порогом; модель MegaLoc должна быть установлена. `queued` навсегда отмечает факт автоматической постановки даже если job закончился с ошибкой: бесконечных повторов нет. При busy/full ожидает освобождения очереди, при ошибке настройки/отсутствии SAM пишет причину ожидания. `source` может быть `manual` или `automatic` в snapshot задания. Старые HTTP контракты не удалены.
+
+**Инвариант этапа 1:** для новых партий `POST /uploads` принимает только зарегистрированный `client_upload_id`, имя и размер; в `finish` сервер сверяет весь манифест и фиксирует `complete`, только когда подтверждены все оригиналы. `POST /runs` для `waiting` возвращает 422 даже при `pending=0`. Старые партии используют прежнюю семантику.
 
 Ошибки: `401` сессия, `403` Origin, `404` не найден, `409` несовместимое состояние (после run нельзя удалить одну ФО, deleting запрещает upload/run/ZIP), `422` invalid field/threshold. `DELETE batch` фактически выполняет maintenance worker, не блокирует HTTP. Веб-UI будет использовать новые endpoints в этапе 3, до него старые вкладки остаются.
 

@@ -31,43 +31,58 @@ def list_jobs(limit:int=100,offset:int=0):
 @router.post("",status_code=202)
 def enqueue(data:NewRun):
     with connect() as db:
-        # Shared with manual batch deletion and reference mutation.
+        # Shared with deletion, reference edits and auto scheduling.
         db.execute("SELECT pg_advisory_xact_lock(723409133)")
-        if queue.queue_count(db)>=queue.MAX_WAITING:
-            raise HTTPException(429,"Очередь заполнена: максимум 20 ожидающих запусков")
-        batch=db.execute("SELECT id,delete_state,upload_manifest_state FROM batches WHERE id=%s FOR UPDATE",
-                         (data.batch_id,)).fetchone()
-        if not batch:raise HTTPException(404,"Партия ФО не найдена")
-        if batch["delete_state"]!="active":raise HTTPException(409,"Партия удаляется")
-        if batch['upload_manifest_state']=='waiting':
-            raise HTTPException(422,'Дождитесь завершения всех файлов манифеста ФО')
-        if db.execute("""SELECT 1 FROM jobs WHERE batch_id=%s
-                   AND status IN ('queued','running','stopping') LIMIT 1""",
-                   (data.batch_id,)).fetchone():
-            raise HTTPException(409,"Эта партия уже стоит в очереди или обрабатывается")
-        count=db.execute("""SELECT count(*) AS n FROM uploads
-            WHERE kind='fo' AND finalized AND batch_id=%s""",(data.batch_id,)).fetchone()["n"]
-        pending=db.execute("""SELECT count(*) AS n FROM uploads
-            WHERE kind='fo' AND batch_id=%s AND NOT finalized""",
-            (data.batch_id,)).fetchone()["n"]
-        if pending:raise HTTPException(422,"Дождитесь завершения загрузки всех ФО")
-        refs=db.execute("SELECT count(*) AS n FROM uploads WHERE kind='reference' AND finalized").fetchone()["n"]
-        if count<1 or refs<1:raise HTTPException(422,"Загрузите ФО и Образцы перед сортировкой")
-        now=datetime.now(timezone.utc)
-        run_id=now.strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:12]
-        info={"id":run_id,"status":"queued","references":str(DATA_DIR/"references"),
-              "new_photos":str(DATA_DIR/"uploads"/str(data.batch_id)),
-              "output":str(DATA_DIR/"outputs"),"batch_id":str(data.batch_id),
-              "selected_models":["megaloc"],"grouping_threshold":data.grouping_threshold,
-              "models":{},"progress":{},"enqueued_at":now.isoformat(),
-              "started_at":now.isoformat()}
-        db.execute("""UPDATE batches SET download_confirmed_at=NULL,
-            delete_after_at=NULL,confirmed_run_id=NULL,upload_state='sealed'
-            WHERE id=%s""",(data.batch_id,))
-        db.execute("INSERT INTO jobs(id,batch_id,status,snapshot) VALUES (%s,%s,'queued',%s)",
-                   (run_id,data.batch_id,Jsonb(info)))
-        position=queue.queue_position(db,run_id)
+        return _enqueue_locked(db,data,source="manual")
+
+
+def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
+    """Single transactional queue entry point for manual and automatic runs.
+
+    Caller has the global scheduling advisory lock; the batch row is FOR UPDATE.
+    Existing queue, snapshot and worker contracts remain unchanged.
+    """
+    if queue.queue_count(db)>=queue.MAX_WAITING:
+        raise HTTPException(429,"Очередь заполнена: максимум 20 ожидающих запусков")
+    batch=locked_batch or db.execute(
+        "SELECT id,delete_state,upload_manifest_state,auto_process_state FROM batches "
+        "WHERE id=%s FOR UPDATE",(data.batch_id,)).fetchone()
+    if not batch:raise HTTPException(404,"Партия ФО не найдена")
+    if batch["delete_state"]!="active":raise HTTPException(409,"Партия удаляется")
+    if batch["upload_manifest_state"]=="waiting":
+        raise HTTPException(422,"Дождитесь завершения всех файлов манифеста ФО")
+    if db.execute("""SELECT 1 FROM jobs WHERE batch_id=%s
+        AND status IN ('queued','running','stopping') LIMIT 1""",
+        (data.batch_id,)).fetchone():
+        raise HTTPException(409,"Эта партия уже стоит в очереди или обрабатывается")
+    count=db.execute("""SELECT count(*) AS n FROM uploads
+        WHERE kind='fo' AND finalized AND batch_id=%s""",
+        (data.batch_id,)).fetchone()["n"]
+    pending=db.execute("""SELECT count(*) AS n FROM uploads
+        WHERE kind='fo' AND batch_id=%s AND NOT finalized""",
+        (data.batch_id,)).fetchone()["n"]
+    if pending:raise HTTPException(422,"Дождитесь завершения загрузки всех ФО")
+    refs=db.execute("SELECT count(*) AS n FROM uploads WHERE kind='reference' AND finalized").fetchone()["n"]
+    if count<1 or refs<1:raise HTTPException(422,"Загрузите ФО и Образцы перед сортировкой")
+    now=datetime.now(timezone.utc)
+    run_id=now.strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:12]
+    info={"id":run_id,"status":"queued","references":str(DATA_DIR/"references"),
+          "new_photos":str(DATA_DIR/"uploads"/str(data.batch_id)),
+          "output":str(DATA_DIR/"outputs"),"batch_id":str(data.batch_id),
+          "selected_models":["megaloc"],"grouping_threshold":data.grouping_threshold,
+          "models":{},"progress":{},"enqueued_at":now.isoformat(),
+          "started_at":now.isoformat(),"source":source}
+    db.execute("""UPDATE batches SET download_confirmed_at=NULL,
+        delete_after_at=NULL,confirmed_run_id=NULL,upload_state='sealed'
+        WHERE id=%s""",(data.batch_id,))
+    db.execute("INSERT INTO jobs(id,batch_id,status,snapshot) VALUES (%s,%s,'queued',%s)",
+               (run_id,data.batch_id,Jsonb(info)))
+    if source=="manual" and batch["auto_process_state"]=="waiting":
+        db.execute("""UPDATE batches SET auto_process_state='manual',
+            auto_process_error=NULL WHERE id=%s""",(data.batch_id,))
+    position=queue.queue_position(db,run_id)
     return {**info,"queue_position":position}
+
 
 @router.get("/{run_id}")
 def get_job(run_id:str):

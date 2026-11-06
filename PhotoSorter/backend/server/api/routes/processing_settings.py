@@ -1,0 +1,19 @@
+"""Server-persisted default preferences for future automatic MegaLoc runs."""
+from fastapi import APIRouter
+from pydantic import BaseModel,Field
+from ...services import auto_processing
+
+router=APIRouter(prefix="/api/processing-settings",tags=["processing"])
+
+class ProcessingSettings(BaseModel):
+    auto_process_new_batches:bool
+    grouping_threshold:float=Field(ge=.50,le=.99,allow_inf_nan=False)
+
+@router.get("")
+def read_settings():
+    return auto_processing.settings()
+
+@router.patch("")
+def save_settings(payload:ProcessingSettings):
+    return auto_processing.update_settings(
+        enabled=payload.auto_process_new_batches,threshold=payload.grouping_threshold)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from fastapi import APIRouter,HTTPException
 from pydantic import BaseModel,Field
-from ...services import batches,cleanup,retention,upload_manifest
+from ...services import batches,cleanup,retention,upload_manifest,auto_processing
 from ...database import connect
 from ...db.repositories.pagination import page
 
@@ -24,6 +24,8 @@ class ManifestFile(BaseModel):
 
 class BatchManifest(BaseModel):
     files:list[ManifestFile]=Field(min_length=1,max_length=20000)
+    auto_process:bool=False
+    grouping_threshold:float=Field(default=.50,ge=.50,le=.99,allow_inf_nan=False)
 
 @router.post("")
 def create(payload:NewBatch|None=None):
@@ -36,11 +38,16 @@ def list_batches(limit:int=100,offset:int=0):
 
 @router.put("/{batch_id}/upload-manifest")
 def register_manifest(batch_id:str,payload:BatchManifest):
-    return upload_manifest.register(batch_id,payload.files)
+    return upload_manifest.register(batch_id,payload.files,
+        auto_process=payload.auto_process,grouping_threshold=payload.grouping_threshold)
 
 @router.get("/{batch_id}/upload-manifest")
 def manifest(batch_id:str):
     return upload_manifest.status(batch_id)
+
+@router.post("/{batch_id}/auto-processing/cancel")
+def cancel_automatic(batch_id:str):
+    return auto_processing.cancel(batch_id)
 
 @router.get("/{batch_id}/pending")
 def pending(batch_id:str):

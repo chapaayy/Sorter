@@ -11,7 +11,7 @@ from .auth import authenticate,bootstrap_admin,check_origin
 from .database import wait_and_initialize
 from .uploads import router as uploads_router
 from .jobs import router as jobs_router
-from .api.routes import auth,batches,downloads,images,logs,models,results,site,storage,thumbnails,references,originals,system
+from .api.routes import auth,batches,downloads,images,logs,models,results,site,storage,thumbnails,references,originals,system,processing_settings
 
 @asynccontextmanager
 async def lifespan(app):
@@ -44,5 +44,5 @@ def health():return {"status":"ok","version":"0.1.0-beta.1"}
 
 for router in (auth.router,batches.router,uploads_router,jobs_router,
                models.router,results.router,images.router,downloads.router,
-               logs.router,storage.router,thumbnails.router,references.router,originals.router,system.router,site.router):
+               logs.router,storage.router,thumbnails.router,references.router,originals.router,system.router,processing_settings.router,site.router):
     app.include_router(router)

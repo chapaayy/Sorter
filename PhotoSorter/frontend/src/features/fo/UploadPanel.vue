@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import {computed,onUnmounted,ref} from 'vue'
+import {computed,onMounted,onUnmounted,ref} from 'vue'
 import {batchApi} from '../../api/batches'
+import {runApi} from '../../api/runs'
 import {ApiError} from '../../api/client'
 import {canResumeUpload} from '../../utils/batches'
 import {directoryEntries,uploadOne,expectedUploadId} from '../../utils/upload'
@@ -15,17 +16,28 @@ import UiButton from '../../components/ui/UiButton.vue'
 const emit=defineEmits<{(e:'finished',batchId:string):void}>()
 const entries=ref<UploadEntry[]>([]),folder=ref(''),batchId=ref(''),running=ref(false),error=ref(''),finished=ref(0)
 const amounts=ref<number[]>([]),phase=ref('')
+const autoProcess=ref(false),autoThreshold=ref(.50),manifestRegistered=ref(false)
 let controller:AbortController|null=null
 const total=computed(()=>entries.value.reduce((s,e)=>s+e.file.size,0))
 const uploaded=computed(()=>amounts.value.reduce((a,b)=>a+b,0))
 const percent=computed(()=>total.value?Math.min(100,100*uploaded.value/total.value):0)
 const notice=useNoticeStore(),uploadSettings=useUploadSettingsStore()
+onMounted(async()=>{
+  try{
+    const defaults=await runApi.autoSettings()
+    if(!manifestRegistered.value&&!running.value){
+      autoProcess.value=defaults.auto_process_new_batches
+      autoThreshold.value=defaults.grouping_threshold
+    }
+  }catch{ /* The safe default is never to auto-process without consent. */ }
+})
 function choose(e:Event){
   const files=(e.target as HTMLInputElement).files
   if(!files)return
   try{
     const batch=directoryEntries(files)
     entries.value=batch.entries;folder.value=batch.folder;batchId.value='';amounts.value=entries.value.map(()=>0)
+    manifestRegistered.value=false
     error.value='';finished.value=0;phase.value=''
   }catch(err){error.value=errorText(err)}
 }
@@ -70,6 +82,9 @@ async function start(){
     const current=await request(()=>batchApi.manifest(batchId.value))
     if(current.state!=='legacy'){
       if(!matches(current))throw new Error('Выбранная папка не совпадает с манифестом партии. Создайте новую партию.')
+      manifestRegistered.value=true
+      autoProcess.value=current.auto_process_state==='waiting'||current.auto_process_state==='queued'
+      autoThreshold.value=current.auto_process_threshold??.50
       const ids=new Map(current.files.map(file=>[file.relative_path,file.upload_id]))
       manifestIds=entries.value.map(e=>ids.get(e.relative)!)
     }else{
@@ -80,7 +95,9 @@ async function start(){
           upload_id:expectedUploadId(target,e),relative_path:e.relative,
           filename:e.file.name,size:e.file.size
         }))
-        await request(()=>batchApi.registerManifest(batchId.value,plan))
+        await request(()=>batchApi.registerManifest(batchId.value,plan,
+          autoProcess.value,autoThreshold.value))
+        manifestRegistered.value=true
         manifestIds=plan.map(e=>e.upload_id)
       }
       // Existing partially uploaded legacy batches remain on their old flow.
@@ -126,7 +143,9 @@ async function start(){
       if(confirmed.state!=='complete')
         throw new Error('Сервер ожидает ещё '+confirmed.pending+' файлов. Выберите эту папку для продолжения.')
     }
-    notice.add('Все фотографии партии сохранены. Миниатюры формируются отдельно.','ok')
+    notice.add(autoProcess.value
+      ?'Все ФО сохранены. MegaLoc автоматически встанет в очередь; миниатюры формируются отдельно.'
+      :'Все фотографии партии сохранены. Миниатюры формируются отдельно.','ok')
     emit('finished',batchId.value)
   }catch(err){
     const firstError=error.value
@@ -150,6 +169,18 @@ onUnmounted(stop)
   <div v-if="entries.length" class="row wrap between">
     <div><strong>{{folder}}</strong><p class="meta" style="margin:3px 0">{{entries.length.toLocaleString('ru-RU')}} файлов · {{bytes(total)}}</p></div>
     <div class="row"><UiButton v-if="running" kind="danger" @click="stop">Пауза</UiButton><UiButton v-else kind="primary" @click="start">{{finished===entries.length?'Проверить повторно':'Начать / продолжить'}}</UiButton></div>
+  </div>
+  <div v-if="entries.length" class="stack-sm" style="border-top:1px solid var(--border-subtle);padding-top:12px">
+    <label class="row wrap" style="gap:10px;align-items:center">
+      <input type="checkbox" v-model="autoProcess" :disabled="running||manifestRegistered" aria-label="Автоматически обработать MegaLoc после загрузки"/>
+      <strong>Автоматически обработать MegaLoc после загрузки</strong>
+    </label>
+    <div class="meta">После проверки всех файлов задание создаётся на сервере даже при закрытом браузере. Автозапуск можно отменить до постановки в очередь.</div>
+    <label v-if="autoProcess" class="field" style="max-width:270px">
+      Порог группировки MegaLoc: {{autoThreshold.toFixed(2)}}
+      <input type="range" v-model.number="autoThreshold" min=".50" max=".99" step=".01" :disabled="running||manifestRegistered" aria-label="Порог MegaLoc для автоматической обработки"/>
+    </label>
+    <div v-if="manifestRegistered" class="meta">Настройки этой партии уже сохранены на сервере и не меняются при повторном выборе папки.</div>
   </div>
   <div v-if="running||uploaded" class="stack-sm">
     <div class="row between meta"><span>Передано {{bytes(uploaded)}} / {{bytes(total)}}</span><span>{{percent.toFixed(1)}}%</span></div>
