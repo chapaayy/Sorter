@@ -12,6 +12,7 @@ import UiButton from '../../components/ui/UiButton.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
+import PendingUploads from './PendingUploads.vue'
 const route=useRoute(),router=useRouter(),notice=useNoticeStore()
 const id=String(route.params.batchId)
 const batch=ref<Batch|null>(null),count=ref<{total:number;ready:number;failed:number}|null>(null)
@@ -35,6 +36,7 @@ const {refresh:tick}=usePolling(async()=>{
   }
 },7000)
 onMounted(async()=>{await Promise.all([refresh(),reset()])})
+async function onPendingChanged(){await Promise.all([refresh(),reset()])}
 async function saveName(){
   if(!newName.value.trim())return
   busy.value=true
@@ -59,6 +61,7 @@ async function removeBatch(){
   <template #actions><UiButton @click="newName=batch?.display_name||'';rename=true">Переименовать</UiButton><UiButton kind="danger" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert">{{error}}</div>
+<PendingUploads v-if="batch?.delete_state==='active'" :batch-id="id" :disabled="!!batch?.runs" @changed="onPendingChanged"/>
 <section v-if="count" class="panel stack-sm" style="margin-bottom:19px">
   <div class="row between"><span>Подготовка миниатюр</span><span class="meta">{{count.ready}} / {{count.total}} · {{readyPercent}}%</span></div>
   <div class="progress-track" role="progressbar" :aria-valuenow="readyPercent" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill" :style="{width:readyPercent+'%'}"/></div>
