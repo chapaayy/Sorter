@@ -123,7 +123,11 @@
 | `frontend/src/features/references/ReferenceUploader.vue` | Переключение двух способов импорта |
 | `frontend/src/features/references/ReferenceDirectoryImporter.vue` | Строгий массовый импорт, предпросмотр, ошибки и видимый список системных файлов, исключённых из передачи |
 | `frontend/src/features/references/ReferencePhotoUploader.vue` | Добавление фотографий в выбранную конструкцию |
-| `frontend/src/features/processing/` | Очередь MegaLoc, обработка, детализация |
+| `frontend/src/features/processing/` | Панель управления MegaLoc и подробности текущей обработки; запуск из ФО |
+| `frontend/src/features/processing/ProcessingOverview.vue` | Состояние модели, Worker heartbeat, серверные настройки и счётчики |
+| `frontend/src/features/processing/ProcessingQueue.vue` | Упорядоченная очередь и остановка заданий через подтверждение в родителе |
+| `frontend/src/features/processing/ProcessingHistory.vue` | Широкие строки истории с реальными метриками, поиском и пагинацией |
+| `frontend/src/utils/processingDashboard.ts` | Чистые правила сортировки очереди, выбора running, формат измеренных длительностей |
 | `frontend/src/features/results/` | Результаты, ZIP, сохранение/retention |
 | `frontend/src/features/logs/LogsView.vue` | Лог обработки, tail |
 | `frontend/src/features/settings/SettingsView.vue` | Диск, состояние сервисов, тема, cleanup |
@@ -145,8 +149,10 @@
 | `backend/tests/test_batch_listing_regressions.py` | Счётчики нулевых запусков, список ФО после удаления, PostgreSQL |
 | `backend/tests/test_construction_import.py` | Новый формат конструкций, повторные импорты, SHA-256, адреса |
 | `backend/tests/test_pending_upload_recovery.py` | Изолированные проверки автозавершения `.part`, idempotent init и отмены без потери готовых фото |
+| `backend/tests/test_processing_dashboard.py` | Новый фильтр запусков, статус PostgreSQL, пагинация, совместимость прежнего API |
 | `backend/tests/test_batch_run_summaries.py` | Действительный latest run, позиция очереди, прогресс, прежний результат и безопасная история |
 | `backend/tests/test_auto_processing.py` | Новая opt-in очередь, отмена до enqueue, ручной запуск, queue full, terminal job, конкурентная отправка, старые партии |
+| `frontend/tests/processingDashboard.test.ts` | Порядок очереди, рабочий статус, остановка, реальные длительности и нулевые/отсутствующие метрики |
 | `frontend/tests/` | Vitest |
 | `frontend/e2e/navigation.spec.ts`, `playwright.config.ts` | Chromium/WebKit на десктопе и mobile |
 | `PhotoSorter/tools/benchmark_api.py` | API latency |
@@ -155,6 +161,7 @@
 | `PhotoSorter/tools/maintenance/compare_baseline.py` | Две реальных MegaLoc manifest/ZIP для сравнения |
 | `PhotoSorter/tools/maintenance/staging_probe.py` | Read-only health, latency, resources |
 | `PhotoSorter/tools/maintenance/smoke_container.sh` | Только одноразовый CI Docker runtime |
+| `docs/STAGE4_ACCEPTANCE.md` | Итоговая проверка: автоматизированные сценарии и отдельно обязательные ручные тесты VPN/Worker/VPS |
 | `docs/` | Актуальные API, архитектура, backup, deployment, operations, security, acceptance и rollback |
 
 См. [Инструкция импорта образцов](docs/REFERENCE_IMPORT.md).

@@ -11,6 +11,8 @@
 | `frontend` | Node 24 `npm ci`, строгий TypeScript/Vite build, Vitest, Playwright Chromium/WebKit desktop/mobile на моковом API |
 | `docker-runtime` | Полная сборка CPU PyTorch и Docker, HTTPS self-signed, login/cookie, `/`, `/fo`, 404 на retired UI, три background heartbeat и синтетическая партия |
 
+Этап 4: `test_processing_dashboard.py` проверяет фильтры `GET /runs?scope=active|history`, совместимость без scope, реальные DB-статусы и пагинацию. `frontend/tests/processingDashboard.test.ts` проверяет FIFO, running/stopping и метрики только при наличии измерений. Playwright проверяет новый dashboard на Chromium/WebKit desktop/mobile, Worker heartbeat, очередь, stop-confirm и отсутствие прежней формы запуска. **Реальные сетевые обрывы/перезапуск VPS тестами CI не заменяются**: [ручной чек-лист](STAGE4_ACCEPTANCE.md).
+
 Этап 3: `test_batch_run_summaries.py` проверяет реальный PostgreSQL-статус, прогресс, порядок/пагинацию истории и ссылки на прежние результаты. `frontend/tests/batchProcessing.test.ts` проверяет все состояния, отсутствие ложного успеха по миниатюрам и отсутствие выдуманных процентов. Playwright проверяет очередь, отмену, остановку, мобильные карточки и историю результатов. UI не создаёт вторую очередь.
 
 Этап 2: `test_auto_processing.py` проверяет default OFF, сохранение порога, ожидание полного манифеста, повторный/конкурентный enqueue, ручной запуск, отмену до enqueue и отсутствие авто-повтора после failed job. Браузерная проверка настроек выполняется на моковом API. Реальный сценарий отсутствия связи с клиентом требует приёмки на тестовом VPS.

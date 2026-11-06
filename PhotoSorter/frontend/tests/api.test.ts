@@ -27,6 +27,22 @@ describe('typed API contracts',()=>{
     expect(call[1].method).toBe('PATCH')
     expect(JSON.parse(String(call[1].body))).toEqual({auto_process_new_batches:false,grouping_threshold:.50})
   })
+  it('uses backward-compatible filtered run lists for live and historical views',async()=>{
+    const urls:string[]=[]
+    vi.stubGlobal('fetch',vi.fn().mockImplementation(async(url:string)=>{
+      urls.push(url)
+      return new Response(JSON.stringify({runs:[],total:0}),{
+        status:200,headers:{'content-type':'application/json'}})
+    }))
+    await runApi.active()
+    await runApi.history(30,60)
+    await runApi.list(20,0)
+    expect(urls[0]).toContain('scope=active')
+    expect(urls[0]).toContain('limit=25')
+    expect(urls[1]).toContain('scope=history')
+    expect(urls[1]).toContain('offset=60')
+    expect(urls[2]).not.toContain('scope=')
+  })
   it('constructs same-origin archive URL without source paths',()=>{
     expect(resultApi.download('20261105T000000-abcdef123456','SAM-0001')).toBe('/api/download/20261105T000000-abcdef123456?sam=SAM-0001')
   })

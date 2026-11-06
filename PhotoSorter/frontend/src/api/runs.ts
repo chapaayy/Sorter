@@ -2,6 +2,9 @@ import {api,post,query} from './client'
 import type {Run,ModelInfo,ProcessingSettings} from '../types/api'
 export const runApi={
   list:(limit=100,offset=0)=>api<{runs:Run[];total:number}>('/runs'+query({limit,offset})),
+  active:()=>api<{runs:Run[];total:number}>('/runs'+query({scope:'active',limit:25})),
+  history:(limit=30,offset=0)=>api<{runs:Run[];total:number}>(
+    '/runs'+query({scope:'history',limit,offset})),
   one:(id:string)=>api<Run>('/runs/'+encodeURIComponent(id)),
   start:(id:string,threshold:number)=>post<Run>('/runs',{batch_id:id,grouping_threshold:threshold}),
   stop:(id:string)=>post<Run>('/runs/'+id+'/stop',{}),

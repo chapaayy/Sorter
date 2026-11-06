@@ -43,6 +43,12 @@
 | GET | `/batches/{id}/retention` | даты и предупреждение за 7 дней |
 | GET | `/storage/usage` | mount total/used/available, inode-counted categories |
 
+## Этап 4 — панель обработки MegaLoc
+
+Для независимого малонагруженного мониторинга UI запрашивает `GET /runs?scope=active&limit=25` и `GET /system/status` раз в 4 секунды. `GET /runs?scope=history&limit=30&offset=N` — постраничная история, обновляется реже. Модель и серверные настройки читаются через существующие `GET /models` и `GET /processing-settings`, изменения в настройках — через прежний `PATCH /processing-settings`. Статус Worker только из `system/status.services.megaloc`; отсутствие heartbeat не приравнивается к успешной обработке. `POST /runs/{id}/stop` требует UI-подтверждения, для `queued` останавливает до начала, для `running` запрашивает остановку.
+
+Из `/processing` удалена UI-форма нового запуска. `POST /runs` и повторная сортировка по-прежнему поддерживаются backend, кнопки запуска находятся в `/fo`. Все результаты и история остаются доступны. Реальные сетевые/ВПС сценарии — `docs/STAGE4_ACCEPTANCE.md`.
+
 ## Этап 3 — статусы MegaLoc внутри ФО
 
 | HTTP | Путь | Контракт |
@@ -85,7 +91,7 @@
 | GET | `/thumbnails/status/{batch_id}/counts` | фактические total/ready/failed |
 | POST | `/thumbnails/{photo_id}/retry` | failed/queued → queued (202) |
 | GET | `/photos/{photo_id}/original` | оригинал только по DB UUID, с batch read lease |
-| GET | `/runs?limit=&offset=` | runs+total, per queued `queue_position` |
+| GET | `/runs?limit=&offset=&scope=` | Без `scope` контракт не изменён: все runs + total, очередь с `queue_position`. `scope=active` — только `queued/running/stopping`, `scope=history` — только терминальные статусы. Неверный scope → 422. История и мониторинг используют один API/одну очередь. |
 | POST | `/runs` | FIFO 202, максимум 20 queued; 429 full, 409 duplicate active batch |
 | GET | `/logs/{run_id}/page?limit=&cursor=` | 1–500, next_cursor; 422 устаревший segment |
 | GET | `/logs/{run_id}` | ограниченный совместимый хвост (default 250) |

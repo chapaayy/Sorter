@@ -18,13 +18,25 @@ class NewRun(BaseModel):
     grouping_threshold:float=Field(default=.50,ge=.50,le=.99,allow_inf_nan=False)
 
 @router.get("")
-def list_jobs(limit:int=100,offset:int=0):
+def list_jobs(limit:int=100,offset:int=0,scope:str|None=None):
+    """Optional filtered views for the monitoring dashboard.
+
+    Absence of scope retains the original all-jobs contract. The SQL filter
+    is chosen from fixed literals, never interpolated from client input.
+    """
     if limit<1 or limit>200 or offset<0:raise HTTPException(422,"Неверная пагинация")
+    if scope not in (None,"active","history"):
+        raise HTTPException(422,"Неверная выборка заданий")
+    where={
+        None:"",
+        "active":" WHERE status IN ('queued','running','stopping')",
+        "history":" WHERE status IN ('completed','completed_with_errors','failed','stopped','interrupted')"
+    }[scope]
     with connect() as db:
         rows=db.execute("""SELECT id,snapshot,status,created_at,started_at,finished_at
-            FROM jobs ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s""",
+            FROM jobs"""+where+""" ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s""",
             (limit,offset)).fetchall()
-        total=db.execute("SELECT count(*) AS n FROM jobs").fetchone()["n"]
+        total=db.execute("SELECT count(*) AS n FROM jobs"+where).fetchone()["n"]
         result=[queue.decorated(db,row) for row in rows]
     return {"runs":result,"total":total}
 

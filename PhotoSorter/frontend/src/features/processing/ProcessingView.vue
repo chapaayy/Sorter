@@ -1,98 +1,169 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue'
-import {useRouter} from 'vue-router'
 import {batchApi} from '../../api/batches'
-import {canProcessBatch} from '../../utils/batches'
 import {runApi} from '../../api/runs'
-import type {Batch,Run,ModelInfo} from '../../types/api'
+import {systemApi} from '../../api/system'
 import {usePolling} from '../../composables/usePolling'
-import {date,errorText,isActive,runLabels,bytes} from '../../utils/format'
+import {errorText} from '../../utils/format'
+import {activeInference,orderedQueue} from '../../utils/processingDashboard'
+import type {Batch,Run,ModelInfo,ProcessingSettings,SystemStatus} from '../../types/api'
+import {useNoticeStore} from '../../stores/notice'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
-import UiSelect from '../../components/ui/UiSelect.vue'
-import RowCard from '../../components/ui/RowCard.vue'
-import EmptyState from '../../components/ui/EmptyState.vue'
+import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import RunProgress from './RunProgress.vue'
-import {useNoticeStore} from '../../stores/notice'
-const router=useRouter(),notice=useNoticeStore()
-const batches=ref<Batch[]>([]),runs=ref<Run[]>([]),model=ref<ModelInfo|null>(null),chosen=ref(''),threshold=ref(.50)
-const submitting=ref(false),downloading=ref(false),error=ref(''),search=ref('')
-const activeRuns=computed(()=>runs.value.filter(r=>isActive(r.status)))
-const latest=computed(()=>activeRuns.value[0]||runs.value[0])
-const history=computed(()=>runs.value.filter(r=>(r.id+' '+(batchName(r.batch_id))).toLowerCase().includes(search.value.toLowerCase())))
-const selectable=computed(()=>batches.value.filter(b=>b.delete_state==='active'&&(b.photos??0)>0))
-const available=computed(()=>batches.value.filter(canProcessBatch))
-const selectedBatch=computed(()=>selectable.value.find(b=>b.batch_id===chosen.value))
-const selectedReady=computed(()=>!!selectedBatch.value&&canProcessBatch(selectedBatch.value))
-function batchName(id:string){return batches.value.find(b=>b.batch_id===id)?.display_name||id}
-async function load(){
+import ProcessingOverview from './ProcessingOverview.vue'
+import ProcessingQueue from './ProcessingQueue.vue'
+import ProcessingHistory from './ProcessingHistory.vue'
+
+const notice=useNoticeStore()
+const activeJobs=ref<Run[]>([]),history=ref<Run[]>([])
+const historyTotal=ref(0),busyMore=ref(false),busyStop=ref(''),downloading=ref(false)
+const model=ref<ModelInfo|null>(null),settings=ref<ProcessingSettings|null>(null)
+const system=ref<SystemStatus|null>(null),batches=ref<Batch[]>([])
+const liveError=ref(''),infoError=ref(''),historyError=ref('')
+const stopTarget=ref<Run|null>(null)
+const PAGE=30
+
+const queue=computed(()=>orderedQueue(activeJobs.value))
+const current=computed(()=>activeInference(activeJobs.value))
+const names=computed(()=>Object.fromEntries(batches.value.map(b=>[b.batch_id,b.display_name])))
+const queueTotal=computed(()=>system.value?.worker.queue.queued??queue.value.length)
+
+async function refreshLive(){
   try{
-    const [rs,bs,m]=await Promise.all([runApi.list(),batchApi.list(200),runApi.models()])
-    runs.value=rs.runs;batches.value=bs.batches;model.value=m
-    if(!selectable.value.some(b=>b.batch_id===chosen.value))chosen.value=selectable.value[0]?.batch_id||''
-    error.value=''
-  }catch(e){error.value=errorText(e)}
+    const [jobs,status]=await Promise.all([runApi.active(),systemApi.status()])
+    activeJobs.value=jobs.runs
+    system.value=status
+    liveError.value=''
+  }catch(e){liveError.value=errorText(e)}
 }
-onMounted(()=>{void load()})
-usePolling(load,3000)
-async function start(){
-  if(!selectedReady.value||submitting.value)return
-  submitting.value=true;error.value=''
+async function refreshHistory(){
   try{
-    const created=await runApi.start(chosen.value,threshold.value)
-    notice.add('Запуск добавлен в очередь MegaLoc','ok')
-    await load()
-    await router.push('/processing/'+created.id)
-  }catch(e){error.value=errorText(e)}finally{submitting.value=false}
+    const page=await runApi.history(PAGE)
+    const latest=page.runs
+    const ids=new Set(latest.map(run=>run.id))
+    history.value=[...latest,...history.value.slice(PAGE).filter(run=>!ids.has(run.id))]
+    historyTotal.value=page.total
+    historyError.value=''
+  }catch(e){historyError.value=errorText(e)}
 }
-async function stop(id:string){
-  try{await runApi.stop(id);notice.add('Остановка запрошена','ok');await load()}
-  catch(e){error.value=errorText(e)}
+async function refreshInfo(){
+  try{
+    const [m,s,b]=await Promise.all([runApi.models(),runApi.autoSettings(),batchApi.list(200)])
+    model.value=m
+    settings.value=s
+    batches.value=b.batches
+    infoError.value=''
+  }catch(e){infoError.value=errorText(e)}
+}
+async function loadMore(){
+  if(busyMore.value||history.value.length>=historyTotal.value)return
+  busyMore.value=true
+  try{
+    const page=await runApi.history(PAGE,history.value.length)
+    const known=new Set(history.value.map(run=>run.id))
+    history.value.push(...page.runs.filter(run=>!known.has(run.id)))
+    historyTotal.value=page.total
+    historyError.value=''
+  }catch(e){historyError.value=errorText(e)}
+  finally{busyMore.value=false}
+}
+
+onMounted(()=>{
+  void refreshLive()
+  void refreshHistory()
+  void refreshInfo()
+})
+// Lightweight live state only. History and model/settings change less often.
+usePolling(refreshLive,4000)
+usePolling(refreshHistory,15000)
+usePolling(refreshInfo,45000)
+
+async function stop(){
+  const job=stopTarget.value
+  if(!job||busyStop.value)return
+  busyStop.value=job.id
+  try{
+    await runApi.stop(job.id)
+    stopTarget.value=null
+    notice.add(job.status==='queued'?'Задание снято с очереди':'Запрошена остановка обработки','ok')
+    await Promise.all([refreshLive(),refreshHistory()])
+  }catch(e){
+    liveError.value=errorText(e)
+    await refreshLive()
+    await refreshHistory()
+  }finally{busyStop.value=''}
 }
 async function install(){
+  if(downloading.value)return
   downloading.value=true
-  try{await runApi.downloadModel();notice.add('Загрузка MegaLoc запущена');await load()}
-  catch(e){error.value=errorText(e)}finally{downloading.value=false}
+  try{
+    await runApi.downloadModel()
+    notice.add('Загрузка модели MegaLoc запущена','ok')
+    await refreshInfo()
+  }catch(e){infoError.value=errorText(e)}
+  finally{downloading.value=false}
 }
 </script>
+
 <template>
-<PageHeader eyebrow="НЕЙРОСЕТЕВАЯ ОБРАБОТКА" title="Обработка" subtitle="Сначала MegaLoc группирует ФО, затем сопоставляет группы с библиотекой SAM."/>
-<div v-if="error" class="alert error" role="alert" style="margin-bottom:20px">{{error}}</div>
-<section class="panel stack" style="margin-bottom:20px">
-  <div class="panel-header"><h2>Новый запуск</h2><span class="status">Доступна одна модель · MegaLoc</span></div>
-  <div class="grid3">
-    <div class="field"><span class="label">Партия ФО</span><UiSelect v-model="chosen" label="Партия ФО" placeholder="Выберите партию" :disabled="!selectable.length" :options="selectable.map(b=>({value:b.batch_id,label:b.display_name+' · '+b.photos+' ФО'+((b.pending??0)>0?' · '+b.pending+' незавершённых':'')}))"/></div>
-    <div class="field"><span class="label">Модель</span><div class="readonly-field" aria-label="Модель">MegaLoc · CPU</div></div>
-    <label class="field"><span class="label">Порог группировки: {{threshold.toFixed(2)}}</span><input v-model.number="threshold" type="range" min=".50" max=".99" step=".01" aria-label="Порог группировки"/></label>
-  </div>
-  <p v-if="!selectable.length" class="meta">Нет партий с фотографиями. Загрузите ФО во вкладке «Фотоотчёты».</p>
-  <div v-if="selectedBatch?.upload_manifest_state==='waiting'" class="alert warning">
-    Загрузка партии ещё не завершена: сервер ожидает все фотографии из исходной папки.
-    <RouterLink :to="'/fo/'+selectedBatch.batch_id">Откройте партию</RouterLink> для проверки.
-  </div>
-  <div v-if="selectedBatch&&(selectedBatch.pending??0)>0" class="alert warning">
-    {{selectedBatch.photos}} фотографий готовы, но {{selectedBatch.pending}} файлов ещё не завершены.
-    <RouterLink :to="'/fo/'+selectedBatch.batch_id">Откройте партию</RouterLink>,
-    чтобы докачать их, завершить сохранение или отменить незавершённые передачи.
-  </div>
-  <div class="row between wrap">
-    <span class="meta">{{model?.models[0]?.available?'Модель готова. Запуски выполняются по одному.':model?.models[0]?.reason||'Проверка состояния модели…'}}</span>
-    <div class="row">
-      <UiButton v-if="model&&!model.models[0]?.available" :loading="downloading" @click="install">Установить MegaLoc</UiButton>
-      <UiButton kind="primary" :loading="submitting" :disabled="!model?.models[0]?.available||!selectedReady" @click="start">▶ Запустить / поставить в очередь</UiButton>
-    </div>
-  </div>
-</section>
-<RunProgress v-if="latest" :run="latest" style="margin-bottom:22px"/>
-<div v-if="latest&&isActive(latest.status)" class="row between" style="margin:0 0 28px"><RouterLink :to="'/processing/'+latest.id" class="meta">Подробности запуска →</RouterLink><UiButton kind="danger" @click="stop(latest.id)">Остановить</UiButton></div>
-<div class="row between wrap" style="margin-bottom:16px"><h2 style="margin:0">История обработок</h2><input v-model="search" placeholder="Поиск запусков…" aria-label="Поиск запусков" style="max-width:300px"/></div>
-<div v-if="history.length" class="stack">
-  <RowCard v-for="r in history" :key="r.id" icon="◉" :to="'/processing/'+r.id">
-    <template #title>{{batchName(r.batch_id)}}</template>
-    <template #subtitle>{{date(r.started_at)}} · MegaLoc</template>
-    <template #status>{{runLabels[r.status]||r.status}}<span v-if="r.queue_position"> · очередь №{{r.queue_position}}</span></template>
-    <template #metrics><div class="metric"><strong>{{r.progress?.total??'—'}}</strong><small>ед. на этапе</small></div><div class="metric"><strong>{{r.grouping_threshold?.toFixed(2)||'0.50'}}</strong><small>порог</small></div></template>
-  </RowCard>
+<PageHeader eyebrow="НЕЙРОСЕТЕВАЯ ОБРАБОТКА" title="Обработка"
+  subtitle="Панель MegaLoc: состояние Worker, текущая обработка, очередь и история. Запуск новых партий — в «ФО».">
+  <template #actions>
+    <RouterLink to="/fo" class="btn primary">Открыть фотоотчёты</RouterLink>
+  </template>
+</PageHeader>
+
+<div v-if="liveError" class="alert error" role="alert" style="margin-bottom:14px">
+  Не удалось обновить состояние очереди: {{liveError}}
 </div>
-<EmptyState v-else title="Нет запусков" detail="Выберите партию с фотографиями, чтобы запустить первую сортировку." icon="◉"/>
+<div v-if="infoError" class="alert error" role="alert" style="margin-bottom:14px">
+  Не удалось обновить информацию о модели и настройках: {{infoError}}
+</div>
+
+<div class="stack gap24">
+  <ProcessingOverview :model="model" :settings="settings" :system="system"
+    :downloading="downloading" @install="install"/>
+
+  <section class="stack" aria-label="Текущее активное задание">
+    <div class="row between wrap">
+      <h2 style="margin:0">Текущее задание</h2>
+      <span class="meta">MegaLoc выполняет только одну обработку одновременно</span>
+    </div>
+    <template v-if="current">
+      <div class="row between wrap">
+        <RouterLink class="processing-current-link" :to="'/fo/'+current.batch_id">
+          {{names[current.batch_id]||current.batch_id}}
+        </RouterLink>
+        <div class="row wrap">
+          <RouterLink :to="'/processing/'+current.id" class="btn small">Подробности</RouterLink>
+          <UiButton v-if="current.status==='running'" kind="danger" small
+            :loading="busyStop===current.id" @click="stopTarget=current">Остановить</UiButton>
+        </div>
+      </div>
+      <RunProgress :run="current"/>
+    </template>
+    <section v-else class="panel processing-idle">
+      <strong>Сейчас MegaLoc не обрабатывает фотографии</strong>
+      <p class="meta">Если задания ожидают, Worker возьмёт их по очереди. Для создания нового запуска откройте «ФО».</p>
+    </section>
+  </section>
+
+  <ProcessingQueue :runs="queue" :names="names" :total="queueTotal"
+    :busy-id="busyStop" @stop="stopTarget=$event"/>
+
+  <div v-if="historyError" class="alert error" role="alert">
+    Не удалось обновить историю запусков: {{historyError}}
+  </div>
+  <ProcessingHistory :runs="history" :names="names" :total="historyTotal"
+    :loading-more="busyMore" @more="loadMore"/>
+</div>
+
+<ConfirmDialog v-if="stopTarget"
+  :title="stopTarget.status==='queued'?'Убрать задание из очереди?':'Остановить обработку MegaLoc?'"
+  :message="'Партия «'+(names[stopTarget.batch_id]||stopTarget.batch_id)+'». Фотографии, предыдущие запуски и результаты сохранятся.'"
+  :confirm-label="stopTarget.status==='queued'?'Убрать из очереди':'Остановить'"
+  :danger="true" :busy="!!busyStop"
+  @cancel="stopTarget=null" @confirm="stop"/>
 </template>

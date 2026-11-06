@@ -236,3 +236,29 @@
   .fo-batch-actions{grid-column:auto}
   .fo-batch-title{max-width:100%;font-size:14px}
 }
+
+
+/* MegaLoc control center: dense status blocks without a second launch form. */
+.processing-overview-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.processing-overview-cell{display:flex;flex-direction:column;align-items:flex-start;gap:8px;background:var(--panel-alt);border:1px solid var(--border-subtle);border-radius:11px;padding:15px;min-width:0}
+.processing-overview-cell strong{font-size:15px;overflow-wrap:anywhere}
+.processing-overview-cell .meta{line-height:1.5;overflow-wrap:anywhere}
+.processing-overview-cell .btn{margin-top:auto}
+.processing-idle{padding:23px}
+.processing-idle p{margin:8px 0 0}
+.processing-current-link{font-weight:650;font-size:15px;overflow-wrap:anywhere}
+.processing-queue-row{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:14px;border-top:1px solid var(--border-subtle);padding:13px 0}
+.processing-queue-position{display:grid;place-items:center;width:36px;height:36px;border-radius:9px;background:var(--panel-alt);font-weight:650;font-size:13px;color:var(--muted)}
+.processing-queue-text{display:flex;flex-direction:column;gap:5px;min-width:0}
+.processing-queue-text .meta{line-height:1.35}
+.processing-queue-name{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.processing-queue-name:hover,.processing-current-link:hover{text-decoration:underline;text-underline-offset:3px}
+@media(max-width:1200px){
+ .processing-overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:700px){
+ .processing-overview-grid{grid-template-columns:minmax(0,1fr)}
+ .processing-queue-row{grid-template-columns:36px minmax(0,1fr)}
+ .processing-queue-row>.row{grid-column:2;justify-content:flex-start}
+ .processing-queue-name{white-space:normal;overflow-wrap:anywhere}
+}

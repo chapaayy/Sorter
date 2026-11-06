@@ -26,7 +26,11 @@ async function mock(page:Page){
     if(p==='/api/references')return respond(route,{sam:[{sam:'SAM-0001',photos:1}],total:1})
     if(p==='/api/references/cache/status')return respond(route,{total:1,cached:1,current_signature:null})
     if(p==='/api/references/SAM-0001/photos')return respond(route,{photos:[photo],next_cursor:null})
-    if(p==='/api/runs')return respond(route,{runs:[run],total:1})
+    if(p==='/api/runs'){
+      const scope=url.searchParams.get('scope')
+      if(scope==='active')return respond(route,{runs:[],total:0})
+      return respond(route,{runs:[run],total:1})
+    }
     if(p==='/api/runs/'+rid)return respond(route,run)
     if(p==='/api/processing-settings'){
       if(method==='PATCH')Object.assign(defaults,JSON.parse(route.request().postData()||'{}'))
@@ -100,24 +104,17 @@ test('mobile drawer allows navigation',async({page,isMobile})=>{
   await expect(page.getByRole('heading',{name:'Настройки',exact:true})).toBeVisible()
 })
 
-test('processing select includes fresh and previously processed completed batches',async({page})=>{
+test('processing dashboard replaces the old launch form and preserves history navigation',async({page})=>{
   await page.goto('/processing')
-  const select=page.getByRole('combobox',{name:'Партия ФО'})
-  // The baseline fixture has one completed run. Re-running it is allowed by the API.
-  await expect(select).toContainText('Выезд Самара 05.11')
-  await expect(page.getByRole('button',{name:/Запустить \/ поставить в очередь/})).toBeEnabled()
-  await select.click()
-  await expect(page.getByRole('listbox',{name:'Партия ФО'})).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('listbox',{name:'Партия ФО'})).not.toBeVisible()
-  await expect(select).toHaveAttribute('aria-expanded','false')
-
-  // An older API response may omit runs for an entirely new batch.
-  await page.route(/^https?:\/\/[^/]+\/api\/batches(?:\?.*)?$/,route=>
-    respond(route,{batches:[{...batch,runs:undefined}],total:1}))
-  await page.reload()
-  await expect(select).toContainText('Выезд Самара 05.11')
-  await expect(page.getByRole('button',{name:/Запустить \/ поставить в очередь/})).toBeEnabled()
+  await expect(page.getByRole('heading',{name:'Обработка',exact:true})).toBeVisible()
+  await expect(page.getByRole('region',{name:'Состояние MegaLoc и настройки'})).toBeVisible()
+  await expect(page.getByText('Модель установлена')).toBeVisible()
+  await expect(page.getByRole('link',{name:'Открыть фотоотчёты'})).toHaveAttribute('href','/fo')
+  await expect(page.getByRole('combobox',{name:'Партия ФО'})).toHaveCount(0)
+  await expect(page.getByRole('button',{name:/Запустить \/ поставить в очередь/})).toHaveCount(0)
+  const history=page.getByRole('region',{name:'История обработок'})
+  await expect(history.getByText('Выезд Самара 05.11')).toBeVisible()
+  await expect(history.getByText('Завершено')).toBeVisible()
 })
 
 test('construction list remains one line with ellipsis and a separate count',async({page,isMobile})=>{
@@ -200,14 +197,17 @@ test('desktop construction list can be resized and the width survives refresh',a
   expect(narrower).toBeLessThan(restored)
 })
 
-test('processing shows why a photographed batch with pending uploads is blocked',async({page})=>{
+test('incomplete photo batch remains blocked in FO, not via a second launch form',async({page})=>{
   await page.route(/^https?:\/\/[^/]+\/api\/batches(?:\?.*)?$/,route=>
-    respond(route,{batches:[{...batch,display_name:'321',photos:1313,pending:2}],total:1}))
+    respond(route,{batches:[{...batch,display_name:'321',photos:1313,pending:2,
+      runs:0,upload_manifest_state:'waiting',latest_run:null}],total:1}))
+  await page.goto('/fo')
+  const card=page.getByRole('article',{name:'Фотоотчёт 321'})
+  await expect(card.getByTestId('fo-processing-status')).toHaveText('Загрузка не завершена')
+  await expect(card.getByRole('button',{name:'Обработать'})).toHaveCount(0)
   await page.goto('/processing')
-  await expect(page.getByRole('combobox',{name:'Партия ФО'})).toContainText('321')
-  await expect(page.getByText(/1313 фотографий готовы, но 2 файлов/)).toBeVisible()
-  await expect(page.getByRole('button',{name:/Запустить \/ поставить в очередь/})).toBeDisabled()
-  await expect(page.getByRole('link',{name:'Откройте партию'})).toHaveAttribute('href','/fo/'+bid)
+  await expect(page.getByRole('link',{name:'Открыть фотоотчёты'})).toBeVisible()
+  await expect(page.getByRole('combobox',{name:'Партия ФО'})).toHaveCount(0)
 })
 test('opening a batch finalizes already transferred pending files without resending bytes',async({page})=>{
   // Recovery actions are valid only before the first MegaLoc run.
@@ -330,4 +330,65 @@ test('failed retry preserves prior successful results and paged batch history',a
   const history=page.getByRole('region',{name:'История обработок партии'})
   await expect(history.getByText('Ошибка', {exact:true})).toBeVisible()
   await expect(history.getByRole('link',{name:'Результаты'})).toHaveAttribute('href','/results/'+rid)
+})
+
+
+test('processing dashboard displays real Worker, running stage and queue order with cancellation',async({page})=>{
+  const live={...run,status:'running',progress:{
+    stage_label:'Группировка ФО',stage_percent:32.5,current:13,total:40,
+    stage_items_per_second:2.4,elapsed_seconds:10
+  }}
+  const queued={...run,id:'20261106T000000-111111111111',status:'queued',queue_position:2}
+  const first={...run,id:'20261106T000000-222222222222',status:'queued',queue_position:1}
+  let list=[live,queued,first],stops=0
+  await page.route(/^https?:\/\/[^/]+\/api\/runs(?:\?.*)?$/,route=>{
+    const scope=new URL(route.request().url()).searchParams.get('scope')
+    if(scope==='active')return respond(route,{runs:list,total:list.length})
+    return respond(route,{runs:[run],total:1})
+  })
+  await page.route('**/api/system/status',route=>respond(route,{
+    at:'2026-11-06T22:00:00Z',
+    worker:{queue:{queued:2,running:1},expected_threads:7},
+    services:{megaloc:{alive:true,last_seen:'2026-11-06T21:59:59Z'}},
+    thumbnails:{},disk:{total_bytes:100,available_bytes:90,reserved_bytes:1},
+    api:{uptime_seconds:10,latency:{samples:0,p50_ms:null,p95_ms:null},rss_peak_kib:100}
+  }))
+  await page.route(/^https?:\/\/[^/]+\/api\/runs\/20261106T000000-222222222222\/stop$/,route=>{
+    stops++
+    list=list.filter(r=>r.id!==first.id)
+    return respond(route,{id:first.id,status:'stopped'})
+  })
+  await page.goto('/processing')
+  const overview=page.getByRole('region',{name:'Состояние MegaLoc и настройки'})
+  await expect(overview.getByText('Работает',{exact:true})).toBeVisible()
+  const current=page.getByRole('region',{name:'Текущее активное задание'})
+  await expect(current.getByText('Группировка ФО')).toBeVisible()
+  await expect(current.getByRole('progressbar')).toHaveAttribute('aria-valuenow','32.5')
+  await expect(current.getByText('13 / 40')).toBeVisible()
+  const queue=page.getByRole('region',{name:'Очередь обработок'})
+  await expect(queue.getByText('2 ожидают')).toBeVisible()
+  const positions=queue.locator('.processing-queue-position')
+  await expect(positions.first()).toHaveText('1')
+  await expect(positions.last()).toHaveText('2')
+  await queue.getByRole('button',{name:'Убрать из очереди'}).first().click()
+  const dialog=page.getByRole('alertdialog',{name:'Убрать задание из очереди?'})
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button',{name:'Убрать из очереди'}).click()
+  await expect.poll(()=>stops).toBe(1)
+  await expect(queue.locator('.processing-queue-row')).toHaveCount(1)
+})
+
+test('processing dashboard reports missing Worker heartbeat without claiming success',async({page})=>{
+  await page.route('**/api/system/status',route=>respond(route,{
+    at:'2026-11-06T22:00:00Z',
+    worker:{queue:{queued:1},expected_threads:7},
+    services:{megaloc:{alive:false,last_seen:'2026-11-06T21:00:00Z'}},
+    thumbnails:{},disk:{total_bytes:100,available_bytes:90,reserved_bytes:1},
+    api:{uptime_seconds:10,latency:{samples:0,p50_ms:null,p95_ms:null},rss_peak_kib:100}
+  }))
+  await page.goto('/processing')
+  await expect(page.getByRole('region',{name:'Состояние MegaLoc и настройки'})
+    .getByText('Нет сигнала')).toBeVisible()
+  await expect(page.getByRole('region',{name:'Текущее активное задание'})
+    .getByText('Сейчас MegaLoc не обрабатывает фотографии')).toBeVisible()
 })
