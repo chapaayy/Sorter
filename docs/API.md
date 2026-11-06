@@ -30,7 +30,7 @@
 | POST | `/batches` | optional `{display_name}`; `{batch_id,display_name}` |
 | GET | `/batches?limit=100&offset=0` | `{batches,total}` (limit 1–200) |
 | GET | `/batches/{id}` | `batch_id,photos,size_bytes,pending,runs,display_name,*_state,*_at` |
-| GET | `/batches/{id}/pending` | Незафиксированные загрузки ФО: UUID, имя, фактический offset на диске, размер, наличие `.part`, `can_finalize`, SHA-256 первых 64 КиБ для безопасной ручной докачки |
+| GET | `/batches/{id}/pending` | Незафиксированные загрузки ФО: UUID, имя, фактический offset на диске, размер, наличие `.part`, `can_finalize`, SHA-256 всей полученной части (только для незавершённого файла) для безопасной ручной докачки |
 | PATCH | `/batches/{id}` | `{display_name}`, 1–120 символов |
 | GET | `/batches/{id}/photos` | пагинация метаданных ФО |
 | DELETE | `/batches/{id}/photos/{photo_id}` | только пока нет run |
