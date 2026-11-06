@@ -10,7 +10,7 @@ import pytest
 from server.database import connect
 from server.services import batches,cleanup
 from .test_stage2_platform import thumbs,_jpg
-from .test_stage1_lifecycle import _batch
+from .test_stage1_lifecycle import _batch,sandbox,db
 
 
 def test_complete_fo_parts_appear_as_pending_and_finalize_without_reupload(thumbs):
