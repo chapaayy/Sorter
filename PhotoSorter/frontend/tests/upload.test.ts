@@ -185,9 +185,38 @@ describe('strict construction library imports',()=>{
     expect(result.scanned).toBe(6)
     expect(result.tasks).toHaveLength(3)
     expect(result.errors).toHaveLength(3)
-    expect(result.tasks.length+result.errors.length).toBe(result.scanned)
+    expect(result.skipped).toHaveLength(0)
+    expect(result.tasks.length+result.errors.length+result.skipped.length).toBe(result.scanned)
     expect(result.folders).toHaveLength(2)
     expect(result.folders.find(x=>x.sam==='SAM 0004')?.count).toBe(2)
+  })
+  it('reports Windows/macOS metadata separately without blocking valid images',()=>{
+    const result=inspectReferenceDirectory([
+      file('Образцы/SAM 3561 — Революционная - Дыбенко 3/IMG_0001.JPG','IMG_0001.JPG'),
+      file('Образцы/SAM 3561 — Революционная - Дыбенко 3/Thumbs.db','Thumbs.db'),
+      file('Образцы/SAM 3561 — Революционная - Дыбенко 3/desktop.ini','desktop.ini'),
+      file('Образцы/SAM 3561 — Революционная - Дыбенко 3/.DS_Store','.DS_Store'),
+      file('Образцы/Thumbs.db','Thumbs.db')
+    ])
+    expect(result.scanned).toBe(5)
+    expect(result.tasks).toHaveLength(1)
+    expect(result.folders).toHaveLength(1)
+    expect(result.errors).toEqual([])
+    expect(result.skipped).toHaveLength(4)
+    expect(result.tasks.length+result.errors.length+result.skipped.length).toBe(result.scanned)
+    expect(result.folders[0]?.sam).toBe('SAM 3561')
+  })
+  it('never treats arbitrary unsupported files or nested metadata as images',()=>{
+    const result=inspectReferenceDirectory([
+      file('Образцы/SAM 3561 — Революционная - Дыбенко 3/photo.jpg','photo.jpg'),
+      file('Образцы/SAM 3561 — Революционная - Дыбенко 3/notes.txt','notes.txt'),
+      file('Образцы/SAM 3561 — Революционная - Дыбенко 3/nested/Thumbs.db','Thumbs.db'),
+      file('Образцы/INVALID NAME/Thumbs.db','Thumbs.db')
+    ])
+    expect(result.scanned).toBe(4)
+    expect(result.tasks).toHaveLength(1)
+    expect(result.errors).toHaveLength(3)
+    expect(result.skipped).toHaveLength(0)
   })
   it('rejects conflicting addresses for the same city and construction number',()=>{
     const result=inspectReferenceDirectory([
