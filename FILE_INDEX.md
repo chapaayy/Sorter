@@ -107,7 +107,7 @@
 | `frontend/src/components/layout/Shell.vue` | Шесть вкладок; сворачиваемая desktop-панель и mobile drawer |
 | `frontend/src/components/ui/` | Buttons, confirmation, empty state, toast, карточки |
 | `frontend/src/components/gallery/` | Lazy/virtual thumbnails и ImageViewer |
-| `frontend/src/components/split/GroupPicker.vue` | Двухпанельный выбор: однострочные подписи, счётчики, tooltip; мобильная версия |
+| `frontend/src/components/split/GroupPicker.vue` | Двухпанельный выбор: однострочные подписи, счётчики, tooltip, регулируемая ширина с сохранением в браузере; мобильная версия |
 | `frontend/src/features/auth/LoginView.vue` | Логин |
 | `frontend/src/features/fo/` | Список ФО, галерея, загрузка |
 | `frontend/src/features/references/ReferenceLibrary.vue` | Библиотека с городом, номером, адресом и просмотром фото |
