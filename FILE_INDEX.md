@@ -104,10 +104,10 @@
 | `frontend/src/stores/{session,theme,notice}.ts` | Вход, тема, уведомления |
 | `frontend/src/composables/{useCursor,usePolling}.ts` | Cursor/polling, предотвращение дублирующихся запросов |
 | `frontend/src/composables/useReferenceTransfer.ts` | Общая докачка и параллельная передача образцов |
-| `frontend/src/components/layout/Shell.vue` | Шесть вкладок, mobile menu |
+| `frontend/src/components/layout/Shell.vue` | Шесть вкладок; сворачиваемая desktop-панель и mobile drawer |
 | `frontend/src/components/ui/` | Buttons, confirmation, empty state, toast, карточки |
 | `frontend/src/components/gallery/` | Lazy/virtual thumbnails и ImageViewer |
-| `frontend/src/components/split/GroupPicker.vue` | Двухпанельный выбор и мобильная версия |
+| `frontend/src/components/split/GroupPicker.vue` | Двухпанельный выбор: однострочные подписи, счётчики, tooltip; мобильная версия |
 | `frontend/src/features/auth/LoginView.vue` | Логин |
 | `frontend/src/features/fo/` | Список ФО, галерея, загрузка |
 | `frontend/src/features/references/ReferenceLibrary.vue` | Библиотека с городом, номером, адресом и просмотром фото |
@@ -118,12 +118,13 @@
 | `frontend/src/features/results/` | Результаты, ZIP, сохранение/retention |
 | `frontend/src/features/logs/LogsView.vue` | Лог обработки, tail |
 | `frontend/src/features/settings/SettingsView.vue` | Диск, состояние сервисов, тема, cleanup |
-| `frontend/src/styles/` | CSS tokens, layout, components |
+| `frontend/src/styles/` | CSS tokens, единственный общий UI-слой; адаптивные стили списка и свёрнутого меню |
 | `frontend/src/utils/{upload,format}.ts` | Resumable upload, форматы |
 | `frontend/src/utils/referenceSelection.ts` | Клиентская проверка имени папки, учёт всех выбранных файлов |
 | `frontend/src/utils/referenceDuplicates.ts` | SHA-256 сверка с готовыми образцами перед сетевой загрузкой |
 | `frontend/src/utils/uploadQueue.ts` | Ограничение и отчёт ошибок параллельных передач |
 | `frontend/src/stores/uploadSettings.ts` | Настройка числа одновременных загрузок |
+| `frontend/src/stores/sidebar.ts` | Сохранение состояния свёрнутого desktop-меню в localStorage |
 | `frontend/src/utils/batches.ts` | Общие проверки готовности ФО к обработке и безопасного возобновления загрузки |
 
 ## Проверки и обслуживание
