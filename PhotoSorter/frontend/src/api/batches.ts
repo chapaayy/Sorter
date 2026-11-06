@@ -1,8 +1,11 @@
 import {api,post,patch,del,query} from './client'
-import type {Batch,Photo,CursorPage,Retention} from '../types/api'
+import type {Batch,Photo,CursorPage,Retention,PendingUploadList} from '../types/api'
 export const batchApi={
   list:(limit=100,offset=0)=>api<{batches:Batch[];total:number}>('/batches'+query({limit,offset})),
   one:(id:string)=>api<Batch>('/batches/'+encodeURIComponent(id)),
+  pending:(id:string)=>api<PendingUploadList>('/batches/'+encodeURIComponent(id)+'/pending'),
+  finishPending:(uploadId:string)=>api<{path:string;already_finalized?:boolean}>('/uploads/'+encodeURIComponent(uploadId)+'/finish',{method:'POST'}),
+  cancelPending:(uploadId:string)=>del<{cancelled:boolean}>('/uploads/'+encodeURIComponent(uploadId)),
   create:(name:string)=>post<{batch_id:string;display_name:string}>('/batches',{display_name:name}),
   rename:(id:string,name:string)=>patch<Batch>('/batches/'+id,{display_name:name}),
   gallery:(id:string,cursor?:string|null,limit=60)=>api<CursorPage<Photo>>('/batches/'+id+'/gallery'+query({cursor,limit})),
