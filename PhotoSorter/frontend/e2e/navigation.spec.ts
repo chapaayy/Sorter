@@ -102,3 +102,55 @@ test('processing select includes fresh and previously processed completed batche
   await expect(select).toContainText('Выезд Самара 05.11')
   await expect(page.getByRole('button',{name:/Запустить \/ поставить в очередь/})).toBeEnabled()
 })
+
+test('construction list remains one line with ellipsis and a separate count',async({page,isMobile})=>{
+  test.skip(isMobile,'Desktop split list only')
+  const longName='SAM 0001 — Московское шоссе, 19 километр, улица Очень Длинная, дом 28А корпус 7'
+  await page.route('**/api/references',route=>respond(route,{
+    sam:[{sam:'SAM 0001',display_name:longName,photos:7},
+         {sam:'SAM 0002',display_name:'SAM 0002 — Гагарина 64',photos:12}],
+    total:2
+  }))
+  await page.goto('/references')
+  const list=page.locator('.split-list')
+  const first=list.locator('.split-item').first()
+  await expect(first).toHaveAttribute('title',longName)
+  await expect(first.locator('.split-item-count')).toHaveText('7')
+  await expect(first.locator('.split-item-label')).toHaveCSS('white-space','nowrap')
+  await expect(first.locator('.split-item-label')).toHaveCSS('text-overflow','ellipsis')
+  await expect(first.locator('.split-item-label')).toHaveCSS('overflow','hidden')
+  expect(await first.locator('.split-item-label').evaluate(el=>el.scrollWidth>el.clientWidth)).toBe(true)
+  const heights=await list.locator('.split-item').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height))
+  expect(heights).toEqual([48,48])
+})
+
+test('desktop navigation collapses to icons and remembers preference',async({page,isMobile})=>{
+  test.skip(isMobile,'Desktop navigation only')
+  await page.goto('/references')
+  const shell=page.locator('.app-shell')
+  const widthBefore=await page.locator('.sidebar').evaluate(el=>el.getBoundingClientRect().width)
+  await page.getByRole('button',{name:'Свернуть боковое меню'}).click()
+  await expect(shell).toHaveClass(/is-sidebar-collapsed/)
+  await expect(page.locator('.sidebar .nav-link').first()).toHaveAttribute('title','ФО')
+  await expect(page.getByRole('link',{name:'Образцы'})).toBeVisible()
+  const widthAfter=await page.locator('.sidebar').evaluate(el=>el.getBoundingClientRect().width)
+  expect(widthAfter).toBeLessThan(widthBefore)
+  expect(widthAfter).toBe(74)
+  expect(await page.evaluate(()=>localStorage.getItem('ps.sidebar.collapsed'))).toBe('1')
+  await page.reload()
+  await expect(page.locator('.app-shell')).toHaveClass(/is-sidebar-collapsed/)
+  await page.getByRole('button',{name:'Развернуть боковое меню'}).click()
+  await expect(page.locator('.app-shell')).not.toHaveClass(/is-sidebar-collapsed/)
+  expect(await page.evaluate(()=>localStorage.getItem('ps.sidebar.collapsed'))).toBe('0')
+})
+
+test('saved desktop collapse does not affect the mobile navigation drawer',async({page,isMobile})=>{
+  test.skip(!isMobile,'Mobile layout only')
+  await page.addInitScript(()=>localStorage.setItem('ps.sidebar.collapsed','1'))
+  await page.goto('/fo')
+  await page.getByRole('button',{name:'Открыть меню'}).click()
+  await expect(page.getByRole('link',{name:'Настройки'})).toBeVisible()
+  await expect(page.getByRole('button',{name:'Свернуть боковое меню'})).toBeHidden()
+  await page.getByRole('link',{name:'Настройки'}).click()
+  await expect(page.getByRole('heading',{name:'Настройки',exact:true})).toBeVisible()
+})
