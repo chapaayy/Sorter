@@ -194,6 +194,8 @@ test('processing shows why a photographed batch with pending uploads is blocked'
   await expect(page.getByRole('link',{name:'Откройте партию'})).toHaveAttribute('href','/fo/'+bid)
 })
 test('opening a batch finalizes already transferred pending files without resending bytes',async({page})=>{
+  // Recovery actions are valid only before the first MegaLoc run.
+  await page.route('**/api/batches/'+bid,route=>respond(route,{...batch,runs:0,pending:2}))
   const ids=['47370c5c-dbe0-413e-928f-d365f50e2201','23663a5e-a1ef-46a7-8e65-db423bb7dd5c']
   let pending=ids.map((id,index)=>({id,filename:index?'IMG_2831.JPG':'IMG_2828.JPG',
     size:4320388,received:4320388,updated_at:'2026-11-05T19:12:50Z',
@@ -216,6 +218,7 @@ test('opening a batch finalizes already transferred pending files without resend
   await expect(page.getByRole('button',{name:'Открыть screen_001.jpg'})).toBeVisible()
 })
 test('explicit cancellation only removes one selected unfinished transfer',async({page})=>{
+  await page.route('**/api/batches/'+bid,route=>respond(route,{...batch,runs:0,pending:1}))
   const id='47370c5c-dbe0-413e-928f-d365f50e2201'
   let pending=[{id,filename:'IMG_2828.JPG',size:4320388,received:100,
     updated_at:'2026-11-05T19:12:50Z',has_part:true,can_finalize:false,
