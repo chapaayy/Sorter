@@ -49,3 +49,4 @@ const workerStatus=computed(()=>!worker.value?'Нет данных':worker.value
     </div>
   </div>
 </section>
+</template>

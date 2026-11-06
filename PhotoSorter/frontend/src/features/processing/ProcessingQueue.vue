@@ -34,3 +34,4 @@ const emit=defineEmits<{(e:'stop',run:Run):void}>()
     </div>
   </div>
 </section>
+</template>

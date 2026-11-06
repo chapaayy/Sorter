@@ -42,3 +42,4 @@ const filtered=computed(()=>props.runs.filter(r=>
     <UiButton :loading="loadingMore" @click="emit('more')">Показать ещё</UiButton>
   </div>
 </section>
+</template>
