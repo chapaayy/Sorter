@@ -80,6 +80,13 @@ def test_running_progress_and_true_queue_position(sandbox):
         assert running["progress"]["current"]==12
         assert running["progress"]["total"]==30
     finally:
+        # These are synthetic snapshots, not jobs executed by a worker.
+        # A running fixture must become terminal before cleanup, otherwise
+        # later tests correctly refuse reference edits while it is active.
+        with connect() as conn:
+            conn.execute("""UPDATE jobs SET status='stopped',stop_requested=true
+                WHERE batch_id=ANY(%s)
+                AND status IN ('queued','running','stopping')""",([batch,later],))
         cleanup.request(batch);cleanup.cleanup_one(batch)
         cleanup.request(later);cleanup.cleanup_one(later)
 
