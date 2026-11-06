@@ -23,12 +23,13 @@ async function load(more=false){
   }catch(e){error.value=errorText(e)}finally{loading.value=false}
 }
 onMounted(()=>{void load()})
-// Poll only while deletion is pending, so the count clears when cleanup finishes.
+// Poll while deletion or interrupted transfers need attention.
 usePolling(async()=>{
   if(batches.value.some(b=>b.delete_state==='deleting'))await load()
 },3000)
 function status(b:Batch){
   if(b.delete_state!=='active')return 'Удаление: '+b.delete_state
+  if((b.pending??0)>0)return '◌ '+b.pending+' незавершённых загрузок'
   if(b.thumbnail_state==='ready')return '✓ Миниатюры готовы'
   if(b.photos!=null&&b.photos>0)return '◌ Подготовка миниатюр'
   return '○ Ожидает фотографии'
