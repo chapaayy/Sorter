@@ -87,6 +87,15 @@ async function upload(){
       <div><strong>{{selection.tasks.length}}</strong><div class="meta">Подходящих изображений</div></div>
       <div><strong>{{selection.folders.length}}</strong><div class="meta">Конструкций</div></div>
     </div>
+    <div v-if="selection.skipped.length" class="alert" role="status">
+      <strong>Пропущено служебных файлов: {{selection.skipped.length}}</strong>
+      <p class="meta" style="margin:6px 0">Эти файлы Windows/macOS не являются фотографиями и не будут загружены.</p>
+      <div class="stack-sm" style="max-height:140px;overflow:auto">
+        <div v-for="item in selection.skipped" :key="item.path" style="overflow-wrap:anywhere">
+          {{item.path}}
+        </div>
+      </div>
+    </div>
     <div v-if="checking" class="meta">Проверяем названия и существующую библиотеку на сервере…</div>
     <template v-else-if="plan">
       <div class="row wrap meta">
@@ -116,7 +125,7 @@ async function upload(){
     </div>
     <div v-if="error" class="alert error" role="alert">{{error}}</div>
     <div class="row between wrap">
-      <span class="meta">Без молчаливых пропусков: {{selection.scanned}} файлов учтено</span>
+      <span class="meta">Учтено {{selection.scanned}}: {{selection.tasks.length}} фото · {{selection.skipped.length}} служебных пропущено · {{selection.errors.length}} ошибок</span>
       <div class="row">
         <UiButton v-if="transfer.busy.value" kind="danger" @click="transfer.pause()">Пауза</UiButton>
         <UiButton v-else kind="primary" :disabled="!ready" @click="upload">
