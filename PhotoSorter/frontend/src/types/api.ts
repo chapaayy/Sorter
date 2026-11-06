@@ -6,6 +6,11 @@ export interface Batch {
   download_confirmed_at?: string | null; confirmed_run_id?: string | null
   delete_after_at?: string | null; photos?: number; size_bytes?: number; runs?: number; pending?: number
 }
+export interface PendingUpload {
+  id:string;filename:string;size:number;received:number;updated_at:string
+  has_part:boolean;can_finalize:boolean;prefix_bytes:number;prefix_sha256:string|null
+}
+export interface PendingUploadList { uploads:PendingUpload[];total:number }
 export interface Photo {
   id: string; name: string; bytes: number; created_at: string
   thumbnail_status?: 'queued' | 'running' | 'pending' | 'ready' | 'failed'
