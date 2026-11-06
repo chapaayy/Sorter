@@ -18,16 +18,20 @@ export interface ReferenceUploadTask{
   entry:UploadEntry
 }
 export interface ReferenceSelectionError{path:string;reason:string}
+export interface ReferenceSelectionSkipped{path:string;reason:string}
 export interface ReferenceSelection{
   tasks:ReferenceUploadTask[]
   folders:ConstructionFolder[]
   errors:ReferenceSelectionError[]
+  skipped:ReferenceSelectionSkipped[]
   scanned:number
   totalBytes:number
 }
 
 const NAME=/^([A-Z]{2,5}) ([0-9]{1,8}) — (.+)$/
 const INVALID_ADDRESS=/[<>:"|?*\\\x00-\x1f]/
+// Strict allowlist: only OS-generated metadata, not arbitrary unsupported files.
+const OS_METADATA=new Set(['thumbs.db','ehthumbs.db','desktop.ini','.ds_store'])
 
 export function parseConstructionFolder(name:string):ConstructionFolder|null{
   const match=NAME.exec(name)
@@ -40,7 +44,7 @@ export function parseConstructionFolder(name:string):ConstructionFolder|null{
 }
 
 export function inspectReferenceDirectory(files:Iterable<File>):ReferenceSelection{
-  const tasks:ReferenceUploadTask[]=[],errors:ReferenceSelectionError[]=[]
+  const tasks:ReferenceUploadTask[]=[],errors:ReferenceSelectionError[]=[],skipped:ReferenceSelectionSkipped[]=[]
   const folders=new Map<string,ConstructionFolder>()
   let scanned=0,totalBytes=0
   for(const file of files){
@@ -52,6 +56,14 @@ export function inspectReferenceDirectory(files:Iterable<File>):ReferenceSelecti
     const folderName=parts.length===3?parts[1]:parts.length===2?parts[0]:null
     if(!folderName||parts.some(part=>!part||part==='.'||part==='..')){
       errors.push({path:relative,reason:'Нужна папка конструкции непосредственно внутри выбранной библиотеки'})
+      continue
+    }
+    // Windows/macOS leave metadata alongside photos, sometimes at library root.
+    // Account for it explicitly, but do not bypass invalid nested directories.
+    const metadata=OS_METADATA.has(file.name.toLowerCase()) &&
+      parts[parts.length-1]?.toLowerCase()===file.name.toLowerCase()
+    if(metadata && (parts.length===2 || (parts.length===3 && parseConstructionFolder(folderName)))){
+      skipped.push({path:relative,reason:'Служебный файл операционной системы'})
       continue
     }
     const construction=parseConstructionFolder(folderName)
@@ -83,5 +95,5 @@ export function inspectReferenceDirectory(files:Iterable<File>):ReferenceSelecti
     tasks.push({sam:construction.sam,address:construction.address,
       entry:{file,relative}})
   }
-  return {tasks,folders:[...folders.values()],errors,scanned,totalBytes}
+  return {tasks,folders:[...folders.values()],errors,skipped,scanned,totalBytes}
 }
