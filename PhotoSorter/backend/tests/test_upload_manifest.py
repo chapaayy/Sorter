@@ -9,7 +9,7 @@ from fastapi import HTTPException
 
 from server.database import connect
 from server.services import batches, cleanup, upload_manifest
-from .test_stage1_lifecycle import _batch
+from .test_stage1_lifecycle import _batch, sandbox, db
 from .test_stage2_platform import thumbs, _jpg
 
 
