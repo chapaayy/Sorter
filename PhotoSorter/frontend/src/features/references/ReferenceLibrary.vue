@@ -87,7 +87,7 @@ async function removeSam(){
 <div v-if="list.length" class="split">
   <GroupPicker v-model="selected" :items="groups" placeholder="Поиск номера или адреса…"/>
   <section class="panel split-main">
-    <div class="panel-header"><div><h2>{{selectedEntry?.display_name||selected}}</h2>
+    <div class="panel-header reference-detail-header"><div><h2>{{selectedEntry?.display_name||selected}}</h2>
       <span class="meta">{{selectedEntry?.photos||0}} образцов</span></div>
       <div class="row wrap">
         <UiButton small :disabled="active" @click="openUpload('single')">+ Добавить фото</UiButton>
