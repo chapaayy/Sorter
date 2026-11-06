@@ -97,6 +97,7 @@ onUnmounted(()=>{
       <p v-if="!filtered.length" class="meta">Ничего не найдено</p>
     </nav>
     <button type="button" class="split-resize-handle"
+      role="separator" aria-orientation="vertical"
       aria-label="Изменить ширину списка конструкций"
       :aria-valuenow="width" :aria-valuemin="MIN_WIDTH" :aria-valuemax="maximumWidth()"
       title="Потяните, чтобы показать адрес целиком. Стрелки ← → также меняют ширину."
