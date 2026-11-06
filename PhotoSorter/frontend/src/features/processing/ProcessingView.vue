@@ -20,20 +20,23 @@ const submitting=ref(false),downloading=ref(false),error=ref(''),search=ref('')
 const activeRuns=computed(()=>runs.value.filter(r=>isActive(r.status)))
 const latest=computed(()=>activeRuns.value[0]||runs.value[0])
 const history=computed(()=>runs.value.filter(r=>(r.id+' '+(batchName(r.batch_id))).toLowerCase().includes(search.value.toLowerCase())))
+const selectable=computed(()=>batches.value.filter(b=>b.delete_state==='active'&&(b.photos??0)>0))
 const available=computed(()=>batches.value.filter(canProcessBatch))
+const selectedBatch=computed(()=>selectable.value.find(b=>b.batch_id===chosen.value))
+const selectedReady=computed(()=>!!selectedBatch.value&&canProcessBatch(selectedBatch.value))
 function batchName(id:string){return batches.value.find(b=>b.batch_id===id)?.display_name||id}
 async function load(){
   try{
     const [rs,bs,m]=await Promise.all([runApi.list(),batchApi.list(200),runApi.models()])
     runs.value=rs.runs;batches.value=bs.batches;model.value=m
-    if(!available.value.some(b=>b.batch_id===chosen.value))chosen.value=available.value[0]?.batch_id||''
+    if(!selectable.value.some(b=>b.batch_id===chosen.value))chosen.value=selectable.value[0]?.batch_id||''
     error.value=''
   }catch(e){error.value=errorText(e)}
 }
 onMounted(()=>{void load()})
 usePolling(load,3000)
 async function start(){
-  if(!chosen.value||submitting.value)return
+  if(!selectedReady.value||submitting.value)return
   submitting.value=true;error.value=''
   try{
     const created=await runApi.start(chosen.value,threshold.value)
@@ -58,16 +61,21 @@ async function install(){
 <section class="panel stack" style="margin-bottom:20px">
   <div class="panel-header"><h2>Новый запуск</h2><span class="status">Доступна одна модель · MegaLoc</span></div>
   <div class="grid3">
-    <div class="field"><span class="label">Партия ФО</span><UiSelect v-model="chosen" label="Партия ФО" placeholder="Выберите партию" :disabled="!available.length" :options="available.map(b=>({value:b.batch_id,label:b.display_name+' · '+b.photos+' ФО'}))"/></div>
+    <div class="field"><span class="label">Партия ФО</span><UiSelect v-model="chosen" label="Партия ФО" placeholder="Выберите партию" :disabled="!selectable.length" :options="selectable.map(b=>({value:b.batch_id,label:b.display_name+' · '+b.photos+' ФО'+((b.pending??0)>0?' · '+b.pending+' незавершённых':'')}))"/></div>
     <div class="field"><span class="label">Модель</span><div class="readonly-field" aria-label="Модель">MegaLoc · CPU</div></div>
     <label class="field"><span class="label">Порог группировки: {{threshold.toFixed(2)}}</span><input v-model.number="threshold" type="range" min=".50" max=".99" step=".01" aria-label="Порог группировки"/></label>
   </div>
-  <p v-if="!available.length" class="meta">Нет готовых партий: загрузите фотографии во вкладке «ФО» и дождитесь завершения передачи.</p>
+  <p v-if="!selectable.length" class="meta">Нет партий с фотографиями. Загрузите ФО во вкладке «Фотоотчёты».</p>
+  <div v-if="selectedBatch&&(selectedBatch.pending??0)>0" class="alert warning">
+    {{selectedBatch.photos}} фотографий готовы, но {{selectedBatch.pending}} файлов ещё не завершены.
+    <RouterLink :to="'/fo/'+selectedBatch.batch_id">Откройте партию</RouterLink>,
+    чтобы докачать их, завершить сохранение или отменить незавершённые передачи.
+  </div>
   <div class="row between wrap">
     <span class="meta">{{model?.models[0]?.available?'Модель готова. Запуски выполняются по одному.':model?.models[0]?.reason||'Проверка состояния модели…'}}</span>
     <div class="row">
       <UiButton v-if="model&&!model.models[0]?.available" :loading="downloading" @click="install">Установить MegaLoc</UiButton>
-      <UiButton kind="primary" :loading="submitting" :disabled="!model?.models[0]?.available||!chosen" @click="start">▶ Запустить / поставить в очередь</UiButton>
+      <UiButton kind="primary" :loading="submitting" :disabled="!model?.models[0]?.available||!selectedReady" @click="start">▶ Запустить / поставить в очередь</UiButton>
     </div>
   </div>
 </section>
