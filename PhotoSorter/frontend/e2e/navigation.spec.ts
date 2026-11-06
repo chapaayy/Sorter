@@ -16,6 +16,7 @@ async function mock(page:Page){
     if(p==='/api/batches')return respond(route,{batches:[batch],total:1})
     if(p==='/api/batches/'+bid)return respond(route,batch)
     if(p==='/api/batches/'+bid+'/gallery')return respond(route,{photos:[photo],next_cursor:null})
+    if(p==='/api/batches/'+bid+'/pending')return respond(route,{uploads:[],total:0})
     if(p==='/api/thumbnails/status/'+bid+'/counts')return respond(route,{total:2,ready:2,failed:0})
     if(p==='/api/batches/'+bid+'/retention')return respond(route,{batch_id:bid,delete_state:'active',warning:false,download_confirmed_at:null,delete_after_at:null})
     if(p==='/api/batches/'+bid+'/downloads/confirm'&&method==='POST')return respond(route,{batch_id:bid,download_confirmed_at:'2026-11-05T06:50:00Z',delete_after_at:'2027-01-05T06:50:00Z',confirmed_run_id:rid})
@@ -181,4 +182,58 @@ test('desktop construction list can be resized and the width survives refresh',a
   await page.keyboard.press('ArrowLeft')
   const narrower=await aside.evaluate(el=>el.getBoundingClientRect().width)
   expect(narrower).toBeLessThan(restored)
+})
+
+test('processing shows why a photographed batch with pending uploads is blocked',async({page})=>{
+  await page.route(/^https?:\/\/[^/]+\/api\/batches(?:\?.*)?$/,route=>
+    respond(route,{batches:[{...batch,display_name:'321',photos:1313,pending:2}],total:1}))
+  await page.goto('/processing')
+  await expect(page.getByRole('combobox',{name:'Партия ФО'})).toContainText('321')
+  await expect(page.getByText(/1313 фотографий готовы, но 2 файлов/)).toBeVisible()
+  await expect(page.getByRole('button',{name:/Запустить \/ поставить в очередь/})).toBeDisabled()
+  await expect(page.getByRole('link',{name:'Откройте партию'})).toHaveAttribute('href','/fo/'+bid)
+})
+test('opening a batch finalizes already transferred pending files without resending bytes',async({page})=>{
+  const ids=['47370c5c-dbe0-413e-928f-d365f50e2201','23663a5e-a1ef-46a7-8e65-db423bb7dd5c']
+  let pending=ids.map((id,index)=>({id,filename:index?'IMG_2831.JPG':'IMG_2828.JPG',
+    size:4320388,received:4320388,updated_at:'2026-11-05T19:12:50Z',
+    has_part:true,can_finalize:true,prefix_bytes:65536,prefix_sha256:'a'.repeat(64)}))
+  const finalized:string[]=[]
+  await page.route(/^https?:\/\/[^/]+\/api\/batches\/[a-f0-9-]+\/pending$/,route=>
+    respond(route,{uploads:pending,total:pending.length}))
+  await page.route(/^https?:\/\/[^/]+\/api\/uploads\/[a-f0-9-]+\/finish$/,route=>{
+    expect(route.request().method()).toBe('POST')
+    const id=route.request().url().split('/').at(-2)!
+    finalized.push(id)
+    pending=pending.filter(entry=>entry.id!==id)
+    return respond(route,{path:'/data/uploads/'+id+'.jpg'})
+  })
+  await page.goto('/fo/'+bid)
+  await expect.poll(()=>finalized.length).toBe(2)
+  expect(finalized.sort()).toEqual([...ids].sort())
+  await expect(page.getByRole('region',{name:'Незавершённые загрузки'})).toBeHidden()
+  // Existing, finalized gallery images remain accessible.
+  await expect(page.getByRole('button',{name:'Открыть screen_001.jpg'})).toBeVisible()
+})
+test('explicit cancellation only removes one selected unfinished transfer',async({page})=>{
+  const id='47370c5c-dbe0-413e-928f-d365f50e2201'
+  let pending=[{id,filename:'IMG_2828.JPG',size:4320388,received:100,
+    updated_at:'2026-11-05T19:12:50Z',has_part:true,can_finalize:false,
+    prefix_bytes:100,prefix_sha256:'a'.repeat(64)}]
+  let deleteCount=0
+  await page.route(/^https?:\/\/[^/]+\/api\/batches\/[a-f0-9-]+\/pending$/,route=>
+    respond(route,{uploads:pending,total:pending.length}))
+  await page.route(/^https?:\/\/[^/]+\/api\/uploads\/[a-f0-9-]+$/,route=>{
+    if(route.request().method()!=='DELETE')return route.continue()
+    deleteCount++
+    pending=[]
+    return respond(route,{cancelled:true})
+  })
+  await page.goto('/fo/'+bid)
+  await expect(page.getByText('IMG_2828.JPG')).toBeVisible()
+  await page.getByRole('button',{name:'Отменить',exact:true}).click()
+  await expect(page.getByRole('dialog',{name:'Отменить незавершённую передачу?'})).toBeVisible()
+  await page.getByRole('button',{name:'Отменить передачу',exact:true}).click()
+  await expect.poll(()=>deleteCount).toBe(1)
+  await expect(page.getByRole('region',{name:'Незавершённые загрузки'})).toBeHidden()
 })
