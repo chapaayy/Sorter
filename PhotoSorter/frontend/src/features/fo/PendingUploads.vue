@@ -16,11 +16,18 @@ const errors=ref<Record<string,string>>({})
 const progress=ref<Record<string,number>>({})
 let controller:AbortController|null=null
 
+async function refreshManifest(){
+  // The pending-upload recovery UI must still work if manifest inspection
+  // temporarily fails or an older API mock does not expose this endpoint.
+  try{manifest.value=await batchApi.manifest(props.batchId)}
+  catch{manifest.value=null}
+}
 async function load(autoFinish=false){
   if(activeId.value)return
   try{
-    const [result,state]=await Promise.all([batchApi.pending(props.batchId),batchApi.manifest(props.batchId)])
-    items.value=result.uploads;manifest.value=state
+    const result=await batchApi.pending(props.batchId)
+    items.value=result.uploads
+    await refreshManifest()
     error.value=''
     if(autoFinish&&!props.disabled){
       // Fully transferred bytes are safe to finalize with no local file input.
@@ -38,8 +45,8 @@ async function finish(item:PendingUpload,automatic=false){
   try{
     await batchApi.finishPending(item.id)
     delete errors.value[item.id]
-    await Promise.all([batchApi.pending(props.batchId).then(result=>{items.value=result.uploads}),
-      batchApi.manifest(props.batchId).then(state=>{manifest.value=state})])
+    items.value=(await batchApi.pending(props.batchId)).uploads
+    await refreshManifest()
     emit('changed')
   }catch(err){
     errors.value[item.id]=(automatic?'Автозавершение: ':'')+errorText(err)
@@ -64,8 +71,8 @@ async function continueFile(item:PendingUpload,event:Event){
         ?'Ожидание соединения · повтор через '+Math.ceil((state.delayMs||1000)/1000)+' с'
         :'Передача восстановлена'})
     delete errors.value[item.id]
-    await Promise.all([batchApi.pending(props.batchId).then(result=>{items.value=result.uploads}),
-      batchApi.manifest(props.batchId).then(state=>{manifest.value=state})])
+    items.value=(await batchApi.pending(props.batchId)).uploads
+    await refreshManifest()
     emit('changed')
   }catch(err){
     errors.value[item.id]=controller.signal.aborted?'Передача приостановлена. Можно продолжить позже.':errorText(err)
@@ -79,8 +86,8 @@ async function cancel(){
     await batchApi.cancelPending(item.id)
     confirmCancel.value=null
     delete errors.value[item.id]
-    await Promise.all([batchApi.pending(props.batchId).then(result=>{items.value=result.uploads}),
-      batchApi.manifest(props.batchId).then(state=>{manifest.value=state})])
+    items.value=(await batchApi.pending(props.batchId)).uploads
+    await refreshManifest()
     emit('changed')
   }catch(err){errors.value[item.id]=errorText(err)}
   finally{activeId.value='';activeStatus.value=''}
