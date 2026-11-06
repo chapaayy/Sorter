@@ -52,6 +52,7 @@ class BeginUpload(BaseModel):
     sam:str|None=None
     address:str|None=None
     sha256:str|None=None
+    client_upload_id:uuid.UUID|None=None
 
 
 def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
@@ -111,7 +112,18 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
 
 @router.post('/uploads')
 def create_upload(payload:BeginUpload):
-    return _create_upload(payload, uuid.uuid4())
+    # The browser persists its UUID before sending. If a VPN cut hides the
+    # creation response, re-POSTing the same UUID must not orphan an upload.
+    if payload.client_upload_id is None:
+        return _create_upload(payload,uuid.uuid4())
+    row=_prepare_direct_upload(str(payload.client_upload_id),payload)
+    part=PART_DIR/f"{row['id']}.part"
+    if not row['finalized'] and not part.exists() and row['received']==0:
+        PART_DIR.mkdir(parents=True,exist_ok=True)
+        part.touch(exist_ok=True)
+    offset=part.stat().st_size if part.is_file() else row['received']
+    return {'id':str(row['id']),'offset':offset,'size':row['declared_size'],
+            'finalized':row['finalized']}
 
 
 def get_upload(upload_id):
