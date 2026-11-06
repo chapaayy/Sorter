@@ -31,7 +31,7 @@ def test_complete_fo_parts_appear_as_pending_and_finalize_without_reupload(thumb
         entries=batches.pending_uploads(batch)['uploads']
         assert len(entries)==2
         assert all(e['can_finalize'] and e['received']==e['size'] for e in entries)
-        assert all(len(e['prefix_sha256'])==64 for e in entries)
+        assert all(e['prefix_bytes']==0 and e['prefix_sha256'] is None for e in entries)
         for uid,_ in ids:
             assert uploads._finalize_sync(str(uid))['already_finalized'] is False
         after=batches.get(batch)
@@ -52,7 +52,9 @@ def test_cancel_incomplete_session_keeps_all_finalized_photos(thumbs):
             kind='fo',batch_id=str(batch),filename='broken.jpg',size=len(raw)),uid)
         (thumbs/'incoming'/f'{uid}.part').write_bytes(raw[:100])
         assert batches.get(batch)['pending']==1
-        assert batches.pending_uploads(batch)['uploads'][0]['received']==100
+        pending=batches.pending_uploads(batch)['uploads'][0]
+        assert pending['received']==100 and pending['prefix_bytes']==100
+        assert len(pending['prefix_sha256'])==64
         assert asyncio.run(uploads.cancel_upload(str(uid)))=={'cancelled':True}
         assert batches.get(batch)['photos']==1
         assert batches.get(batch)['pending']==0
