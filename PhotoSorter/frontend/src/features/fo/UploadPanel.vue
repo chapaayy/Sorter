@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,ref} from 'vue'
+import {computed,onUnmounted,ref} from 'vue'
 import {batchApi} from '../../api/batches'
 import {ApiError} from '../../api/client'
 import {canResumeUpload} from '../../utils/batches'
@@ -85,6 +85,7 @@ async function start(){
   }finally{running.value=false;phase.value='';controller=null}
 }
 function stop(){controller?.abort()}
+onUnmounted(stop)
 </script>
 <template>
 <section class="panel stack" aria-label="Загрузка папки ФО">
