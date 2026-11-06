@@ -25,13 +25,13 @@
 | `backend/server/main.py` | FastAPI assembly, auth middleware, lifespan, health |
 | `backend/server/auth.py` | Cookies, scrypt password, login, origin checks |
 | `backend/server/database.py` | PostgreSQL connect, initial schema and migrations |
-| `backend/server/uploads.py` | Resumable upload, финализация, проверки оригиналов |
+| `backend/server/uploads.py` | Докачка, идемпотентная инициализация, финализация и выборочная отмена незавершённого upload |
 | `backend/server/jobs.py` | Создание/отмена заданий, API очереди |
 | `backend/server/worker.py` | Однопоточный lifecycle MegaLoc Worker и heartbeat |
 | `backend/server/reference_cache.py` | Индекс и доступ к embeddings образцов |
 | `backend/server/api/routes/site.py` | **Один** Vue сайт на `/`, `/assets/*` и history fallback |
 | `backend/server/api/routes/auth.py` | Login/logout/current user endpoints |
-| `backend/server/api/routes/batches.py` | Партии, метаданные и безопасное удаление |
+| `backend/server/api/routes/batches.py` | Партии, состояние незавершённых загрузок (`/pending`) и безопасное удаление |
 | `backend/server/api/routes/references.py` | Галерея, проверка пакета, адрес конструкции и удаление образцов |
 | `backend/server/api/routes/models.py` | Модели, скачивание и состояние |
 | `backend/server/api/routes/results.py` | История прогонов и результаты |
@@ -47,7 +47,7 @@
 
 | Файл / каталог | Назначение |
 |---|---|
-| `backend/server/services/batches.py` | Состояния и CRUD партий |
+| `backend/server/services/batches.py` | Состояния/CRUD партий, список незавершённых с реальными offsets и SHA-256 префиксом |
 | `backend/server/services/references.py` | Безопасное редактирование и удаление конструкций, защита исторических manifests |
 | `backend/server/services/construction_catalog.py` | Серверная проверка массового импорта, метаданные и адреса конструкций |
 | `backend/server/services/retention.py` | Подтверждение ZIP, срок хранения, предупреждения |
@@ -109,7 +109,8 @@
 | `frontend/src/components/gallery/` | Lazy/virtual thumbnails и ImageViewer |
 | `frontend/src/components/split/GroupPicker.vue` | Двухпанельный выбор: однострочные подписи, счётчики, tooltip, регулируемая ширина с сохранением в браузере; мобильная версия |
 | `frontend/src/features/auth/LoginView.vue` | Логин |
-| `frontend/src/features/fo/` | Список ФО, галерея, загрузка |
+| `frontend/src/features/fo/` | Список ФО, галерея, загрузка и восстановление |
+| `frontend/src/features/fo/PendingUploads.vue` | Докачка по выбранному оригиналу, автозавершение полностью принятых файлов, подтверждаемая отмена |
 | `frontend/src/features/references/ReferenceLibrary.vue` | Библиотека с городом, номером, адресом и просмотром фото |
 | `frontend/src/features/references/ReferenceUploader.vue` | Переключение двух способов импорта |
 | `frontend/src/features/references/ReferenceDirectoryImporter.vue` | Строгий массовый импорт, предпросмотр и ошибки по каждому файлу |
@@ -119,7 +120,8 @@
 | `frontend/src/features/logs/LogsView.vue` | Лог обработки, tail |
 | `frontend/src/features/settings/SettingsView.vue` | Диск, состояние сервисов, тема, cleanup |
 | `frontend/src/styles/` | CSS tokens, единственный общий UI-слой; адаптивные стили списка и свёрнутого меню |
-| `frontend/src/utils/{upload,format}.ts` | Resumable upload, форматы |
+| `frontend/src/utils/{upload,format}.ts` | Idempotent resume, блоки 16 МиБ, безопасная проверка файла, форматы |
+| `frontend/src/utils/uploadRetry.ts` | Отменяемые повторные запросы/backoff при переключении VPN или потере сети |
 | `frontend/src/utils/referenceSelection.ts` | Клиентская проверка имени папки, учёт всех выбранных файлов |
 | `frontend/src/utils/referenceDuplicates.ts` | SHA-256 сверка с готовыми образцами перед сетевой загрузкой |
 | `frontend/src/utils/uploadQueue.ts` | Ограничение и отчёт ошибок параллельных передач |
@@ -134,6 +136,7 @@
 | `backend/tests/` | Backend regression: SQL, MegaLoc math, безопасность, upload, ZIP, retention и HTTP |
 | `backend/tests/test_batch_listing_regressions.py` | Счётчики нулевых запусков, список ФО после удаления, PostgreSQL |
 | `backend/tests/test_construction_import.py` | Новый формат конструкций, повторные импорты, SHA-256, адреса |
+| `backend/tests/test_pending_upload_recovery.py` | Изолированные проверки автозавершения `.part`, idempotent init и отмены без потери готовых фото |
 | `frontend/tests/` | Vitest |
 | `frontend/e2e/navigation.spec.ts`, `playwright.config.ts` | Chromium/WebKit на десктопе и mobile |
 | `PhotoSorter/tools/benchmark_api.py` | API latency |
