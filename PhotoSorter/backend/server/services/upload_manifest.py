@@ -66,10 +66,11 @@ def register(batch_id, files):
                 raise HTTPException(409, "У старой партии уже есть файлы; она работает без манифеста")
             if db.execute("SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1", (batch_id,)).fetchone():
                 raise HTTPException(409, "Партия уже обрабатывалась")
-            db.executemany("""INSERT INTO batch_upload_manifest_files
-                (batch_id, upload_id, relative_path, filename, declared_size)
-                VALUES (%s,%s,%s,%s,%s)""",
-                [(batch_id, *item) for item in expected])
+            with db.cursor() as cursor:
+                cursor.executemany("""INSERT INTO batch_upload_manifest_files
+                    (batch_id, upload_id, relative_path, filename, declared_size)
+                    VALUES (%s,%s,%s,%s,%s)""",
+                    [(batch_id, *item) for item in expected])
             db.execute("""UPDATE batches SET upload_manifest_signature=%s,
                 upload_manifest_state='waiting', upload_manifest_completed_at=NULL,
                 upload_state='open' WHERE id=%s""", (signature, batch_id))
