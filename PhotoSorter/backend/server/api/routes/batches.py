@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from fastapi import APIRouter,HTTPException
 from pydantic import BaseModel,Field
-from ...services import batches,cleanup,retention,upload_manifest,auto_processing
+from ...services import batches,cleanup,retention,upload_manifest,auto_processing,batch_runs
 from ...database import connect
 from ...db.repositories.pagination import page
 
@@ -48,6 +48,16 @@ def manifest(batch_id:str):
 @router.post("/{batch_id}/auto-processing/cancel")
 def cancel_automatic(batch_id:str):
     return auto_processing.cancel(batch_id)
+
+@router.get("/{batch_id}/runs")
+def runs_for_batch(batch_id:str,limit:int=20,offset:int=0):
+    if not 1<=limit<=100 or offset<0:
+        raise HTTPException(422,"Неверная пагинация запусков")
+    identifier=batches.uid(batch_id)
+    with connect() as db:
+        result=batch_runs.history(db,identifier,limit=limit,offset=offset)
+    if result is None:raise HTTPException(404,"Партия не найдена")
+    return result
 
 @router.get("/{batch_id}/pending")
 def pending(batch_id:str):

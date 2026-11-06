@@ -29,7 +29,7 @@
 |---|---|---|
 | POST | `/batches` | optional `{display_name}`; `{batch_id,display_name}` |
 | GET | `/batches?limit=100&offset=0` | `{batches,total}` (limit 1–200) |
-| GET | `/batches/{id}` | `batch_id,photos,size_bytes,pending,runs,display_name,*_state,*_at` |
+| GET | `/batches/{id}` | `batch_id,photos,size_bytes,pending,runs,display_name,*_state,*_at` + `latest_run`, `last_result_run_id` |
 | GET | `/batches/{id}/pending` | Незафиксированные загрузки ФО: UUID, имя, фактический offset на диске, размер, наличие `.part`, `can_finalize`, SHA-256 всей полученной части (только для незавершённого файла) для безопасной ручной докачки |
 | PUT | `/batches/{id}/upload-manifest` | Для новой пустой партии: `{files:[{upload_id: UUID, relative_path, filename, size}], auto_process?:bool, grouping_threshold?:0.50…0.99}` (1–20000 фото). Указанные auto-параметры фиксируются **только при первой регистрации**; идемпотентный повтор с тем же манифестом не включает заново отменённый автозапуск. Старые партии с уже существующими uploads не изменяются. |
 | GET | `/batches/{id}/upload-manifest` | `{state:legacy/waiting/complete, expected, finalized, missing, pending, files:[{upload_id,relative_path,filename,size,state,received}]}`. `state=legacy` означает отсутствие подтверждённого манифеста, а НЕ автоматически завершённую загрузку. |
@@ -42,6 +42,16 @@
 | POST | `/batches/{id}/retention/extend` | новая дата, +2 календарных месяца |
 | GET | `/batches/{id}/retention` | даты и предупреждение за 7 дней |
 | GET | `/storage/usage` | mount total/used/available, inode-counted categories |
+
+## Этап 3 — статусы MegaLoc внутри ФО
+
+| HTTP | Путь | Контракт |
+|---|---|---|
+| GET | `/batches?limit=&offset=` | Каждый batch имеет `latest_run` (или null) с актуальным `jobs.status`, `queue_position`, `progress`, `grouping_threshold` и датами; также `last_result_run_id` — последний завершённый `completed`/`completed_with_errors`, **независимо** от статуса более нового запуска. Никаких FS paths в этих полях. |
+| GET | `/batches/{id}` | Та же модель статуса и предыдущих результатов для галереи партии |
+| GET | `/batches/{id}/runs?limit=20&offset=0` | Изолированная по партии история: `{runs,total}`, limit 1–100, offset ≥0. Текущий `status` всегда из PostgreSQL, не из устаревшего JSON snapshot; JSON progress только измеренный. Без путей к файлам. |
+
+Действия интерфейса используют существующие `POST /runs` и `POST /runs/{id}/stop`; «Убрать из очереди» переводит queued → stopped, но не удаляет запись, результаты и оригиналы. `thumbnail_state=ready` не означает MegaLoc completed. Только `completed` показывается зелёным; `completed_with_errors`/`failed` — ошибки, `stopped`/`interrupted` — нейтральные. Если повторная обработка завершилась неудачей, прежний `last_result_run_id` сохраняет переход к последнему результату.
 
 ## Этап 2 — серверный автоматический MegaLoc
 

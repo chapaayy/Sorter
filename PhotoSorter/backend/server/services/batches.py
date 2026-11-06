@@ -5,6 +5,7 @@ import hashlib
 from fastapi import HTTPException
 from ..database import connect
 from ..db.repositories import batches as repository
+from . import batch_runs
 from ..storage.paths import batch_dir,owned_file
 from app.config import DATA_DIR
 
@@ -38,7 +39,8 @@ def _serialize(row,counters=None):
     data={"batch_id":str(row["id"])}
     for field in fields:data[field]=row[field]
     # Each batch has the same counter contract, even with no photos/runs.
-    data.update({"photos":0,"size_bytes":0,"pending":0,"runs":0})
+    data.update({"photos":0,"size_bytes":0,"pending":0,"runs":0,
+                 "latest_run":None,"last_result_run_id":None})
     if counters:data.update(counters)
     return data
 
@@ -48,6 +50,8 @@ def get(batch_id):
         row=repository.get(db,batch_id)
         if not row:raise HTTPException(404,"Партия не найдена")
         counters=repository.count_photos_and_runs(db,batch_id)
+        counters["latest_run"]=batch_runs.latest(db,[batch_id]).get(batch_id)
+        counters["last_result_run_id"]=batch_runs.last_results(db,[batch_id]).get(batch_id)
     return _serialize(row,counters)
 
 def list_all(limit=100,offset=0):
@@ -66,6 +70,12 @@ def list_all(limit=100,offset=0):
               WHERE batch_id=ANY(%s) GROUP BY batch_id""",(identifiers,)).fetchall()
             aggregates={r["id"]:dict(r) for r in stats}
             for entry in runs:aggregates.setdefault(entry["batch_id"],{})["runs"]=entry["runs"]
+            most_recent=batch_runs.latest(db,identifiers)
+            results=batch_runs.last_results(db,identifiers)
+            for identifier in identifiers:
+                counters=aggregates.setdefault(identifier,{})
+                counters["latest_run"]=most_recent.get(identifier)
+                counters["last_result_run_id"]=results.get(identifier)
     return {"batches":[_serialize(row,aggregates.get(row["id"],{"photos":0,"pending":0,"size_bytes":0,"runs":0}))
                        for row in rows],"total":total}
 

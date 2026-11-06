@@ -1,4 +1,5 @@
 import {test,expect,Page} from '@playwright/test'
+import type {Batch} from '../src/types/api'
 const bid='a6d1a203-23d4-420b-a1c6-87c0f1100222'
 const rid='20261105T100000-abcd1234abcd'
 const pid='34b92d83-2461-4100-839f-28b7b63c9a27'
@@ -18,6 +19,7 @@ async function mock(page:Page){
     if(p==='/api/batches/'+bid)return respond(route,batch)
     if(p==='/api/batches/'+bid+'/gallery')return respond(route,{photos:[photo],next_cursor:null})
     if(p==='/api/batches/'+bid+'/pending')return respond(route,{uploads:[],total:0})
+    if(p==='/api/batches/'+bid+'/runs')return respond(route,{runs:[run],total:1})
     if(p==='/api/thumbnails/status/'+bid+'/counts')return respond(route,{total:2,ready:2,failed:0})
     if(p==='/api/batches/'+bid+'/retention')return respond(route,{batch_id:bid,delete_state:'active',warning:false,download_confirmed_at:null,delete_after_at:null})
     if(p==='/api/batches/'+bid+'/downloads/confirm'&&method==='POST')return respond(route,{batch_id:bid,download_confirmed_at:'2026-11-05T06:50:00Z',delete_after_at:'2027-01-05T06:50:00Z',confirmed_run_id:rid})
@@ -253,4 +255,79 @@ test('explicit cancellation only removes one selected unfinished transfer',async
   await page.getByRole('button',{name:'Отменить передачу',exact:true}).click()
   await expect.poll(()=>deleteCount).toBe(1)
   await expect(page.getByRole('region',{name:'Незавершённые загрузки'})).toBeHidden()
+})
+
+
+test('FO cards show live MegaLoc progress and a confirmed stop action',async({page})=>{
+  const active={...run,status:'running',progress:{
+    stage_label:'Группировка ФО',current:17,total:40,
+    stage_percent:42.5,overall_percent:23.1}}
+  const visible={...batch,runs:1,latest_run:active,last_result_run_id:null}
+  await page.route(/^https?:\/\/[^/]+\/api\/batches(?:\?.*)?$/,
+    route=>respond(route,{batches:[visible],total:1}))
+  let stopped=0
+  await page.route('**/api/runs/'+rid+'/stop',route=>{
+    stopped++
+    active.status='stopping'
+    return respond(route,{id:rid,status:'stopping'})
+  })
+  await page.goto('/fo')
+  const card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
+  await expect(card.getByText('Обработка', {exact:true})).toBeVisible()
+  await expect(card.getByText('Группировка ФО')).toBeVisible()
+  await expect(card.getByText('17 из 40 на этапе')).toBeVisible()
+  await expect(card.getByRole('progressbar',{name:'Общий прогресс MegaLoc'})).toHaveAttribute('aria-valuenow','23.1')
+  await card.getByRole('button',{name:'Остановить'}).click()
+  await expect(page.getByRole('alertdialog',{name:'Остановить обработку MegaLoc?'})).toBeVisible()
+  await page.getByRole('alertdialog').getByRole('button',{name:'Остановить'}).click()
+  await expect.poll(()=>stopped).toBe(1)
+  await expect(card.getByText('Остановка')).toBeVisible()
+})
+
+test('FO card can start once and remove a queued run without deleting history',async({page})=>{
+  const draft:Batch={...batch,photos:25,runs:0,latest_run:null,last_result_run_id:null}
+  await page.route(/^https?:\/\/[^/]+\/api\/batches(?:\?.*)?$/,
+    route=>respond(route,{batches:[draft],total:1}))
+  let started=0,stopped=0
+  await page.route('**/api/runs',route=>{
+    if(route.request().method()==='POST'){
+      started++
+      draft.runs=1
+      draft.latest_run={...run,status:'queued',queue_position:3}
+      return respond(route,draft.latest_run)
+    }
+    return respond(route,{runs:[run],total:1})
+  })
+  await page.route('**/api/runs/'+rid+'/stop',route=>{
+    stopped++
+    draft.latest_run={...run,status:'stopped'} as typeof draft.latest_run
+    return respond(route,{status:'stopped'})
+  })
+  await page.goto('/fo')
+  const card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
+  await expect(card.getByTestId('fo-processing-status')).toHaveText('Не обработано')
+  await card.getByRole('button',{name:'Обработать'}).click()
+  await expect.poll(()=>started).toBe(1)
+  await expect(card.getByText('Очередь MegaLoc · позиция 3')).toBeVisible()
+  await card.getByRole('button',{name:'Убрать из очереди'}).click()
+  await page.getByRole('alertdialog').getByRole('button',{name:'Убрать из очереди'}).click()
+  await expect.poll(()=>stopped).toBe(1)
+  await expect(card.getByTestId('fo-processing-status')).toHaveText('Остановлено')
+  await expect(card.getByRole('button',{name:'Повторить обработку'})).toBeVisible()
+})
+
+test('failed retry preserves prior successful results and paged batch history',async({page})=>{
+  const last={...run,id:'20261106T000000-deadbeefeeee',status:'failed',error:'Synthetic error'}
+  const detail={...batch,runs:2,latest_run:last,last_result_run_id:rid}
+  await page.route('**/api/batches/'+bid,route=>respond(route,detail))
+  await page.route('**/api/batches/'+bid+'/runs',route=>
+    respond(route,{runs:[last,run],total:2}))
+  await page.goto('/fo/'+bid)
+  await expect(page.getByRole('region',{name:'Обработка MegaLoc для партии'})
+    .getByTestId('fo-processing-status')).toHaveText('Ошибка')
+  await expect(page.getByRole('link',{name:'Прошлые результаты'})).toHaveAttribute('href','/results/'+rid)
+  await page.getByRole('button',{name:'История запусков (2)'}).click()
+  const history=page.getByRole('region',{name:'История обработок партии'})
+  await expect(history.getByText('Ошибка', {exact:true})).toBeVisible()
+  await expect(history.getByRole('link',{name:'Результаты'})).toHaveAttribute('href','/results/'+rid)
 })

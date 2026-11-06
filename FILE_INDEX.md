@@ -48,8 +48,9 @@
 
 | Файл / каталог | Назначение |
 |---|---|
-| `backend/server/services/batches.py` | Состояния/CRUD партий, список незавершённых с реальными offsets и SHA-256 всей уже переданной части |
+| `backend/server/services/batches.py` | CRUD партий, счётчики, последний запуск MegaLoc/прошлый результат для списка ФО, pending uploads |
 | `backend/server/services/upload_manifest.py` | Неизменяемый состав новой партии, индивидуальная настройка auto-MegaLoc, проверка оригиналов и завершение `waiting/complete` |
+| `backend/server/services/batch_runs.py` | Безопасные (без путей ФС) сводки последнего запуска, предыдущих результатов и постраничной истории MegaLoc |
 | `backend/server/services/auto_processing.py` | Защищённая отмена, общие настройки, серверная постановка opt-in партий через общую очередь (idempotent DB lock) |
 | `backend/server/services/references.py` | Безопасное редактирование и удаление конструкций, защита исторических manifests |
 | `backend/server/services/construction_catalog.py` | Серверная проверка массового импорта, метаданные и адреса конструкций |
@@ -112,7 +113,11 @@
 | `frontend/src/components/gallery/` | Lazy/virtual thumbnails и ImageViewer |
 | `frontend/src/components/split/GroupPicker.vue` | Двухпанельный выбор: однострочные подписи, счётчики, tooltip, регулируемая ширина с сохранением в браузере; мобильная версия |
 | `frontend/src/features/auth/LoginView.vue` | Логин |
-| `frontend/src/features/fo/` | Список ФО, галерея, загрузка и восстановление |
+| `frontend/src/features/fo/` | Список и галерея ФО, загрузка, восстановление и встроенные состояния MegaLoc |
+| `frontend/src/features/fo/FoBatchCard.vue` | Компактная карточка партии, ссылки и доступные действия MegaLoc |
+| `frontend/src/features/fo/BatchProcessingStatus.vue` | Общий блок статуса/реального прогресса MegaLoc в списке и галерее |
+| `frontend/src/features/fo/BatchRunHistory.vue` | Постраничная история всех запусков партии, включая предыдущие результаты |
+| `frontend/src/utils/batchProcessing.ts` | Правила UI-состояний MegaLoc, отдельные от состояния миниатюр |
 | `frontend/src/features/fo/PendingUploads.vue` | Докачка по выбранному оригиналу, автозавершение полностью принятых файлов, подтверждаемая отмена |
 | `frontend/src/features/references/ReferenceLibrary.vue` | Библиотека с городом, номером, адресом и просмотром фото |
 | `frontend/src/features/references/ReferenceUploader.vue` | Переключение двух способов импорта |
@@ -140,6 +145,7 @@
 | `backend/tests/test_batch_listing_regressions.py` | Счётчики нулевых запусков, список ФО после удаления, PostgreSQL |
 | `backend/tests/test_construction_import.py` | Новый формат конструкций, повторные импорты, SHA-256, адреса |
 | `backend/tests/test_pending_upload_recovery.py` | Изолированные проверки автозавершения `.part`, idempotent init и отмены без потери готовых фото |
+| `backend/tests/test_batch_run_summaries.py` | Действительный latest run, позиция очереди, прогресс, прежний результат и безопасная история |
 | `backend/tests/test_auto_processing.py` | Новая opt-in очередь, отмена до enqueue, ручной запуск, queue full, terminal job, конкурентная отправка, старые партии |
 | `frontend/tests/` | Vitest |
 | `frontend/e2e/navigation.spec.ts`, `playwright.config.ts` | Chromium/WebKit на десктопе и mobile |

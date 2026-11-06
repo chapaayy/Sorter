@@ -1,8 +1,10 @@
 import {api,post,patch,del,query} from './client'
-import type {Batch,Photo,CursorPage,Retention,PendingUploadList,BatchUploadManifest,UploadManifestFile} from '../types/api'
+import type {Batch,Photo,CursorPage,Retention,PendingUploadList,BatchUploadManifest,UploadManifestFile,Run} from '../types/api'
 export const batchApi={
   list:(limit=100,offset=0)=>api<{batches:Batch[];total:number}>('/batches'+query({limit,offset})),
   one:(id:string)=>api<Batch>('/batches/'+encodeURIComponent(id)),
+  runs:(id:string,limit=20,offset=0)=>api<{runs:Run[];total:number}>(
+    '/batches/'+encodeURIComponent(id)+'/runs'+query({limit,offset})),
   pending:(id:string)=>api<PendingUploadList>('/batches/'+encodeURIComponent(id)+'/pending'),
   manifest:(id:string)=>api<BatchUploadManifest>('/batches/'+encodeURIComponent(id)+'/upload-manifest'),
   registerManifest:(id:string,files:UploadManifestFile[],autoProcess=false,threshold=.50)=>

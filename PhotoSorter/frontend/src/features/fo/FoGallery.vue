@@ -2,6 +2,8 @@
 import {computed,onMounted,ref} from 'vue'
 import {useRoute,useRouter} from 'vue-router'
 import {batchApi} from '../../api/batches'
+import {runApi} from '../../api/runs'
+import {batchProcessing,batchThreshold} from '../../utils/batchProcessing'
 import type {Batch,Photo} from '../../types/api'
 import {useCursor} from '../../composables/useCursor'
 import {usePolling} from '../../composables/usePolling'
@@ -13,11 +15,15 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import PendingUploads from './PendingUploads.vue'
+import BatchProcessingStatus from './BatchProcessingStatus.vue'
+import BatchRunHistory from './BatchRunHistory.vue'
 const route=useRoute(),router=useRouter(),notice=useNoticeStore()
 const id=String(route.params.batchId)
 const batch=ref<Batch|null>(null),count=ref<{total:number;ready:number;failed:number}|null>(null)
 const rename=ref(false),newName=ref(''),busy=ref(false),error=ref('')
 const deleteWhole=ref(false),deletePhoto=ref<string|null>(null),viewer=ref<number|null>(null)
+const stopConfirm=ref(false),showHistory=ref(false),historyKey=ref(0)
+const processing=computed(()=>batch.value?batchProcessing(batch.value):null)
 const {items,cursor,loading,error:galleryError,load,reset}=useCursor<Photo>(next=>batchApi.gallery(id,next))
 const preview=computed(()=>items.value.map(p=>({src:p.original_url||'',label:p.name})))
 const readyPercent=computed(()=>count.value?.total?Math.round(count.value.ready/count.value.total*100):0)
@@ -25,17 +31,17 @@ async function refresh(){
   try{batch.value=await batchApi.one(id);count.value=await batchApi.thumbs(id)}
   catch(e){error.value=errorText(e)}
 }
-const {refresh:tick}=usePolling(async()=>{
+usePolling(async()=>{
   if(!batch.value||batch.value.delete_state!=='active')return
   const prior=count.value?.ready||0
   count.value=await batchApi.thumbs(id)
-  if(batch.value.auto_process_state==='waiting')batch.value=await batchApi.one(id)
+  batch.value=await batchApi.one(id)
   if(count.value.ready>prior && items.value.length){
     const next=await batchApi.gallery(id)
     const map=new Map(next.photos.map(p=>[p.id,p]))
     items.value=items.value.map(p=>map.get(p.id)||p)
   }
-},7000)
+},4500)
 onMounted(async()=>{await Promise.all([refresh(),reset()])})
 async function onPendingChanged(){await Promise.all([refresh(),reset()])}
 async function saveName(){
@@ -50,6 +56,32 @@ async function removePhoto(){
   try{await batchApi.removePhoto(id,deletePhoto.value);deletePhoto.value=null;await Promise.all([refresh(),reset()]);notice.add('ФО удалено','ok')}
   catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
+async function startRun(){
+  if(!batch.value||!processing.value?.canStart||busy.value)return
+  busy.value=true;error.value=''
+  try{
+    const created=await runApi.start(id,batchThreshold(batch.value))
+    notice.add('MegaLoc добавлен в очередь · '+created.id,'ok')
+    await refresh();historyKey.value++
+  }catch(e){error.value=errorText(e);await refresh()}finally{busy.value=false}
+}
+async function stopRun(){
+  if(!processing.value?.run||busy.value)return
+  const current=processing.value.run
+  busy.value=true;error.value=''
+  try{
+    await runApi.stop(current.id)
+    stopConfirm.value=false
+    notice.add(current.status==='queued'?'Задание убрано из очереди':'Запрошена остановка MegaLoc','ok')
+    await refresh();historyKey.value++
+  }catch(e){error.value=errorText(e);await refresh()}finally{busy.value=false}
+}
+async function cancelAuto(){
+  if(busy.value)return
+  busy.value=true;error.value=''
+  try{await batchApi.cancelAutomatic(id);notice.add('Автозапуск отменён','ok');await refresh()}
+  catch(e){error.value=errorText(e);await refresh()}finally{busy.value=false}
+}
 async function removeBatch(){
   busy.value=true
   try{await batchApi.remove(id);deleteWhole.value=false;notice.add('Партия поставлена на безопасное удаление','ok');await router.push('/fo')}
@@ -62,6 +94,21 @@ async function removeBatch(){
   <template #actions><UiButton @click="newName=batch?.display_name||'';rename=true">Переименовать</UiButton><UiButton kind="danger" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert">{{error}}</div>
+<section v-if="batch" class="panel stack" style="margin-bottom:19px" aria-label="Обработка MegaLoc для партии">
+  <div class="row between wrap"><h2 style="margin:0">Обработка MegaLoc</h2><span class="meta">Миниатюры и сортировка — независимые процессы</span></div>
+  <BatchProcessingStatus :batch="batch"/>
+  <div class="row wrap fo-batch-actions">
+    <UiButton v-if="processing?.canStart" kind="primary" small :loading="busy" @click="startRun">{{(batch.runs??0)>0?'Повторить обработку':'Обработать'}}</UiButton>
+    <UiButton v-if="processing?.canCancelAuto" small :loading="busy" @click="cancelAuto">Отменить автозапуск</UiButton>
+    <UiButton v-if="processing?.canStop" small kind="danger" :loading="busy" @click="stopConfirm=true">
+      {{processing?.run?.status==='queued'?'Убрать из очереди':'Остановить'}}
+    </UiButton>
+    <RouterLink v-if="processing?.run" :to="'/processing/'+processing.run.id" class="btn small">Подробности запуска</RouterLink>
+    <RouterLink v-if="processing?.resultId" :to="'/results/'+processing.resultId" class="btn small">{{processing.run?.id===processing.resultId?'Результаты':'Прошлые результаты'}}</RouterLink>
+    <UiButton v-if="(batch.runs??0)>0" small @click="showHistory=!showHistory">{{showHistory?'Скрыть историю':'История запусков ('+batch.runs+')'}}</UiButton>
+  </div>
+</section>
+<BatchRunHistory v-if="showHistory&&batch&&(batch.runs??0)>0" :key="id+'-'+historyKey" :batch-id="id" style="margin-bottom:19px"/>
 <PendingUploads v-if="batch?.delete_state==='active'" :batch-id="id" :disabled="!!batch?.runs" @changed="onPendingChanged"/>
 <section v-if="count" class="panel stack-sm" style="margin-bottom:19px">
   <div class="row between"><span>Подготовка миниатюр</span><span class="meta">{{count.ready}} / {{count.total}} · {{readyPercent}}%</span></div>
@@ -82,6 +129,10 @@ async function removeBatch(){
     <div class="modal-actions"><UiButton @click="rename=false">Отмена</UiButton><UiButton kind="primary" type="submit" :loading="busy">Сохранить</UiButton></div>
   </form>
 </div>
+<ConfirmDialog v-if="stopConfirm&&processing?.run" :title="processing.run.status==='queued'?'Убрать задание из очереди?':'Остановить MegaLoc?'"
+  message="Фотографии и история других запусков сохранятся. Остановка текущей обработки может прервать незавершённый результат."
+  :danger="true" :busy="busy" :confirm-label="processing.run.status==='queued'?'Убрать из очереди':'Остановить'"
+  @cancel="stopConfirm=false" @confirm="stopRun"/>
 <ConfirmDialog v-if="deletePhoto" title="Удалить фотографию?" message="Удаление невозможно отменить. Операция доступна только до начала сортировки." confirm-label="Удалить ФО" :danger="true" :busy="busy" @confirm="removePhoto" @cancel="deletePhoto=null"/>
 <ConfirmDialog v-if="deleteWhole&&batch" title="Безвозвратно удалить всю партию?" :message="'Будут удалены ВСЕ фотографии, запуски, результаты и логи партии «'+batch.display_name+'». Общие Образцы и модель не затрагиваются.'" confirm-label="Удалить всю партию" :required-text="batch.display_name" :danger="true" :busy="busy" @confirm="removeBatch" @cancel="deleteWhole=false"/>
 </template>

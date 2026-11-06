@@ -9,6 +9,7 @@ export interface Batch {
   auto_process_state?: 'waiting'|'queued'|'cancelled'|'manual'|null
   auto_process_run_id?: string|null; auto_process_error?: string|null
   auto_process_threshold?: number
+  latest_run?:Run|null;last_result_run_id?:string|null
 }
 export interface UploadManifestFile {upload_id:string;relative_path:string;filename:string;size:number}
 export interface ProcessingSettings {
@@ -41,7 +42,8 @@ export interface RunProgress {
   estimated_remaining_seconds?: number | null; overall_percent?: number | null; eta_status?: string
 }
 export interface Run {
-  id: string; batch_id: string; status: string; started_at?: string
+  id: string; batch_id: string; status: string; created_at?: string
+  started_at?: string
   actual_started_at?: string; finished_at?: string; actual_finished_at?: string
   grouping_threshold?: number; selected_models?: string[];source?:'manual'|'automatic'
   queue_position?: number | null; models?: Record<string, { status?: string; count?: number; groups?: number }>

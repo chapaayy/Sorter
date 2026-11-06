@@ -11,6 +11,8 @@
 | `frontend` | Node 24 `npm ci`, строгий TypeScript/Vite build, Vitest, Playwright Chromium/WebKit desktop/mobile на моковом API |
 | `docker-runtime` | Полная сборка CPU PyTorch и Docker, HTTPS self-signed, login/cookie, `/`, `/fo`, 404 на retired UI, три background heartbeat и синтетическая партия |
 
+Этап 3: `test_batch_run_summaries.py` проверяет реальный PostgreSQL-статус, прогресс, порядок/пагинацию истории и ссылки на прежние результаты. `frontend/tests/batchProcessing.test.ts` проверяет все состояния, отсутствие ложного успеха по миниатюрам и отсутствие выдуманных процентов. Playwright проверяет очередь, отмену, остановку, мобильные карточки и историю результатов. UI не создаёт вторую очередь.
+
 Этап 2: `test_auto_processing.py` проверяет default OFF, сохранение порога, ожидание полного манифеста, повторный/конкурентный enqueue, ручной запуск, отмену до enqueue и отсутствие авто-повтора после failed job. Браузерная проверка настроек выполняется на моковом API. Реальный сценарий отсутствия связи с клиентом требует приёмки на тестовом VPS.
 
 Регрессионные тесты с именами `test_stage1_*`, `test_stage2_*`, `test_stage3_*`, `test_stage4_*` сохраняются **как тесты**, не как версии сайта. Их не нужно стирать при beta-cleanup.
