@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{name:'photos'|'references'|'processing'|'results'|'logs'|'settings'|'menu';size?:number}>()
+defineProps<{name:'photos'|'references'|'processing'|'results'|'logs'|'settings'|'menu'|'sidebar-collapse'|'sidebar-expand';size?:number}>()
 </script>
 
 <template>
@@ -28,6 +28,14 @@ defineProps<{name:'photos'|'references'|'processing'|'results'|'logs'|'settings'
     </template>
     <template v-else-if="name==='menu'">
       <path d="M4 7h16M4 12h16M4 17h16"/>
+    </template>
+    <template v-else-if="name==='sidebar-collapse'">
+      <rect x="3" y="4" width="18" height="16" rx="2"/>
+      <path d="M9 4v16M16 9l-3 3 3 3"/>
+    </template>
+    <template v-else-if="name==='sidebar-expand'">
+      <rect x="3" y="4" width="18" height="16" rx="2"/>
+      <path d="M9 4v16M13 9l3 3-3 3"/>
     </template>
   </svg>
 </template>
