@@ -47,7 +47,7 @@
 
 | Файл / каталог | Назначение |
 |---|---|
-| `backend/server/services/batches.py` | Состояния/CRUD партий, список незавершённых с реальными offsets и SHA-256 префиксом |
+| `backend/server/services/batches.py` | Состояния/CRUD партий, список незавершённых с реальными offsets и SHA-256 всей уже переданной части |
 | `backend/server/services/references.py` | Безопасное редактирование и удаление конструкций, защита исторических manifests |
 | `backend/server/services/construction_catalog.py` | Серверная проверка массового импорта, метаданные и адреса конструкций |
 | `backend/server/services/retention.py` | Подтверждение ZIP, срок хранения, предупреждения |
