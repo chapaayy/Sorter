@@ -113,7 +113,7 @@
 | `frontend/src/features/fo/PendingUploads.vue` | Докачка по выбранному оригиналу, автозавершение полностью принятых файлов, подтверждаемая отмена |
 | `frontend/src/features/references/ReferenceLibrary.vue` | Библиотека с городом, номером, адресом и просмотром фото |
 | `frontend/src/features/references/ReferenceUploader.vue` | Переключение двух способов импорта |
-| `frontend/src/features/references/ReferenceDirectoryImporter.vue` | Строгий массовый импорт, предпросмотр и ошибки по каждому файлу |
+| `frontend/src/features/references/ReferenceDirectoryImporter.vue` | Строгий массовый импорт, предпросмотр, ошибки и видимый список системных файлов, исключённых из передачи |
 | `frontend/src/features/references/ReferencePhotoUploader.vue` | Добавление фотографий в выбранную конструкцию |
 | `frontend/src/features/processing/` | Очередь MegaLoc, обработка, детализация |
 | `frontend/src/features/results/` | Результаты, ZIP, сохранение/retention |
@@ -122,7 +122,7 @@
 | `frontend/src/styles/` | CSS tokens, единственный общий UI-слой; адаптивные стили списка и свёрнутого меню |
 | `frontend/src/utils/{upload,format}.ts` | Idempotent resume, блоки 16 МиБ, безопасная проверка файла, форматы |
 | `frontend/src/utils/uploadRetry.ts` | Отменяемые повторные запросы/backoff при переключении VPN или потере сети |
-| `frontend/src/utils/referenceSelection.ts` | Клиентская проверка имени папки, учёт всех выбранных файлов |
+| `frontend/src/utils/referenceSelection.ts` | Клиентская проверка имени папки, полный учёт фото/ошибок/явно пропущенных системных файлов ОС |
 | `frontend/src/utils/referenceDuplicates.ts` | SHA-256 сверка с готовыми образцами перед сетевой загрузкой |
 | `frontend/src/utils/uploadQueue.ts` | Ограничение и отчёт ошибок параллельных передач |
 | `frontend/src/stores/uploadSettings.ts` | Настройка числа одновременных загрузок |
