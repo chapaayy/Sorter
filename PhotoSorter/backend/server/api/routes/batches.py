@@ -24,6 +24,10 @@ def list_batches(limit:int=100,offset:int=0):
     if not 1<=limit<=200 or offset<0:raise HTTPException(422,"Неверная пагинация")
     return batches.list_all(limit,offset)
 
+@router.get("/{batch_id}/pending")
+def pending(batch_id:str):
+    return batches.pending_uploads(batch_id)
+
 @router.get("/{batch_id}")
 def detail(batch_id:str):
     return batches.get(batch_id)
