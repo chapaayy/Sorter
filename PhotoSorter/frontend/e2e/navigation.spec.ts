@@ -502,8 +502,11 @@ test('staged reference upload remains available during active FO and uses manife
         offset:0,size:source.length,sha256:registered.sha256})
     }
     if(method==='PATCH'&&path.includes('/files/')){
-      return respond(route,{offset:Number(route.request().headers()['upload-offset']||0)+
-        (route.request().postDataBuffer()?.length||0)})
+      // WebKit Playwright may omit Blob bytes from postDataBuffer() even when
+      // the browser sends the request. Emulate the server-verified offset.
+      expect(route.request().headers()['upload-offset']).toBe('0')
+      expect(route.request().headers()['content-type']).toContain('application/octet-stream')
+      return respond(route,{offset:registered.size})
     }
     if(method==='POST'&&path.endsWith('/finish')){
       finished=true
