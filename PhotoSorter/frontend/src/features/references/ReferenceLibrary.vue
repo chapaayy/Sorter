@@ -14,9 +14,11 @@ import GroupPicker from '../../components/split/GroupPicker.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
+import type {CreatedConstruction} from '../../api/references'
+import CreateConstructionDialog from './CreateConstructionDialog.vue'
 const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),addressDraft=ref(''),
   error=ref(''),busy=ref(false),viewer=ref<number|null>(null),
-  deletePhoto=ref<string|null>(null),deleteSam=ref(false)
+  deletePhoto=ref<string|null>(null),deleteSam=ref(false),createOpen=ref(false)
 
 const notice=useNoticeStore(),uploader=useUploadCenterStore()
 const groups=computed(()=>list.value.map(s=>({id:s.sam,label:s.display_name||s.sam,count:s.photos})))
@@ -55,8 +57,18 @@ async function saveAddress(){
     notice.add('Адрес изменён. Номер конструкции и её образцы не затронуты.','ok')
   }catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
-function openUpload(mode:'library'|'single'){
+function openUpload(mode:'single'){
   uploader.launch(mode,selected.value,selectedEntry.value?.display_name||selected.value)
+}
+async function constructionCreated(entry:CreatedConstruction){
+  await refresh()
+  selected.value=entry.sam
+  createOpen.value=false
+  notice.add('Конструкция создана. Теперь можно добавить образцы.','ok')
+}
+async function libraryImported(){
+  createOpen.value=false
+  await refresh()
 }
 async function removeSam(){
   busy.value=true
@@ -67,7 +79,7 @@ async function removeSam(){
 <template>
 <div class="reference-library-view">
 <PageHeader eyebrow="БИБЛИОТЕКА КОНСТРУКЦИЙ" title="Образцы" subtitle="Одна постоянная библиотека для всех фотоотчётов.">
-  <template #actions><UiButton kind="primary" @click="openUpload('library')">+ Загрузить образцы</UiButton></template>
+  <template #actions><UiButton kind="primary" @click="createOpen=true">+ Создать конструкцию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
 <div class="row wrap between" style="margin-bottom:17px">
@@ -94,8 +106,9 @@ async function removeSam(){
   </section>
 </div>
 <EmptyState v-else title="Библиотека Образцов пуста" detail="Выберите библиотеку с папками вида SAM 0004 — Гагарина 64. Перед отправкой будет полная проверка.">
-  <UiButton kind="primary" @click="openUpload('library')">Загрузить библиотеку</UiButton>
+  <UiButton kind="primary" @click="createOpen=true">Создать конструкцию или импортировать папку</UiButton>
 </EmptyState>
+<CreateConstructionDialog v-if="createOpen" @close="createOpen=false" @created="constructionCreated" @imported="libraryImported"/>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
 <ConfirmDialog v-if="deletePhoto" title="Удалить Образец?" message="Удаление создаст новую опубликованную версию после завершения очереди. Старые результаты ФО сохранятся." danger confirm-label="Удалить Образец" :busy="busy" @cancel="deletePhoto=null" @confirm="dropOne"/>
 <ConfirmDialog v-if="deleteSam" title="Безвозвратно удалить конструкцию?" :message="'Все эталонные фото '+selected+' будут удалены из общей библиотеки. Это не удаляет партии ФО.'" :required-text="selected" danger confirm-label="Удалить SAM" :busy="busy" @cancel="deleteSam=false" @confirm="removeSam"/>
