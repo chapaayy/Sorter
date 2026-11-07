@@ -76,7 +76,6 @@ async function removeSam(){
 <div v-if="list.length" class="split">
   <GroupPicker v-model="selected" :items="groups" placeholder="Поиск номера или адреса…"/>
   <section class="panel split-main">
-    <div class="reference-library-gallery-scroll">
     <div class="panel-header reference-detail-header"><div><h2>{{selectedEntry?.display_name||selected}}</h2>
       <span class="meta">{{selectedEntry?.photos||0}} образцов</span></div>
       <div class="row wrap">
@@ -86,6 +85,7 @@ async function removeSam(){
         <UiButton kind="danger" small  @click="deleteSam=true">Удалить конструкцию</UiButton>
       </div>
     </div>
+    <div class="reference-library-gallery-scroll">
     <div v-if="galleryError" class="alert error">{{galleryError}}</div>
     <VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_status:p.thumbnail_status,thumbnail_url:p.thumbnail_url,original_url:p.original_url}))" :can-delete="true" @open="i=>viewer=i" @remove="id=>deletePhoto=id"/>
     <EmptyState v-else-if="!loading" title="В этой SAM пока нет фотографий" detail="Добавьте эталонные фото для сопоставления."/>

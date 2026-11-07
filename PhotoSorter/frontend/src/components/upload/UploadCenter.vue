@@ -53,9 +53,9 @@ function finishedRefs(){upload.finish()}
         <ReferenceUpdateNotice v-if="upload.mode==='fo'&&library?.notice"
           :status="library" @ack="library=$event"/>
         <div v-if="noticeError&&upload.mode==='fo'" class="alert warning">{{noticeError}}</div>
-        <UploadPanel v-if="upload.mode==='fo'" @finished="finishedFo"
+        <UploadPanel v-if="upload.mode==='fo'" :key="upload.session" @finished="finishedFo"
           @state="onState"/>
-        <ReferenceUploader v-else :selected-sam="upload.sam" :selected-label="upload.samLabel"
+        <ReferenceUploader v-else :key="upload.session" :selected-sam="upload.sam" :selected-label="upload.samLabel"
           :initial-mode="upload.mode"
           @finished="finishedRefs"
           @state="onState"/>

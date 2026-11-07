@@ -10,7 +10,11 @@ const emit=defineEmits<{
   (e:'finished'):void
   (e:'state',busy:boolean,percent:number,phase:string):void
 }>()
-const mode=ref<'library'|'single'>(props.initialMode)
+const mode=ref<'library'|'single'>(props.initialMode),running=ref(false)
+function onState(busy:boolean,percent:number,phase:string){
+  running.value=busy
+  emit('state',busy,percent,phase)
+}
 watch(()=>props.initialMode,value=>{mode.value=value})
 </script>
 
@@ -26,13 +30,13 @@ watch(()=>props.initialMode,value=>{mode.value=value})
   </div>
   <div class="segment" role="tablist" aria-label="Способ загрузки образцов">
     <button role="tab" :aria-selected="mode==='library'" :class="{active:mode==='library'}"
-      @click="mode='library'">Библиотека папкой</button>
+       :disabled="running" @click="mode='library'">Библиотека папкой</button>
     <button role="tab" :aria-selected="mode==='single'" :class="{active:mode==='single'}"
-      @click="mode='single'">Фото в конструкцию</button>
+       :disabled="running" @click="mode='single'">Фото в конструкцию</button>
   </div>
   <ReferenceDirectoryImporter v-if="mode==='library'" @finished="emit('finished')"
-    @state="(busy,percent,phase)=>emit('state',busy,percent,phase)"/>
+    @state="onState"/>
   <ReferencePhotoUploader v-else :selected-sam="selectedSam"
-     :label="selectedLabel||selectedSam" @finished="emit('finished')" @state="(busy,percent,phase)=>emit('state',busy,percent,phase)"/>
+     :label="selectedLabel||selectedSam" @finished="emit('finished')" @state="onState"/>
 </section>
 </template>
