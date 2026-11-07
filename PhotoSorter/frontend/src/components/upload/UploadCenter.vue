@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref,watch} from 'vue'
+import {ref,watch,nextTick,onMounted,onUnmounted} from 'vue'
 import {useRouter} from 'vue-router'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
 import {libraryNoticesApi} from '../../api/libraryNotices'
@@ -10,6 +10,7 @@ import ReferenceUpdateNotice from '../../features/fo/ReferenceUpdateNotice.vue'
 
 const upload=useUploadCenterStore(),router=useRouter()
 const library=ref<LibraryStatus|null>(null),noticeError=ref('')
+const closeButton=ref<HTMLButtonElement|null>(null)
 watch(()=>[upload.visible,upload.mode] as const,async([visible,mode])=>{
   if(!visible||mode!=='fo')return
   try{
@@ -21,6 +22,12 @@ function onState(running:boolean,percent:number,phase:string){
   upload.report(running,percent,phase)
 }
 function key(event:KeyboardEvent){if(event.key==='Escape'&&upload.visible)upload.close()}
+onMounted(()=>document.addEventListener('keydown',key))
+onUnmounted(()=>document.removeEventListener('keydown',key))
+watch(()=>upload.visible,async shown=>{
+  if(shown)await nextTick()
+  closeButton.value?.focus()
+})
 function finishedFo(batchId:string){
   upload.finish()
   void router.push('/fo/'+batchId)
@@ -37,7 +44,7 @@ function finishedRefs(){upload.finish()}
   </button>
   <Teleport to="body">
     <div v-if="upload.mounted" v-show="upload.visible" class="modal-overlay upload-overlay"
-      @click.self="upload.close" @keydown="key">
+      @click.self="upload.close">
       <section class="modal upload-modal" role="dialog" aria-modal="true"
         aria-labelledby="upload-modal-heading">
         <div class="row between upload-modal-header">
@@ -47,7 +54,7 @@ function finishedRefs(){upload.finish()}
             </h2>
             <p class="meta" style="margin:0">Передача с возможностью продолжить после обрыва</p>
           </div>
-          <button type="button" class="btn ghost icon" aria-label="Свернуть загрузку"
+          <button ref="closeButton" type="button" class="btn ghost icon" aria-label="Свернуть загрузку"
             @click="upload.close">✕</button>
         </div>
         <ReferenceUpdateNotice v-if="upload.mode==='fo'&&library?.notice"

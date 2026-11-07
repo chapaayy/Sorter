@@ -217,23 +217,6 @@
 .fo-history-row{border-top:1px solid var(--border-subtle);padding:13px 0;display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap}
 .fo-history-main{display:grid;gap:5px;min-width:0}
 .fo-history-main .meta{overflow-wrap:anywhere}
-/* MegaLoc control center: dense status blocks without a second launch form. */
-.processing-overview-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-.processing-overview-cell{display:flex;flex-direction:column;align-items:flex-start;gap:8px;background:var(--panel-alt);border:1px solid var(--border-subtle);border-radius:11px;padding:15px;min-width:0}
-.processing-overview-cell strong{font-size:15px;overflow-wrap:anywhere}
-.processing-overview-cell .meta{line-height:1.5;overflow-wrap:anywhere}
-.processing-overview-cell .btn{margin-top:auto}
-.processing-idle{padding:23px}
-.processing-idle p{margin:8px 0 0}
-.processing-current-link{font-weight:650;font-size:15px;overflow-wrap:anywhere}
-.processing-queue-position{display:grid;place-items:center;width:36px;height:36px;border-radius:9px;background:var(--panel-alt);font-weight:650;font-size:13px;color:var(--muted)}
-@media(max-width:1200px){
- .processing-overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
-@media(max-width:700px){
- .processing-overview-grid{grid-template-columns:minmax(0,1fr)}
-}
-
 /* Stage 4 shared work-queue and isolated reference-import presentation */
 .reference-import-entry{padding:12px 0;border-top:1px solid var(--border-subtle);min-width:0}
 .reference-import-entry .progress-track{max-width:100%}

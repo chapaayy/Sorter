@@ -47,7 +47,7 @@
 
 Для независимого малонагруженного мониторинга UI запрашивает `GET /runs?scope=active&limit=25` и `GET /system/status` раз в 4 секунды. `GET /runs?scope=history&limit=30&offset=N` — постраничная история, обновляется реже. Модель и серверные настройки читаются через существующие `GET /models` и `GET /processing-settings`, изменения в настройках — через прежний `PATCH /processing-settings`. Статус Worker только из `system/status.services.megaloc`; отсутствие heartbeat не приравнивается к успешной обработке. `POST /runs/{id}/stop` требует UI-подтверждения, для `queued` останавливает до начала, для `running` запрашивает остановку.
 
-Из `/processing` удалена UI-форма нового запуска. `POST /runs` и повторная сортировка по-прежнему поддерживаются backend, кнопки запуска находятся в `/fo`. Все результаты и история остаются доступны. Реальные сетевые/ВПС сценарии — `docs/STAGE4_ACCEPTANCE.md`.
+Раздел `/processing` удалён: запуск из `/fo`, подробности в `/queue/runs/:runId`, история из вкладки «Очередь». `POST /runs` и повторная сортировка по-прежнему поддерживаются backend, кнопки запуска находятся в `/fo`. Все результаты и история остаются доступны. Реальные сетевые/ВПС сценарии — `docs/STAGE4_ACCEPTANCE.md`.
 
 ## Этап 3 — статусы MegaLoc внутри ФО
 
@@ -112,7 +112,7 @@
 | DELETE | `/api/references/sam/{sam}` | удалить всю SAM и принадлежащие эталонные фото |
 | GET | `/api/logs/{run_id}/page?tail_mode=true` | последние ограниченные события плюс курсор от конца |
 | POST | `/api/system/cache/cleanup` | только cache WebP без checksum owner и устаревшие временные файлы |
-| GET | `/`, `/fo/:id`, `/references`, `/processing`, `/results`, `/logs`, `/settings` и другие SPA пути | Единственный Vue bundle, history fallback, только read-only HTML |
+| GET | `/`, `/fo/:id`, `/references`, `/queue`, `/queue/runs/:runId`, `/results`, `/logs`, `/settings` и другие SPA пути | Единственный Vue bundle, history fallback, только read-only HTML |
 | GET | `/assets/*` | Только собранные Vite assets внутри `frontend/dist/assets`, без path traversal |
 
 **Сохранённый API:** `/api/auth/login`, `/api/auth/logout`, streaming ZIP, batch CRUD, очереди и API этапов 1–4. API защищён cookie/Origin middleware; root Vue не ослабляет авторизацию. Если Vue dist отсутствует, `/` и SPA deep links возвращают 503, а `/api/health` продолжает работать. Старые `/v3/` и `/static/*` возвращают 404.
@@ -145,3 +145,14 @@
 ## Единый beta pipeline
 
 Очередь ФО и подготовок образцов — только `work_queue.seq`; загрузка образцов всегда доступна через `/api/reference-imports` и сохраняет файлы в `reference_staging`. После полной подготовки публикуется неизменяемая версия библиотеки. Обе версии планировщика и условные флаги переключения удалены. Приёмка — тесты на пустой базе, докачку, FIFO, публикацию и браузеры Chromium/WebKit. Текущая архитектура: [REFERENCE_PIPELINE](REFERENCE_PIPELINE.md).
+
+## Ресурсы новой версии
+
+| Method | URL | Функция |
+|---|---|---|
+| GET | `/processing-settings/cpu` | Предпочтительные вычислительные потоки MegaLoc и реальный максимум Worker |
+| PATCH | `/processing-settings/cpu` | Обновить число потоков для **следующего** задания |
+| GET | `/download/{run_id}?sam=...` | Готовый ZIP, `Content-Length`, `Accept-Ranges`, HTTP 206 |
+| GET | `/work-queue?scope=history&limit=100` | История обработки ФО и образцов для отдельного режима в «Очереди» |
+
+Не выдавать Docker socket в веб-приложение: лимиты cgroup остаются параметрами Compose.

@@ -5,7 +5,7 @@
 ## Одна актуальная версия
 
 - Сайт: `https://<DOMAIN>/` — **Vue 3 + TypeScript**, без `/v3/` и параллельного старого интерфейса.
-- Страницы: `/fo`, `/references`, `/processing`, `/queue`, `/results`, `/logs`, `/settings`. Вход: `/login`.
+- Страницы: `/fo`, `/references`, `/queue`, `/results`, `/logs`, `/settings`. Подробности запуска: `/queue/runs/:runId`. Вход: `/login`.
 - API: `/api/*` на том же домене. Данные и авторизация остаются на сервере.
 - Код развивается в **`main`**; отдельные исторические ветки не являются версиями для установки.
 - `PhotoSorter/frontend/static/` удалён. Единственный frontend — `PhotoSorter/frontend/src/`; результат сборки находится в игнорируемом `dist/`.
