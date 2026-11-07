@@ -84,8 +84,8 @@ export function estimateQueue(active:readonly QueueTask[],history:readonly Queue
       cursor=cursor!==null&&remaining!==null?cursor+remaining:null
     }else if(task.state==='queued'){
       const own=durationFromHistory(task,rates)
-      const start=cursor
-      const finish=start!==null&&own!==null?start+own:null
+      const start:number|null=cursor
+      const finish:number|null=start!==null&&own!==null?start+own:null
       result.set(task.seq,{startInSeconds:start,finishInSeconds:finish,
         remainingSeconds:null,durationSeconds:own})
       cursor=finish
