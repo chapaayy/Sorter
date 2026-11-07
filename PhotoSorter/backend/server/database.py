@@ -69,21 +69,13 @@ def connect():
 
 def initialize():
     with connect() as db:
-        # Keep the same lock order as reference finalization (133 then 134).
-        # This also prevents queued jobs from changing during FIFO backfill.
         db.execute('SELECT pg_advisory_xact_lock(723409133)')
-        db.execute('SELECT pg_advisory_xact_lock(723409134)')
-        # psycopg 3 multi statements with params=None, no prepared server statement.
         for statement in SCHEMA.split(';'):
-            if statement.strip(): db.execute(statement)
+            if statement.strip():
+                db.execute(statement)
         migrate(db)
-        # Additive metadata only; legacy file scans and workers remain unchanged.
-        from .services.reference_versions import ensure_baseline
-        ensure_baseline(db)
-        # On first upgrade V1 may be created *after* SQL migrations. Seed the
-        # installation cursor only once baseline publication is available.
-        from .services.library_notices import seed_existing_fo_cursor
-        seed_existing_fo_cursor(db)
+        from .services.reference_publication import ensure_initial_version
+        ensure_initial_version(db)
 
 
 def wait_and_initialize(timeout=90):

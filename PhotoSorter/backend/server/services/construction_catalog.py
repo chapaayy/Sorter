@@ -1,25 +1,12 @@
-"""Server-authoritative construction names and additive reference registry.
-
-Existing SAM-xxxx references remain untouched for historical result compatibility.
-New mass imports always use strict CITY NUMBER — ADDRESS names.
-"""
+"""Validate construction keys and manage published construction addresses."""
 from __future__ import annotations
 
 from fastapi import HTTPException
 from app.photos.construction import CITIES, parse_folder_name
-from app.photos.labels import check_label
 from ..database import connect
 import json
 
 _EDIT_LOCK = 723409133
-
-
-def _active_jobs(db):
-    return (db.execute(
-        "SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1"
-    ).fetchone() is not None or
-        db.execute("""SELECT 1 FROM work_queue WHERE kind='reference_preparation'
-          AND state IN ('queued','running','failed','interrupted','blocked') LIMIT 1""").fetchone() is not None)
 
 
 def preview(folders: list[str]) -> dict:
@@ -60,49 +47,6 @@ def preview(folders: list[str]) -> dict:
     return {"entries":entries,"errors":errors,"cities":CITIES}
 
 
-def ensure_upload(db, sam: str, address: str | None) -> str:
-    """Called inside locked upload-creation transaction, never modifies an existing address."""
-    if address is not None:
-        item = parse_folder_name(f"{sam} — {address}")
-        if item.key != sam:
-            raise ValueError("Неверный идентификатор конструкции")
-        db.execute("""
-            INSERT INTO reference_constructions(sam,city_code,construction_number,address)
-            VALUES (%s,%s,%s,%s) ON CONFLICT(sam) DO NOTHING
-        """, (sam,item.city_code,item.number,item.address))
-        existing = db.execute(
-            "SELECT address FROM reference_constructions WHERE sam=%s FOR UPDATE",
-            (sam,)
-        ).fetchone()
-        if existing["address"] != address:
-            raise HTTPException(409,
-                f"У конструкции {sam} другой адрес: {existing['address']}")
-        return sam
-
-    # Adding individual photos requires an existing construction; never infer
-    # the address from the filename and never create anonymous constructions.
-    try:
-        parse_key(sam)
-    except ValueError:
-        try:
-            old = check_label(sam)
-        except ValueError as exc:
-            raise HTTPException(422,str(exc)) from exc
-        if old != sam:
-            raise HTTPException(422,"Укажите существующий идентификатор конструкции")
-        row = db.execute(
-            "SELECT 1 FROM uploads WHERE kind='reference' AND finalized AND sam=%s LIMIT 1",
-            (sam,)
-        ).fetchone()
-        if not row:
-            raise HTTPException(422,"Сначала импортируйте папку конструкции с адресом")
-        return sam
-    row = db.execute("SELECT 1 FROM reference_constructions WHERE sam=%s",(sam,)).fetchone()
-    if not row:
-        raise HTTPException(422,"Сначала импортируйте папку конструкции с адресом")
-    return sam
-
-
 def change_address(sam: str, address: str) -> dict:
     try:
         item = parse_folder_name(f"{sam} — {address}")
@@ -110,13 +54,17 @@ def change_address(sam: str, address: str) -> dict:
         raise HTTPException(422, str(exc)) from exc
     with connect() as db:
         db.execute("SELECT pg_advisory_xact_lock(%s)",(_EDIT_LOCK,))
-        if _active_jobs(db):
-            raise HTTPException(409,"Изменение Образцов недоступно во время сортировки")
         updated = db.execute("""
             UPDATE reference_constructions SET address=%s,updated_at=now()
             WHERE sam=%s RETURNING sam,address
         """,(item.address,item.key)).fetchone()
         if not updated:
             raise HTTPException(404,"Конструкция не найдена")
+        current=db.execute("""SELECT current_version_id FROM reference_library_state
+            WHERE id=1""").fetchone()
+        if current and current["current_version_id"]:
+            db.execute("""INSERT INTO reference_library_events(version_id,event_kind,details)
+                VALUES (%s,'address_changed',%s::jsonb)""",
+                (current["current_version_id"],json.dumps({"sam":updated["sam"]})))
     return {"sam":updated["sam"],"address":updated["address"],
             "name":f"{updated['sam']} — {updated['address']}"}

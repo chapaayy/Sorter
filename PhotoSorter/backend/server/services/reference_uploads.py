@@ -18,12 +18,12 @@ def _claim_digest(db,sam,digest):
     db.execute("SELECT pg_advisory_xact_lock(%s,%s)",(723409141,lock))
 
 def _verified_duplicate(db,session_id,entry,digest,upload_id):
-    old=repository.matching_legacy(db,entry["sam"],digest,entry["declared_size"])
+    published=repository.matching_published(db,entry["sam"],digest,entry["declared_size"])
     staged=repository.matching_staged(db,session_id,entry["sam"],digest,
                                       entry["declared_size"],upload_id)
-    for match in old:
+    for match in published:
         try:
-            storage.verify(match["target_path"],storage.LEGACY_ROOT,
+            storage.verify(match["target_path"],storage.ROOT,
                            entry["declared_size"],digest=digest)
             return True
         except (OSError,ValueError,TypeError):

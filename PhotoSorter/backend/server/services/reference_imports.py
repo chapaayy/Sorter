@@ -1,8 +1,4 @@
-"""Durable reference import manifests, completion and idempotent FIFO enqueue.
-
-No CPU model is loaded here. These routes remain behind a disabled-by-default
-gate until the shared scheduler and immutable reference snapshots are enabled.
-"""
+"""Durable manifests for the one supported reference-upload pipeline."""
 from __future__ import annotations
 
 import hashlib
@@ -13,7 +9,6 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from app.photos.construction import parse_folder_name,parse_key
-from app.photos.labels import check_label
 from ..database import connect
 from ..db.repositories import reference_imports as repository
 from ..storage import reference_objects as storage
@@ -29,7 +24,7 @@ def _uid(value):
         raise HTTPException(422,"Некорректный идентификатор импорта") from exc
 
 def _manifest(files):
-    from ..uploads import safe_name,MAX_FILE_BYTES
+    from ..services.upload_validation import safe_name,MAX_FILE_BYTES
     if not files or len(files)>MAX_FILES:
         raise HTTPException(422,"Выберите от 1 до 20000 фотографий")
     unique_ids=set()
@@ -56,18 +51,11 @@ def _manifest(files):
         try:
             parse_key(sam)
             if address is not None:
-                construction=parse_folder_name(sam+" — "+address)
-                if construction.key!=sam:raise ValueError("Неверный номер конструкции")
+                folder=parse_folder_name(sam+" — "+address)
+                if folder.key!=sam:
+                    raise ValueError("Номер конструкции не совпадает")
         except ValueError as exc:
-            # Only previously registered legacy keys may be extended;
-            # the server checks actual existence below.
-            try:
-                if check_label(sam)!=sam or not re.fullmatch(r"SAM-\d{4}(?:-[A-Za-zА-Яа-я0-9]{1,8}){0,2}",sam):
-                    raise ValueError("Недопустимая старая конструкция")
-                if address is not None:
-                    raise ValueError("Нельзя менять адрес старой конструкции")
-            except ValueError as label_error:
-                raise HTTPException(422,"Неверный SAM или адрес образца") from label_error
+            raise HTTPException(422,"Недопустимый номер или адрес конструкции") from exc
         if sam in addresses and addresses[sam]!=address:
             # For a complete manifest the address should be identical on every row.
             raise HTTPException(422,"Одна конструкция с разными адресами")
@@ -83,7 +71,7 @@ def _check_catalog(db, rows):
     if db.execute("""
         SELECT 1 FROM uploads WHERE id=ANY(%s) LIMIT 1
     """,([row[0] for row in rows],)).fetchone():
-        raise HTTPException(409,"UUID образца уже занят старой загрузкой")
+        raise HTTPException(409,"UUID образца уже занят")
     sams=sorted({row[1] for row in rows})
     catalog={r["sam"]:r["address"] for r in db.execute("""
         SELECT sam,address FROM reference_constructions WHERE sam=ANY(%s)
@@ -93,20 +81,7 @@ def _check_catalog(db, rows):
             if address is not None and catalog[sam]!=address:
                 raise HTTPException(409,f"У конструкции {sam} другой сохранённый адрес")
         elif address is None:
-            # Only legacy SAM-nnnn references may be extended without address.
-            old=db.execute("""
-                SELECT 1 FROM uploads WHERE kind='reference'
-                 AND finalized AND sam=%s LIMIT 1
-            """,(sam,)).fetchone()
-            if not old:
-                raise HTTPException(422,f"Новый номер {sam} требует адрес конструкции")
-        else:
-            # New key + address was checked in _manifest; do not insert into
-            # reference_constructions here (publication is in stage 3).
-            try:
-                parse_key(sam)
-            except ValueError:
-                raise HTTPException(422,"Старый формат нельзя использовать для новой конструкции")
+            raise HTTPException(422,f"Новая конструкция {sam} требует адреса")
 
 def _signature(rows):
     payload=[[str(uid),sam,address,path,name,size,sha] for

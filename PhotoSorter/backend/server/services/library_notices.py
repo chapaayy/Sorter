@@ -5,7 +5,6 @@ localStorage. Display is read-only; only explicit user acknowledgement writes.
 """
 from __future__ import annotations
 
-import os
 from fastapi import HTTPException
 from ..database import connect
 
@@ -37,37 +36,6 @@ def _changed_since(db,version_id):
         WHERE e.version_id > %s
           AND e.event_kind=ANY(%s)
     """,(version_id, list(RECOGNITION_EVENTS))).fetchone()
-
-def seed_existing_fo_cursor(db):
-    """On upgrade, seed the global acknowledgement after a verified baseline.
-
-    The SQL migration also attempts this for installs with existing versions.
-    This second, ON CONFLICT DO NOTHING path covers direct upgrades where
-    ensure_baseline publishes the first V1 *after* migrations run.
-    """
-    current=_latest(db)
-    if not current or current["id"] is None:
-        return
-    db.execute("""
-        WITH old_completed AS (
-            SELECT MAX(completed_at) AS last_fo FROM (
-                SELECT b.upload_manifest_completed_at AS completed_at
-                FROM batches b
-                WHERE b.upload_manifest_state='complete'
-                  AND b.upload_manifest_completed_at IS NOT NULL
-                UNION ALL
-                SELECT MAX(u.updated_at) AS completed_at
-                FROM jobs j JOIN uploads u ON u.batch_id=j.batch_id
-                  AND u.kind='fo' AND u.finalized
-            ) existing
-        )
-        INSERT INTO library_notice_cursors(
-            scope_key,last_fo_upload_version_id,last_fo_uploaded_at,
-            acknowledged_version_id,acknowledged_at)
-        SELECT %s,%s,old_completed.last_fo,%s,now()
-        FROM old_completed WHERE old_completed.last_fo IS NOT NULL
-        ON CONFLICT(scope_key) DO NOTHING
-    """,(INSTALLATION,current["id"],current["id"]))
 
 def record_completed_fo(db,batch_id):
     """Call in the same transaction as a verified FO-manifest completion.
@@ -117,11 +85,7 @@ def status():
             SELECT count(*) AS n FROM reference_version_members
             WHERE version_id=%s
         """,(current["id"],)).fetchone()["n"] if current and current["id"] else 0
-    unified=os.environ.get("PHOTOSORTER_UNIFIED_QUEUE")=="1"
-    staging=os.environ.get("REFERENCE_IMPORT_STAGING_ENABLED")=="1" and unified
     return {
-        "unified_queue_enabled":unified,
-        "staged_imports_enabled":staging,
         "current_version_id":current["id"] if current else None,
         "current_version":current["version_number"] if current else None,
         "published_at":current["published_at"] if current else None,
