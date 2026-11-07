@@ -12,6 +12,6 @@ def current(db):
 
 def members(db,version_id):
     return db.execute("""
-        SELECT reference_id,sam,filename,source_hash,target_path,declared_size
+        SELECT reference_id,sam,filename,source_hash,target_path,declared_size,source_kind
         FROM reference_version_members WHERE version_id=%s ORDER BY sam,reference_id
     """,(version_id,)).fetchall()
