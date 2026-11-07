@@ -58,6 +58,7 @@ const stage=computed(()=>{
     <span v-if="run?.status==='queued'&&run.queue_position!=null">№{{run.queue_position}} в очереди</span>
     <span v-if="run?.models?.megaloc?.groups!=null">{{run.models.megaloc.groups}} групп</span>
     <span v-else>{{date(batch.created_at)}}</span>
+    <span v-if="run?.models?.megaloc?.uncertain!=null">Неопределено: {{run.models.megaloc.uncertain}}</span>
   </template>
   <template #actions>
     <button v-if="state.canStop&&run" type="button" class="task-card-action"

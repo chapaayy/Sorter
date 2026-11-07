@@ -104,7 +104,7 @@ async function cleanup(){
           @update:model-value="retentionPrefs.unit=$event as RetentionPreference['unit']"/>
       </div>
     </div>
-    <p class="meta">Отсчёт начинается после завершения ZIP. Новые настройки применяются к следующим обработкам; сроки существующих партий сохраняются.</p>
+    <p class="meta">Отсчёт начинается после завершения ZIP. Новый срок действует для следующих обработок; существующие сроки сохраняются. При выключении автоудаление приостанавливается для всех партий. После повторного включения просроченные партии получат новый срок.</p>
     <h3>Назначенные сроки удаления</h3>
     <div v-for="batch in due" :key="batch.batch_id" class="row between wrap"
       style="border-bottom:1px solid var(--border-subtle);padding:10px 0">
