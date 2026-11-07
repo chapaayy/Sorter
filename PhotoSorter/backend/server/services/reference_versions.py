@@ -99,13 +99,14 @@ def ensure_baseline(db, *, reference_root=None, model_signature=None):
         VALUES (1,%s,%s) RETURNING id
     """,(digest,model_signature)).fetchone()["id"]
     if verified:
-        db.executemany("""
-            INSERT INTO reference_version_members
-                (version_id,reference_id,sam,filename,source_hash,target_path,declared_size)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
-        """,[(version,item["reference_id"],item["sam"],item["filename"],
-             item["source_hash"],item["target_path"],item["declared_size"])
-            for item in verified])
+        with db.cursor() as cursor:
+            cursor.executemany("""
+                INSERT INTO reference_version_members
+                    (version_id,reference_id,sam,filename,source_hash,target_path,declared_size)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
+            """,[(version,item["reference_id"],item["sam"],item["filename"],
+                 item["source_hash"],item["target_path"],item["declared_size"])
+                for item in verified])
     db.execute("""
         UPDATE reference_library_state
         SET current_version_id=%s,baseline_state='ready',

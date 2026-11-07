@@ -48,10 +48,13 @@ def add_reference(db,root,*,valid=True):
         digest if valid else "0"*64,str(target)))
     return upload_id,target,digest
 
-def add_run(db,created_at,status="queued"):
+def add_run(db,created_at,status="queued",*,migrated=False):
     batch = uuid.uuid4()
     run_id="20261107T180000-"+uuid.uuid4().hex[:12]
-    db.execute("INSERT INTO batches(id) VALUES (%s)",(batch,))
+    if migrated:
+        db.execute("INSERT INTO batches(id,display_name) VALUES (%s,%s)",(batch,"Test FO"))
+    else:
+        db.execute("INSERT INTO batches(id) VALUES (%s)",(batch,))
     db.execute("""INSERT INTO jobs(id,batch_id,status,snapshot,created_at)
                   VALUES (%s,%s,%s,%s,%s)""",
                (run_id,batch,status,Jsonb({"id":run_id,"status":status}),created_at))
@@ -68,7 +71,7 @@ def test_migration_backfills_existing_fo_fifo_without_changing_jobs(isolated_db)
     assert db.execute("SELECT status FROM jobs WHERE id=%s",(running,)).fetchone()["status"]=="running"
     assert db.execute("SELECT count(*) AS n FROM jobs").fetchone()["n"]==3
     assert not work_queue.backfill_legacy_queued(db)
-    c,_=add_run(db,"2026-11-02 09:00:00+00")
+    c,_=add_run(db,"2026-11-02 09:00:00+00",migrated=True)
     assert len(work_queue.backfill_legacy_queued(db))==1
     assert [row["fo_run_id"] for row in work_queue.entries(db)]==[b,a,c]
     assert not work_queue.backfill_legacy_queued(db)
