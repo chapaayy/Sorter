@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue'
+import {usePolling} from '../../composables/usePolling'
+import {useDeletionStore} from '../../stores/deletion'
 import {runApi} from '../../api/runs'
 import {batchApi} from '../../api/batches'
 import {resultApi} from '../../api/results'
@@ -11,6 +13,7 @@ import CompactTaskCard from '../../components/ui/CompactTaskCard.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 
+const deletion=useDeletionStore()
 const runs=ref<Run[]>([]),batches=ref<Batch[]>([]),loading=ref(true),error=ref(''),search=ref('')
 const batchById=computed(()=>new Map(batches.value.map(b=>[b.batch_id,b])))
 const title=(id:string)=>batchById.value.get(id)?.display_name||id
@@ -21,7 +24,7 @@ const groups=(run:Run)=>run.models?.megaloc?.groups
 const unresolved=(run:Run)=>run.models?.megaloc?.uncertain
 
 async function load(){
-  loading.value=true
+  if(!runs.value.length)loading.value=true
   try{
     const [r,b]=await Promise.all([runApi.list(200),batchApi.list(200)])
     runs.value=r.runs;batches.value=b.batches;error.value=''
@@ -29,6 +32,9 @@ async function load(){
   finally{loading.value=false}
 }
 onMounted(()=>{void load()})
+usePolling(load,4000)
+const deleting=(batchId:string)=>deletion.pending(batchId)||batchById.value.get(batchId)?.delete_state==='deleting'
+const deletionFailed=(batchId:string)=>batchById.value.get(batchId)?.delete_state==='delete_failed'
 </script>
 <template>
 <PageHeader eyebrow="ГОТОВЫЕ ФОТОГРАФИИ" title="Результаты"
@@ -44,10 +50,10 @@ onMounted(()=>{void load()})
   <CompactTaskCard v-for="(run,index) in finished" :key="run.id"
     :number="index+1" :title="title(run.batch_id)"
     :thumbnail-url="batchById.get(run.batch_id)?.cover_thumbnail_url"
-    :status="runLabels[run.status]||run.status"
-    :tone="run.status==='completed'?'success':'warning'"
+    :status="deleting(run.batch_id)?'Удаляется':deletionFailed(run.batch_id)?'Ошибка удаления':runLabels[run.status]||run.status"
+    :tone="deleting(run.batch_id)?'deleting':deletionFailed(run.batch_id)?'danger':run.status==='completed'?'success':'warning'"
     :progress="run.progress?.overall_percent??(run.status==='completed'?100:null)"
-    :stage="run.status==='completed'?'Готово к скачиванию':'Завершено с ошибками'"
+    :stage="deleting(run.batch_id)?'Удаление файлов и результатов':deletionFailed(run.batch_id)?'Ошибка удаления':run.status==='completed'?'Готово к скачиванию':'Завершено с ошибками'"
     :time-label="runTime(run).label" :time-detail="runTime(run).detail">
     <template #meta>
       <span v-if="photoCount(run)!=null">{{photoCount(run)}} фото</span>

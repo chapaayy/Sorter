@@ -10,13 +10,14 @@ import {workQueueApi} from '../../api/workQueue'
 import {estimateQueue} from '../../utils/queueEstimates'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
 import {useNoticeStore} from '../../stores/notice'
+import {useDeletionStore} from '../../stores/deletion'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import FoBatchCard from './FoBatchCard.vue'
 
-const notice=useNoticeStore(),uploader=useUploadCenterStore()
+const notice=useNoticeStore(),uploader=useUploadCenterStore(),deletion=useDeletionStore()
 const batches=ref<Batch[]>([]),search=ref('')
 const queueTasks=ref<QueueTask[]>([]),queueHistory=ref<QueueTask[]>([])
 const clock=ref(Date.now())
@@ -129,6 +130,7 @@ async function stop(){
 <div v-if="filtered.length" class="stack">
   <FoBatchCard v-for="(batch,index) in filtered" :key="batch.batch_id" :batch="batch"
     :position="index+1" :estimate="runEstimate(batch.latest_run?.id)"
+    :deleting="deletion.pending(batch.batch_id)"
     :busy="activeAction===batch.batch_id||activeAction===batch.latest_run?.id"
     @start="start" @stop="confirmStop" @cancel-auto="cancelAuto"/>
   <div v-if="batches.length<total" class="pagination">

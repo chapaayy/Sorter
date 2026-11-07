@@ -16,7 +16,8 @@ import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import {useNoticeStore} from '../../stores/notice'
-const route=useRoute(),router=useRouter(),id=String(route.params.runId),notice=useNoticeStore()
+import {useDeletionStore} from '../../stores/deletion'
+const route=useRoute(),router=useRouter(),id=String(route.params.runId),notice=useNoticeStore(),deletion=useDeletionStore()
 const run=ref<Run|null>(null),batch=ref<Batch|null>(null),retention=ref<Retention|null>(null)
 const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),referenceNames=ref<Record<string,string>>({}),mode=ref<'sam'|'group'>('sam')
 const selected=ref(''),lastSam=ref(''),lastGroup=ref(''),error=ref(''),busy=ref(false)
@@ -78,8 +79,9 @@ async function extend(){
 async function deleteBatch(){
   if(!batch.value)return
   busy.value=true
+  deletion.mark(batch.value.batch_id)
   try{await batchApi.remove(batch.value.batch_id);deleteWhole.value=false;notice.add('Партия поставлена на полное удаление','ok');await router.push('/results')}
-  catch(e){error.value=errorText(e)}finally{busy.value=false}
+  catch(e){if(batch.value)deletion.clear(batch.value.batch_id);error.value=errorText(e)}finally{busy.value=false}
 }
 </script>
 <template>
@@ -92,7 +94,7 @@ async function deleteBatch(){
   <span>Полный ZIP отсутствует или повреждён. Результаты MegaLoc сохранены.</span>
   <UiButton kind="primary" :loading="archiveRetryBusy" @click="restoreArchive">Восстановить ZIP</UiButton>
 </div>
-<section v-if="batch&&run" class="panel stack" style="margin-bottom:18px">
+<section v-if="batch&&run" class="panel stack" :class="{'deletion-panel':deletion.pending(batch.batch_id)||batch.delete_state==='deleting'}" style="margin-bottom:18px">
   <div class="row between wrap">
     <div><strong>Готовый ZIP</strong>
       <p class="meta" style="margin:4px 0">Архив подготовлен автоматически после сортировки.</p>

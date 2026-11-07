@@ -9,6 +9,7 @@ import {useCursor} from '../../composables/useCursor'
 import {usePolling} from '../../composables/usePolling'
 import {date,bytes,errorText} from '../../utils/format'
 import {useNoticeStore} from '../../stores/notice'
+import {useDeletionStore} from '../../stores/deletion'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
@@ -17,7 +18,7 @@ import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import PendingUploads from './PendingUploads.vue'
 import BatchProcessingStatus from './BatchProcessingStatus.vue'
 import BatchRunHistory from './BatchRunHistory.vue'
-const route=useRoute(),router=useRouter(),notice=useNoticeStore()
+const route=useRoute(),router=useRouter(),notice=useNoticeStore(),deletion=useDeletionStore()
 const id=String(route.params.batchId)
 const batch=ref<Batch|null>(null),count=ref<{total:number;ready:number;failed:number}|null>(null)
 const rename=ref(false),newName=ref(''),busy=ref(false),error=ref('')
@@ -84,8 +85,9 @@ async function cancelAuto(){
 }
 async function removeBatch(){
   busy.value=true
+  deletion.mark(id)
   try{await batchApi.remove(id);deleteWhole.value=false;notice.add('Партия поставлена на безопасное удаление','ok');await router.push('/fo')}
-  catch(e){error.value=errorText(e)}finally{busy.value=false}
+  catch(e){deletion.clear(id);error.value=errorText(e)}finally{busy.value=false}
 }
 </script>
 <template>
@@ -94,7 +96,7 @@ async function removeBatch(){
   <template #actions><UiButton @click="newName=batch?.display_name||'';rename=true">Переименовать</UiButton><UiButton kind="danger" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert">{{error}}</div>
-<section v-if="batch" class="panel stack" style="margin-bottom:19px" aria-label="Обработка MegaLoc для партии">
+<section v-if="batch" class="panel stack" :class="{'deletion-panel':deletion.pending(id)||batch.delete_state==='deleting'}" style="margin-bottom:19px" aria-label="Обработка MegaLoc для партии">
   <div class="row between wrap"><h2 style="margin:0">Обработка MegaLoc</h2><span class="meta">Миниатюры и сортировка — независимые процессы</span></div>
   <BatchProcessingStatus :batch="batch"/>
   <div class="row wrap fo-batch-actions">
