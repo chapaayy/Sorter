@@ -20,22 +20,42 @@ def model_ready(monkeypatch):
 
 
 @pytest.fixture
-def reference(thumbs):
+def reference(thumbs,monkeypatch):
+    """One genuinely published immutable reference; no legacy upload shortcut."""
+    import hashlib
+    from server.storage import reference_objects
+    from server.services import reference_publication
+    from server.db.repositories import reference_versions
+    from app.photos.construction import parse_key
+    staging=thumbs/"reference_staging"
+    monkeypatch.setattr(reference_objects,"ROOT",staging)
     raw=_jpg()
-    file=thumbs/"references"/"SAM-0001"/"reference.jpg"
-    file.parent.mkdir(parents=True,exist_ok=True)
-    file.write_bytes(raw)
     uid=uuid.uuid4()
+    target=staging/str(uuid.uuid4())/"files"/(str(uid)+".jpg")
+    target.parent.mkdir(parents=True)
+    target.write_bytes(raw)
+    sam="SAM "+str(uuid.uuid4().int%10**8).zfill(8)
     with connect() as db:
-        db.execute("""INSERT INTO uploads(id,kind,sam,filename,declared_size,received,
-            finalized,target_path) VALUES (%s,'reference','SAM-0001','reference.jpg',
-            %s,%s,true,%s)""",(uid,len(raw),len(raw),str(file)))
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        before=reference_versions.current(db)
+        prev_members=[dict(x) for x in reference_versions.members(db,before["id"])]
+        city,number=parse_key(sam)
+        db.execute("""INSERT INTO reference_constructions(
+            sam,city_code,construction_number,address) VALUES (%s,%s,%s,'Победы 12')
+        """,(sam,city,number))
+        reference_publication.publish(db,prev_members+[{
+            "reference_id":uid,"sam":sam,"filename":"one.jpg",
+            "source_hash":hashlib.sha256(raw).hexdigest(),
+            "target_path":str(target),"declared_size":len(raw),
+            "source_kind":"staged"}],before["model_signature"] or "test-model")
     try:
         yield uid
     finally:
         with connect() as db:
-            db.execute("DELETE FROM uploads WHERE id=%s",(uid,))
-
+            db.execute("SELECT pg_advisory_xact_lock(723409133)")
+            db.execute("""UPDATE reference_library_state
+                SET current_version_id=%s WHERE id=1""",(before["id"],))
+            db.execute("DELETE FROM reference_constructions WHERE sam=%s",(sam,))
 
 def test_default_setting_off_and_changes_do_not_retroactively_enable(thumbs):
     batch=_batch(thumbs,with_photo=False)

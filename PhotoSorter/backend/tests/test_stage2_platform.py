@@ -145,25 +145,6 @@ def test_keyset_gallery_with_1001_synthetic_records(thumbs):
     cleanup.request(own)
     cleanup.cleanup_one(own)
 
-def test_sequential_megaloc_jobs_and_stops(system):
-    from server.jobs import stop
-    from server.db.repositories import work_queue
-    from .test_unified_queue_stage3 import add_published_reference,add_fo,finish_fo
-    add_published_reference(system)
-    run_ids=[add_fo() for _ in range(3)]
-    with connect() as db:
-        assert [work_queue.position(db,r) for r in run_ids]==[1,2,3]
-        first=work_queue.claim_next(db)
-    assert first["id"]==run_ids[0]
-    with connect() as db:
-        assert work_queue.claim_next(db) is None
-    assert stop(run_ids[2])["status"]=="stopped"
-    finish_fo(run_ids[0])
-    with connect() as db:
-        second=work_queue.claim_next(db)
-    assert second["id"]==run_ids[1]
-    finish_fo(run_ids[1])
-
 def test_export_rows_jsonl_and_paged_results(thumbs,monkeypatch):
     from app.results import repository
     from server.services import result_pages

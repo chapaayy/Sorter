@@ -375,3 +375,19 @@ def test_reference_upload_is_accepted_during_running_fo(system):
     with database.connect() as db:
         next_task=work_queue.claim_next(db)
         assert next_task["kind"]=="reference_preparation"
+
+def test_sequential_fo_claim_and_queued_stop_do_not_reorder_fifo(system):
+    from server.jobs import stop
+    add_published_reference(system)
+    runs=[add_fo() for _ in range(3)]
+    with database.connect() as db:
+        assert [work_queue.position(db,r) for r in runs]==[1,2,3]
+        first=work_queue.claim_next(db)
+        assert first["id"]==runs[0]
+        assert work_queue.claim_next(db) is None
+    assert stop(runs[2])["status"]=="stopped"
+    finish_fo(runs[0])
+    with database.connect() as db:
+        second=work_queue.claim_next(db)
+    assert second["id"]==runs[1]
+    finish_fo(runs[1])
