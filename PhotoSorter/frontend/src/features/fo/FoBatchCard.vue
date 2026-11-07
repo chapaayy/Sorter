@@ -17,8 +17,8 @@ const state=computed(()=>batchProcessing(props.batch))
 const run=computed(()=>state.value.run)
 const timing=computed(()=>runTime(run.value,props.estimate))
 const statusTone=computed(()=>{
-  if(props.deleting||props.batch.delete_state==='deleting')return 'deleting'
   if(props.batch.delete_state==='delete_failed')return 'danger'
+  if(props.deleting||props.batch.delete_state==='deleting')return 'deleting'
   const status=run.value?.status
   if(status==='running')return 'running'
   if(status==='queued')return 'queued'
@@ -36,8 +36,8 @@ const progress=computed(()=>{
     :null
 })
 const stage=computed(()=>{
-  if(props.deleting||props.batch.delete_state==='deleting')return 'Удаление файлов и результатов'
   if(props.batch.delete_state==='delete_failed')return 'Ошибка удаления · проверьте журнал'
+  if(props.deleting||props.batch.delete_state==='deleting')return 'Удаление файлов и результатов'
   if(run.value?.status==='running'){
     const p=run.value.progress
     return p?.stage==='archive'
@@ -53,7 +53,7 @@ const stage=computed(()=>{
 <template>
 <CompactTaskCard :number="position" :title="batch.display_name"
   :aria-label="'Фотоотчёт '+batch.display_name"
-  :thumbnail-url="batch.cover_thumbnail_url" :status="deleting?'Удаляется':state.label"
+  :thumbnail-url="batch.cover_thumbnail_url" :status="batch.delete_state==='delete_failed'?'Ошибка удаления':deleting?'Удаляется':state.label"
   :tone="statusTone" :progress="progress" :stage="stage"
   :time-label="timing.label" :time-detail="timing.detail"
   :active="run?.status==='running'&&!deleting">

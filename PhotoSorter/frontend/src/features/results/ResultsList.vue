@@ -27,13 +27,14 @@ async function load(){
   if(!runs.value.length)loading.value=true
   try{
     const [r,b]=await Promise.all([runApi.list(200),batchApi.list(200)])
+    deletion.reconcile(b.batches)
     runs.value=r.runs;batches.value=b.batches;error.value=''
   }catch(e){error.value=errorText(e)}
   finally{loading.value=false}
 }
 onMounted(()=>{void load()})
 usePolling(load,4000)
-const deleting=(batchId:string)=>deletion.pending(batchId)||batchById.value.get(batchId)?.delete_state==='deleting'
+const deleting=(batchId:string)=>!deletionFailed(batchId)&&(deletion.pending(batchId)||batchById.value.get(batchId)?.delete_state==='deleting')
 const deletionFailed=(batchId:string)=>batchById.value.get(batchId)?.delete_state==='delete_failed'
 </script>
 <template>
@@ -50,10 +51,10 @@ const deletionFailed=(batchId:string)=>batchById.value.get(batchId)?.delete_stat
   <CompactTaskCard v-for="(run,index) in finished" :key="run.id"
     :number="index+1" :title="title(run.batch_id)"
     :thumbnail-url="batchById.get(run.batch_id)?.cover_thumbnail_url"
-    :status="deleting(run.batch_id)?'Удаляется':deletionFailed(run.batch_id)?'Ошибка удаления':runLabels[run.status]||run.status"
-    :tone="deleting(run.batch_id)?'deleting':deletionFailed(run.batch_id)?'danger':run.status==='completed'?'success':'warning'"
+    :status="deletionFailed(run.batch_id)?'Ошибка удаления':deleting(run.batch_id)?'Удаляется':runLabels[run.status]||run.status"
+    :tone="deletionFailed(run.batch_id)?'danger':deleting(run.batch_id)?'deleting':run.status==='completed'?'success':'warning'"
     :progress="run.progress?.overall_percent??(run.status==='completed'?100:null)"
-    :stage="deleting(run.batch_id)?'Удаление файлов и результатов':deletionFailed(run.batch_id)?'Ошибка удаления':run.status==='completed'?'Готово к скачиванию':'Завершено с ошибками'"
+    :stage="deletionFailed(run.batch_id)?'Ошибка удаления':deleting(run.batch_id)?'Удаление файлов и результатов':run.status==='completed'?'Готово к скачиванию':'Завершено с ошибками'"
     :time-label="runTime(run).label" :time-detail="runTime(run).detail">
     <template #meta>
       <span v-if="photoCount(run)!=null">{{photoCount(run)}} фото</span>

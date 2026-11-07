@@ -49,6 +49,7 @@ async function load(more=false){
   else if(!batches.value.length)loading.value=true
   try{
     const data=await batchApi.list(100,more?batches.value.length:0)
+    deletion.reconcile(data.batches)
     batches.value=more?[...batches.value,...data.batches]:data.batches
     total.value=data.total;error.value=''
   }catch(e){error.value=errorText(e)}
@@ -68,6 +69,7 @@ async function refreshVisible(){
       newTotal=data.total
       if(next.length>=newTotal)break
     }
+    deletion.reconcile(next)
     batches.value=next;total.value=newTotal;error.value=''
   }catch(e){error.value=errorText(e)}
   finally{refreshing=false}
