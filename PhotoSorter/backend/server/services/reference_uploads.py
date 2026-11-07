@@ -106,21 +106,24 @@ def confirm_duplicate(session_id,upload_id,digest):
         raise HTTPException(422,"Укажите корректный SHA-256")
     with connect() as db:
         session,entry=reference_imports._file_state(db,session_id,upload_id,lock=True)
-        if entry["state"]=="duplicate":
-            if entry["checksum"]!=digest:
-                raise HTTPException(409,"Файл уже подтверждён с другим хешем")
-            return {"already_present":True,"sha256":digest}
         if entry["state"]=="finalized":
             if entry["checksum"]!=digest:
                 raise HTTPException(409,"Файл уже завершён с другим хешем")
             return {"already_finalized":True,"sha256":digest}
-        if session["upload_state"]!="uploading":
-            raise HTTPException(409,"Сессия уже закрыта")
-        if entry["checksum"] is not None and entry["checksum"]!=digest:
-            raise HTTPException(409,"Хеш не совпадает с манифестом")
-        _claim_digest(db,entry["sam"],digest)
-        if not _verified_duplicate(db,session_id,entry,digest,upload_id):
-            raise HTTPException(409,"Совпадающий готовый образец не найден; отправьте файл")
-        repository.mark_duplicate(db,session_id,upload_id,digest)
-        reference_imports.reconcile(db,session_id)
+        if entry["state"]=="duplicate":
+            if entry["checksum"]!=digest:
+                raise HTTPException(409,"Файл уже подтверждён с другим хешем")
+        else:
+            if session["upload_state"]!="uploading":
+                raise HTTPException(409,"Сессия уже закрыта")
+            if entry["checksum"] is not None and entry["checksum"]!=digest:
+                raise HTTPException(409,"Хеш не совпадает с манифестом")
+            _claim_digest(db,entry["sam"],digest)
+            if not _verified_duplicate(db,session_id,entry,digest,upload_id):
+                raise HTTPException(409,"Совпадающий готовый образец не найден; отправьте файл")
+            repository.mark_duplicate(db,session_id,upload_id,digest)
+            reference_imports.reconcile(db,session_id)
+    # A client can have sent partial bytes before discovering the duplicate.
+    # Clean them only after the durable receipt commits.
+    storage.remove_partial_after_commit(session_id,upload_id)
     return {"already_present":True,"sha256":digest}

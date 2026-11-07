@@ -127,7 +127,10 @@ def test_duplicate_receipts_skip_bytes_and_preserve_one_preparation(isolated_imp
     sid=open_session([first,second])
     transfer(sid,first,raw)
     assert count_jobs()==0
+    reference_uploads.append(sid,second.upload_id,0,raw[:12])
+    assert storage.partial(sid,second.upload_id).exists()
     assert reference_uploads.confirm_duplicate(sid,second.upload_id,digest)["already_present"]
+    assert not storage.partial(sid,second.upload_id).exists()
     state=reference_imports.status(sid)
     assert state["state"]=="complete"
     assert (state["finalized"],state["duplicates"],state["pending"])==(1,1,0)
@@ -235,6 +238,27 @@ def test_missing_staged_file_blocks_completion_without_false_success(isolated_im
         reference_uploads.finish(sid,item.upload_id)
     assert reference_imports.status(sid)["pending"]==1
     assert count_jobs()==0
+
+def test_staging_symlink_parent_is_rejected_before_writing(isolated_import):
+    raw=_jpg()
+    item=entry()
+    sid=open_session([item])
+    incoming=storage.session_root(sid)/"incoming"
+    incoming.parent.mkdir(parents=True)
+    outside=isolated_import/"outside"
+    outside.mkdir()
+    incoming.symlink_to(outside,target_is_directory=True)
+    with pytest.raises(HTTPException) as forbidden:
+        reference_uploads.append(sid,item.upload_id,0,raw)
+    assert forbidden.value.status_code==409
+    assert not list(outside.iterdir())
+    assert count_jobs()==0
+
+def test_reference_import_rejects_filename_path(isolated_import):
+    item=entry("folder/photo.jpg")
+    with pytest.raises(HTTPException) as forbidden:
+        open_session([item])
+    assert forbidden.value.status_code==422
 
 def test_legacy_api_stays_separate_and_staged_routes_default_off(isolated_import,monkeypatch):
     monkeypatch.delenv("REFERENCE_IMPORT_STAGING_ENABLED",raising=False)

@@ -49,9 +49,26 @@ def verify(path,root,size,*,digest=None):
                 raise ValueError("Reference content checksum mismatch")
     return path
 
+def _safe_directory(path):
+    """Fail closed before any writes if a staging parent is a symlink."""
+    path=Path(path)
+    root=Path(ROOT)
+    if not path.is_relative_to(root):
+        raise HTTPException(409,"Путь вне временного хранилища")
+    current=root
+    if current.is_symlink():
+        raise HTTPException(409,"Ссылка вместо staging каталога")
+    for segment in path.relative_to(root).parts:
+        current=current/segment
+        if current.is_symlink():
+            raise HTTPException(409,"Ссылка внутри staging каталога")
+    path.mkdir(parents=True,exist_ok=True)
+    if not path.resolve().is_relative_to(root.resolve()):
+        raise HTTPException(409,"Путь вне временного хранилища")
+
 def create_partial(session_id,upload_id):
     target=partial(session_id,upload_id)
-    target.parent.mkdir(parents=True,exist_ok=True)
+    _safe_directory(target.parent)
     if target.is_symlink():
         raise HTTPException(409,"Некорректный временный файл")
     if not target.exists():
@@ -105,7 +122,7 @@ def publish_staged_file(session_id,upload_id,filename,size,digest):
     """
     source=verify(partial(session_id,upload_id),session_root(session_id),size,digest=digest)
     target=object_path(session_id,upload_id,filename)
-    target.parent.mkdir(parents=True,exist_ok=True)
+    _safe_directory(target.parent)
     if target.is_symlink():
         raise HTTPException(409,"Неверный путь образца")
     if not target.exists():
