@@ -12,6 +12,7 @@ export interface Batch {
   latest_run?:Run|null;last_result_run_id?:string|null;cover_thumbnail_url?:string|null
 }
 export interface UploadManifestFile {upload_id:string;relative_path:string;filename:string;size:number}
+export interface CpuSettings {threads:number;max_threads:number;applies:string;docker_quota_changes:boolean}
 export interface ProcessingSettings {
   model:'megaloc';auto_process_new_batches:boolean;grouping_threshold:number
 }

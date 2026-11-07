@@ -62,7 +62,7 @@ onMounted(()=>{void load()})
     <template #menu>
       <RouterLink :to="'/results/'+run.id">Просмотреть результаты</RouterLink>
       <a :href="resultApi.download(run.id)">Скачать полный ZIP</a>
-      <RouterLink :to="'/processing/'+run.id">История обработки</RouterLink>
+      <RouterLink :to="'/queue/runs/'+run.id">История обработки</RouterLink>
     </template>
   </CompactTaskCard>
 </div>

@@ -213,3 +213,28 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | `PhotoSorter/frontend/src/styles/task-cards.css` | Адаптивные светлые/тёмные стили карточек, локальный фиолетовый акцент |
 | `PhotoSorter/frontend/src/utils/queueEstimates.ts` | ETA FIFO из реальных измерений: отдельные скорости ФО и подготовки образцов |
 | `PhotoSorter/frontend/tests/queueEstimates.test.ts` | Очерёдность, отсутствие неподтверждённых ETA, фактическая длительность |
+
+
+## Модульное обновление интерфейса
+
+| Путь | Задача |
+|---|---|
+| `PhotoSorter/frontend/src/components/upload/UploadCenter.vue` | Единый глобальный диалог ФО / образцов |
+| `PhotoSorter/frontend/src/stores/uploadCenter.ts` | Состояние видимости, текущая загрузка |
+| `PhotoSorter/frontend/src/styles/upload-dialog.css` | Модалка и фоновый индикатор |
+| `PhotoSorter/frontend/src/styles/reference-layout.css` | Два независимых scroll-контейнера образцов |
+| `PhotoSorter/frontend/src/styles/queue.css` | Пустое состояние очереди |
+| `PhotoSorter/frontend/src/styles/settings-layout.css` | Навигация категорий настроек |
+| `PhotoSorter/frontend/src/features/queue/RunDetail.vue` | Подробности запуска, бывший Processing/RunDetail |
+| `PhotoSorter/frontend/src/features/queue/RunProgress.vue` | Статистика прогресса отдельной ФО |
+| `PhotoSorter/frontend/src/features/settings/AppearanceSettings.vue` | Тема |
+| `PhotoSorter/frontend/src/features/settings/UploadSettings.vue` | Параллельность загрузки |
+| `PhotoSorter/frontend/src/features/settings/MegaLocSettings.vue` | CPU и автозапуск, установка модели |
+| `PhotoSorter/frontend/src/features/settings/StorageSettings.vue` | Использование места, сроки и очистка |
+| `PhotoSorter/frontend/src/features/settings/SystemSettings.vue` | API, worker, логи |
+| `PhotoSorter/backend/server/services/archives.py` | Атомарный переиспользуемый ZIP |
+| `PhotoSorter/backend/server/services/compute_settings.py` | CPU настройка из БД, перед следующим заданием |
+| `PhotoSorter/backend/server/db/migrations/0018_cpu_threads.sql` | Параметр CPU |
+
+Удалены старые `ProcessingView/Overview/History`, старый
+`processingDashboard.ts` и панель `ReferencePreparationStatus.vue`.

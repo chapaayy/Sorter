@@ -8,6 +8,16 @@ const emit=defineEmits<{(e:'open',index:number):void;(e:'remove',id:string):void
 const host=ref<HTMLElement|null>(null)
 const width=ref(780),top=ref(0),viewportY=ref(0),viewportHeight=ref(800),mobile=ref(false)
 let resize:ResizeObserver|undefined
+let scrollHost:HTMLElement|null=null
+function attachScrollHost(){
+  const next=window.matchMedia('(min-width:701px)').matches
+    ?host.value?.closest<HTMLElement>('.reference-library-gallery-scroll')||null:null
+  if(scrollHost===next)return
+  if(scrollHost)scrollHost.removeEventListener('scroll',measure)
+  else window.removeEventListener('scroll',measure)
+  scrollHost=next
+  ;(scrollHost||window).addEventListener('scroll',measure,{passive:true})
+}
 const gap=computed(()=>mobile.value?9:12)
 const columns=computed(()=>mobile.value?2:Math.max(1,Math.floor((width.value+gap.value)/(154+gap.value))))
 const rowHeight=computed(()=>{
@@ -22,21 +32,33 @@ const visible=computed(()=>props.items.slice(first.value,endRow.value*columns.va
 const height=computed(()=>Math.max(0,rows.value*rowHeight.value-gap.value))
 function measure(){
   if(!host.value)return
+  attachScrollHost()
   const box=host.value.getBoundingClientRect()
   width.value=box.width||width.value
-  top.value=box.top+window.scrollY
   mobile.value=window.innerWidth<=700
-  viewportHeight.value=window.innerHeight
-  viewportY.value=window.scrollY
+  if(scrollHost){
+    const parent=scrollHost.getBoundingClientRect()
+    top.value=box.top-parent.top+scrollHost.scrollTop
+    viewportY.value=scrollHost.scrollTop
+    viewportHeight.value=scrollHost.clientHeight
+  }else{
+    top.value=box.top+window.scrollY
+    viewportHeight.value=window.innerHeight
+    viewportY.value=window.scrollY
+  }
 }
 onMounted(()=>{
   resize=new ResizeObserver(measure)
   if(host.value)resize.observe(host.value)
-  window.addEventListener('scroll',measure,{passive:true})
+  attachScrollHost()
   window.addEventListener('resize',measure,{passive:true})
   void nextTick(measure)
 })
-onUnmounted(()=>{resize?.disconnect();window.removeEventListener('scroll',measure);window.removeEventListener('resize',measure)})
+onUnmounted(()=>{
+  resize?.disconnect()
+  ;(scrollHost||window).removeEventListener('scroll',measure)
+  window.removeEventListener('resize',measure)
+})
 watch(()=>props.items.length,()=>{void nextTick(measure)})
 </script>
 <template>

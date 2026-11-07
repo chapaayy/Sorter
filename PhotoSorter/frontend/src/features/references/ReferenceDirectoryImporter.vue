@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,ref} from 'vue'
+import {computed,ref,watch} from 'vue'
 import {referenceApi} from '../../api/references'
 import type {ImportPlan,ImportPlanEntry} from '../../api/references'
 import {inspectReferenceDirectory} from '../../utils/referenceSelection'
@@ -11,7 +11,7 @@ import {bytes,errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 
 
-const emit=defineEmits<{(e:'finished'):void}>()
+const emit=defineEmits<{(e:'finished'):void;(e:'state',busy:boolean,percent:number,phase:string):void}>()
 const uploadSettings=useUploadSettingsStore(),notice=useNoticeStore()
 const transfer=useReferenceTransfer()
 const selection=ref<ReferenceSelection|null>(null),plan=ref<ImportPlan|null>(null)
@@ -24,6 +24,8 @@ const errors=computed(()=>[
 const planById=computed<Record<string,ImportPlanEntry>>(()=>
   Object.fromEntries((plan.value?.entries||[]).map(entry=>[entry.sam,entry])))
 const existingCount=computed(()=>plan.value?.entries.filter(entry=>entry.existing).length||0)
+const percent=computed(()=>selection.value?.totalBytes?100*transfer.sentBytes.value/selection.value.totalBytes:0)
+watch([transfer.busy,percent,transfer.phase],()=>emit('state',transfer.busy.value,percent.value,transfer.phase.value),{immediate:true})
 const ready=computed(()=>!checking.value&&!transfer.busy.value&&
   !!selection.value?.tasks.length&&!!plan.value&&!errors.value.length)
 

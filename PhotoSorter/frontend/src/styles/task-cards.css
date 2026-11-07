@@ -1,14 +1,13 @@
-/* One compact horizontal work-item presentation across FO, FIFO and results.
-   Local purple only: the rest of the app retains its original light/dark tokens. */
+/* Neutral work cards share the app theme. Color is reserved for semantic status. */
 :root[data-theme="dark"]{
-  --task-highlight:#a68aff;--task-fill:#9674f5;--task-track:#353246;
-  --task-blue-bg:#1d3154;--task-blue:#a9caff;
+  --task-highlight:#777777;--task-fill:#e8e8e8;--task-track:#3a3a3a;
+  --task-blue-bg:#2c2c2c;--task-blue:#dedede;
   --task-green-bg:#193b2b;--task-green:#84dfaa;
   --task-warning-bg:#433118;--task-warning:#f3c478;
 }
 :root[data-theme="light"]{
-  --task-highlight:#8465eb;--task-fill:#8969e8;--task-track:#e6e0f5;
-  --task-blue-bg:#e5edff;--task-blue:#2c58a4;
+  --task-highlight:#8c8c8c;--task-fill:#333333;--task-track:#e5e5e5;
+  --task-blue-bg:#eeeeee;--task-blue:#424242;
   --task-green-bg:#e2f4e8;--task-green:#207348;
   --task-warning-bg:#fff0d9;--task-warning:#915d13;
 }
@@ -52,8 +51,8 @@
   min-width:34px;height:34px;padding:0 9px;display:inline-flex;justify-content:center;align-items:center;
   font-size:12px;font-weight:600;white-space:nowrap}
 .task-card-action:hover{border-color:var(--task-highlight);background:var(--panel-alt)}
-.task-card-action-primary{background:var(--task-fill);color:white;border-color:var(--task-fill)}
-.task-card-action-primary:hover{background:var(--task-highlight);border-color:var(--task-highlight)}
+.task-card-action-primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.task-card-action-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
 .task-card-menu{position:relative}
 .task-card-menu summary{list-style:none;cursor:pointer;width:32px;height:34px;display:grid;place-items:center;
   font-size:14px;letter-spacing:.08em;color:var(--muted);border:1px solid var(--border);border-radius:8px;background:var(--panel-alt)}

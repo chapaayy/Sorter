@@ -29,6 +29,6 @@ watch(()=>props.initialMode,value=>{mode.value=value})
   </div>
   <ReferenceDirectoryImporter v-if="mode==='library'" @finished="emit('finished')"/>
   <ReferencePhotoUploader v-else :selected-sam="selectedSam"
-     :label="selectedLabel||selectedSam" @finished="emit('finished')"/>
+     :label="selectedLabel||selectedSam" @finished="emit('finished')" @state="(busy,percent,phase)=>emit('state',busy,percent,phase)"/>
 </section>
 </template>

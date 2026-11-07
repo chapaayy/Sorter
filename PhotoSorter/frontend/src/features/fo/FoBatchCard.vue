@@ -69,7 +69,7 @@ const stage=computed(()=>{
   </template>
   <template #menu>
     <RouterLink :to="'/fo/'+batch.batch_id">Открыть фотографии</RouterLink>
-    <RouterLink v-if="run" :to="'/processing/'+run.id">Ход обработки</RouterLink>
+    <RouterLink v-if="run" :to="'/queue/runs/'+run.id">Ход обработки</RouterLink>
     <RouterLink v-if="state.resultId" :to="'/results/'+state.resultId">
       {{run?.id===state.resultId?'Открыть результаты':'Прошлые результаты'}}
     </RouterLink>

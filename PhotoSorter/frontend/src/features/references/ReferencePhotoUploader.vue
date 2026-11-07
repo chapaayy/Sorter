@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,ref} from 'vue'
+import {computed,ref,watch} from 'vue'
 import {ALLOWED,MAX_IMAGE_UPLOAD_BYTES} from '../../utils/upload'
 import type {UploadEntry} from '../../utils/upload'
 import {useReferenceTransfer} from '../../composables/useReferenceTransfer'
@@ -9,10 +9,12 @@ import {bytes} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 
 const props=defineProps<{selectedSam:string;label:string}>()
-const emit=defineEmits<{(e:'finished'):void}>()
+const emit=defineEmits<{(e:'finished'):void;(e:'state',busy:boolean,percent:number,phase:string):void}>()
 const uploadSettings=useUploadSettingsStore(),notice=useNoticeStore(),transfer=useReferenceTransfer()
 const files=ref<UploadEntry[]>([]),issues=ref<string[]>([]),target=ref('')
 const total=computed(()=>files.value.reduce((sum,item)=>sum+item.file.size,0))
+const percent=computed(()=>total.value?100*transfer.sentBytes.value/total.value:0)
+watch([transfer.busy,percent,transfer.phase],()=>emit('state',transfer.busy.value,percent.value,transfer.phase.value),{immediate:true})
 const ready=computed(()=>!!files.value.length&&!issues.value.length&&
   !!props.selectedSam&&target.value===props.selectedSam&&!transfer.busy.value)
 

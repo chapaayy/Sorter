@@ -28,8 +28,8 @@ async function stop(){
 }
 </script>
 <template>
-<div class="row" style="margin-bottom:22px"><RouterLink to="/processing" class="meta">← История обработок</RouterLink></div>
-<PageHeader eyebrow="ОБРАБОТКА / ПОДРОБНОСТИ" :title="batch?.display_name||'Запуск '+id" :subtitle="'MegaLoc · '+date(run?.started_at)+' · '+(run?runLabels[run.status]||run.status:'Загрузка…')">
+<div class="row" style="margin-bottom:22px"><RouterLink to="/queue?view=history" class="meta">← История очереди</RouterLink></div>
+<PageHeader eyebrow="ОЧЕРЕДЬ / ПОДРОБНОСТИ" :title="batch?.display_name||'Запуск '+id" :subtitle="'MegaLoc · '+date(run?.started_at)+' · '+(run?runLabels[run.status]||run.status:'Загрузка…')">
   <template #actions><UiButton v-if="run&&(run.status==='queued'||run.status==='running')" kind="danger" :loading="busy" @click="confirmStop=true">{{run.status==='queued'?'Убрать из очереди':'Остановить'}}</UiButton>
     <RouterLink v-if="run&&!isActive(run.status)" :to="'/fo/'+run.batch_id" class="btn">Обработать повторно в ФО</RouterLink>
     <RouterLink v-if="run&&isComplete(run.status)" class="btn primary" :to="'/results/'+id">Результаты →</RouterLink>

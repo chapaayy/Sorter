@@ -103,7 +103,7 @@ async function removeBatch(){
     <UiButton v-if="processing?.canStop" small kind="danger" :loading="busy" @click="stopConfirm=true">
       {{processing?.run?.status==='queued'?'Убрать из очереди':'Остановить'}}
     </UiButton>
-    <RouterLink v-if="processing?.run" :to="'/processing/'+processing.run.id" class="btn small">Подробности запуска</RouterLink>
+    <RouterLink v-if="processing?.run" :to="'/queue/runs/'+processing.run.id" class="btn small">Подробности запуска</RouterLink>
     <RouterLink v-if="processing?.resultId" :to="'/results/'+processing.resultId" class="btn small">{{processing.run?.id===processing.resultId?'Результаты':'Прошлые результаты'}}</RouterLink>
     <UiButton v-if="(batch.runs??0)>0" small @click="showHistory=!showHistory">{{showHistory?'Скрыть историю':'История запусков ('+batch.runs+')'}}</UiButton>
   </div>

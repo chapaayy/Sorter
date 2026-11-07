@@ -68,12 +68,12 @@ const count=computed(()=>preparing.value?props.task.total_count:props.task.fo_ph
       title="Остановить задачу" @click="emit('action',task,'stop')">■</button>
     <button v-if="preparing" type="button" class="task-card-action"
       @click="emit('details',task)">Подробности</button>
-    <RouterLink v-else-if="task.fo_run_id" :to="'/processing/'+task.fo_run_id"
+    <RouterLink v-else-if="task.fo_run_id" :to="'/queue/runs/'+task.fo_run_id"
       class="task-card-action">Обработка</RouterLink>
   </template>
   <template #menu>
     <button v-if="preparing" type="button" @click="emit('details',task)">Открыть подробности</button>
-    <RouterLink v-else-if="task.fo_run_id" :to="'/processing/'+task.fo_run_id">Ход обработки</RouterLink>
+    <RouterLink v-else-if="task.fo_run_id" :to="'/queue/runs/'+task.fo_run_id">Ход обработки</RouterLink>
     <button v-if="hasBlockingFailure(task)" type="button" :disabled="busy"
       @click="emit('action',task,'retry')">Повторить подготовку</button>
     <button v-if="preparing&&hasBlockingFailure(task)" type="button" class="is-danger"

@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue'
 import {referenceApi} from '../../api/references'
-import {libraryNoticesApi} from '../../api/libraryNotices'
-import type {LibraryStatus} from '../../api/libraryNotices'
-import ReferencePreparationStatus from './ReferencePreparationStatus.vue'
 import {useCursor} from '../../composables/useCursor'
 import {usePolling} from '../../composables/usePolling'
 import {useNoticeStore} from '../../stores/notice'
@@ -16,25 +13,20 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import GroupPicker from '../../components/split/GroupPicker.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
-import ReferenceUploader from './ReferenceUploader.vue'
-const list=ref<SamCount[]>([]),selected=ref(''),adding=ref(false),editing=ref(false),addressDraft=ref(''),
-  uploadMode=ref<'library'|'single'>('library'),
+import {useUploadCenterStore} from '../../stores/uploadCenter'
+const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),addressDraft=ref(''),
   error=ref(''),busy=ref(false),viewer=ref<number|null>(null),
   deletePhoto=ref<string|null>(null),deleteSam=ref(false),
-  cache=ref<{total:number;cached:number;current_signature?:string|null}|null>(null),
-  library=ref<LibraryStatus|null>(null)
-const notice=useNoticeStore()
+
+const notice=useNoticeStore(),uploader=useUploadCenterStore()
 const groups=computed(()=>list.value.map(s=>({id:s.sam,label:s.display_name||s.sam,count:s.photos})))
 const selectedEntry=computed(()=>list.value.find(item=>item.sam===selected.value))
 const {items,cursor,loading,error:galleryError,load,reset}=useCursor<Photo>(cursor=>referenceApi.gallery(selected.value,cursor))
 const preview=computed(()=>items.value.map(p=>({src:p.original_url||'',label:p.name})))
 async function refresh(){
   try{
-    const [refs,cacheValue,lib]=await Promise.all([
-      referenceApi.list(),referenceApi.cache().catch(()=>null),libraryNoticesApi.status()
-    ])
+    const refs=await referenceApi.list()
     list.value=refs.sam
-    cache.value=cacheValue;library.value=lib
     if(!selected.value||!list.value.some(x=>x.sam===selected.value))selected.value=list.value[0]?.sam||''
     error.value=''
   }catch(e){error.value=errorText(e)}
@@ -64,13 +56,7 @@ async function saveAddress(){
   }catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
 function openUpload(mode:'library'|'single'){
-  uploadMode.value=mode
-  adding.value=true
-}
-async function onUploaded(){
-  adding.value=false
-  await refresh()
-  if(selected.value)await reset()
+  uploader.launch(mode,mode==='single'?selected.value:'',selectedEntry.value?.display_name||selected.value)
 }
 async function removeSam(){
   busy.value=true
@@ -79,21 +65,18 @@ async function removeSam(){
 }
 </script>
 <template>
+<div class="reference-library-view">
 <PageHeader eyebrow="БИБЛИОТЕКА КОНСТРУКЦИЙ" title="Образцы" subtitle="Одна постоянная библиотека для всех фотоотчётов.">
-  <template #actions><UiButton kind="primary"  @click="adding?adding=false:openUpload('library')">{{adding?'Закрыть загрузку':'+ Загрузить образцы'}}</UiButton></template>
+  <template #actions><UiButton kind="primary" @click="openUpload('library')">+ Загрузить образцы</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
-<ReferenceUploader v-if="adding" :selected-sam="selected" :selected-label="selectedEntry?.display_name||selected"
-  :initial-mode="uploadMode"
-   style="margin-bottom:20px" @finished="onUploaded"/>
-<ReferencePreparationStatus :library="library" style="margin-bottom:17px"/>
 <div class="row wrap between" style="margin-bottom:17px">
   <span class="meta">Всего {{list.length}} конструкций · {{list.reduce((n,s)=>n+s.photos,0)}} эталонных фото</span>
-  <span v-if="cache" class="meta">Кэш MegaLoc: {{cache.cached}} / {{cache.total}} · {{cache.current_signature?'актуальная подпись':'модель не подтверждена'}}</span>
 </div>
 <div v-if="list.length" class="split">
   <GroupPicker v-model="selected" :items="groups" placeholder="Поиск номера или адреса…"/>
   <section class="panel split-main">
+    <div class="reference-library-gallery-scroll">
     <div class="panel-header reference-detail-header"><div><h2>{{selectedEntry?.display_name||selected}}</h2>
       <span class="meta">{{selectedEntry?.photos||0}} образцов</span></div>
       <div class="row wrap">
@@ -107,6 +90,7 @@ async function removeSam(){
     <VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_status:p.thumbnail_status,thumbnail_url:p.thumbnail_url,original_url:p.original_url}))" :can-delete="true" @open="i=>viewer=i" @remove="id=>deletePhoto=id"/>
     <EmptyState v-else-if="!loading" title="В этой SAM пока нет фотографий" detail="Добавьте эталонные фото для сопоставления."/>
     <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё</UiButton></div>
+    </div>
   </section>
 </div>
 <EmptyState v-else title="Библиотека Образцов пуста" detail="Выберите библиотеку с папками вида SAM 0004 — Гагарина 64. Перед отправкой будет полная проверка.">
@@ -121,5 +105,6 @@ async function removeSam(){
     <label class="field">Адрес конструкции<input v-model="addressDraft" required maxlength="120"/></label>
     <div class="modal-actions"><UiButton @click="editing=false">Отмена</UiButton><UiButton kind="primary" type="submit" :loading="busy">Сохранить</UiButton></div>
   </form>
+</div>
 </div>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,onUnmounted,ref} from 'vue'
+import {computed,onMounted,onUnmounted,ref,watch} from 'vue'
 import {batchApi} from '../../api/batches'
 import {runApi} from '../../api/runs'
 import {ApiError} from '../../api/client'
@@ -13,7 +13,10 @@ import type {BatchUploadManifest,UploadManifestFile} from '../../types/api'
 import {bytes,errorText} from '../../utils/format'
 import {useNoticeStore} from '../../stores/notice'
 import UiButton from '../../components/ui/UiButton.vue'
-const emit=defineEmits<{(e:'finished',batchId:string):void}>()
+const emit=defineEmits<{
+  (e:'finished',batchId:string):void
+  (e:'state',busy:boolean,percent:number,phase:string):void
+}>()
 const entries=ref<UploadEntry[]>([]),folder=ref(''),batchId=ref(''),running=ref(false),error=ref(''),finished=ref(0)
 const amounts=ref<number[]>([]),phase=ref('')
 const autoProcess=ref(false),autoThreshold=ref(.50),manifestRegistered=ref(false)
@@ -21,6 +24,7 @@ let controller:AbortController|null=null
 const total=computed(()=>entries.value.reduce((s,e)=>s+e.file.size,0))
 const uploaded=computed(()=>amounts.value.reduce((a,b)=>a+b,0))
 const percent=computed(()=>total.value?Math.min(100,100*uploaded.value/total.value):0)
+watch([running,percent,phase],()=>emit('state',running.value,percent.value,phase.value),{immediate:true})
 const notice=useNoticeStore(),uploadSettings=useUploadSettingsStore()
 onMounted(async()=>{
   try{

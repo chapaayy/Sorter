@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue'
+import {useRoute} from 'vue-router'
 import {workQueueApi} from '../../api/workQueue'
 import {runApi} from '../../api/runs'
 import {usePolling} from '../../composables/usePolling'
@@ -14,14 +15,18 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import QueueTaskRow from './QueueTaskRow.vue'
 import QueueTaskDetail from './QueueTaskDetail.vue'
 
-const notice=useNoticeStore()
+const notice=useNoticeStore(),route=useRoute()
 const tasks=ref<QueueTask[]>([]),history=ref<QueueTask[]>([]),historyTotal=ref(0)
 const activeTotal=ref(0),busy=ref(''),error=ref('')
-const expanded=ref(false),detail=ref<string|null>(null)
+const historyMode=ref(route.query.view==='history'),search=ref('')
+const detail=ref<string|null>(null)
 const confirm=ref<{task:QueueTask;action:'stop'|'retry'|'skip'}|null>(null)
 const active=computed(()=>[...tasks.value].sort((a,b)=>a.seq-b.seq))
+const filteredHistory=computed(()=>history.value.filter(item=>(
+  (item.batch_name||'')+' '+item.seq+' '+(item.kind==='reference_preparation'?'образцы':'фотографии')
+).toLowerCase().includes(search.value.toLowerCase())))
 const blocking=computed(()=>active.value.find(hasBlockingFailure))
-const clock=ref(Date.now())
+const clock=ref(Date.now()),loadingMore=ref(false)
 const estimates=computed(()=>estimateQueue(active.value,history.value,clock.value))
 async function refresh(){
   try{
@@ -37,6 +42,15 @@ async function refresh(){
 }
 onMounted(()=>void refresh())
 usePolling(refresh,4000)
+async function moreHistory(){
+  if(loadingMore.value||history.value.length>=historyTotal.value)return
+  loadingMore.value=true
+  try{
+    const next=await workQueueApi.list('history',100,history.value.length)
+    history.value.push(...next.tasks)
+    historyTotal.value=next.total
+  }catch(e){error.value=errorText(e)}finally{loadingMore.value=false}
+}
 async function submit(){
   const target=confirm.value
   if(!target||busy.value)return
@@ -70,38 +84,52 @@ function message(){
 }
 </script>
 <template>
-<PageHeader eyebrow="ЕДИНАЯ FIFO" title="Очередь"
- subtitle="Обработка ФО и подготовка образцов в порядке поступления. Одно вычислительное задание одновременно.">
-  <template #actions><UiButton small @click="refresh">Обновить</UiButton></template>
+<PageHeader eyebrow="ЗАДАНИЯ" title="Очередь"
+  subtitle="Фотографии и подготовка образцов обрабатываются по порядку поступления.">
+  <template #actions>
+    <UiButton small @click="historyMode=!historyMode">{{historyMode?'Активные задачи':'История · '+historyTotal}}</UiButton>
+    <UiButton small @click="refresh">Обновить</UiButton>
+  </template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:15px">{{error}}</div>
 <div v-if="blocking" class="alert error" role="alert" style="margin-bottom:16px">
   <strong>Требуется исправить подготовку образцов.</strong>
-  Следующие ФО не запускаются, пока вы не повторите подготовку или явно не пропустите обновление.
+  Следующие ФО ждут повторения или явного пропуска обновления.
 </div>
-<div class="stack gap24">
-  <section class="panel stack" aria-label="Общая очередь">
-    <div class="row between wrap"><h2 style="margin:0">Ожидают и выполняются</h2>
-      <span class="meta">{{activeTotal}} задач</span></div>
-    <div v-if="!active.length" class="meta">Нет ожидающих заданий.</div>
+<template v-if="!historyMode">
+  <div v-if="active.length" class="stack" aria-label="Текущие задания">
     <QueueTaskRow v-for="(task,index) in active" :key="task.seq"
-      :task="task" :position="index+1" :estimate="estimates.get(task.seq)" :busy="busy===task.reference_job_id||busy===task.fo_run_id"
-      @action="(t,action)=>confirm={task:t,action}" @details="t=>detail=t.reference_job_id"/>
+      :task="task" :position="index+1" :estimate="estimates.get(task.seq)"
+      :busy="busy===task.reference_job_id||busy===task.fo_run_id"
+      @action="(t,action)=>confirm={task:t,action}"
+      @details="t=>detail=t.reference_job_id"/>
     <div v-if="activeTotal>active.length" class="meta">
       Показаны первые {{active.length}} из {{activeTotal}} задач.
     </div>
-  </section>
-  <QueueTaskDetail v-if="detail" :job-id="detail" @close="detail=null"/>
-  <section class="panel stack" aria-label="История общей очереди">
-    <div class="row between wrap"><h2 style="margin:0">История</h2>
-      <UiButton small @click="expanded=!expanded">{{expanded?'Скрыть':'Показать'}} · {{historyTotal}}</UiButton></div>
-    <template v-if="expanded">
-      <QueueTaskRow v-for="task in history" :key="task.seq" :task="task"
-        @details="t=>detail=t.reference_job_id"/>
-      <span v-if="!history.length" class="meta">История пока пуста.</span>
-    </template>
-  </section>
-</div>
+  </div>
+  <div v-else class="queue-empty" aria-label="Очередь пуста">
+    <span class="queue-empty-mark" aria-hidden="true">✓</span>
+    <h2>Очередь пуста</h2>
+    <p class="meta">Все задания завершены. Новые фотографии и образцы появятся здесь автоматически.</p>
+  </div>
+</template>
+<template v-else>
+  <div class="toolbar">
+    <input v-model="search" class="search" placeholder="Поиск по истории…" aria-label="Поиск истории"/>
+    <span class="meta">{{historyTotal}} заданий в истории</span>
+  </div>
+  <div v-if="filteredHistory.length" class="stack">
+    <QueueTaskRow v-for="(task,index) in filteredHistory" :key="task.seq" :task="task"
+      :position="index+1" @details="t=>detail=t.reference_job_id"/>
+  </div>
+  <div v-else class="queue-empty">
+    <h2>{{history.length?'Ничего не найдено':'История пока пуста'}}</h2>
+  </div>
+  <div v-if="history.length<historyTotal" class="pagination">
+    <UiButton small :loading="loadingMore" @click="moreHistory">Показать ещё</UiButton>
+  </div>
+</template>
+<QueueTaskDetail v-if="detail" :job-id="detail" @close="detail=null"/>
 <ConfirmDialog v-if="confirm" :busy="!!busy"
   :title="confirm.action==='retry'?'Повторить подготовку?':confirm.action==='skip'?'Пропустить обновление образцов?':'Остановить задачу?'"
   :message="message()" :danger="confirm.action!=='retry'"

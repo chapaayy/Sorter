@@ -33,10 +33,12 @@ def system_status():
         thumbs=db.execute("""SELECT state,count(*) AS n FROM thumbnail_tasks
              GROUP BY state""").fetchall()
         services=heartbeat.status(db)
+        from ...services.compute_settings import for_worker
+        threads=for_worker(db)
     total,available=stat(DATA_DIR)
     return {"at":datetime.now(timezone.utc).isoformat(),
         "worker":{"queue":{x["status"]:x["n"] for x in jobs},
-                  "expected_threads":int(os.environ.get("PHOTOSORTER_CPU_THREADS","8"))},
+                  "expected_threads":threads},
         "thumbnails":{x["state"]:x["n"] for x in thumbs},
         "services":services,
         "disk":{"total_bytes":total,"available_bytes":available,

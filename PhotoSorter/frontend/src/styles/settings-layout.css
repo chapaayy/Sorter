@@ -1,0 +1,16 @@
+.settings-layout{display:grid;grid-template-columns:minmax(210px,260px) minmax(0,1fr);
+  align-items:start;gap:18px}
+.settings-categories{padding:8px;display:grid;gap:3px}
+.settings-categories button{display:grid;gap:4px;padding:12px 14px;min-width:0;width:100%;text-align:left;
+  background:transparent;color:var(--muted);border:1px solid transparent;border-radius:9px}
+.settings-categories button strong{font-size:13px}
+.settings-categories button span{font-size:11px}
+.settings-categories button:hover{background:var(--panel-alt);color:var(--text)}
+.settings-categories button.active{color:var(--text);background:var(--accent-bg);border-color:var(--border-subtle)}
+.settings-detail{min-width:0}
+@media(max-width:850px){.settings-layout{grid-template-columns:1fr}
+.settings-categories{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:550px){.settings-categories{grid-template-columns:1fr 1fr}
+.settings-categories button{padding:10px}
+.settings-categories button span{display:none}}

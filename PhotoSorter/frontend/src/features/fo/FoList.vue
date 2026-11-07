@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue'
-import {useRouter} from 'vue-router'
 import {batchApi} from '../../api/batches'
 import {runApi} from '../../api/runs'
 import {usePolling} from '../../composables/usePolling'
@@ -9,19 +8,16 @@ import type {Batch} from '../../types/api'
 import type {QueueTask} from '../../types/workQueue'
 import {workQueueApi} from '../../api/workQueue'
 import {estimateQueue} from '../../utils/queueEstimates'
+import {useUploadCenterStore} from '../../stores/uploadCenter'
 import {useNoticeStore} from '../../stores/notice'
-import {libraryNoticesApi} from '../../api/libraryNotices'
-import type {LibraryStatus} from '../../api/libraryNotices'
-import ReferenceUpdateNotice from './ReferenceUpdateNotice.vue'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
-import UploadPanel from './UploadPanel.vue'
 import FoBatchCard from './FoBatchCard.vue'
 
-const router=useRouter(),notice=useNoticeStore()
-const batches=ref<Batch[]>([]),search=ref(''),showUpload=ref(false)
+const notice=useNoticeStore(),uploader=useUploadCenterStore()
+const batches=ref<Batch[]>([]),search=ref('')
 const queueTasks=ref<QueueTask[]>([]),queueHistory=ref<QueueTask[]>([])
 const clock=ref(Date.now())
 const estimates=computed(()=>estimateQueue(queueTasks.value,queueHistory.value,clock.value))
@@ -40,7 +36,6 @@ async function refreshQueue(){
     clock.value=Date.now()
   }catch{/* FO list remains available if the queue service is temporarily unavailable. */}
 }
-const libraryStatus=ref<LibraryStatus|null>(null),opening=ref(false)
 const loading=ref(true),loadingMore=ref(false),error=ref('')
 const total=ref(0),activeAction=ref(''),stopConfirm=ref<{id:string;name:string;queued:boolean}|null>(null)
 let refreshing=false
@@ -80,17 +75,6 @@ onMounted(()=>{void load();void refreshQueue()})
 usePolling(refreshVisible,4000)
 usePolling(refreshQueue,6000)
 
-async function toggleUpload(){
-  if(showUpload.value){showUpload.value=false;return}
-  if(opening.value)return
-  opening.value=true
-  try{
-    // Reading does NOT acknowledge; acknowledgement requires an explicit click.
-    libraryStatus.value=await libraryNoticesApi.status()
-    showUpload.value=true
-  }catch(e){error.value='Не удалось проверить обновления образцов: '+errorText(e)}
-  finally{opening.value=false}
-}
 async function start(batchId:string,threshold:number){
   if(activeAction.value)return
   activeAction.value=batchId;error.value=''
@@ -133,13 +117,9 @@ async function stop(){
 <PageHeader eyebrow="БИБЛИОТЕКА ФО" title="Фотоотчёты"
   subtitle="Состояние загрузки и MegaLoc для каждой партии, управление обработкой и результаты.">
   <template #actions>
-    <UiButton kind="primary" @click="toggleUpload" :loading="opening">{{showUpload?'Скрыть загрузку':'+ Загрузить папку'}}</UiButton>
+    <UiButton kind="primary" @click="uploader.launch('fo')">+ Загрузить папку</UiButton>
   </template>
 </PageHeader>
-<ReferenceUpdateNotice v-if="showUpload&&libraryStatus?.notice" :status="libraryStatus"
-  style="margin-bottom:16px" @ack="libraryStatus=$event"/>
-<UploadPanel v-if="showUpload" style="margin-bottom:24px"
-  @finished="id=>{showUpload=false;void router.push('/fo/'+id)}"/>
 <div class="toolbar">
   <input v-model="search" class="search" placeholder="Поиск по названию партии…" aria-label="Поиск фотоотчётов"/>
   <span class="meta">Партий: {{total}}</span>
@@ -157,7 +137,7 @@ async function stop(){
 </div>
 <EmptyState v-else-if="!loading" title="Пока нет фотоотчётов"
   detail="Выберите папку, чтобы загрузить фотографии первой партии." icon="▤">
-  <UiButton kind="primary" @click="toggleUpload">Загрузить папку</UiButton>
+  <UiButton kind="primary" @click="uploader.launch('fo')">Загрузить папку</UiButton>
 </EmptyState>
 <div v-else class="meta">Загружаем список партий…</div>
 <ConfirmDialog v-if="stopConfirm" :title="stopConfirm.queued?'Убрать из очереди MegaLoc?':'Остановить обработку MegaLoc?'"

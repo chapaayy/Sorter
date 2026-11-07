@@ -146,3 +146,31 @@ Vue /references → manifest образцов → /api/reference-imports
 Общие CSS-токены обеих тем не меняются; иконки, загрузки и действия остаются
 реальными. Backend дополняет публичный API готовой миниатюрой, реальным
 прогрессом FO и счётчиками фотографий, без N запросов на карточку.
+
+
+## Актуальный интерфейс
+
+```text
+Shell
+├─ UploadCenter (единая модальная загрузка)
+├─ Фотографии -> FoList / FoGallery (маршруты /fo)
+├─ Образцы -> ReferenceLibrary (два независимых scroll container)
+├─ Очередь -> QueueView / RunDetail / RunProgress
+├─ Результаты -> ResultsList / ResultDetail
+├─ Логи -> LogsView
+└─ Настройки -> SettingsView
+   ├─ AppearanceSettings
+   ├─ UploadSettings
+   ├─ MegaLocSettings
+   ├─ StorageSettings
+   └─ SystemSettings
+```
+
+`features/processing` удалена как ненужная альтернативная UI-ветка.
+`src/utils/processingDashboard.ts` удалён. Все подробности доступны
+в `/queue/runs/:runId`. Вкладка «Очередь» показывает только активное
+или историю по кнопке; слова FIFO оставлены только внутри кода.
+
+Скачивание: `server/api/routes/downloads.py` ->
+`server/services/archives.py` -> `FileResponse`. ZIP находится внутри
+каталога данного запуска и автоматически удаляется при очистке партии.

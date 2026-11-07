@@ -39,6 +39,11 @@ async function mock(page:Page){
       return respond(route,{runs:[run],total:1})
     }
     if(p==='/api/runs/'+rid)return respond(route,run)
+    if(p==='/api/processing-settings/cpu'){
+      const current={threads:7,max_threads:8,applies:'next_task',docker_quota_changes:false}
+      if(method==='PATCH')current.threads=Number(JSON.parse(route.request().postData()||'{}').threads)
+      return respond(route,current)
+    }
     if(p==='/api/processing-settings'){
       if(method==='PATCH')Object.assign(defaults,JSON.parse(route.request().postData()||'{}'))
       return respond(route,defaults)
@@ -57,11 +62,11 @@ async function mock(page:Page){
   })
 }
 test.beforeEach(async({page})=>{await mock(page)})
-test('seven navigation sections and real data bindings',async({page})=>{
+test('six navigation sections and real data bindings',async({page})=>{
   await page.goto('/fo')
   await expect(page.getByRole('heading',{name:'Фотоотчёты'})).toBeVisible()
   await expect(page.getByText('Выезд Самара 05.11').first()).toBeVisible()
-  for(const [path,heading] of [['/references','Образцы'],['/processing','Обработка'],['/queue','Очередь'],['/results','Результаты'],['/logs','Логи'],['/settings','Настройки']] as const){
+  for(const [path,heading] of [['/references','Образцы'],['/queue','Очередь'],['/results','Результаты'],['/logs','Логи'],['/settings','Настройки']] as const){
     await page.goto(path)
     await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible()
   }
@@ -89,11 +94,13 @@ test('full ZIP confirmation is separate from download with required phrase',asyn
 })
 test('auto-processing preference defaults off and saves on the server',async({page})=>{
   await page.goto('/settings')
-  const enabled=page.getByRole('checkbox',{name:'Автоматически обрабатывать новые партии'})
+  await page.getByRole('button',{name:/MegaLoc и CPU/}).click()
+  const enabled=page.getByRole('checkbox',{name:'Автоматически обрабатывать загруженные ФО'})
   await expect(enabled).not.toBeChecked()
   await enabled.check()
   await expect(enabled).toBeChecked()
   await page.reload()
+  await page.getByRole('button',{name:/MegaLoc и CPU/}).click()
   await expect(enabled).toBeChecked()
 })
 test('theme setting works in light and dark',async({page})=>{
@@ -111,19 +118,28 @@ test('mobile drawer allows navigation',async({page,isMobile})=>{
   await expect(page.getByRole('heading',{name:'Настройки',exact:true})).toBeVisible()
 })
 
-test('processing dashboard replaces the old launch form and preserves history navigation',async({page})=>{
-  await page.goto('/processing')
-  await expect(page.getByRole('heading',{name:'Обработка',exact:true})).toBeVisible()
-  await expect(page.getByRole('region',{name:'Состояние MegaLoc и настройки'})).toBeVisible()
+test('processing overview moved to Settings, run details live under Queue',async({page})=>{
+  await page.goto('/settings')
+  await page.getByRole('button',{name:/MegaLoc и CPU/}).click()
+  await expect(page.getByRole('heading',{name:'MegaLoc',exact:true})).toBeVisible()
   await expect(page.getByText('Модель установлена')).toBeVisible()
-  await expect(page.getByRole('link',{name:'Открыть фотоотчёты'})).toHaveAttribute('href','/fo')
-  await expect(page.getByRole('combobox',{name:'Партия ФО'})).toHaveCount(0)
-  await expect(page.getByRole('button',{name:/Запустить \/ поставить в очередь/})).toHaveCount(0)
-  const history=page.getByRole('region',{name:'История обработок'})
-  await expect(history.getByText('Выезд Самара 05.11')).toBeVisible()
-  await expect(history.getByText('Завершено')).toBeVisible()
+  await expect(page.getByRole('slider',{name:'Число потоков CPU для MegaLoc'})).toBeVisible()
+  await page.goto('/queue/runs/'+rid)
+  await expect(page.getByRole('heading',{name:'Выезд Самара 05.11'})).toBeVisible()
+  await expect(page.getByRole('link',{name:'История очереди'})).toBeVisible()
+  await page.goto('/processing')
+  await expect(page).toHaveURL(/\/fo$/)
 })
-
+test('FO upload opens a global dialog that can be minimized without unmounting',async({page})=>{
+  await page.goto('/fo')
+  await page.getByRole('button',{name:'+ Загрузить папку'}).click()
+  const dialog=page.getByRole('dialog',{name:'Загрузить папку фотографий'})
+  await expect(dialog).toBeVisible()
+  await page.getByRole('button',{name:'Свернуть загрузку'}).click()
+  await expect(dialog).toBeHidden()
+  await page.getByRole('button',{name:/Загрузка ФО/}).click()
+  await expect(dialog).toBeVisible()
+})
 test('construction list remains one line with ellipsis and a separate count',async({page,isMobile})=>{
   test.skip(isMobile,'Desktop split list only')
   const longName='SAM 0001 — Московское шоссе, 19 километр, улица Очень Длинная, дом 28А корпус 7'
@@ -212,9 +228,8 @@ test('incomplete photo batch remains blocked in FO, not via a second launch form
   const card=page.getByRole('article',{name:'Фотоотчёт 321'})
   await expect(card.locator('.task-card-status')).toHaveText('Загрузка не завершена')
   await expect(card.getByRole('button',{name:'Обработать'})).toHaveCount(0)
-  await page.goto('/processing')
-  await expect(page.getByRole('link',{name:'Открыть фотоотчёты'})).toBeVisible()
-  await expect(page.getByRole('combobox',{name:'Партия ФО'})).toHaveCount(0)
+  await page.goto('/queue')
+  await expect(page.getByText('Очередь пуста')).toBeVisible()
 })
 test('opening a batch finalizes already transferred pending files without resending bytes',async({page})=>{
   // Recovery actions are valid only before the first MegaLoc run.
@@ -340,40 +355,12 @@ test('failed retry preserves prior successful results and paged batch history',a
 })
 
 
-test('processing dashboard displays real Worker, running stage and queue order with cancellation',async({page})=>{
-  const live={...run,status:'running',progress:{
-    stage_label:'Группировка ФО',stage_percent:32.5,current:13,total:40,
-    stage_items_per_second:2.4,elapsed_seconds:10
-  }}
-  const queued={...run,id:'20261106T000000-111111111111',status:'queued',queue_position:2}
-  const first={...run,id:'20261106T000000-222222222222',status:'queued',queue_position:1}
-  let list=[live,queued,first],stops=0
-  await page.route(/^https?:\/\/[^/]+\/api\/runs(?:\?.*)?$/,route=>{
-    const scope=new URL(route.request().url()).searchParams.get('scope')
-    if(scope==='active')return respond(route,{runs:list,total:list.length})
-    return respond(route,{runs:[run],total:1})
-  })
-  await page.route('**/api/system/status',route=>respond(route,{
-    at:'2026-11-06T22:00:00Z',
-    worker:{queue:{queued:2,running:1},expected_threads:7},
-    services:{megaloc:{alive:true,last_seen:'2026-11-06T21:59:59Z'}},
-    thumbnails:{},disk:{total_bytes:100,available_bytes:90,reserved_bytes:1},
-    api:{uptime_seconds:10,latency:{samples:0,p50_ms:null,p95_ms:null},rss_peak_kib:100}
-  }))
-  await page.route(/^https?:\/\/[^/]+\/api\/runs\/20261106T000000-222222222222\/stop$/,route=>{
-    stops++
-    list=list.filter(r=>r.id!==first.id)
-    work=work.filter(t=>t.fo_run_id!==first.id)
-    return respond(route,{id:first.id,status:'stopped'})
-  })
-  await page.route('**/api/reference-library/status',route=>respond(route,{
-    unified_queue_enabled:true,staged_imports_enabled:true,baseline_state:'ready',
-    current_version:13,current_version_id:13,published_references:42,
-    published_at:'2026-11-06T06:00:00Z',notice:false,pending_changes:0
-  }))
+test('unified queue shows all work, cancel action and a separate history view',async({page})=>{
+  const first='20261106T000000-222222222222'
   const prep='92b3b221-9886-4cb0-9c7d-dc4ae9a2ed66'
   const task=(seq:number,kind:string,id:string,state:string)=>({
-    seq,kind,state,created_at:'2026-11-06T20:00:00Z',started_at:null,
+    seq,kind,state,created_at:'2026-11-06T20:00:00Z',
+    started_at:state==='running'?'2026-11-06T20:01:00Z':null,
     finished_at:null,fo_run_id:kind==='fo_processing'?id:null,
     reference_job_id:kind==='reference_preparation'?id:null,
     session_id:null,total_count:kind==='reference_preparation'?3:null,
@@ -382,53 +369,45 @@ test('processing dashboard displays real Worker, running stage and queue order w
     batch_name:kind==='fo_processing'?'Выезд Самара 05.11':null,fo_source:'manual'
   })
   let work=[task(1,'fo_processing',rid,'running'),
-    task(2,'fo_processing',first.id,'queued'),
-    task(3,'reference_preparation',prep,'queued'),
-    task(4,'fo_processing',queued.id,'queued')]
+    task(2,'fo_processing',first,'queued'),
+    task(3,'reference_preparation',prep,'queued')]
+  let stops=0
   await page.route(/^https?:\/\/[^/]+\/api\/work-queue(?:\?.*)?$/,route=>{
     const scope=new URL(route.request().url()).searchParams.get('scope')
-    return respond(route,{tasks:scope==='history'?[]:work,total:scope==='history'?0:work.length})
+    return respond(route,{tasks:scope==='history'?[]:work,
+      total:scope==='history'?0:work.length})
   })
-  await page.goto('/processing')
-  const overview=page.getByRole('region',{name:'Состояние MegaLoc и настройки'})
-  await expect(overview.getByText('Работает',{exact:true})).toBeVisible()
-  const current=page.getByRole('region',{name:'Текущее активное задание'})
-  await expect(current.getByText('Группировка ФО')).toBeVisible()
-  await expect(current.getByRole('progressbar')).toHaveAttribute('aria-valuenow','32.5')
-  await expect(current.getByText('13 / 40')).toBeVisible()
-  await expect(page.getByRole('link',{name:'Открыть очередь'})).toHaveAttribute('href','/queue')
-  await expect(page.getByRole('region',{name:'Очередь обработок'})).toHaveCount(0)
+  await page.route('**/api/runs/'+first+'/stop',route=>{
+    stops++
+    work=work.filter(item=>item.fo_run_id!==first)
+    return respond(route,{id:first,status:'stopped'})
+  })
   await page.goto('/queue')
-  const queue=page.getByRole('region',{name:'Общая очередь'})
-  await expect(queue.getByText('4 задач')).toBeVisible()
-  const positions=queue.locator('.task-card-number')
-  await expect(positions.first()).toHaveText('1')
-  await expect(positions.last()).toHaveText('4')
-  await expect(queue.getByText('Подготовка образцов')).toBeVisible()
-  await queue.locator('.queue-task-row').nth(1).locator('.task-card-menu summary').click()
-  await queue.locator('.queue-task-row').nth(1).getByRole('button',{name:'Убрать из очереди'}).click()
-  const dialog=page.getByRole('alertdialog',{name:'Остановить задачу?'})
-  await expect(dialog).toBeVisible()
-  await dialog.getByRole('button',{name:'Остановить'}).click()
+  const queue=page.locator('.queue-task-row')
+  await expect(queue).toHaveCount(3)
+  await expect(queue.nth(0).locator('.task-card-number')).toHaveText('1')
+  await expect(queue.nth(2).getByText('Подготовка образцов')).toBeVisible()
+  await queue.nth(1).locator('.task-card-menu summary').click()
+  await queue.nth(1).getByRole('button',{name:'Убрать из очереди'}).click()
+  const confirm=page.getByRole('alertdialog',{name:'Остановить задачу?'})
+  await confirm.getByRole('button',{name:'Остановить'}).click()
   await expect.poll(()=>stops).toBe(1)
-  await expect(queue.locator('.queue-task-row')).toHaveCount(3)
+  await expect(queue).toHaveCount(2)
+  await page.getByRole('button',{name:/История/}).click()
+  await expect(page.getByText('История пока пуста')).toBeVisible()
+  await expect(page.getByText('Ожидают и выполняются')).toHaveCount(0)
 })
-
-test('processing dashboard reports missing Worker heartbeat without claiming success',async({page})=>{
+test('System settings identify a lost Worker heartbeat',async({page})=>{
   await page.route('**/api/system/status',route=>respond(route,{
-    at:'2026-11-06T22:00:00Z',
-    worker:{queue:{queued:1},expected_threads:7},
+    at:'2026-11-06T22:00:00Z',worker:{queue:{queued:1},expected_threads:7},
     services:{megaloc:{alive:false,last_seen:'2026-11-06T21:00:00Z'}},
     thumbnails:{},disk:{total_bytes:100,available_bytes:90,reserved_bytes:1},
     api:{uptime_seconds:10,latency:{samples:0,p50_ms:null,p95_ms:null},rss_peak_kib:100}
   }))
-  await page.goto('/processing')
-  await expect(page.getByRole('region',{name:'Состояние MegaLoc и настройки'})
-    .getByText('Нет сигнала')).toBeVisible()
-  await expect(page.getByRole('region',{name:'Текущее активное задание'})
-    .getByText('Сейчас MegaLoc не обрабатывает фотографии')).toBeVisible()
+  await page.goto('/settings')
+  await page.getByRole('button',{name:/Система/}).click()
+  await expect(page.getByText('Нет свежего сигнала')).toBeVisible()
 })
-
 test('FO library notice appears once, shows events and requires explicit acknowledgement',async({page})=>{
   let unread=true,acks=0
   const v=13

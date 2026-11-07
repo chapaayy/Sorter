@@ -42,7 +42,7 @@ usePolling(async()=>{if(runs.value.some(r=>isActive(r.status)))await reload()},3
       <span v-if="run.status==='queued'&&run.queue_position" class="meta">Очередь №{{run.queue_position}}</span>
     </div>
     <div class="row wrap">
-      <RouterLink :to="'/processing/'+run.id" class="btn small">Подробности</RouterLink>
+      <RouterLink :to="'/queue/runs/'+run.id" class="btn small">Подробности</RouterLink>
       <RouterLink v-if="['completed','completed_with_errors'].includes(run.status)" :to="'/results/'+run.id" class="btn small">Результаты</RouterLink>
     </div>
   </div>

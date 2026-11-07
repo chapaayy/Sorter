@@ -1,5 +1,5 @@
 import {api,post,query} from './client'
-import type {Run,ModelInfo,ProcessingSettings} from '../types/api'
+import type {Run,ModelInfo,ProcessingSettings,CpuSettings} from '../types/api'
 export const runApi={
   list:(limit=100,offset=0)=>api<{runs:Run[];total:number}>('/runs'+query({limit,offset})),
   active:()=>api<{runs:Run[];total:number}>('/runs'+query({scope:'active',limit:25})),
@@ -14,5 +14,8 @@ export const runApi={
     '/processing-settings',{method:'PATCH',body:JSON.stringify({
       auto_process_new_batches:enabled,grouping_threshold:threshold
     })}),
+  cpuSettings:()=>api<CpuSettings>('/processing-settings/cpu'),
+  saveCpuThreads:(threads:number)=>api<CpuSettings>(
+    '/processing-settings/cpu',{method:'PATCH',body:JSON.stringify({threads})}),
   downloadModel:()=>post<unknown>('/models/megaloc/download',{})
 }

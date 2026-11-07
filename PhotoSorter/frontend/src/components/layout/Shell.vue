@@ -57,7 +57,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
         </div>
       </div>
     </aside>
-    <section class="main-area">
+    <section class="main-area" :class="{'reference-layout':route.name==='references'}">
       <header class="main-header">
         <div class="mobile-top">
           <button class="btn ghost icon" aria-label="Открыть меню" @click="menu=true">
