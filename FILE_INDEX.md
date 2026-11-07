@@ -187,3 +187,15 @@
 - `PhotoSorter/backend/server/services/reference_versions.py` — проверка SHA-256/path и однократная публикация legacy V1.
 - `PhotoSorter/backend/tests/test_reference_queue_stage1.py` — SQL и восстановление baseline.
 - `docs/REFERENCE_QUEUE_STAGE1.md` — архитектурная граница и активация следующих этапов.
+
+## Новые файлы этапа 2 (07.11.2026)
+
+- `PhotoSorter/backend/server/db/migrations/0014_reference_import_transfers.sql` — размер полученных данных, адрес и сохранённый staging путь.
+- `PhotoSorter/backend/server/db/repositories/reference_imports.py` — транзакционные операции импорта и единожды поставленное prep-задание.
+- `PhotoSorter/backend/server/storage/reference_objects.py` — пути, запись частей, SHA, форматы, стабильные объекты.
+- `PhotoSorter/backend/server/services/reference_imports.py` — проверка манифеста, каталог, сверка статуса, завершение сессии.
+- `PhotoSorter/backend/server/services/reference_uploads.py` — докачка частей, finalize, подтверждённые дубликаты.
+- `PhotoSorter/backend/server/api/routes/reference_imports.py` — отдельные маршруты импорта, по умолчанию 503 до включения.
+- `PhotoSorter/frontend/src/api/referenceImports.ts` — типы статусов и запросы для будущего UI.
+- `PhotoSorter/backend/tests/test_reference_import_stage2.py` — PostgreSQL + staging, retry, concurrent, duplicate и checksum регрессии.
+- `docs/REFERENCE_QUEUE_STAGE2.md` — контракт и безопасная граница внедрения.

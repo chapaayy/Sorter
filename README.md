@@ -94,3 +94,7 @@ PYTHONPATH=PhotoSorter/backend python -m pytest -q PhotoSorter/backend/tests
 ## Подготовка общей FIFO и версий образцов (этап 1, 07.11.2026)
 
 Добавлены только совместимые SQL-таблицы и проверяемая базовая версия образцов. Работающий worker и Vue пока не переключены; очередь `work_queue` — пассивный журнал. Подробности и ограничения: [docs/REFERENCE_QUEUE_STAGE1.md](docs/REFERENCE_QUEUE_STAGE1.md). Развёртывание на VPS не выполнялось.
+
+### Этап 2: staging-импорт образцов (API выключен)
+
+Добавлены отдельные серверные сессии и восстановление загрузок образцов через `data/reference_staging/`, с подтверждением дублей и отдельными задачами подготовки в будущей общей очереди. До этапа 3 **не включайте** `REFERENCE_IMPORT_STAGING_ENABLED=1`: текущий Worker ещё не исполняет новые задачи. Старые загрузки и UI продолжают работать без изменений. См. [docs/REFERENCE_QUEUE_STAGE2.md](docs/REFERENCE_QUEUE_STAGE2.md).

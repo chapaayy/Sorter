@@ -101,3 +101,7 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 ## Reference queue — этап 1, без изменения runtime
 
 `server/db/migrations/0011..0013` → новые таблицы sessions, work_queue, reference versions/notices. `server/services/reference_versions.py` → проверяемая однократная V1 metadata в `database.initialize()`. `server/db/repositories/{reference_imports,reference_versions,work_queue}.py` → пассивные операции. Старые `jobs.py` и `worker.py` пока остаются единственным исполняемым планировщиком. Подробности: `docs/REFERENCE_QUEUE_STAGE1.md`.
+
+## Изолированный импорт образцов (этап 2)
+
+`api/routes/reference_imports.py` (gated JSON/byte HTTP) → `services/reference_imports.py` (манифест, состояния, завершение, enqueue) + `services/reference_uploads.py` (части, SHA, duplicate receipt) → `db/repositories/reference_imports.py` (SQL, FIFO) и `storage/reference_objects.py` (изолированный staging, immutable links). `frontend/src/api/referenceImports.ts` — контракты клиента, **пока без подключения к существующему UI**. Миграция `0014_reference_import_transfers.sql`. Только завершённая сессия создаёт future prep job, текущий worker остаётся прежним.
