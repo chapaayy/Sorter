@@ -5,7 +5,7 @@
   ├─ /fo              Фотоотчёты, загрузка партий, просмотр
   ├─ /references      Библиотека конструкций: массовый импорт и добавление фото
   ├─ /queue           Единая FIFO: ФО и подготовка эталонов
-  ├─ /results         Галереи результатов, ZIP, подтверждение
+  ├─ /results         Галереи результатов, готовые ZIP
   ├─ /logs            Логи и фильтры
   ├─ /settings        Темы, диск, жизненный цикл, состояние служб
   └─ /login           Авторизация
@@ -80,7 +80,7 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 
 **Распознавание:** `/api/runs` → PostgreSQL FIFO и single-leader → MegaLoc **сначала группирует ФО**, затем независимо сравнивает группы с SAM → manifest, Hard Links или безопасные копии → `data/outputs/<run>/` → галерея результатов.
 
-**ZIP/retention:** streaming ZIP под operation lease → пользователь отдельно подтверждает сохранение → срок `+2` календарных месяца UTC → `cleanup` после проверки leases/tasks. Shared SAM/Models не удаляются вместе с партией.
+**ZIP/retention:** MegaLoc → результаты → атомарный ZIP → завершено. Дедлайн удаления новых задач задаётся в настройках (2 месяца по умолчанию, от минуты). Cleanup учитывает IO leases, удаляет и архивы. ZIP-only retry без MegaLoc. Shared SAM/Models не удаляются вместе с партией.
 
 **Бэкап:** отдельно сохраняются PostgreSQL, `PhotoSorter/data`, `Models`, env secrets и TLS Docker volumes. `snapshot.py` не сохраняет TLS volume, поэтому оператор архивирует его отдельно. Тест восстановления допустим только на изолированной пустой БД.
 
@@ -160,6 +160,7 @@ Shell
    ├─ AppearanceSettings
    ├─ UploadSettings
    ├─ MegaLocSettings
+   ├─ PerformanceSettings
    ├─ StorageSettings
    └─ SystemSettings
 ```
@@ -172,3 +173,9 @@ Shell
 Скачивание: `server/api/routes/downloads.py` ->
 `server/services/archives.py` -> `FileResponse`. ZIP находится внутри
 каталога данного запуска и автоматически удаляется при очистке партии.
+
+## Последний этап и новые настройки
+
+`server/worker.py` → `app/jobs/runtime.py` → MegaLoc + export → `services/archive_pipeline.py` → `archives.py` → `jobs.status=completed` + `retention.schedule` → `workers/cleanup.py` (после срока, с проверкой leases). При сбое ZIP: `archive_retries` (PostgreSQL) → `workers/cleanup.py` → ZIP-only без инференса.
+
+`frontend/features/settings/PerformanceSettings.vue` хранит режим auto/manual и отдельные потоки ФО/образцов. `StorageSettings.vue` управляет автоудалением для следующих обработок.

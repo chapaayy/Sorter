@@ -162,7 +162,7 @@
 **Что не входит в актуальный код:** `frontend/static`, маршрут `/v3`, отдельные старые stage CI и второй JS/HTML-фронтенд. Исторические имена `test_stage*.py` остаются регрессионными тестами, а рабочие инструменты находятся в `tools/maintenance/` — параллельных версий приложения нет.
 
 ### UI: единый монохромный слой (dark/light)
-- `PhotoSorter/frontend/src/components/ui/UiSelect.vue` — единый доступный раскрывающийся список без стрелок и нативного меню.
+- `PhotoSorter/frontend/src/components/ui/UiSelect.vue` — единый доступный раскрывающийся список с маленьким CSS-chevron и нативного меню.
 - `PhotoSorter/frontend/src/components/ui/UiIcon.vue` — SVG-навигация без внешнего icon runtime.
 - `PhotoSorter/frontend/src/styles/tokens.css` — цветовые токены тёмной/светлой темы.
 - `PhotoSorter/frontend/src/styles/components.css` — единое актуальное оформление и адаптивная компоновка без каскадных тем-надстроек.
@@ -205,7 +205,7 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | Файл | Задача |
 |---|---|
 | `PhotoSorter/frontend/src/components/ui/CompactTaskCard.vue` | Одна горизонтальная карточка ФО/очереди/результатов: фото, статус, прогресс, время, действия |
-| `PhotoSorter/frontend/src/styles/task-cards.css` | Адаптивные светлые/тёмные стили карточек, локальный фиолетовый акцент |
+| `PhotoSorter/frontend/src/styles/task-cards.css` | Адаптивные светлые/тёмные стили карточек, нейтральные цвета обеих тем |
 | `PhotoSorter/frontend/src/utils/queueEstimates.ts` | ETA FIFO из реальных измерений: отдельные скорости ФО и подготовки образцов |
 | `PhotoSorter/frontend/tests/queueEstimates.test.ts` | Очерёдность, отсутствие неподтверждённых ETA, фактическая длительность |
 
@@ -233,3 +233,16 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 
 Удалены старые `ProcessingView/Overview/History`, старый
 `processingDashboard.ts` и панель `ReferencePreparationStatus.vue`.
+
+## Новые модули
+
+| Модуль | Ответственность |
+|---|---|
+| `backend/server/services/archive_pipeline.py` | Полный ZIP как последний этап MegaLoc, проценты |
+| `backend/server/services/archive_retries.py` | Долговременное повторение ZIP без MegaLoc |
+| `backend/server/services/retention.py` | Настраиваемые сроки хранения, безопасные дедлайны |
+| `backend/server/db/migrations/0019_retention_preferences.sql` | Глобальная политика удаления |
+| `backend/server/db/migrations/0020_workload_threads.sql` | Раздельные FO/reference CPU потоки |
+| `backend/server/db/migrations/0021_archive_retry.sql` | PostgreSQL очередь повтора ZIP |
+| `frontend/src/features/settings/PerformanceSettings.vue` | Режимы и CPU по задачам |
+| `frontend/src/styles/reference-layout.css` | Исправление вертикальной компоновки галереи образцов |

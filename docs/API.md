@@ -156,3 +156,12 @@
 | GET | `/work-queue?scope=history&limit=100` | История обработки ФО и образцов для отдельного режима в «Очереди» |
 
 Не выдавать Docker socket в веб-приложение: лимиты cgroup остаются параметрами Compose.
+
+## Новые endpoints: полный ZIP и настройки
+
+- `POST /api/runs/{id}/archive/retry` — повторная подготовка ZIP без MegaLoc.
+- `GET/PATCH /api/system/retention` — `{enabled, value, unit}`, где `unit` это `minutes`, `hours`, `days` или `months`; только для будущих готовых задач.
+- `GET/PATCH /api/processing-settings/workloads` — `{mode, fo_threads, reference_threads}`; CPU применяется к следующей задаче.
+- `GET /api/download/{id}` — готовый ZIP с Range/206; для старых запусков сохранён совместимый fallback.
+
+`POST /api/batches/{id}/downloads/confirm` оставлен как legacy API. В новом UI подтверждение скачивания больше не требуется.
