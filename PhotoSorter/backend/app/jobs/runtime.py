@@ -6,7 +6,6 @@ from datetime import datetime,timezone
 from pathlib import Path
 from ..results.repository import run_path,save_run,load_run,list_runs
 from ..recognition.errors import JobCancelled
-from ..photos.scanner import scan_folders
 from ..logging.events import emit
 from .progress import record
 from .overall_progress import OverallProgress
