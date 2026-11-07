@@ -22,6 +22,11 @@ def claim_job():
         return work_queue.claim_next(db)
 
 def _process_task(item):
+    # Apply the single persisted CPU setting only between FIFO tasks.
+    from app.system.performance import set_runtime_threads
+    from .services.compute_settings import for_worker
+    with connect() as db:
+        set_runtime_threads(for_worker(db))
     if item['kind']=='fo_processing':
         info=item['info']
         try:

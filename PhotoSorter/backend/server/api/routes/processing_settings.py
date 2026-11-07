@@ -17,3 +17,16 @@ def read_settings():
 def save_settings(payload:ProcessingSettings):
     return auto_processing.update_settings(
         enabled=payload.auto_process_new_batches,threshold=payload.grouping_threshold)
+
+class CpuSettings(BaseModel):
+    threads:int=Field(ge=1,le=32)
+
+@router.get("/cpu")
+def cpu_settings():
+    from ...services import compute_settings
+    return compute_settings.read()
+
+@router.patch("/cpu")
+def update_cpu_settings(payload:CpuSettings):
+    from ...services import compute_settings
+    return compute_settings.update(payload.threads)
