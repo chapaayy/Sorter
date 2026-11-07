@@ -17,7 +17,8 @@ export interface RetentionPreference {
 }
 export interface WorkloadSettings {
   mode:'auto'|'manual';fo_threads:number;reference_threads:number;max_threads:number
-  thumbnail_cpu_quota:number;cleanup_cpu_quota:number
+  total_cpus:number;model_cpus:number;system_cpus:number;max_model_cpus:number
+  background_policy:string;model_limit_applies:string
   zip_mode:string;docker_limits_editable:boolean;applies:string
 }
 export interface CpuSettings {threads:number;max_threads:number;applies:string;docker_quota_changes:boolean}

@@ -21,6 +21,9 @@ export const runApi={
   saveCpuThreads:(threads:number)=>api<CpuSettings>(
     '/processing-settings/cpu',{method:'PATCH',body:JSON.stringify({threads})}),
   workloadSettings:()=>api<WorkloadSettings>('/processing-settings/workloads'),
+  saveCpuBudget:(model_cpus:number)=>api<WorkloadSettings>('/processing-settings/workloads',{
+    method:'PATCH',body:JSON.stringify({model_cpus})
+  }),
   saveWorkloadSettings:(mode:'auto'|'manual',fo_threads:number,reference_threads:number)=>
     api<WorkloadSettings>('/processing-settings/workloads',{
       method:'PATCH',body:JSON.stringify({mode,fo_threads,reference_threads})

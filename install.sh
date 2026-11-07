@@ -60,6 +60,31 @@ if ! grep -Eq '^POSTGRES_PASSWORD=.{16,}$' .env.generated ||
   echo '[ERROR] .env.generated incomplete; restore correct credentials.' >&2
   exit 1
 fi
+# Derive an available model cpuset for new VPS sizes, reserving one CPU for the site.
+# An explicit operator override in .env always wins.
+if [[ -z "${PHOTOSORTER_WORKER_CPUSET:-}" ]]; then
+  export PHOTOSORTER_WORKER_CPUSET="$(python3 - <<'PY'
+import os
+allowed=sorted(os.sched_getaffinity(0))
+print(','.join(map(str,allowed[:-1] or allowed)))
+PY
+)"
+fi
+if [[ -z "${PHOTOSORTER_WORKER_CPUS:-}" ]]; then
+  export PHOTOSORTER_WORKER_CPUS="$(python3 - "$PHOTOSORTER_WORKER_CPUSET" <<'PY'
+import sys
+ids=set()
+for p in sys.argv[1].split(','):
+    if '-' in p:
+        a,b=map(int,p.split('-',1));ids.update(range(a,b+1))
+    else:ids.add(int(p))
+print(len(ids))
+PY
+)"
+fi
+if [[ -z "${PHOTOSORTER_CPU_THREADS:-}" ]]; then
+  export PHOTOSORTER_CPU_THREADS="${PHOTOSORTER_WORKER_CPUS}"
+fi
 COMPOSE=(docker compose --env-file .env --env-file .env.generated)
 "${COMPOSE[@]}" config --quiet
 # The default Stage2 worker cpuset assumes >=7 CPUs. Fail before Docker changes.
