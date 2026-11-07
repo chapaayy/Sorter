@@ -10,6 +10,10 @@ const output={index:0,assigned_sam:'SAM-0001',group_id:'G0001',score:.921,thumbn
 function respond(route:any,data:unknown){return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)})}
 async function mock(page:Page){
   const defaults={auto_process_new_batches:false,grouping_threshold:.50,model:'megaloc'}
+  const retention={enabled:true,value:2,unit:'months'}
+  const workloads={mode:'manual',fo_threads:7,reference_threads:7,max_threads:8,
+    thumbnail_cpu_quota:.35,cleanup_cpu_quota:.25,zip_mode:'single_thread_in_worker',
+    docker_limits_editable:false,applies:'next_task'}
   await page.route(/^https?:\/\/[^/]+\/api\//,async route=>{
     const url=new URL(route.request().url()),p=url.pathname,method=route.request().method()
     if(p==='/api/auth/me')return respond(route,{username:'admin'})
@@ -39,6 +43,14 @@ async function mock(page:Page){
       return respond(route,{runs:[run],total:1})
     }
     if(p==='/api/runs/'+rid)return respond(route,run)
+    if(p==='/api/system/retention'){
+      if(method==='PATCH')Object.assign(retention,JSON.parse(route.request().postData()||'{}'))
+      return respond(route,retention)
+    }
+    if(p==='/api/processing-settings/workloads'){
+      if(method==='PATCH')Object.assign(workloads,JSON.parse(route.request().postData()||'{}'))
+      return respond(route,workloads)
+    }
     if(p==='/api/processing-settings/cpu'){
       const current={threads:7,max_threads:8,applies:'next_task',docker_quota_changes:false}
       if(method==='PATCH')current.threads=Number(JSON.parse(route.request().postData()||'{}').threads)
@@ -81,28 +93,37 @@ test('FO gallery is separate and shows real original viewer',async({page})=>{
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog',{name:'Просмотр фотографии'})).not.toBeVisible()
 })
-test('full ZIP confirmation is separate from download with required phrase',async({page})=>{
+test('full ZIP is ready for direct download without extra confirmation',async({page})=>{
   await page.goto('/results/'+rid)
   await expect(page.getByRole('heading',{name:'Выезд Самара 05.11'})).toBeVisible()
-  const save=page.getByRole('button',{name:'Я сохранил полный архив'})
-  await save.click()
-  const confirm=page.getByRole('button',{name:'Подтвердить сохранение ZIP'})
-  await expect(confirm).toBeDisabled()
-  await page.getByRole('textbox',{name:/СОХРАНЁН/}).fill('СОХРАНЁН')
-  await expect(confirm).toBeEnabled()
-  await confirm.click()
-  await expect(page.getByText('Архив подтверждён')).toBeVisible()
+  await expect(page.getByText('Архив подготовлен автоматически после сортировки.')).toBeVisible()
+  await expect(page.getByRole('button',{name:/Скачать всю сортировку ZIP/})).toBeVisible()
+  await expect(page.getByRole('button',{name:'Я сохранил полный архив'})).toHaveCount(0)
 })
 test('auto-processing preference defaults off and saves on the server',async({page})=>{
   await page.goto('/settings')
-  await page.getByRole('button',{name:/MegaLoc и CPU/}).click()
+  await page.getByRole('button',{name:/MegaLoc/}).click()
   const enabled=page.getByRole('checkbox',{name:'Автоматически обрабатывать загруженные ФО'})
   await expect(enabled).not.toBeChecked()
   await enabled.check()
   await expect(enabled).toBeChecked()
   await page.reload()
-  await page.getByRole('button',{name:/MegaLoc и CPU/}).click()
+  await page.getByRole('button',{name:/MegaLoc/}).click()
   await expect(enabled).toBeChecked()
+})
+test('storage settings persist minute-level automatic deletion',async({page})=>{
+  await page.goto('/settings')
+  await page.getByRole('button',{name:/Хранилище/}).click()
+  const enabled=page.getByRole('checkbox',{name:'Удалять старые фотоотчёты автоматически'})
+  await expect(enabled).toBeChecked()
+  await page.getByRole('spinbutton',{name:'Удалять через'}).fill('5')
+  await page.getByRole('combobox',{name:'Единицы срока хранения'}).click()
+  await page.getByRole('option',{name:'Минут'}).click()
+  await page.getByRole('button',{name:'Сохранить'}).click()
+  await page.reload()
+  await page.getByRole('button',{name:/Хранилище/}).click()
+  await expect(page.getByRole('spinbutton',{name:'Удалять через'})).toHaveValue('5')
+  await expect(page.getByRole('combobox',{name:'Единицы срока хранения'})).toContainText('Минут')
 })
 test('theme setting works in light and dark',async({page})=>{
   await page.goto('/settings')
@@ -121,10 +142,13 @@ test('mobile drawer allows navigation',async({page,isMobile})=>{
 
 test('processing overview moved to Settings, run details live under Queue',async({page})=>{
   await page.goto('/settings')
-  await page.getByRole('button',{name:/MegaLoc и CPU/}).click()
+  await page.getByRole('button',{name:/MegaLoc/}).click()
   await expect(page.getByRole('heading',{name:'MegaLoc',exact:true})).toBeVisible()
   await expect(page.getByText('Модель установлена')).toBeVisible()
-  await expect(page.getByRole('slider',{name:'Число потоков CPU для MegaLoc'})).toBeVisible()
+  await page.getByRole('button',{name:/Производительность/}).click()
+  await expect(page.getByRole('heading',{name:'Вычисления MegaLoc'})).toBeVisible()
+  await expect(page.getByRole('slider',{name:/Обработка ФО/})).toBeVisible()
+  await expect(page.getByRole('slider',{name:/Подготовка образцов/})).toBeVisible()
   await page.goto('/queue/runs/'+rid)
   await expect(page.getByRole('heading',{name:'Выезд Самара 05.11'})).toBeVisible()
   await expect(page.getByRole('link',{name:'История очереди'})).toBeVisible()
@@ -134,7 +158,7 @@ test('processing overview moved to Settings, run details live under Queue',async
 test('FO upload opens a global dialog that can be minimized without unmounting',async({page})=>{
   await page.goto('/fo')
   await page.getByRole('button',{name:'+ Загрузить папку'}).click()
-  const dialog=page.getByRole('dialog',{name:'Загрузить папку фотографий'})
+  const dialog=page.getByRole('dialog',{name:'Загрузить фотографии'})
   await expect(dialog).toBeVisible()
   await page.getByRole('button',{name:'Свернуть загрузку'}).click()
   await expect(dialog).toBeHidden()
