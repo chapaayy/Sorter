@@ -588,7 +588,7 @@ test('desktop references scroll inside two panels without scrolling the whole pa
 
 test('construction creation dialog keeps standard custom and folder import in one window',async({page})=>{
   await page.goto('/references')
-  await page.getByRole('button',{name:/Создать конструкцию/}).click()
+  await page.locator('.page-head').getByRole('button',{name:'+ Создать конструкцию'}).click()
   const dialog=page.getByRole('dialog',{name:'Создать конструкцию'})
   await expect(dialog).toBeVisible()
   await expect(dialog.getByRole('tab',{name:'Обычная'})).toHaveAttribute('aria-selected','true')
