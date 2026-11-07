@@ -521,3 +521,40 @@ test('staged reference upload remains available during active FO and uses manife
   expect(registered.sha256).toMatch(/^[0-9a-f]{64}$/)
   await expect(page.getByText('Файлы приняты. Подготовка образцов поставлена в очередь.')).toBeVisible()
 })
+
+test('desktop references scroll inside two panels without scrolling the whole page',async({page,isMobile})=>{
+  test.skip(isMobile,'Touch layouts keep natural document scrolling')
+  const references=Array.from({length:80},(_,i)=>{
+    const sam='SAM '+String(i+1).padStart(4,'0')
+    return {sam,photos:60,display_name:sam+' — Тестовая улица '+i}
+  })
+  const images=Array.from({length:60},(_,i)=>({
+    id:'ref-'+i,name:'image_'+i+'.jpg',bytes:1024,
+    created_at:'2026-11-07T12:00:00Z',thumbnail_status:'pending',
+    thumbnail_url:'/api/thumbnails/ref-'+i,original_url:'/api/photos/ref-'+i+'/original'
+  }))
+  await page.route('**/api/references',route=>respond(route,{sam:references,total:4800}))
+  await page.route(/\/api\/references\/SAM%200001\/photos/,route=>
+    respond(route,{photos:images,next_cursor:null}))
+  await page.goto('/references')
+  const constructions=page.locator('.split-list')
+  const gallery=page.locator('.reference-library-gallery-scroll')
+  await expect(constructions.locator('.split-item')).toHaveCount(80)
+  await expect(gallery.getByLabel('Галерея, 60 фотографий')).toBeVisible()
+  const layout=await page.evaluate(()=>{
+    const list=document.querySelector('.split-list') as HTMLElement
+    const photos=document.querySelector('.reference-library-gallery-scroll') as HTMLElement
+    return {
+      windowHeight:innerHeight,documentHeight:document.documentElement.scrollHeight,
+      listClient:list.clientHeight,listScroll:list.scrollHeight,
+      photoClient:photos.clientHeight,photoScroll:photos.scrollHeight
+    }
+  })
+  expect(layout.documentHeight).toBeLessThanOrEqual(layout.windowHeight+2)
+  expect(layout.listScroll).toBeGreaterThan(layout.listClient+150)
+  expect(layout.photoScroll).toBeGreaterThan(layout.photoClient+150)
+  await constructions.evaluate(el=>{el.scrollTop=140})
+  await gallery.evaluate(el=>{el.scrollTop=180})
+  expect(await constructions.evaluate(el=>el.scrollTop)).toBeGreaterThan(100)
+  expect(await gallery.evaluate(el=>el.scrollTop)).toBeGreaterThan(100)
+})
