@@ -5,7 +5,12 @@ export interface ImportPlanEntry{
 }
 export interface ImportPlanError{folder:string;reason:string}
 export interface ImportPlan{entries:ImportPlanEntry[];errors:ImportPlanError[];cities:Record<string,string>}
+export type NewConstruction =
+  |{kind:'standard';city_code:string;number:string;address:string}
+  |{kind:'custom';name:string}
+export interface CreatedConstruction{sam:string;display_name:string;kind:'standard'|'custom';photos:number}
 export const referenceApi={
+  createConstruction:(value:NewConstruction)=>post<CreatedConstruction>('/references/constructions',value),
   importPreview:(folders:string[])=>post<ImportPlan>('/references/import/preview',{folders}),
   changeAddress:(sam:string,address:string)=>patch<{sam:string;address:string;name:string}>(
     '/references/constructions/'+encodeURIComponent(sam)+'/address',{address}),

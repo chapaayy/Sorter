@@ -17,7 +17,7 @@ class NewSession(BaseModel):
 
 class ImportFile(BaseModel):
     upload_id:uuid.UUID
-    sam:str=Field(min_length=5,max_length=80)
+    sam:str=Field(min_length=1,max_length=80)
     address:str|None=Field(default=None,max_length=120)
     relative_path:str=Field(min_length=1,max_length=1024)
     filename:str=Field(min_length=1,max_length=200)

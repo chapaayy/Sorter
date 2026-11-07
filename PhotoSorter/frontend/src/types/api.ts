@@ -43,7 +43,7 @@ export interface Photo {
   thumbnail_url?: string | null; original_url?: string | null
 }
 export interface CursorPage<T> { photos: T[]; next_cursor: string | null }
-export interface SamCount { sam: string; photos: number; address?: string | null; city_code?: string | null; construction_number?: string | null; display_name?: string }
+export interface SamCount { sam: string; kind?:'standard'|'custom'; photos: number; address?: string | null; city_code?: string | null; construction_number?: string | null; display_name?: string }
 export interface ReferenceFile { id: string; sam: string; name: string; sha256: string }
 export interface RunProgress {
   model?: string | null; stage?: string; stage_label?: string; detail?: string
