@@ -288,7 +288,7 @@ test('FO cards show live MegaLoc progress and a confirmed stop action',async({pa
   await expect(page.getByRole('alertdialog',{name:'Остановить обработку MegaLoc?'})).toBeVisible()
   await page.getByRole('alertdialog').getByRole('button',{name:'Остановить'}).click()
   await expect.poll(()=>stopped).toBe(1)
-  await expect(card.getByText('Остановка')).toBeVisible()
+  await expect(card.locator('.task-card-status')).toHaveText('Остановка')
 })
 
 test('FO card can start once and remove a queued run without deleting history',async({page})=>{
