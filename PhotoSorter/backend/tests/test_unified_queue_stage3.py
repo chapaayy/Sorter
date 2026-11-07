@@ -303,3 +303,42 @@ def test_stop_running_preparation_does_not_implicitly_skip_change(system):
         resumed=work_queue.claim_next(db)
         assert resumed["id"]==later
     finish_fo(later)
+
+def test_deleted_duplicate_source_cannot_be_silently_published(system):
+    source_id,original=add_legacy(system)
+    other_id=uuid.uuid4()
+    other=system/"references"/"SAM-0002"/"other.jpg"
+    other.parent.mkdir(parents=True)
+    raw=_jpg(exif=True)
+    other.write_bytes(raw)
+    with database.connect() as db:
+        db.execute("""INSERT INTO uploads(id,kind,sam,filename,declared_size,
+            received,checksum,finalized,target_path)
+            VALUES (%s,'reference','SAM-0002','other.jpg',
+                    %s,%s,%s,true,%s)""",
+                    (other_id,len(raw),len(raw),hashlib.sha256(raw).hexdigest(),str(other)))
+    digest=hashlib.sha256(original.read_bytes()).hexdigest()
+    sid,uid=uuid.uuid4(),uuid.uuid4()
+    from server.api.routes.reference_imports import ImportFile
+    reference_imports.create(sid)
+    reference_imports.register_manifest(sid,[ImportFile(
+       upload_id=uid,sam="SAM-0001",
+       relative_path="SAM-0001/duplicate.jpg",filename="duplicate.jpg",
+       size=len(original.read_bytes()),sha256=digest)])
+    assert reference_uploads.confirm_duplicate(sid,uid,digest)["already_present"]
+    # Legacy edit occurred while the staged session was uploading, before
+    # its CPU preparation claim; the original duplicate source disappeared.
+    with database.connect() as db:
+        db.execute("DELETE FROM uploads WHERE id=%s",(source_id,))
+    original.unlink()
+    with database.connect() as db:
+        job=work_queue.claim_next(db)
+        before=reference_versions.current(db)["id"]
+    assert job["kind"]=="reference_preparation"
+    with pytest.raises(ValueError,match="дубля"):
+        reference_prepare.run(job["id"])
+    with database.connect() as db:
+        assert reference_versions.current(db)["id"]==before
+        record=db.execute("SELECT failed_count FROM reference_preparation_jobs WHERE id=%s",
+                          (job["id"],)).fetchone()
+        assert record["failed_count"]==1

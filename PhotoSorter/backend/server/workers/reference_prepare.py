@@ -156,6 +156,22 @@ def run(job_id):
             actual.append({**item,"stored_path":str(file)})
         elif item["state"]!="duplicate":
             raise ValueError("Не все файлы подготовлены")
+    # A server-acknowledged duplicate may have referred to an old reference
+    # that was removed before this preparation started. Never silently count
+    # a missing source as a successful prepared reference.
+    from ..db.repositories import reference_versions as versions
+    with connect() as db:
+        published=versions.current(db)
+        if not published or published["id"] is None:
+            raise RuntimeError("Нет опубликованной библиотеки для подтверждения дублей")
+        available={(member["sam"],member["source_hash"])
+                   for member in versions.members(db,published["id"])}
+    available.update((item["sam"],item["checksum"]) for item in actual)
+    for item in items:
+        if item["state"]=="duplicate" and (item["sam"],item["checksum"]) not in available:
+            reason="Источник подтверждённого дубля больше не опубликован"
+            _record_file_error(job_id,item["upload_id"],reason)
+            raise ValueError(reason)
     if actual:
         _prepare_embeddings(job_id,actual,fp)
     else:
