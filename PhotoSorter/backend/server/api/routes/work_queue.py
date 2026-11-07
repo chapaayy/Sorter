@@ -95,3 +95,29 @@ def retry(job_id:uuid.UUID,action:PreparationAction):
 @router.post("/reference-preparations/{job_id}/skip")
 def skip(job_id:uuid.UUID,action:PreparationAction):
     return _action(job_id,action.idempotency_key,"skip")
+
+@router.post("/reference-preparations/{job_id}/stop")
+def stop_running(job_id:uuid.UUID):
+    """Request cooperative cancellation; never silently bypass a publication.
+
+    An interrupted preparation remains a FIFO barrier until explicit retry/skip.
+    """
+    with connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        prep=db.execute("""
+            SELECT state,stop_requested FROM reference_preparation_jobs
+            WHERE id=%s FOR UPDATE
+        """,(job_id,)).fetchone()
+        if not prep:
+            raise HTTPException(404,"Подготовка не найдена")
+        if prep["state"]=="running":
+            db.execute("""
+                UPDATE reference_preparation_jobs
+                SET stop_requested=true,updated_at=now() WHERE id=%s
+            """,(job_id,))
+            return {"id":str(job_id),"stop_requested":True,
+                    "state":"stopping"}
+        if prep["state"]=="interrupted" and prep["stop_requested"]:
+            return {"id":str(job_id),"stop_requested":True,
+                    "state":"interrupted"}
+        raise HTTPException(409,"Остановка доступна только для выполняемой подготовки")

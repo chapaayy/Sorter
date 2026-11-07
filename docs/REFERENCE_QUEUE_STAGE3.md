@@ -25,6 +25,7 @@
 - `GET /api/work-queue?limit=100&offset=0`: общая очередь, позиции, типы и статусы.
 - `GET /api/reference-preparations/{id}`: время, прогресс, ошибки.
 - `POST /api/reference-preparations/{id}/retry`, `/skip`: явное восстановление зависимостей, идемпотентное по ключу.
+- `POST /api/reference-preparations/{id}/stop`: запрос прерывания выполняемой подготовки, после остановки FIFO остаётся заблокированной до явного retry/skip.
 - `/api/runs`, `/api/batches`, `/api/results` сохраняют старые контракты.
 - Завершение нового ФО-манифеста при объединённом режиме резервирует позицию через автоenqueue в той же SQL-транзакции, не дожидаясь очередного тикa cleanup.
 

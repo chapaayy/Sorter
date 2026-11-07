@@ -280,3 +280,26 @@ def test_interrupted_preparation_is_barrier_until_retry(system):
         again=work_queue.claim_next(db)
         assert again["id"]==task["id"]
         assert again["seq"]==task["seq"]
+
+def test_stop_running_preparation_does_not_implicitly_skip_change(system):
+    add_legacy(system)
+    sid,uid,path,digest,pid=prepare_import(system)
+    later=add_fo()
+    with database.connect() as db:
+        item=work_queue.claim_next(db)
+        assert item["kind"]=="reference_preparation"
+    request=actions.stop_running(uuid.UUID(pid))
+    assert request["state"]=="stopping"
+    assert actions.stop_running(uuid.UUID(pid))["stop_requested"]
+    with pytest.raises(reference_prepare.PreparationCancelled):
+        reference_prepare.run(item["id"])
+    with database.connect() as db:
+        work_queue.finish_preparation(db,item["id"],"interrupted","Остановлено пользователем")
+        assert work_queue.claim_next(db) is None
+    assert actions.stop_running(uuid.UUID(pid))["state"]=="interrupted"
+    assert actions.skip(uuid.UUID(pid),
+           actions.PreparationAction(idempotency_key=uuid.uuid4()))["state"]=="stopped"
+    with database.connect() as db:
+        resumed=work_queue.claim_next(db)
+        assert resumed["id"]==later
+    finish_fo(later)
