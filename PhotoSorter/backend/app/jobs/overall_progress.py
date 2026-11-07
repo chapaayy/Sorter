@@ -106,7 +106,8 @@ class OverallProgress:
             if not items:
                 items = rates(('validate_references','validate_queries'))
         elif phase.stage == 'archive':
-            items = rates(('archive',)) or rates(('saving',))
+            # ZIP units are bytes; image-copy units are photos. Mixing rates gives a fictitious ETA.
+            items = rates(('archive',))
         elif phase.stage == 'export':
             items = rates(('saving','validate_queries','validate_references'))
         else:
