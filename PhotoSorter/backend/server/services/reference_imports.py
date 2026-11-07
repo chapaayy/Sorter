@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from app.photos.construction import parse_folder_name,parse_key
+from app.photos.labels import check_label
 from ..database import connect
 from ..db.repositories import reference_imports as repository
 from ..storage import reference_objects as storage
@@ -49,11 +50,14 @@ def _manifest(files):
         sam=item.sam
         address=item.address
         try:
-            parse_key(sam)
             if address is not None:
                 folder=parse_folder_name(sam+" — "+address)
                 if folder.key!=sam:
                     raise ValueError("Номер конструкции не совпадает")
+            else:
+                # Only pre-registered catalog entries may use custom labels.
+                if check_label(sam)!=sam:
+                    raise ValueError("Недопустимое название конструкции")
         except ValueError as exc:
             raise HTTPException(422,"Недопустимый номер или адрес конструкции") from exc
         if sam in addresses and addresses[sam]!=address:
@@ -73,12 +77,15 @@ def _check_catalog(db, rows):
     """,([row[0] for row in rows],)).fetchone():
         raise HTTPException(409,"UUID образца уже занят")
     sams=sorted({row[1] for row in rows})
-    catalog={r["sam"]:r["address"] for r in db.execute("""
-        SELECT sam,address FROM reference_constructions WHERE sam=ANY(%s)
+    catalog={r["sam"]:r for r in db.execute("""
+        SELECT sam,address,kind FROM reference_constructions WHERE sam=ANY(%s)
     """,(sams,)).fetchall()}
     for sam,address in {row[1]:row[2] for row in rows}.items():
         if sam in catalog:
-            if address is not None and catalog[sam]!=address:
+            row=catalog[sam]
+            if row["kind"]=="custom" and address is not None:
+                raise HTTPException(422,"У индивидуальной конструкции нет адреса")
+            if address is not None and row["address"]!=address:
                 raise HTTPException(409,f"У конструкции {sam} другой сохранённый адрес")
         elif address is None:
             raise HTTPException(422,f"Новая конструкция {sam} требует адреса")

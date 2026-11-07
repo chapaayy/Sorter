@@ -5,7 +5,7 @@ to historical FO snapshots. Staged uploads are always accepted independently.
 """
 from __future__ import annotations
 from fastapi import HTTPException
-from app.photos.construction import parse_key
+from app.photos.labels import check_label
 from app.system.model_store import signature
 from ..database import connect
 from ..db.repositories import reference_versions
@@ -13,7 +13,8 @@ from . import reference_publication
 
 def _sam(value):
     try:
-        parse_key(value)
+        if check_label(value)!=value:
+            raise ValueError('Некорректный номер или название')
     except ValueError as exc:
         raise HTTPException(422,str(exc)) from exc
     return value
@@ -39,7 +40,9 @@ def _edit(db,*,sam=None,reference_id=None):
     selected=[m for m in members if
         (m["sam"]==sam if sam is not None else m["reference_id"]==reference_id)]
     if not selected:
-        raise HTTPException(404,"Образец или конструкция не найдены")
+        if sam is None or not db.execute(
+            "SELECT 1 FROM reference_constructions WHERE sam=%s",(sam,)).fetchone():
+            raise HTTPException(404,"Образец или конструкция не найдены")
     remaining=[m for m in members if m not in selected]
     current=reference_versions.current(db)
     fp=signature()

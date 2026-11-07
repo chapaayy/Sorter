@@ -5,6 +5,9 @@ from fastapi import HTTPException
 from app.photos.construction import CITIES, parse_folder_name
 from ..database import connect
 import json
+import re
+from app.photos.construction import parse_key
+from app.photos.labels import check_label
 
 _EDIT_LOCK = 723409133
 
@@ -68,3 +71,46 @@ def change_address(sam: str, address: str) -> dict:
                 (current["current_version_id"],json.dumps({"sam":updated["sam"]})))
     return {"sam":updated["sam"],"address":updated["address"],
             "name":f"{updated['sam']} — {updated['address']}"}
+
+
+def create(kind: str, *, city_code: str | None = None,
+           number: str | None = None, address: str | None = None,
+           name: str | None = None) -> dict:
+    """Create an EMPTY catalog entry; photo recognition changes only after FIFO preparation."""
+    if kind == "standard":
+        try:
+            item=parse_folder_name(f"{city_code or ''} {number or ''} — {address or ''}")
+        except ValueError as exc:
+            raise HTTPException(422,str(exc)) from exc
+        sam=item.key
+        title=item.title
+        values=(sam,item.city_code,item.number,item.address,"standard")
+    elif kind == "custom":
+        proposed=(name or "").strip()
+        try:
+            canonical=check_label(proposed)
+            if canonical!=proposed or re.match(r'^SAM-\\d{4}',proposed,re.I):
+                raise ValueError("Некорректное индивидуальное название")
+            try:
+                parse_key(proposed)
+            except ValueError:
+                pass
+            else:
+                raise ValueError("Для кода города и номера используйте обычную конструкцию")
+        except ValueError as exc:
+            raise HTTPException(422,str(exc)) from exc
+        sam=proposed
+        title=proposed
+        values=(sam,None,None,None,"custom")
+    else:
+        raise HTTPException(422,"Неизвестный тип конструкции")
+    with connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(%s)",(_EDIT_LOCK,))
+        if db.execute("SELECT 1 FROM reference_constructions WHERE sam=%s",(sam,)).fetchone() or \
+           db.execute("SELECT 1 FROM uploads WHERE sam=%s AND kind='reference' LIMIT 1",(sam,)).fetchone():
+            raise HTTPException(409,"Конструкция с таким названием уже существует")
+        db.execute("""INSERT INTO reference_constructions
+            (sam,city_code,construction_number,address,kind)
+            VALUES (%s,%s,%s,%s,%s)""",values)
+    return {"sam":sam,"display_name":title,"kind":kind,"photos":0,
+            "city_code":values[1],"construction_number":values[2],"address":values[3]}
