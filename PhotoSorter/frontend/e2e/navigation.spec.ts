@@ -23,6 +23,13 @@ async function mock(page:Page){
     if(p==='/api/thumbnails/status/'+bid+'/counts')return respond(route,{total:2,ready:2,failed:0})
     if(p==='/api/batches/'+bid+'/retention')return respond(route,{batch_id:bid,delete_state:'active',warning:false,download_confirmed_at:null,delete_after_at:null})
     if(p==='/api/batches/'+bid+'/downloads/confirm'&&method==='POST')return respond(route,{batch_id:bid,download_confirmed_at:'2026-11-05T06:50:00Z',delete_after_at:'2027-01-05T06:50:00Z',confirmed_run_id:rid})
+    if(p==='/api/reference-library/status')return respond(route,{
+      unified_queue_enabled:false,staged_imports_enabled:false,baseline_state:'ready',
+      current_version:1,current_version_id:1,published_at:'2026-11-05T06:00:00Z',
+      published_references:1,notice:false,pending_changes:0,notice_version_id:null
+    })
+    if(p==='/api/reference-library/events')return respond(route,{events:[]})
+    if(p==='/api/work-queue')return respond(route,{tasks:[],total:0})
     if(p==='/api/references')return respond(route,{sam:[{sam:'SAM-0001',photos:1}],total:1})
     if(p==='/api/references/cache/status')return respond(route,{total:1,cached:1,current_signature:null})
     if(p==='/api/references/SAM-0001/photos')return respond(route,{photos:[photo],next_cursor:null})
@@ -50,11 +57,11 @@ async function mock(page:Page){
   })
 }
 test.beforeEach(async({page})=>{await mock(page)})
-test('six navigation sections and real data bindings',async({page})=>{
+test('seven navigation sections and real data bindings',async({page})=>{
   await page.goto('/fo')
   await expect(page.getByRole('heading',{name:'Фотоотчёты'})).toBeVisible()
   await expect(page.getByText('Выезд Самара 05.11').first()).toBeVisible()
-  for(const [path,heading] of [['/references','Образцы'],['/processing','Обработка'],['/results','Результаты'],['/logs','Логи'],['/settings','Настройки']] as const){
+  for(const [path,heading] of [['/references','Образцы'],['/processing','Обработка'],['/queue','Очередь'],['/results','Результаты'],['/logs','Логи'],['/settings','Настройки']] as const){
     await page.goto(path)
     await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible()
   }
@@ -356,7 +363,31 @@ test('processing dashboard displays real Worker, running stage and queue order w
   await page.route(/^https?:\/\/[^/]+\/api\/runs\/20261106T000000-222222222222\/stop$/,route=>{
     stops++
     list=list.filter(r=>r.id!==first.id)
+    work=work.filter(t=>t.fo_run_id!==first.id)
     return respond(route,{id:first.id,status:'stopped'})
+  })
+  await page.route('**/api/reference-library/status',route=>respond(route,{
+    unified_queue_enabled:true,staged_imports_enabled:true,baseline_state:'ready',
+    current_version:13,current_version_id:13,published_references:42,
+    published_at:'2026-11-06T06:00:00Z',notice:false,pending_changes:0
+  }))
+  const prep='92b3b221-9886-4cb0-9c7d-dc4ae9a2ed66'
+  const task=(seq:number,kind:string,id:string,state:string)=>({
+    seq,kind,state,created_at:'2026-11-06T20:00:00Z',started_at:null,
+    finished_at:null,fo_run_id:kind==='fo_processing'?id:null,
+    reference_job_id:kind==='reference_preparation'?id:null,
+    session_id:null,total_count:kind==='reference_preparation'?3:null,
+    completed_count:0,failed_count:0,error:null,stop_requested:false,
+    batch_id:kind==='fo_processing'?bid:null,
+    batch_name:kind==='fo_processing'?'Выезд Самара 05.11':null,fo_source:'manual'
+  })
+  let work=[task(1,'fo_processing',rid,'running'),
+    task(2,'fo_processing',first.id,'queued'),
+    task(3,'reference_preparation',prep,'queued'),
+    task(4,'fo_processing',queued.id,'queued')]
+  await page.route(/^https?:\/\/[^/]+\/api\/work-queue(?:\?.*)?$/,route=>{
+    const scope=new URL(route.request().url()).searchParams.get('scope')
+    return respond(route,{tasks:scope==='history'?[]:work,total:scope==='history'?0:work.length})
   })
   await page.goto('/processing')
   const overview=page.getByRole('region',{name:'Состояние MegaLoc и настройки'})
@@ -365,17 +396,21 @@ test('processing dashboard displays real Worker, running stage and queue order w
   await expect(current.getByText('Группировка ФО')).toBeVisible()
   await expect(current.getByRole('progressbar')).toHaveAttribute('aria-valuenow','32.5')
   await expect(current.getByText('13 / 40')).toBeVisible()
-  const queue=page.getByRole('region',{name:'Очередь обработок'})
-  await expect(queue.getByText('2 ожидают')).toBeVisible()
+  await expect(page.getByRole('link',{name:'Открыть очередь'})).toHaveAttribute('href','/queue')
+  await expect(page.getByRole('region',{name:'Очередь обработок'})).toHaveCount(0)
+  await page.goto('/queue')
+  const queue=page.getByRole('region',{name:'Общая очередь'})
+  await expect(queue.getByText('4 задач')).toBeVisible()
   const positions=queue.locator('.processing-queue-position')
   await expect(positions.first()).toHaveText('1')
-  await expect(positions.last()).toHaveText('2')
-  await queue.getByRole('button',{name:'Убрать из очереди'}).first().click()
-  const dialog=page.getByRole('alertdialog',{name:'Убрать задание из очереди?'})
+  await expect(positions.last()).toHaveText('4')
+  await expect(queue.getByText('Подготовка образцов')).toBeVisible()
+  await queue.locator('.queue-task-row').nth(1).getByRole('button',{name:'Убрать'}).click()
+  const dialog=page.getByRole('alertdialog',{name:'Остановить задачу?'})
   await expect(dialog).toBeVisible()
-  await dialog.getByRole('button',{name:'Убрать из очереди'}).click()
+  await dialog.getByRole('button',{name:'Остановить'}).click()
   await expect.poll(()=>stops).toBe(1)
-  await expect(queue.locator('.processing-queue-row')).toHaveCount(1)
+  await expect(queue.locator('.queue-task-row')).toHaveCount(3)
 })
 
 test('processing dashboard reports missing Worker heartbeat without claiming success',async({page})=>{
@@ -391,4 +426,114 @@ test('processing dashboard reports missing Worker heartbeat without claiming suc
     .getByText('Нет сигнала')).toBeVisible()
   await expect(page.getByRole('region',{name:'Текущее активное задание'})
     .getByText('Сейчас MegaLoc не обрабатывает фотографии')).toBeVisible()
+})
+
+test('FO library notice appears once, shows events and requires explicit acknowledgement',async({page})=>{
+  let unread=true,acks=0
+  const v=13
+  const status=()=>({
+    unified_queue_enabled:true,staged_imports_enabled:true,
+    baseline_state:'ready',current_version:v,current_version_id:v,
+    published_at:'2026-11-07T09:00:00Z',published_references:545,
+    last_fo_uploaded_at:'2026-11-06T09:00:00Z',
+    acknowledged_version_id:unread?12:v,notice_version_id:unread?v:null,
+    pending_changes:unread?1:0,notice:unread,
+    message:'Образцы конструкций обновились с момента предыдущей загрузки ФО. Результаты новых обработок могут отличаться от прежних.'
+  })
+  await page.route('**/api/reference-library/status',route=>respond(route,status()))
+  await page.route(/^https?:\/\/[^/]+\/api\/reference-library\/events(?:\?.*)?$/,route=>
+    respond(route,{events:[{id:9,version_id:v,version_number:v,
+      event_kind:'reference_prepared',actor:'system',
+      created_at:'2026-11-07T09:00:00Z',details:{reference_count:545}}]}))
+  await page.route('**/api/reference-library/notices/ack',route=>{
+    expect(route.request().method()).toBe('POST')
+    expect(JSON.parse(route.request().postData()||'{}').version_id).toBe(v)
+    unread=false;acks++
+    return respond(route,status())
+  })
+  await page.goto('/fo')
+  expect(acks).toBe(0)
+  await page.getByRole('button',{name:'+ Загрузить папку'}).click()
+  const notice=page.getByRole('region',{name:'Уведомление об обновлении образцов'})
+  await expect(notice).toBeVisible()
+  await expect(notice.getByText('Результаты новых обработок могут отличаться от прежних.')).toBeVisible()
+  await notice.getByRole('button',{name:'Что изменилось'}).click()
+  await expect(notice.getByText('версия 13')).toBeVisible()
+  expect(acks).toBe(0),'Viewing history must not acknowledge'
+  await notice.getByRole('button',{name:'Понятно'}).click()
+  await expect.poll(()=>acks).toBe(1)
+  await expect(notice).toBeHidden()
+  await page.reload()
+  await page.getByRole('button',{name:'+ Загрузить папку'}).click()
+  await expect(notice).toHaveCount(0)
+  expect(acks).toBe(1)
+})
+
+test('staged reference upload remains available during active FO and uses manifest API',async({page})=>{
+  const status={
+    unified_queue_enabled:true,staged_imports_enabled:true,baseline_state:'ready',
+    current_version:12,current_version_id:12,published_references:1,
+    published_at:'2026-11-06T09:00:00Z',notice:false,pending_changes:0,
+    notice_version_id:null
+  }
+  const source=Buffer.from('test reference image bytes for staged import')
+  let registered:any=null,finished=false,queued=0
+  await page.route('**/api/reference-library/status',route=>respond(route,status))
+  await page.route(/^https?:\/\/[^/]+\/api\/runs(?:\?.*)?$/,route=>
+    respond(route,{runs:[{...run,status:'running'}],total:1}))
+  await page.route(/^https?:\/\/[^/]+\/api\/reference-imports(?:\/.*)?(?:\?.*)?$/,route=>{
+    const url=new URL(route.request().url())
+    const path=url.pathname
+    const method=route.request().method()
+    if(path==='/api/reference-imports'){
+      if(method==='GET')return respond(route,{sessions:[],total:0})
+      const payload=JSON.parse(route.request().postData()||'{}')
+      return respond(route,{id:payload.client_session_id,state:'uploading',registered:false,
+        expected:0,pending:0,files:[],preparation_state:'pending'})
+    }
+    if(method==='PUT'&&path.endsWith('/manifest')){
+      registered=JSON.parse(route.request().postData()||'{}').files[0]
+      return respond(route,{id:path.split('/')[3],state:'uploading',registered:true,
+        expected:1,pending:1,files:[{...registered,state:'pending',received:0}],
+        preparation_state:'pending'})
+    }
+    if(method==='GET'&&path.includes('/files/')){
+      return respond(route,{upload_id:registered.upload_id,state:'pending',
+        offset:0,size:source.length,sha256:registered.sha256})
+    }
+    if(method==='PATCH'&&path.includes('/files/')){
+      return respond(route,{offset:Number(route.request().headers()['upload-offset']||0)+
+        (route.request().postDataBuffer()?.length||0)})
+    }
+    if(method==='POST'&&path.endsWith('/finish')){
+      finished=true
+      return respond(route,{sha256:registered.sha256,already_finalized:false})
+    }
+    if(method==='GET'){
+      return respond(route,{id:path.split('/').at(-1),state:finished?'complete':'uploading',
+        registered:true,expected:1,pending:finished?0:1,files:[],
+        preparation_state:finished?'queued':'pending'})
+    }
+    if(method==='POST'&&path.endsWith('/complete')){
+      queued++
+      return respond(route,{state:'queued',queue_seq:2,
+        preparation_job_id:'fafb3923-06cb-4478-b45b-e931a34582fa'})
+    }
+    return route.fulfill({status:404,contentType:'application/json',body:'{}'})
+  })
+  await page.goto('/references')
+  const uploadButton=page.getByRole('button',{name:'+ Загрузить образцы'})
+  await expect(uploadButton).toBeEnabled()
+  await uploadButton.click()
+  await page.getByRole('tab',{name:'Фото в конструкцию'}).click()
+  await page.locator('.upload-drop input[type="file"]').setInputFiles({
+    name:'new.jpg',mimeType:'image/jpeg',buffer:source
+  })
+  await page.getByRole('button',{name:'Добавить фото'}).click()
+  await expect.poll(()=>queued).toBe(1)
+  expect(finished).toBe(true)
+  expect(registered.sam).toBe('SAM-0001')
+  expect(registered.size).toBe(source.length)
+  expect(registered.sha256).toMatch(/^[0-9a-f]{64}$/)
+  await expect(page.getByText('Файлы приняты. Подготовка образцов поставлена в очередь.')).toBeVisible()
 })
