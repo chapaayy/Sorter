@@ -186,3 +186,11 @@ Shell
 ## TCP BBR на Linux-хосте
 
 Установщик `install.sh --deploy` вызывает `PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --apply` после preflight и до Docker Compose. Отдельный модуль включает BBR только при наличии поддержки ядра, сохраняет собственные drop-in в `/etc/sysctl.d` и `/etc/modules-load.d`, не меняет qdisc и контейнерные настройки прочих сервисов. В `compose.yaml` алгоритм явно устанавливается для отдельного сетевого пространства Caddy через `PHOTOSORTER_CADDY_TCP_CC`, который `install.sh` берёт из текущего алгоритма хоста после попытки включить BBR. `--check` ничего не изменяет; `--disable` удаляет только файлы PhotoSorter и возвращает `cubic`. `PHOTOSORTER_ENABLE_BBR=0` пропускает будущие попытки настройки, но не отменяет ранее установленный BBR.
+
+## Производительность, каталог конструкций и статусы (2026-11-08)
+
+`api/routes/processing_settings.py` → `services/compute_settings.py` → PostgreSQL `processing_settings` → единый `server/worker.py` → `services/worker_cpu_affinity.py` + `app/system/performance.py`. Настройка действует **со следующего задания** FIFO; оба вида обработки используют один budget. Контейнер Worker ограничен доступным cpuset на этапе установки. Другие контейнеры не помещаются в жёсткий системный cpuset. Thumbnail/cleanup имеют относительные CPU shares, без жёсткой квоты.
+
+`ReferenceLibrary.vue` → `CreateConstructionDialog.vue` → `api/routes/references.py` → `services/construction_catalog.py` → `reference_constructions`. Пустой каталог независим от текущей версии признаков. Фото в индивидуальные конструкции по-прежнему идут через `useReferenceTransfer` → `reference_imports` → единую очередь подготовки → `reference_publication`, а массовый импорт сохраняет старую строгую валидацию.
+
+`stores/deletion.ts` + серверный `batches.delete_state` → `FoBatchCard.vue`, `QueueTaskRow.vue`, `ResultsList.vue` → единый `CompactTaskCard.vue` со статусным outline. Для `deleting` фон красный; для `delete_failed` только красная обводка. ZIP не выделен отдельным статусом.

@@ -253,3 +253,17 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | `backend/server/db/migrations/0021_archive_retry.sql` | PostgreSQL очередь повтора ZIP |
 | `frontend/src/features/settings/PerformanceSettings.vue` | Режимы и CPU по задачам |
 | `frontend/src/styles/reference-layout.css` | Исправление вертикальной компоновки галереи образцов |
+
+## Доработки производительности, Образцов и статусов (2026-11-08)
+
+| Файл | Назначение |
+|---|---|
+| `PhotoSorter/backend/server/services/worker_cpu_affinity.py` | Affinity всех существующих потоков worker при переходе к следующей задаче FIFO |
+| `PhotoSorter/backend/server/services/compute_settings.py` | Единый CPU-бюджет MegaLoc и серверное число доступных CPU |
+| `PhotoSorter/frontend/src/features/settings/PerformanceSettings.vue` | Два связанных ползунка CPU и автоматические фоновые приоритеты |
+| `PhotoSorter/frontend/src/features/references/CreateConstructionDialog.vue` | Единый диалог стандартной, индивидуальной конструкции и импорта папки |
+| `PhotoSorter/backend/server/db/migrations/0022_custom_constructions.sql` | Новая метадата для пустых и индивидуальных конструкций |
+| `PhotoSorter/backend/server/services/construction_catalog.py` | Безопасная регистрация конструкций в каталоге |
+| `PhotoSorter/frontend/src/stores/deletion.ts` | Немедленный общий статус удаления партии |
+| `PhotoSorter/frontend/src/components/ui/CompactTaskCard.vue` | Общий компонент статусных карточек, красная заливка удаления |
+| `PhotoSorter/frontend/src/styles/task-cards.css` | Палитра обводок и красная заливка удаления |
