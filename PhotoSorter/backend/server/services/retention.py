@@ -27,8 +27,17 @@ def update_settings(enabled:bool,value:int,unit:str):
     if value>120 and unit=="months":
         raise HTTPException(422,"Максимум 120 месяцев")
     with connect() as db:
+        # Serialize preference edits with automatic deletion requests and enqueue.
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        previous=_preference(db)
         db.execute("""UPDATE retention_preferences SET enabled=%s,value=%s,unit=%s,updated_at=now()
              WHERE id=1""",(enabled,value,unit))
+        if enabled and not previous["enabled"]:
+            # Expired while disabled? Give a full new period on re-enabling.
+            db.execute("""UPDATE batches SET
+                delete_after_at=now() + (%s * %s::interval)
+                WHERE delete_state='active' AND delete_after_at IS NOT NULL
+                  AND delete_after_at<=now()""",(value,"1 "+UNITS[unit]))
     return settings()
 
 def _deadline(db,after_sql="now()"):
@@ -108,6 +117,8 @@ def status(batch_id):
 
 def due_batch_ids(limit=20):
     with connect() as db:
+        if not _preference(db)["enabled"]:
+            return []
         rows=db.execute("""SELECT id FROM batches WHERE delete_state='active'
                AND delete_after_at IS NOT NULL AND delete_after_at<=now()
                ORDER BY delete_after_at LIMIT %s""",(limit,)).fetchall()

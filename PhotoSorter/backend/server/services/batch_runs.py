@@ -31,7 +31,13 @@ def _public(row):
         "selected_models": snapshot.get("selected_models", ["megaloc"]),
         "progress": progress if isinstance(progress, dict) else {},
         "error": snapshot.get("error"),
+        "archive_state": snapshot.get("archive_state"),
     }
+    models=snapshot.get("models")
+    if isinstance(models,dict) and isinstance(models.get("megaloc"),dict):
+        model=models["megaloc"]
+        result["models"]={"megaloc":{key:model[key] for key in
+            ("status","processed","assigned","uncertain","groups") if key in model}}
     return result
 
 

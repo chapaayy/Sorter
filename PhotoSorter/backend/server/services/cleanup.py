@@ -18,8 +18,11 @@ def request(batch_id, *, only_if_due=False):
                          (batch_id,)).fetchone()
         if not batch: return {"batch_id":str(batch_id),"state":"not_found"}
         if only_if_due:
+            # Recheck inside the queue lock: retention may have been disabled.
             due=db.execute("""SELECT 1 FROM batches WHERE id=%s
-                AND delete_state='active' AND delete_after_at<=now()""",(batch_id,)).fetchone()
+                AND delete_state='active' AND delete_after_at<=now()
+                AND EXISTS (SELECT 1 FROM retention_preferences
+                            WHERE id=1 AND enabled)""",(batch_id,)).fetchone()
             if not due:return {"batch_id":str(batch_id),"state":"skipped"}
         if batch["delete_state"]=="deleted":
             return {"batch_id":str(batch_id),"state":"deleted"}
