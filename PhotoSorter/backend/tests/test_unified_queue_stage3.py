@@ -397,9 +397,15 @@ def test_first_fo_waits_for_earlier_first_reference_preparation(system):
     run=add_fo()
     cache_vector(system,digest)
     with database.connect() as db:
+        ledger=work_queue.entries(db)
+        assert len(ledger)==2
+        assert ledger[0]["kind"]=="reference_preparation"
+        assert ledger[1]["kind"]=="fo_processing"
+        assert ledger[0]["seq"]<ledger[1]["seq"]
         task=work_queue.claim_next(db)
         assert task["kind"]=="reference_preparation"
-        assert work_queue.position(db,run)==2
+        # Running preparation is no longer a waiting queue position.
+        assert work_queue.position(db,run)==1
     assert reference_prepare.run(task["id"])["version"]==2
     with database.connect() as db:
         following=work_queue.claim_next(db)
