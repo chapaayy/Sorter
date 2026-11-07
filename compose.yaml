@@ -39,6 +39,8 @@ services:
       PHOTOSORTER_UNIFIED_QUEUE: "${PHOTOSORTER_UNIFIED_QUEUE:-0}"
       REFERENCE_IMPORT_STAGING_ENABLED: "${REFERENCE_IMPORT_STAGING_ENABLED:-0}"
       PHOTOSORTER_WORKER_CPUS: "${PHOTOSORTER_WORKER_CPUS:-7}"
+      PHOTOSORTER_THUMBNAIL_CPUS: "${PHOTOSORTER_THUMBNAIL_CPUS:-0.35}"
+      PHOTOSORTER_CLEANUP_CPUS: "${PHOTOSORTER_CLEANUP_CPUS:-0.25}"
       PHOTOSORTER_WORKER_CPUSET: "${PHOTOSORTER_WORKER_CPUSET:-0-6}"
       PHOTOSORTER_CPU_THREADS: "${PHOTOSORTER_CPU_THREADS:-7}"
       PHOTOSORTER_BATCH_SIZE: "4"
@@ -86,7 +88,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    cpus: 0.25
+    cpus: ${PHOTOSORTER_CLEANUP_CPUS:-0.25}
     mem_limit: 256m
     networks: [private]
 
@@ -102,7 +104,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    cpus: 0.35
+    cpus: ${PHOTOSORTER_THUMBNAIL_CPUS:-0.35}
     mem_limit: 512m
     networks: [private]
 

@@ -4,7 +4,12 @@
   text-align:left;border:1px solid var(--border);border-radius:var(--radius-sm);
   background:var(--input);color:var(--text);cursor:pointer;font-size:14px;line-height:1.35;
   transition:border-color .14s ease,background-color .14s ease}
+.ui-select-trigger::after{content:"";width:7px;height:7px;flex:none;margin-left:auto;margin-right:2px;
+  border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
+  transform:rotate(45deg) translateY(-2px);opacity:.7;transition:transform .18s ease,opacity .18s ease}
+.ui-select-trigger[aria-expanded=true]::after{transform:rotate(-135deg) translateY(-1px);opacity:1}
 .ui-select-trigger:hover:not(:disabled){background:var(--panel-alt)}
+@media(prefers-reduced-motion:reduce){.ui-select-trigger::after{transition:none}}
 .ui-select-trigger[aria-expanded=true]{border-color:var(--muted-2);box-shadow:0 0 0 3px color-mix(in srgb,var(--text) 7%,transparent)}
 .ui-select-trigger:focus-visible{outline:2px solid var(--text);outline-offset:2px}
 .ui-select-trigger:disabled{opacity:.55;cursor:not-allowed}
