@@ -31,7 +31,7 @@ docker compose --env-file .env --env-file .env.generated ps
 
 При установке/обновлении **из-под root** установщик автоматически пытается включить TCP BBR **на Linux-хосте**. Если модуль `tcp_bbr` доступен, `install.sh --deploy` применяет настройку и сохраняет собственные файлы в `/etc/sysctl.d/99-photosorter-bbr.conf` и `/etc/modules-load.d/99-photosorter-bbr.conf`. Рабочий `fq_codel` не изменяется. Установщик также задаёт такой же алгоритм в сетевом пространстве Docker-контейнера Caddy (через Compose `sysctls`), чтобы скачивание ZIP действительно использовало BBR. BBR действует на новые TCP-соединения **всего VPS**, не только PhotoSorter. Если сервер не поддерживает BBR или запуск не от root, выводится предупреждение, но установка Docker продолжается.
 
-В `.env` можно добавить `PHOTOSORTER_ENABLE_BBR=0`, чтобы **пропускать автоматическую настройку при будущих обновлениях** (это не отменяет уже применённую настройку). Для полного отката запусти от root: `bash PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --disable`. Команда удаляет только файлы, созданные PhotoSorter, и переключает новые соединения на `cubic`. `bash ./install.sh --check` ничего не меняет и показывает текущий алгоритм. Проверка после перезагрузки: `sysctl net.ipv4.tcp_congestion_control`; сторонние sysctl-файлы могут переопределять значение.
+В `.env` можно добавить `PHOTOSORTER_ENABLE_BBR=0`, чтобы **пропускать автоматическую настройку при будущих обновлениях** (это не отменяет уже применённую настройку). Для полного отката запусти от root: `bash PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --disable`. Команда удаляет только файлы, созданные PhotoSorter, и переключает новые соединения хоста на `cubic`. Чтобы Caddy тоже перешёл на CUBIC, сначала выставь в `.env` `PHOTOSORTER_ENABLE_BBR=0`, затем выполни обычное обновление `bash ./install.sh --deploy` (Compose пересоздаст только изменённые сервисы). `bash ./install.sh --check` ничего не меняет и показывает текущий алгоритм. Проверка после перезагрузки: `sysctl net.ipv4.tcp_congestion_control`; сторонние sysctl-файлы могут переопределять значение.
 
 ### Обновление ранее установленного PhotoSorter
 
@@ -44,7 +44,7 @@ git pull --ff-only origin main
 bash ./install.sh --deploy
 ```
 
-Если ранее сервер был на detached commit, сперва проверить локальные изменения: `git switch main` может требовать разрешения конфликтов. Токен `PHOTOSORTER_APPROVE_UPGRADE` применять **только после действительно проверенного бэкапа**, не ради обхода защиты.
+Если ранее сервер был на detached commit, сперва проверить локальные изменения: `git switch main` может требовать разрешения конфликтов. Устаревший токен `PHOTOSORTER_APPROVE_UPGRADE` установщику больше не нужен.
 
 **Полный бета-сброс** (включая удаление базы, фотографий, SAM и исторических результатов) — отдельная операция, не часть `git pull` или `install.sh`. Инструкция: [SINGLE_SITE_INSTALL](docs/SINGLE_SITE_INSTALL.md). Не использовать `docker compose down -v` как команду обновления.
 

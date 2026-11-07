@@ -38,7 +38,7 @@ jobs:
       - name: Compile all Python, shell syntax and Docker compose
         run: |
           python -m compileall -q PhotoSorter/backend PhotoSorter/tools
-          bash -n install.sh
+          bash -n install.sh PhotoSorter/tools/maintenance/setup_tcp_bbr.sh
           docker compose config --quiet
       - name: Backend regression tests
         run: python -m pytest -q PhotoSorter/backend/tests
