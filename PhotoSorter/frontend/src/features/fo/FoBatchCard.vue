@@ -42,6 +42,7 @@ const stage=computed(()=>{
 </script>
 <template>
 <CompactTaskCard :number="position" :title="batch.display_name"
+  :aria-label="'Фотоотчёт '+batch.display_name"
   :thumbnail-url="batch.cover_thumbnail_url" :status="state.label"
   :tone="statusTone" :progress="progress" :stage="stage"
   :time-label="timing.label" :time-detail="timing.detail"
@@ -49,6 +50,7 @@ const stage=computed(()=>{
   <template #meta>
     <span>{{batch.photos??0}} фото</span>
     <span>{{bytes(batch.size_bytes)}}</span>
+    <span v-if="run?.status==='queued'&&run.queue_position!=null">№{{run.queue_position}} в очереди</span>
     <span v-if="run?.models?.megaloc?.groups!=null">{{run.models.megaloc.groups}} групп</span>
     <span v-else>{{date(batch.created_at)}}</span>
   </template>

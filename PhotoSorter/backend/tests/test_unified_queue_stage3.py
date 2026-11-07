@@ -414,3 +414,24 @@ def test_first_fo_waits_for_earlier_first_reference_preparation(system):
         assert following["info"]["reference_version"]==2
         assert len(following["info"]["reference_members"])==1
     finish_fo(run)
+
+def test_queue_api_supplies_real_fo_progress_photo_counts_and_preview_fallback(system):
+    from psycopg.types.json import Jsonb
+    from server.services import batches
+    add_published_reference(system)
+    run_id=add_fo()
+    with database.connect() as db:
+        db.execute("""UPDATE jobs SET snapshot=jsonb_set(snapshot,'{progress}',%s::jsonb)
+                     WHERE id=%s""",(Jsonb({
+            "stage_label":"MegaLoc — вычисление признаков ФО",
+            "overall_percent":46.7,"estimated_remaining_seconds":125
+        }),run_id))
+    listing=actions.list_work_queue()
+    row=next(item for item in listing["tasks"] if item["fo_run_id"]==run_id)
+    assert row["fo_photo_count"]==1
+    assert row["fo_progress"]["overall_percent"]==46.7
+    assert row["fo_progress"]["estimated_remaining_seconds"]==125
+    assert row["fo_thumbnail_url"] is None
+    inventory=batches.list_all(100,0)
+    batch=next(item for item in inventory["batches"] if item["batch_id"]==str(row["batch_id"]))
+    assert batch["cover_thumbnail_url"] is None

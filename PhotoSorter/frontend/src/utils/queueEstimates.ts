@@ -25,6 +25,7 @@ export function approxDuration(seconds:number|null):string{
     (minutes%60?' '+minutes%60+' мин':'')
 }
 export function actualDuration(start?:string|null,end?:string|null):string{
+  if(!start||!end)return '—'
   const seconds=elapsedSeconds(start,end)
   return seconds===null?'—':duration(seconds)
 }
@@ -103,7 +104,9 @@ export function queueTime(task:QueueTask,estimate?:TaskEstimate):{label:string;d
   }
   if(task.state==='queued'){
     return {label:approxDuration(estimate?.finishInSeconds??null),
-      detail:estimate?.finishInSeconds==null?'Время уточняется':'До завершения · включая очередь'}
+      detail:estimate?.finishInSeconds==null?'Время уточняется':(
+        estimate.startInSeconds!==null&&estimate.startInSeconds>0
+        ?'Старт '+approxDuration(estimate.startInSeconds):'До завершения · включая очередь')}
   }
   if(['completed','completed_with_errors','failed','stopped','interrupted'].includes(task.state)){
     const spent=actualDuration(task.started_at,task.finished_at)
@@ -115,7 +118,9 @@ export function runTime(run?:Run|null,estimate?:TaskEstimate):{label:string;deta
   if(!run)return {label:'—',detail:'Не обрабатывалось'}
   if(run.status==='queued'){
     return {label:approxDuration(estimate?.finishInSeconds??null),
-      detail:estimate?.finishInSeconds==null?'Время уточняется':'До завершения · включая очередь'}
+      detail:estimate?.finishInSeconds==null?'Время уточняется':(
+        estimate.startInSeconds!==null&&estimate.startInSeconds>0
+        ?'Старт '+approxDuration(estimate.startInSeconds):'До завершения · включая очередь')}
   }
   if(run.status==='running'){
     const eta=estimate?.remainingSeconds??run.progress?.estimated_remaining_seconds

@@ -131,3 +131,18 @@ Vue /references → manifest образцов → /api/reference-imports
 однократными уведомлениями о смене опубликованной версии.
 
 Подробнее `docs/REFERENCE_PIPELINE.md`.
+
+
+## Компактные карточки в трёх разделах
+
+`FoList.vue` → `FoBatchCard.vue` → `CompactTaskCard.vue`
+
+`QueueView.vue` → `QueueTaskRow.vue` → `CompactTaskCard.vue`
+
+`ResultsList.vue` → `CompactTaskCard.vue`
+
+Только один модуль `utils/queueEstimates.ts` рассчитывает примерные сроки
+для всей очереди; CSS живёт отдельно в `styles/task-cards.css`.
+Общие CSS-токены обеих тем не меняются; иконки, загрузки и действия остаются
+реальными. Backend дополняет публичный API готовой миниатюрой, реальным
+прогрессом FO и счётчиками фотографий, без N запросов на карточку.

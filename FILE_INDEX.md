@@ -203,3 +203,13 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 как последовательные миграции **схемы**, но не содержат альтернативных
 обработчиков/версий приложения. Более подробная текущая схема в
 `docs/REFERENCE_PIPELINE.md`.
+
+
+## Компоненты единого компактного списка
+
+| Файл | Задача |
+|---|---|
+| `PhotoSorter/frontend/src/components/ui/CompactTaskCard.vue` | Одна горизонтальная карточка ФО/очереди/результатов: фото, статус, прогресс, время, действия |
+| `PhotoSorter/frontend/src/styles/task-cards.css` | Адаптивные светлые/тёмные стили карточек, локальный фиолетовый акцент |
+| `PhotoSorter/frontend/src/utils/queueEstimates.ts` | ETA FIFO из реальных измерений: отдельные скорости ФО и подготовки образцов |
+| `PhotoSorter/frontend/tests/queueEstimates.test.ts` | Очерёдность, отсутствие неподтверждённых ETA, фактическая длительность |

@@ -48,7 +48,7 @@ const time=computed(()=>queueTime(props.task,props.estimate))
 const count=computed(()=>preparing.value?props.task.total_count:props.task.fo_photo_count)
 </script>
 <template>
-<CompactTaskCard :number="position??task.seq"
+<CompactTaskCard :number="position??task.seq" class="queue-task-row"
   :title="preparing?'Подготовка образцов':task.batch_name||'Фотоотчёт'"
   :thumbnail-url="preparing?null:task.fo_thumbnail_url"
   :icon="preparing?'references':'photos'"
