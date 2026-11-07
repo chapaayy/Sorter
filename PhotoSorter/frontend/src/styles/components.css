@@ -220,3 +220,11 @@
 /* Stage 4 shared work-queue and isolated reference-import presentation */
 .reference-import-entry{padding:12px 0;border-top:1px solid var(--border-subtle);min-width:0}
 .reference-import-entry .progress-track{max-width:100%}
+
+/* Detail-level visual state while asynchronous batch deletion is running. */
+.deletion-panel,.deletion-panel:hover{
+  background:color-mix(in srgb,var(--danger) 28%,var(--panel));
+  border-color:var(--danger);box-shadow:0 0 0 1px color-mix(in srgb,var(--danger) 45%,transparent);
+}
+.deletion-panel .deletion-state{display:inline-flex;align-items:center;gap:7px;background:var(--danger);
+  color:#fff;border-radius:999px;padding:6px 11px;font-size:12px;font-weight:650}

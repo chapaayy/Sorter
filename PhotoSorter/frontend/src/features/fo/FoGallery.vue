@@ -98,7 +98,8 @@ async function removeBatch(){
 <div v-if="error" class="alert error" role="alert">{{error}}</div>
 <section v-if="batch" class="panel stack" :class="{'deletion-panel':deletion.pending(id)||batch.delete_state==='deleting'}" style="margin-bottom:19px" aria-label="Обработка MegaLoc для партии">
   <div class="row between wrap"><h2 style="margin:0">Обработка MegaLoc</h2><span class="meta">Миниатюры и сортировка — независимые процессы</span></div>
-  <BatchProcessingStatus :batch="batch"/>
+  <div v-if="deletion.pending(id)||batch.delete_state==='deleting'" class="deletion-state">Удаляется · удаление файлов и результатов</div>
+  <BatchProcessingStatus v-else :batch="batch"/>
   <div class="row wrap fo-batch-actions">
     <UiButton v-if="processing?.canStart" kind="primary" small :loading="busy" @click="startRun">{{(batch.runs??0)>0?'Повторить обработку':'Обработать'}}</UiButton>
     <UiButton v-if="processing?.canCancelAuto" small :loading="busy" @click="cancelAuto">Отменить автозапуск</UiButton>

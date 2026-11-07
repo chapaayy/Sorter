@@ -95,7 +95,8 @@ async function deleteBatch(){
   <UiButton kind="primary" :loading="archiveRetryBusy" @click="restoreArchive">Восстановить ZIP</UiButton>
 </div>
 <section v-if="batch&&run" class="panel stack" :class="{'deletion-panel':deletion.pending(batch.batch_id)||batch.delete_state==='deleting'}" style="margin-bottom:18px">
-  <div class="row between wrap">
+  <div v-if="deletion.pending(batch.batch_id)||batch.delete_state==='deleting'" class="deletion-state">Удаляется · удаление файлов и результатов</div>
+  <div v-else class="row between wrap">
     <div><strong>Готовый ZIP</strong>
       <p class="meta" style="margin:4px 0">Архив подготовлен автоматически после сортировки.</p>
     </div>
