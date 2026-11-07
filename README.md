@@ -27,6 +27,12 @@ docker compose --env-file .env --env-file .env.generated ps
 
 В результате поднимаются `caddy` (HTTPS), `postgres`, `api`, `worker` (MegaLoc), `thumbnail` (WebP) и `cleanup` (служебная очистка). Снаружи публикуются только 80/443.
 
+### TCP BBR для ускорения скачивания ZIP
+
+При установке/обновлении **из-под root** установщик автоматически пытается включить TCP BBR **на Linux-хосте**. Если модуль `tcp_bbr` доступен, `install.sh --deploy` применяет настройку и сохраняет собственные файлы в `/etc/sysctl.d/99-photosorter-bbr.conf` и `/etc/modules-load.d/99-photosorter-bbr.conf`. Рабочий `fq_codel` не изменяется. BBR действует на новые TCP-соединения **всего VPS**, не только PhotoSorter. Если сервер не поддерживает BBR или запуск не от root, выводится предупреждение, но установка Docker продолжается.
+
+В `.env` можно добавить `PHOTOSORTER_ENABLE_BBR=0`, чтобы **пропускать автоматическую настройку при будущих обновлениях** (это не отменяет уже применённую настройку). Для полного отката запусти от root: `bash PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --disable`. Команда удаляет только файлы, созданные PhotoSorter, и переключает новые соединения на `cubic`. `bash ./install.sh --check` ничего не меняет и показывает текущий алгоритм. Проверка после перезагрузки: `sysctl net.ipv4.tcp_congestion_control`; сторонние sysctl-файлы могут переопределять значение.
+
 ### Обновление ранее установленного PhotoSorter
 
 `git pull` и новая папка `git clone` **не сбрасывают существующую базу**. Compose использует постоянное имя `outdoor-sorter` и Docker volumes. Перед обновлением проверить `git status`, `./install.sh --check` и согласованную копию PostgreSQL + `PhotoSorter/data` + `Models` + `.env.generated` (внешнее защищённое хранилище, тест восстановления). После проверки бэкапа обновление запускают:

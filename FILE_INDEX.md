@@ -10,6 +10,7 @@
 | `AGENTS.md` | Правила разработки, безопасность, запрет изменения MegaLoc |
 | `PROJECT_MAP.md` | Архитектура, потоки данных, зависимости слоёв |
 | `FILE_INDEX.md` | Индекс обязанностей файлов |
+| `PhotoSorter/tools/maintenance/setup_tcp_bbr.sh` | Настройка TCP BBR на Linux-хосте, read-only проверка и управляемый откат, без изменения Compose |
 | `install.sh` | Установка/обновление, preflight, сохранение действующих паролей и mounts |
 | `compose.yaml` | Caddy, PostgreSQL, API, MegaLoc Worker, WebP и cleanup |
 | `.env.example` | Шаблон DOMAIN, не содержит реальные секреты |
