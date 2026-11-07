@@ -31,7 +31,7 @@ export function batchProcessing(batch:Batch):BatchProcessingPresentation {
   let tone:ProcessingTone='neutral'
   let detail='MegaLoc ещё не запускался'
   if(batch.delete_state!=='active'){
-    label='Удаление партии';detail='Партия недоступна'
+    label=batch.delete_state==='delete_failed'?'Ошибка удаления':'Удаляется';detail=batch.delete_state==='delete_failed'?'Ошибка удаления партии':'Удаление файлов и результатов'
   }else if(run){
     label=runLabels[run.status]||'Неизвестный статус'
     if(run.status==='completed')tone='ok'

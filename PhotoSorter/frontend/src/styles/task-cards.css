@@ -89,3 +89,23 @@
   .task-card-actions{grid-column:2;grid-row:4}
 }
 @media(prefers-reduced-motion:reduce){.task-card-progress-fill{transition:none}}
+
+/* Semantic outlines. Deleting is a fully red card, unlike an ordinary error. */
+.task-card{--task-status-outline:var(--border-subtle)}
+.task-card-running{--task-status-outline:#538ce4}
+.task-card-queued{--task-status-outline:#c59844}
+.task-card-success{--task-status-outline:var(--success)}
+.task-card-warning{--task-status-outline:#c59844}
+.task-card-danger{--task-status-outline:var(--danger)}
+.task-card-neutral{--task-status-outline:var(--border-subtle)}
+.task-card:not(.task-card-active):not(.task-card-deleting){border-color:color-mix(in srgb,var(--task-status-outline) 63%,var(--border-subtle))}
+.task-card.task-card-active{border-color:var(--task-status-outline)}
+.task-card.task-card-deleting,.task-card.task-card-deleting:hover,.task-card.task-card-deleting.task-card-active{
+ background:color-mix(in srgb,var(--danger) 28%,var(--panel));
+ border-color:var(--danger);box-shadow:0 0 0 1px color-mix(in srgb,var(--danger) 48%,transparent);
+ --task-track:color-mix(in srgb,var(--danger) 28%,var(--panel-alt));--task-fill:var(--danger)}
+.task-card-deleting .task-card-number,.task-card-deleting .task-card-thumbnail{
+ background:color-mix(in srgb,var(--danger) 18%,var(--panel-alt));
+ border-color:color-mix(in srgb,var(--danger) 35%,var(--border));color:var(--text)}
+.task-card-deleting .task-card-stage,.task-card-deleting .task-card-meta{color:var(--text)}
+.task-card-status-deleting{background:var(--danger);color:#fff}

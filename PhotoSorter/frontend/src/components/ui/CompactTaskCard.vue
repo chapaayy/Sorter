@@ -2,7 +2,7 @@
 import {computed} from 'vue'
 import UiIcon from './UiIcon.vue'
 
-type Tone='running'|'queued'|'success'|'danger'|'warning'|'neutral'
+type Tone='running'|'queued'|'success'|'danger'|'warning'|'neutral'|'deleting'
 const props=withDefaults(defineProps<{
   number:string|number
   title:string
@@ -21,7 +21,7 @@ const percentage=computed(()=>typeof props.progress==='number' &&
   ?Math.round(props.progress):null)
 </script>
 <template>
-<article class="task-card" :class="{'task-card-active':active}">
+<article class="task-card" :class="{'task-card-active':active,'task-card-deleting':tone==='deleting','task-card-'+tone:true}">
   <div class="task-card-identity">
     <span class="task-card-number">{{number}}</span>
     <div class="task-card-thumbnail">
@@ -54,7 +54,7 @@ const percentage=computed(()=>typeof props.progress==='number' &&
     <strong>{{timeLabel||'—'}}</strong>
     <span v-if="timeDetail" :title="timeDetail">{{timeDetail}}</span>
   </div>
-  <div class="task-card-actions">
+  <div v-if="tone!=='deleting'" class="task-card-actions">
     <slot name="actions"/>
     <details v-if="$slots.menu" class="task-card-menu">
       <summary title="Другие действия" aria-label="Другие действия">•••</summary>
