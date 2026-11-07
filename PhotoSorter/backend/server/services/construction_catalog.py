@@ -89,7 +89,7 @@ def create(kind: str, *, city_code: str | None = None,
         proposed=(name or "").strip()
         try:
             canonical=check_label(proposed)
-            if canonical!=proposed or re.match(r'^SAM-\\d{4}',proposed,re.I):
+            if canonical!=proposed or re.match(r'^SAM-\d{4}',proposed,re.I):
                 raise ValueError("Некорректное индивидуальное название")
             try:
                 parse_key(proposed)
