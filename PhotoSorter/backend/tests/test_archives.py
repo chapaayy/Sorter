@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from server.services import archives
 
 def test_cached_archive_is_reused(tmp_path,monkeypatch):
-    monkeypatch.setattr(archives,"ROOT",tmp_path)
+    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
     run="20261107T120000-abcdef123456"
     source=tmp_path/run/"megaloc"/"SAM 0001"/"image.jpg"
     source.parent.mkdir(parents=True)
@@ -27,7 +27,7 @@ def test_archive_member_rejects_unsafe_label(bad):
         archives.archive_member(bad,"a.jpg")
 
 def test_new_source_content_invalidates_archive(tmp_path,monkeypatch):
-    monkeypatch.setattr(archives,"ROOT",tmp_path)
+    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
     run="20261107T120000-abcdef123456"
     source=tmp_path/run/"megaloc"/"SAM 0001"/"image.jpg"
     source.parent.mkdir(parents=True)
@@ -37,3 +37,26 @@ def test_new_source_content_invalidates_archive(tmp_path,monkeypatch):
     source.write_bytes(b"changed")
     second=archives.prepare(run,None,selection)
     assert second!=first
+
+def test_zip_file_response_supports_http_byte_ranges(tmp_path,monkeypatch):
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.responses import FileResponse
+    from starlette.testclient import TestClient
+    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
+    run="20261107T120000-abcdef123456"
+    image=tmp_path/run/"megaloc"/"SAM 0001"/"image.jpg"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"x"*2048)
+    archive=archives.prepare(run,None,[(image,"SAM 0001/image.jpg")])
+    app=Starlette(routes=[Route("/zip",lambda request:FileResponse(archive))])
+    with TestClient(app) as client:
+        full=client.get("/zip")
+        assert full.status_code==200
+        assert full.headers["content-length"]==str(archive.stat().st_size)
+        assert full.headers["accept-ranges"]=="bytes"
+        partial=client.get("/zip",headers={"Range":"bytes=10-29"})
+        assert partial.status_code==206
+        assert partial.headers["content-range"]==f"bytes 10-29/{archive.stat().st_size}"
+        assert len(partial.content)==20
+        assert partial.content==full.content[10:30]

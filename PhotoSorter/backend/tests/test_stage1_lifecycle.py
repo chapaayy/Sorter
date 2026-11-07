@@ -260,12 +260,9 @@ def test_legacy_zip_and_stream_lease_survives_delete_request(sandbox):
     response=download_results(run)
     cleanup.request(own)
     assert cleanup.cleanup_one(own)=="waiting"
-    async def collect():
-        chunks=[]
-        async for item in response.body_iterator:
-            chunks.append(item)
-        return b"".join(chunks)
-    body=asyncio.run(collect())
+    body=Path(response.path).read_bytes()
+    assert response.stat_result is None or response.stat_result.st_size==len(body)
+    asyncio.run(response.background())
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
         assert archive.namelist()==["SAM-0045/photo.jpg"]
         assert archive.read("SAM-0045/photo.jpg")==source.read_bytes()

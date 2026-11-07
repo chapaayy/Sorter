@@ -1,4 +1,4 @@
-"""End-to-end 1315 *synthetic* photo metadata and ZIP stream on disposable Linux/PG.
+"""End-to-end 1315 *synthetic* photos and cached seekable ZIP on disposable Linux/PG.
 
 Not a 6.4 GiB or MegaLoc inference benchmark. No real model weights/photos.
 """
@@ -19,11 +19,11 @@ from server.database import connect
 from server.storage import paths
 
 def _read_zip(response):
-    async def drain():
-        content=bytearray()
-        async for chunk in response.body_iterator:content.extend(chunk)
-        return bytes(content)
-    return asyncio.run(drain())
+    archive=Path(response.path)
+    assert archive.is_file()
+    content=archive.read_bytes()
+    asyncio.run(response.background())
+    return content
 
 def test_1315_synthetic_hardlinks_full_zip_filters_and_cleanup(sandbox,monkeypatch):
     from server.services import result_pages,cleanup

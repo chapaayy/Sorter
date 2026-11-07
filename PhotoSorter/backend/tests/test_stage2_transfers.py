@@ -89,7 +89,7 @@ def test_image_checksum_validation_rejects_corruption(thumbs):
     cleanup.request(own)
     cleanup.cleanup_one(own)
 
-def test_zip_disconnect_releases_lease_and_preserves_originals(thumbs,monkeypatch):
+def test_seekable_zip_lease_released_after_response_and_preserves_originals(thumbs,monkeypatch):
     from app.results import repository
     from server.api.routes import images,downloads,originals
     from server.services import cleanup
@@ -114,9 +114,9 @@ def test_zip_disconnect_releases_lease_and_preserves_originals(thumbs,monkeypatc
         response=downloads.download_results(run)
         assert cleanup.request(own)["state"]=="deleting"
         assert cleanup.cleanup_one(own)=="waiting"
-        it=response.body_iterator
-        assert await anext(it)
-        await it.aclose()
+        assert Path(response.path).is_file()
+        assert response.background is not None
+        await response.background()
     asyncio.run(consume_part())
     with connect() as db:
         n=db.execute("SELECT count(*) AS n FROM batch_operations WHERE batch_id=%s",
