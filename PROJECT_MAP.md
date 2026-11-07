@@ -178,4 +178,6 @@ Shell
 
 `server/worker.py` → `app/jobs/runtime.py` → MegaLoc + export → `services/archive_pipeline.py` → `archives.py` → `jobs.status=completed` + `retention.schedule` → `workers/cleanup.py` (после срока, с проверкой leases). При сбое ZIP: `archive_retries` (PostgreSQL) → `workers/cleanup.py` → ZIP-only без инференса.
 
-`frontend/features/settings/PerformanceSettings.vue` хранит режим auto/manual и отдельные потоки ФО/образцов. `StorageSettings.vue` управляет автоудалением для следующих обработок.
+`frontend/features/settings/PerformanceSettings.vue` хранит режим auto/manual и отдельные потоки ФО/образцов (применяются к следующим заданиям); лимиты Docker для миниатюр/cleanup пока только отображаются из Compose, не изменяются через API. `StorageSettings.vue` управляет автоудалением новых запусков. Отключение настройки блокирует даже ранее назначенное автоматическое удаление; при включении просроченные партии получают новый полный срок, а не удаляются все сразу. Ручное удаление партии независимо от настройки.
+
+`GET /api/runs/{id}/archive/status` определяет доступность полного ZIP после обработки. `POST /api/runs/{id}/archive/retry` восстанавливает пропавший/недоделанный ZIP по сохранённым результатам без повторного MegaLoc; задание хранится в `archive_retries`, обрабатывается сервисом cleanup. Перед атомарным опубликованием ZIP проверяются количество файлов и CRC. Новые UI-уведомления и кнопки восстановления расположены в `RunDetail.vue` и `ResultDetail.vue`.

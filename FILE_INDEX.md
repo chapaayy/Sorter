@@ -26,7 +26,7 @@
 | `backend/server/auth.py` | Cookies, scrypt password, login, origin checks |
 | `backend/server/database.py` | PostgreSQL connect, initial schema and migrations |
 | `backend/server/uploads.py` | Докачка, проверка принадлежности манифесту, финализация с сохранением `.part` до commit и выборочная отмена |
-| `backend/server/jobs.py` | Единое транзакционное создание ручных/автоматических заданий, API очереди и остановки |
+| `backend/server/jobs.py` | Единое транзакционное создание заданий, API очереди и остановки, проверка состояния ZIP и ZIP-only retry |
 | `backend/server/worker.py` | Однопоточный lifecycle MegaLoc Worker и heartbeat |
 | `backend/server/reference_cache.py` | Индекс и доступ к embeddings образцов |
 | `backend/server/api/routes/site.py` | **Один** Vue сайт на `/`, `/assets/*` и history fallback |
@@ -50,11 +50,14 @@
 |---|---|
 | `backend/server/services/batches.py` | CRUD партий, счётчики, последний запуск MegaLoc/прошлый результат для списка ФО, pending uploads |
 | `backend/server/services/upload_manifest.py` | Неизменяемый состав новой партии, индивидуальная настройка auto-MegaLoc, проверка оригиналов и завершение `waiting/complete` |
-| `backend/server/services/batch_runs.py` | Безопасные (без путей ФС) сводки последнего запуска, предыдущих результатов и постраничной истории MegaLoc |
+| `backend/server/services/batch_runs.py` | Безопасные сводки запусков, реальные счётчики MegaLoc для компактных карточек и история без путей ФС |
 | `backend/server/services/auto_processing.py` | Защищённая отмена, общие настройки, серверная постановка opt-in партий через общую очередь (idempotent DB lock) |
 | `backend/server/services/references.py` | Безопасное редактирование и удаление конструкций, защита исторических manifests |
 | `backend/server/services/construction_catalog.py` | Серверная проверка массового импорта, метаданные и адреса конструкций |
-| `backend/server/services/retention.py` | Подтверждение ZIP, срок хранения, предупреждения |
+| `backend/server/services/archive_pipeline.py` | Обязательный финальный ZIP после результатов MegaLoc; обновляет прогресс этапа |
+| `backend/server/services/archives.py` | Атомарный ZIP_STORED, проверка CRC перед публикацией, повторное использование готового архива |
+| `backend/server/services/archive_retries.py` | Сохранённая в PostgreSQL очередь ZIP-only восстановления и обнаружение пропавшего архива |
+| `backend/server/services/retention.py` | Срок хранения от успешного ZIP, глобальная пауза при выключении и безопасный повторный запуск политики |
 | `backend/server/services/cleanup.py` | Удаление только owned files через доверенные UUID |
 | `backend/server/services/temp_cleanup.py` | Устаревшие незавершённые передачи |
 | `backend/server/services/thumbnails.py` | WebP queue и кеширование превью |
@@ -146,6 +149,9 @@
 | `backend/tests/test_processing_dashboard.py` | Новый фильтр запусков, статус PostgreSQL, пагинация, совместимость прежнего API |
 | `backend/tests/test_batch_run_summaries.py` | Действительный latest run, позиция очереди, прогресс, прежний результат и безопасная история |
 | `backend/tests/test_auto_processing.py` | Новая opt-in очередь, отмена до enqueue, ручной запуск, queue full, terminal job, конкурентная отправка, старые партии |
+| `backend/tests/test_archive_recovery.py` | Восстановление пропавшего ZIP без MegaLoc, запрет публикации архива с ошибкой CRC |
+| `backend/tests/test_retention_toggle.py` | Приостановка автоудаления и безопасный новый срок после повторного включения |
+| `backend/tests/test_batch_card_metadata.py` | Реальные группы/неопределённые ФО в карточках без утечки приватных путей |
 | `frontend/tests/` | Vitest |
 | `frontend/e2e/navigation.spec.ts`, `playwright.config.ts` | Chromium/WebKit на десктопе и mobile |
 | `PhotoSorter/tools/benchmark_api.py` | API latency |
