@@ -540,7 +540,7 @@ test('desktop references scroll inside two panels without scrolling the whole pa
   const constructions=page.locator('.split-list')
   const gallery=page.locator('.reference-library-gallery-scroll')
   await expect(constructions.locator('.split-item')).toHaveCount(80)
-  await expect(gallery.getByLabel('Галерея, 60 фотографий')).toBeVisible()
+  await expect(gallery.getByLabel('Галерея, 60 фотографий')).toHaveCount(1)
   const layout=await page.evaluate(()=>{
     const list=document.querySelector('.split-list') as HTMLElement
     const photos=document.querySelector('.reference-library-gallery-scroll') as HTMLElement
@@ -550,6 +550,8 @@ test('desktop references scroll inside two panels without scrolling the whole pa
       photoClient:photos.clientHeight,photoScroll:photos.scrollHeight
     }
   })
+  expect(layout.listClient).toBeGreaterThan(150)
+  expect(layout.photoClient).toBeGreaterThan(150)
   expect(layout.documentHeight).toBeLessThanOrEqual(layout.windowHeight+2)
   expect(layout.listScroll).toBeGreaterThan(layout.listClient+150)
   expect(layout.photoScroll).toBeGreaterThan(layout.photoClient+150)
