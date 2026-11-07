@@ -2,34 +2,73 @@
 import {computed,onMounted,ref} from 'vue'
 import {runApi} from '../../api/runs'
 import {batchApi} from '../../api/batches'
+import {resultApi} from '../../api/results'
 import type {Run,Batch} from '../../types/api'
 import {date,isComplete,errorText,runLabels} from '../../utils/format'
+import {runTime} from '../../utils/queueEstimates'
 import PageHeader from '../../components/ui/PageHeader.vue'
-import RowCard from '../../components/ui/RowCard.vue'
+import CompactTaskCard from '../../components/ui/CompactTaskCard.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
+
 const runs=ref<Run[]>([]),batches=ref<Batch[]>([]),loading=ref(true),error=ref(''),search=ref('')
-const finished=computed(()=>runs.value.filter(r=>isComplete(r.status)&&name(r.batch_id).toLowerCase().includes(search.value.toLowerCase())))
-function name(id:string){return batches.value.find(b=>b.batch_id===id)?.display_name||id}
+const batchById=computed(()=>new Map(batches.value.map(b=>[b.batch_id,b])))
+const title=(id:string)=>batchById.value.get(id)?.display_name||id
+const finished=computed(()=>runs.value.filter(r=>isComplete(r.status)&&
+  title(r.batch_id).toLowerCase().includes(search.value.toLowerCase())))
+const photoCount=(run:Run)=>run.models?.megaloc?.processed??batchById.value.get(run.batch_id)?.photos
+const groups=(run:Run)=>run.models?.megaloc?.groups
+const unresolved=(run:Run)=>run.models?.megaloc?.uncertain
+
 async function load(){
   loading.value=true
-  try{const [r,b]=await Promise.all([runApi.list(200),batchApi.list(200)]);runs.value=r.runs;batches.value=b.batches;error.value=''}
-  catch(e){error.value=errorText(e)}finally{loading.value=false}
+  try{
+    const [r,b]=await Promise.all([runApi.list(200),batchApi.list(200)])
+    runs.value=r.runs;batches.value=b.batches;error.value=''
+  }catch(e){error.value=errorText(e)}
+  finally{loading.value=false}
 }
 onMounted(()=>{void load()})
 </script>
 <template>
-<PageHeader eyebrow="ГОТОВЫЕ ФОТОГРАФИИ" title="Результаты" subtitle="Сортировки по SAM и группам ФО. Полный архив доступен в каждом завершённом запуске."/>
-<div class="toolbar"><input v-model="search" class="search" placeholder="Поиск по названию фотоотчёта…" aria-label="Поиск результатов"/><span class="meta">{{finished.length}} завершённых запусков</span><UiButton small @click="load">Обновить</UiButton></div>
+<PageHeader eyebrow="ГОТОВЫЕ ФОТОГРАФИИ" title="Результаты"
+  subtitle="Завершённые сортировки, длительность и готовые архивы."/>
+<div class="toolbar">
+  <input v-model="search" class="search" placeholder="Поиск по названию фотоотчёта…"
+    aria-label="Поиск результатов"/>
+  <span class="meta">{{finished.length}} завершённых запусков</span>
+  <UiButton small @click="load">Обновить</UiButton>
+</div>
 <div v-if="error" class="alert error" role="alert">{{error}}</div>
 <div v-if="finished.length" class="stack">
-  <RowCard v-for="r in finished" :key="r.id" icon="▣" :to="'/results/'+r.id">
-    <template #title>{{name(r.batch_id)}}</template>
-    <template #subtitle>{{date(r.started_at)}} · MegaLoc</template>
-    <template #status>{{runLabels[r.status]||r.status}} · сортировка готова к скачиванию</template>
-    <template #metrics><div class="metric"><strong>{{r.models?.megaloc?.count??'—'}}</strong><small>фото</small></div><div class="metric"><strong>{{r.models?.megaloc?.groups??'—'}}</strong><small>групп</small></div></template>
-  </RowCard>
+  <CompactTaskCard v-for="(run,index) in finished" :key="run.id"
+    :number="index+1" :title="title(run.batch_id)"
+    :thumbnail-url="batchById.get(run.batch_id)?.cover_thumbnail_url"
+    :status="runLabels[run.status]||run.status"
+    :tone="run.status==='completed'?'success':'warning'"
+    :progress="run.progress?.overall_percent??(run.status==='completed'?100:null)"
+    :stage="run.status==='completed'?'Готово к скачиванию':'Завершено с ошибками'"
+    :time-label="runTime(run).label" :time-detail="runTime(run).detail">
+    <template #meta>
+      <span v-if="photoCount(run)!=null">{{photoCount(run)}} фото</span>
+      <span v-if="groups(run)!=null">{{groups(run)}} групп</span>
+      <span v-if="unresolved(run)!=null">Неопределено: {{unresolved(run)}}</span>
+      <span>{{date(run.actual_finished_at||run.finished_at)}}</span>
+    </template>
+    <template #actions>
+      <RouterLink class="task-card-action task-card-action-primary"
+        :to="'/results/'+run.id">Открыть</RouterLink>
+    </template>
+    <template #menu>
+      <RouterLink :to="'/results/'+run.id">Просмотреть результаты</RouterLink>
+      <a :href="resultApi.download(run.id)">Скачать полный ZIP</a>
+      <RouterLink :to="'/processing/'+run.id">История обработки</RouterLink>
+    </template>
+  </CompactTaskCard>
 </div>
-<EmptyState v-else-if="!loading" title="Завершённых сортировок нет" detail="Запустите MegaLoc во вкладке «Обработка», затем результаты появятся здесь." icon="▣"><RouterLink class="btn primary" to="/processing">К обработке</RouterLink></EmptyState>
+<EmptyState v-else-if="!loading" title="Завершённых сортировок нет"
+  detail="Загрузите ФО и запустите MegaLoc; результаты появятся здесь." icon="▣">
+  <RouterLink class="btn primary" to="/fo">К фотоотчётам</RouterLink>
+</EmptyState>
 <div v-else class="meta">Загрузка результатов…</div>
 </template>

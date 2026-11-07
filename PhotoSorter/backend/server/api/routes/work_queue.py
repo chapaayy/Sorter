@@ -30,13 +30,28 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
                    p.session_id,p.total_count,p.completed_count,p.failed_count,
                    p.error,p.stop_requested,
                    j.batch_id,j.snapshot->>'source' AS fo_source,
-                   b.display_name AS batch_name
+                   j.snapshot->'progress' AS fo_progress,
+                   b.display_name AS batch_name,
+                   (SELECT count(*)::integer FROM uploads photos
+                     WHERE photos.batch_id=j.batch_id AND photos.kind='fo'
+                       AND photos.finalized) AS fo_photo_count,
+                   cover.thumbnail_id AS fo_thumbnail_id
             FROM work_queue w LEFT JOIN reference_preparation_jobs p
                  ON p.id=w.reference_job_id
             LEFT JOIN jobs j ON j.id=w.fo_run_id
             LEFT JOIN batches b ON b.id=j.batch_id
+            LEFT JOIN LATERAL (
+                SELECT u.id AS thumbnail_id
+                FROM uploads u JOIN thumbnail_tasks t ON t.upload_id=u.id
+                WHERE u.batch_id=j.batch_id AND u.kind='fo' AND u.finalized
+                  AND t.state='ready'
+                ORDER BY u.created_at,u.id LIMIT 1
+            ) cover ON true
             """+where+" ORDER BY w.seq "+direction+" LIMIT %s OFFSET %s",
             (limit,offset)).fetchall()
+    for task in entries:
+        thumb=task.pop("fo_thumbnail_id")
+        task["fo_thumbnail_url"]="/api/thumbnails/"+str(thumb) if thumb else None
     return {"tasks":entries,"total":total}
 
 @router.get("/reference-preparations/{job_id}")

@@ -6,4 +6,5 @@ import './styles/tokens.css'
 import './styles/base.css'
 import './styles/components.css'
 import './styles/select.css'
+import './styles/task-cards.css'
 createApp(App).use(createPinia()).use(router).mount('#app')

@@ -1,0 +1,92 @@
+/* One compact horizontal work-item presentation across FO, FIFO and results.
+   Local purple only: the rest of the app retains its original light/dark tokens. */
+:root[data-theme="dark"]{
+  --task-highlight:#a68aff;--task-fill:#9674f5;--task-track:#353246;
+  --task-blue-bg:#1d3154;--task-blue:#a9caff;
+  --task-green-bg:#193b2b;--task-green:#84dfaa;
+  --task-warning-bg:#433118;--task-warning:#f3c478;
+}
+:root[data-theme="light"]{
+  --task-highlight:#8465eb;--task-fill:#8969e8;--task-track:#e6e0f5;
+  --task-blue-bg:#e5edff;--task-blue:#2c58a4;
+  --task-green-bg:#e2f4e8;--task-green:#207348;
+  --task-warning-bg:#fff0d9;--task-warning:#915d13;
+}
+.task-card{
+  display:grid;grid-template-columns:minmax(230px,2.1fr) max-content minmax(165px,1.05fr) minmax(115px,.62fr) max-content;
+  align-items:center;gap:clamp(9px,1.2vw,20px);min-height:82px;
+  padding:12px 16px;background:var(--panel);border:1px solid var(--border-subtle);
+  border-radius:13px;position:relative;transition:border-color .16s,background-color .16s;min-width:0;
+}
+.task-card:hover{border-color:var(--border);background:color-mix(in srgb,var(--panel) 92%,var(--task-highlight))}
+.task-card.task-card-active{border-color:var(--task-highlight);box-shadow:0 0 0 1px color-mix(in srgb,var(--task-highlight) 24%,transparent)}
+.task-card-identity{display:flex;align-items:center;gap:11px;min-width:0}
+.task-card-number{min-width:32px;height:32px;border-radius:8px;background:var(--panel-alt);padding:0 7px;
+  color:var(--muted);font-weight:650;font-size:12px;display:grid;place-items:center;font-variant-numeric:tabular-nums;flex:none}
+.task-card-thumbnail{width:50px;height:50px;flex:none;border-radius:9px;overflow:hidden;
+  display:grid;place-items:center;color:var(--muted);background:var(--panel-alt);border:1px solid var(--border-subtle)}
+.task-card-thumbnail img{width:100%;height:100%;object-fit:cover;display:block}
+.task-card-heading{min-width:0;display:grid;gap:4px}
+.task-card-title{display:block;font-size:14px;font-weight:680;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task-card-meta{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:11px;min-width:0;flex-wrap:wrap;line-height:1.3}
+.task-card-meta span{white-space:nowrap}
+.task-card-status{font-size:12px;font-weight:600;white-space:nowrap;display:inline-flex;justify-self:start;align-items:center;
+  gap:7px;padding:6px 10px;border-radius:999px;background:var(--panel-alt);color:var(--muted)}
+.task-card-status-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.task-card-status-running{color:var(--task-blue);background:var(--task-blue-bg)}
+.task-card-status-queued{color:var(--muted);background:var(--panel-alt)}
+.task-card-status-success{color:var(--task-green);background:var(--task-green-bg)}
+.task-card-status-danger{color:var(--danger);background:var(--danger-bg)}
+.task-card-status-warning{color:var(--task-warning);background:var(--task-warning-bg)}
+.task-card-progress{display:grid;gap:7px;min-width:0}
+.task-card-progress-line{display:flex;align-items:center;gap:9px;min-width:0}
+.task-card-progress-track{height:8px;min-width:70px;flex:1;background:var(--task-track);border-radius:999px;overflow:hidden}
+.task-card-progress-fill{display:block;height:100%;border-radius:inherit;background:var(--task-fill);transition:width .35s ease}
+.task-card-percent{font-size:12px;min-width:32px;text-align:right;font-variant-numeric:tabular-nums}
+.task-card-stage{font-size:11px;color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.3}
+.task-card-time{display:grid;gap:2px;justify-items:end;text-align:right;min-width:0}
+.task-card-time strong{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:620}
+.task-card-time span{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.task-card-actions{display:flex;gap:6px;justify-content:flex-end;align-items:center;min-width:0}
+.task-card-action{border:1px solid var(--border);border-radius:8px;background:var(--panel-alt);color:var(--text);
+  min-width:34px;height:34px;padding:0 9px;display:inline-flex;justify-content:center;align-items:center;
+  font-size:12px;font-weight:600;white-space:nowrap}
+.task-card-action:hover{border-color:var(--task-highlight);background:var(--panel-alt)}
+.task-card-action-primary{background:var(--task-fill);color:white;border-color:var(--task-fill)}
+.task-card-action-primary:hover{background:var(--task-highlight);border-color:var(--task-highlight)}
+.task-card-menu{position:relative}
+.task-card-menu summary{list-style:none;cursor:pointer;width:32px;height:34px;display:grid;place-items:center;
+  font-size:14px;letter-spacing:.08em;color:var(--muted);border:1px solid var(--border);border-radius:8px;background:var(--panel-alt)}
+.task-card-menu summary::-webkit-details-marker{display:none}
+.task-card-menu summary:hover,.task-card-menu[open] summary{color:var(--text);border-color:var(--task-highlight)}
+.task-card-menu-content{position:absolute;right:0;top:calc(100% + 5px);z-index:15;
+  background:var(--panel);min-width:188px;display:grid;gap:3px;padding:6px;border:1px solid var(--border);
+  border-radius:10px;box-shadow:var(--shadow)}
+.task-card-menu-content a,.task-card-menu-content button{display:block;width:100%;padding:9px 10px;text-align:left;
+  color:var(--text);border:0;background:transparent;border-radius:7px;font-size:12px;line-height:1.4}
+.task-card-menu-content a:hover,.task-card-menu-content button:hover{background:var(--panel-alt)}
+.task-card-menu-content .is-danger{color:var(--danger)}
+@media(max-width:1250px){
+  .task-card{grid-template-columns:minmax(220px,1.5fr) max-content minmax(150px,1fr) max-content;row-gap:8px}
+  .task-card-time{grid-column:3;grid-row:2;justify-items:start;text-align:left}
+  .task-card-actions{grid-column:4;grid-row:1/3}
+}
+@media(max-width:900px){
+  .task-card{grid-template-columns:minmax(0,1fr) max-content;gap:10px;min-height:0}
+  .task-card-identity{grid-column:1;grid-row:1}
+  .task-card-status{grid-column:2;grid-row:1}
+  .task-card-progress{grid-column:1;grid-row:2}
+  .task-card-time{grid-column:1;grid-row:3;justify-items:start;text-align:left}
+  .task-card-actions{grid-column:2;grid-row:2/4;align-self:end}
+}
+@media(max-width:520px){
+  .task-card{padding:11px;gap:9px}
+  .task-card-identity{grid-column:1/-1}
+  .task-card-number{min-width:28px;height:28px}
+  .task-card-thumbnail{width:43px;height:43px}
+  .task-card-status{grid-column:1;grid-row:2}
+  .task-card-progress{grid-column:1/-1;grid-row:3}
+  .task-card-time{grid-column:1;grid-row:4}
+  .task-card-actions{grid-column:2;grid-row:4}
+}
+@media(prefers-reduced-motion:reduce){.task-card-progress-fill{transition:none}}

@@ -40,7 +40,7 @@ def _serialize(row,counters=None):
     for field in fields:data[field]=row[field]
     # Each batch has the same counter contract, even with no photos/runs.
     data.update({"photos":0,"size_bytes":0,"pending":0,"runs":0,
-                 "latest_run":None,"last_result_run_id":None})
+                 "latest_run":None,"last_result_run_id":None,"cover_thumbnail_url":None})
     if counters:data.update(counters)
     return data
 
@@ -70,6 +70,16 @@ def list_all(limit=100,offset=0):
               WHERE batch_id=ANY(%s) GROUP BY batch_id""",(identifiers,)).fetchall()
             aggregates={r["id"]:dict(r) for r in stats}
             for entry in runs:aggregates.setdefault(entry["batch_id"],{})["runs"]=entry["runs"]
+            # One representative ready thumbnail per batch in one indexed query.
+            # Never issue a separate gallery request for every row of the list.
+            covers=db.execute("""SELECT DISTINCT ON (u.batch_id) u.batch_id,u.id
+                FROM uploads u JOIN thumbnail_tasks t ON t.upload_id=u.id
+                WHERE u.batch_id=ANY(%s) AND u.kind='fo' AND u.finalized
+                  AND t.state='ready'
+                ORDER BY u.batch_id,u.created_at,u.id""",(identifiers,)).fetchall()
+            for cover in covers:
+                aggregates.setdefault(cover["batch_id"],{})["cover_thumbnail_url"]=(
+                    "/api/thumbnails/"+str(cover["id"]))
             most_recent=batch_runs.latest(db,identifiers)
             results=batch_runs.last_results(db,identifiers)
             for identifier in identifiers:

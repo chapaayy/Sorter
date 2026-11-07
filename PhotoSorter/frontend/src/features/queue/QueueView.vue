@@ -7,6 +7,7 @@ import {useNoticeStore} from '../../stores/notice'
 import {errorText} from '../../utils/format'
 import type {QueueTask} from '../../types/workQueue'
 import {hasBlockingFailure} from '../../utils/queuePresentation'
+import {estimateQueue} from '../../utils/queueEstimates'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
@@ -20,14 +21,17 @@ const expanded=ref(false),detail=ref<string|null>(null)
 const confirm=ref<{task:QueueTask;action:'stop'|'retry'|'skip'}|null>(null)
 const active=computed(()=>[...tasks.value].sort((a,b)=>a.seq-b.seq))
 const blocking=computed(()=>active.value.find(hasBlockingFailure))
+const clock=ref(Date.now())
+const estimates=computed(()=>estimateQueue(active.value,history.value,clock.value))
 async function refresh(){
   try{
     const [q,h]=await Promise.all([
       workQueueApi.list('active',200),
-      workQueueApi.list('history',30)
+      workQueueApi.list('history',100)
     ])
     tasks.value=q.tasks;activeTotal.value=q.total
     history.value=h.tasks;historyTotal.value=h.total
+    clock.value=Date.now()
     error.value=''
   }catch(e){error.value=errorText(e)}
 }
@@ -81,7 +85,7 @@ function message(){
       <span class="meta">{{activeTotal}} задач</span></div>
     <div v-if="!active.length" class="meta">Нет ожидающих заданий.</div>
     <QueueTaskRow v-for="(task,index) in active" :key="task.seq"
-      :task="task" :position="index+1" :busy="busy===task.reference_job_id||busy===task.fo_run_id"
+      :task="task" :position="index+1" :estimate="estimates.get(task.seq)" :busy="busy===task.reference_job_id||busy===task.fo_run_id"
       @action="(t,action)=>confirm={task:t,action}" @details="t=>detail=t.reference_job_id"/>
     <div v-if="activeTotal>active.length" class="meta">
       Показаны первые {{active.length}} из {{activeTotal}} задач.

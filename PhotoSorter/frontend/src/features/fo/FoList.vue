@@ -6,6 +6,9 @@ import {runApi} from '../../api/runs'
 import {usePolling} from '../../composables/usePolling'
 import {errorText} from '../../utils/format'
 import type {Batch} from '../../types/api'
+import type {QueueTask} from '../../types/workQueue'
+import {workQueueApi} from '../../api/workQueue'
+import {estimateQueue} from '../../utils/queueEstimates'
 import {useNoticeStore} from '../../stores/notice'
 import {libraryNoticesApi} from '../../api/libraryNotices'
 import type {LibraryStatus} from '../../api/libraryNotices'
@@ -19,6 +22,24 @@ import FoBatchCard from './FoBatchCard.vue'
 
 const router=useRouter(),notice=useNoticeStore()
 const batches=ref<Batch[]>([]),search=ref(''),showUpload=ref(false)
+const queueTasks=ref<QueueTask[]>([]),queueHistory=ref<QueueTask[]>([])
+const clock=ref(Date.now())
+const estimates=computed(()=>estimateQueue(queueTasks.value,queueHistory.value,clock.value))
+function runEstimate(id?:string){
+  if(!id)return undefined
+  const row=queueTasks.value.find(t=>t.fo_run_id===id)
+  return row?estimates.value.get(row.seq):undefined
+}
+async function refreshQueue(){
+  try{
+    const [active,history]=await Promise.all([
+      workQueueApi.list('active',200),workQueueApi.list('history',100)
+    ])
+    queueTasks.value=active.tasks
+    queueHistory.value=history.tasks
+    clock.value=Date.now()
+  }catch{/* FO list remains available if the queue service is temporarily unavailable. */}
+}
 const libraryStatus=ref<LibraryStatus|null>(null),opening=ref(false)
 const loading=ref(true),loadingMore=ref(false),error=ref('')
 const total=ref(0),activeAction=ref(''),stopConfirm=ref<{id:string;name:string;queued:boolean}|null>(null)
@@ -55,8 +76,9 @@ async function refreshVisible(){
   }catch(e){error.value=errorText(e)}
   finally{refreshing=false}
 }
-onMounted(()=>{void load()})
+onMounted(()=>{void load();void refreshQueue()})
 usePolling(refreshVisible,4000)
+usePolling(refreshQueue,6000)
 
 async function toggleUpload(){
   if(showUpload.value){showUpload.value=false;return}
@@ -75,7 +97,7 @@ async function start(batchId:string,threshold:number){
   try{
     await runApi.start(batchId,threshold)
     notice.add('MegaLoc поставлен в очередь','ok')
-    await refreshVisible()
+    await Promise.all([refreshVisible(),refreshQueue()])
   }catch(e){error.value=errorText(e);await refreshVisible()}
   finally{activeAction.value=''}
 }
@@ -102,7 +124,7 @@ async function stop(){
     await runApi.stop(request.id)
     stopConfirm.value=null
     notice.add(request.queued?'Задание убрано из очереди':'Запрошена остановка обработки','ok')
-    await refreshVisible()
+    await Promise.all([refreshVisible(),refreshQueue()])
   }catch(e){error.value=errorText(e);await refreshVisible()}
   finally{activeAction.value=''}
 }
@@ -125,7 +147,8 @@ async function stop(){
 </div>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:16px">{{error}}</div>
 <div v-if="filtered.length" class="stack">
-  <FoBatchCard v-for="batch in filtered" :key="batch.batch_id" :batch="batch"
+  <FoBatchCard v-for="(batch,index) in filtered" :key="batch.batch_id" :batch="batch"
+    :position="index+1" :estimate="runEstimate(batch.latest_run?.id)"
     :busy="activeAction===batch.batch_id||activeAction===batch.latest_run?.id"
     @start="start" @stop="confirmStop" @cancel-auto="cancelAuto"/>
   <div v-if="batches.length<total" class="pagination">
