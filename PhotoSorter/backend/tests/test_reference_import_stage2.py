@@ -139,26 +139,26 @@ def test_duplicate_receipts_skip_bytes_and_preserve_one_preparation(isolated_imp
     assert count_jobs()==1
     assert len(list((isolated_import/"reference_staging"/str(sid)/"files").iterdir()))==1
 
-def test_duplicate_can_be_confirmed_against_verified_existing_reference(isolated_import):
+def test_duplicate_can_be_confirmed_against_published_staged_source(isolated_import):
+    from server.services import reference_publication
     raw=_jpg()
     digest=hashlib.sha256(raw).hexdigest()
-    file_path=isolated_import/"references"/"SAM 0004"/"old.jpg"
-    file_path.parent.mkdir(parents=True,exist_ok=True)
-    file_path.write_bytes(raw)
-    original=uuid.uuid4()
+    key=uuid.uuid4()
+    source=storage.object_path(uuid.uuid4(),key,"old.jpg")
+    source.parent.mkdir(parents=True,exist_ok=True)
+    source.write_bytes(raw)
     with database.connect() as db:
-        db.execute("""
-            INSERT INTO uploads(id,kind,sam,filename,declared_size,received,
-                               checksum,finalized,target_path)
-            VALUES (%s,'reference','SAM 0004','old.jpg',%s,%s,%s,true,%s)
-        """,(original,len(raw),len(raw),digest,str(file_path)))
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        reference_publication.publish(db,[{
+            "reference_id":key,"sam":"SAM 0004","filename":"old.jpg",
+            "source_hash":digest,"target_path":str(source),
+            "declared_size":len(raw),"source_kind":"staged"}],"test-model")
     item=entry("new-name.jpg",sha256=digest)
     sid=open_session([item])
     assert reference_uploads.confirm_duplicate(sid,item.upload_id,digest)["already_present"]
     assert reference_imports.status(sid)["duplicates"]==1
     assert count_jobs()==1
-    assert file_path.read_bytes()==raw
-    assert not storage.partial(sid,item.upload_id).exists()
+    assert source.read_bytes()==raw
 
 def test_uploaded_bytes_are_deduplicated_on_server(isolated_import):
     raw=_jpg()
@@ -260,13 +260,12 @@ def test_reference_import_rejects_filename_path(isolated_import):
         open_session([item])
     assert forbidden.value.status_code==422
 
-def test_legacy_api_stays_separate_and_staged_routes_default_off(isolated_import,monkeypatch):
+def test_staged_api_is_always_available_without_flags(isolated_import,monkeypatch):
     monkeypatch.delenv("REFERENCE_IMPORT_STAGING_ENABLED",raising=False)
-    with pytest.raises(HTTPException) as blocked:
-        routes._enabled()
-    assert blocked.value.status_code==503
-    monkeypatch.setenv("REFERENCE_IMPORT_STAGING_ENABLED","1")
-    with pytest.raises(HTTPException):
-        routes._enabled()
-    monkeypatch.setenv("PHOTOSORTER_UNIFIED_QUEUE","1")
-    routes._enabled()
+    monkeypatch.delenv("PHOTOSORTER_UNIFIED_QUEUE",raising=False)
+    sid=uuid.uuid4()
+    state=routes.create(routes.NewSession(client_session_id=sid))
+    assert state["id"]==str(sid)
+    assert not state["registered"]
+    listing=routes.list_sessions()
+    assert any(item["id"]==sid for item in listing["sessions"])

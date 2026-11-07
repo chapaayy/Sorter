@@ -17,7 +17,7 @@ from ..database import connect
 
 def _validated(files):
     # Import lazily: uploads.py calls this service when initiating/finalizing.
-    from ..uploads import safe_name, MAX_FILE_BYTES
+    from .upload_validation import safe_name, MAX_FILE_BYTES
     if not files or len(files) > 20000:
         raise HTTPException(422, "Манифест должен содержать от 1 до 20000 фотографий")
     result = []

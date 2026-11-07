@@ -1,4 +1,4 @@
-"""Stage 2: durable, opt-in automatic MegaLoc queueing (disposable DB only)."""
+"""FO automatic queueing with immediate FIFO registration and restart reconciliation."""
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -66,8 +66,7 @@ def test_wait_for_complete_then_queue_once_with_persisted_threshold(thumbs,refer
         assert auto_processing.schedule_ready()==[]
         _send(thumbs,batch,files[1],raw)
         # The browser could now be completely offline.
-        queued=auto_processing.schedule_ready()
-        assert len(queued)==1 and queued[0][0]==str(batch)
+        # Last finalized FO file already enqueues in the same transaction.
         assert auto_processing.schedule_ready()==[]
         with connect() as db:
             job=db.execute("SELECT id,status,snapshot FROM jobs WHERE batch_id=%s",(batch,)).fetchone()
@@ -101,7 +100,7 @@ def test_cancel_before_enqueue_is_idempotent_and_does_not_stop_jobs(thumbs,refer
             f=_files(1,raw)[0]
             upload_manifest.register(second,[f],auto_process=True)
             _send(thumbs,second,f,raw)
-            assert len(auto_processing.schedule_ready())==1
+            assert auto_processing.schedule_ready()==[]
             with pytest.raises(HTTPException) as exc:auto_processing.cancel(second)
             assert exc.value.status_code==409
         finally:
@@ -110,39 +109,21 @@ def test_cancel_before_enqueue_is_idempotent_and_does_not_stop_jobs(thumbs,refer
         cleanup.request(batch);cleanup.cleanup_one(batch)
 
 
-def test_manual_enqueue_wins_and_prevents_auto_duplicate(thumbs,reference,model_ready):
+def test_auto_enqueue_wins_without_manual_duplicate(thumbs,reference,model_ready):
     batch=_batch(thumbs,with_photo=False)
     raw=_jpg()
     file=_files(1,raw)[0]
     try:
         upload_manifest.register(batch,[file],auto_process=True,grouping_threshold=.63)
         _send(thumbs,batch,file,raw)
-        result=jobs.enqueue(jobs.NewRun(batch_id=batch,grouping_threshold=.81))
-        assert result["source"]=="manual"
-        assert batches.get(batch)["auto_process_state"]=="manual"
+        with pytest.raises(HTTPException) as error:
+            jobs.enqueue(jobs.NewRun(batch_id=batch,grouping_threshold=.81))
+        assert error.value.status_code==409
+        assert batches.get(batch)["auto_process_state"]=="queued"
         assert auto_processing.schedule_ready()==[]
         with connect() as db:
             assert db.execute("SELECT count(*) AS n FROM jobs WHERE batch_id=%s",
                               (batch,)).fetchone()["n"]==1
-    finally:
-        cleanup.request(batch);cleanup.cleanup_one(batch)
-
-
-def test_queue_capacity_retries_request_not_failed_job(thumbs,reference,model_ready,monkeypatch):
-    from server.db.repositories import queue
-    batch=_batch(thumbs,with_photo=False)
-    raw=_jpg()
-    file=_files(1,raw)[0]
-    try:
-        upload_manifest.register(batch,[file],auto_process=True)
-        _send(thumbs,batch,file,raw)
-        monkeypatch.setattr(queue,"MAX_WAITING",0)
-        assert auto_processing.schedule_ready()==[]
-        assert batches.get(batch)["auto_process_state"]=="waiting"
-        assert "Очередь" in batches.get(batch)["auto_process_error"]
-        monkeypatch.setattr(queue,"MAX_WAITING",20)
-        assert len(auto_processing.schedule_ready())==1
-        assert batches.get(batch)["auto_process_state"]=="queued"
     finally:
         cleanup.request(batch);cleanup.cleanup_one(batch)
 
@@ -157,7 +138,7 @@ def test_concurrent_dispatches_do_not_duplicate_runs(thumbs,reference,model_read
         with ThreadPoolExecutor(max_workers=2) as pool:
             futures=[pool.submit(auto_processing.schedule_ready) for _ in range(2)]
             outcomes=[future.result(timeout=25) for future in futures]
-        assert sum(len(result) for result in outcomes)==1
+        assert sum(len(result) for result in outcomes)==0, "Already placed atomically on last file"
         with connect() as db:
             assert db.execute("SELECT count(*) AS n FROM jobs WHERE batch_id=%s",
                               (batch,)).fetchone()["n"]==1

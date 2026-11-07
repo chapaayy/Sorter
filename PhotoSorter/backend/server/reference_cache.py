@@ -13,10 +13,7 @@ from app.config import DATA_DIR
 from app.system.model_store import signature
 from .database import connect
 
-REFERENCE_ROOT=(DATA_DIR/'references').resolve()
-# Only these directories may contain reference inputs, never FO uploads.
-REFERENCE_ROOTS=(REFERENCE_ROOT,(DATA_DIR/'reference_objects').resolve(),
-                 (DATA_DIR/'reference_staging').resolve())
+REFERENCE_ROOT=(DATA_DIR/'reference_staging').resolve()
 CACHE_DIR=DATA_DIR/'cache'/'megaloc'/'references'
 
 def cached_feature(db,digest,fingerprint):
@@ -53,8 +50,7 @@ class ReferenceCachedMegaLoc:
         paths=[Path(p) for p in paths]
         if not paths:return
         # FO always uses the original bounded batched extractor.
-        if not all(any(p.resolve().is_relative_to(root) for root in REFERENCE_ROOTS)
-                   for p in paths):
+        if not all(p.resolve().is_relative_to(REFERENCE_ROOT) for p in paths):
             yield from self.engine.extract_many(paths,stop=stop)
             return
         cached={};missing=[];hashes={}

@@ -66,12 +66,13 @@ def mark_duplicate(db, session_id, upload_id, digest):
         WHERE session_id=%s AND upload_id=%s
     """,(digest,session_id,upload_id))
 
-def matching_legacy(db, sam, digest, size):
+def matching_published(db,sam,digest,size):
+    """Only CURRENT published staged objects are valid duplicate sources."""
     return db.execute("""
-        SELECT target_path FROM uploads
-        WHERE kind='reference' AND finalized AND sam=%s
-          AND checksum=%s AND declared_size=%s AND target_path IS NOT NULL
-        ORDER BY created_at,id
+        SELECT m.target_path FROM reference_version_members m
+        JOIN reference_library_state s ON s.current_version_id=m.version_id
+        WHERE s.id=1 AND m.sam=%s AND m.source_hash=%s
+          AND m.declared_size=%s AND m.source_kind='staged'
     """,(sam,digest,size)).fetchall()
 
 def matching_staged(db, session_id, sam, digest, size, exclude_id):

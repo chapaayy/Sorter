@@ -8,13 +8,13 @@ import {useNoticeStore} from '../../stores/notice'
 import {bytes} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 
-const props=defineProps<{selectedSam:string;label:string;disabled:boolean;staged?:boolean}>()
+const props=defineProps<{selectedSam:string;label:string}>()
 const emit=defineEmits<{(e:'finished'):void}>()
-const uploadSettings=useUploadSettingsStore(),notice=useNoticeStore(),transfer=useReferenceTransfer(!!props.staged)
+const uploadSettings=useUploadSettingsStore(),notice=useNoticeStore(),transfer=useReferenceTransfer()
 const files=ref<UploadEntry[]>([]),issues=ref<string[]>([]),target=ref('')
 const total=computed(()=>files.value.reduce((sum,item)=>sum+item.file.size,0))
 const ready=computed(()=>!!files.value.length&&!issues.value.length&&
-  !!props.selectedSam&&target.value===props.selectedSam&&!props.disabled&&!transfer.busy.value)
+  !!props.selectedSam&&target.value===props.selectedSam&&!transfer.busy.value)
 
 function choose(event:Event){
   const input=event.target as HTMLInputElement
@@ -33,10 +33,7 @@ async function upload(){
   if(!ready.value)return
   const current=files.value.map(entry=>({sam:target.value,entry}))
   if(await transfer.start(current,uploadSettings.parallelUploads)){
-    notice.add(props.staged
-      ?'Файлы приняты. Подготовка образцов поставлена в очередь.'
-      :'Образцы дополнены: '+current.length+
-        ' файлов, совпадений '+transfer.duplicates.value+'.','ok')
+    notice.add('Файлы приняты. Подготовка образцов поставлена в очередь.','ok')
     files.value=[];issues.value=[]
     emit('finished')
   }
@@ -50,9 +47,9 @@ async function upload(){
   <div v-if="!selectedSam" class="alert">Сначала выберите конструкцию в списке.</div>
   <template v-else>
     <strong>{{label}}</strong>
-    <label class="upload-drop" :style="{opacity:disabled||transfer.busy.value?'.5':'1'}">
+    <label class="upload-drop" :style="{opacity:transfer.busy.value?'.5':'1'}">
       <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff"
-        :disabled="disabled||transfer.busy.value" @change="choose"/>
+        :disabled="transfer.busy.value" @change="choose"/>
       <strong>Выбрать фотографии</strong>
       <div class="meta">Без папок и специальных названий</div>
     </label>

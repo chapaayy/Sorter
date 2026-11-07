@@ -1,4 +1,4 @@
--- Stage 1: durable session and preparation records, deliberately inactive.
+-- Durable staging imports and preparation jobs.
 CREATE TABLE IF NOT EXISTS reference_import_sessions (
  id UUID PRIMARY KEY,
  upload_state TEXT NOT NULL DEFAULT 'uploading'

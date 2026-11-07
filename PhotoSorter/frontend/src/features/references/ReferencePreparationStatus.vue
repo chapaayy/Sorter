@@ -10,7 +10,6 @@ import UiButton from '../../components/ui/UiButton.vue'
 const props=defineProps<{library:LibraryStatus|null}>()
 const sessions=ref<ImportSessionSummary[]>([]),error=ref(''),loading=ref(false)
 async function refresh(){
-  if(!props.library?.staged_imports_enabled)return
   loading.value=true
   try{
     const response=await referenceImportsApi.list(15)
@@ -50,10 +49,7 @@ const title=(session:ImportSessionSummary)=>{
     </span>
   </div>
   <div v-if="library?.baseline_error" class="alert error" role="alert">{{library.baseline_error}}</div>
-  <div v-if="!library?.staged_imports_enabled" class="meta">
-    Поэтапная загрузка образцов пока не включена на сервере.
-  </div>
-  <template v-else>
+  <template>
     <div class="row between wrap"><strong>Последние импорты</strong>
       <UiButton small :loading="loading" @click="refresh">Обновить</UiButton></div>
     <div v-if="error" class="alert error" role="alert">{{error}}</div>

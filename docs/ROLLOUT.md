@@ -8,7 +8,6 @@
 2. Проверить аппаратные CPU IDs в cgroup, минимум доступные 7 logical CPU для базового `cpuset=0-6`; иначе установить `PHOTOSORTER_WORKER_CPUSET` на реально доступный диапазон. Cpuset **не резервирует** физическое ядро для API.
 3. Получить код строго из отдельной main commit, доступные weights (с подписью), копию тестовых 189/1315 фото/Образцов **только с разрешения**.
 4. На staging выполнить `./install.sh --check` (только чтение). Если секреты/Compose/CPU не подходят — исправить до запуска.
-5. На пустом staging настроить .env и установить `./install.sh --deploy`. Не направлять DNS на боевой VPS. Для уже существующего volume обновление требует отдельного `PHOTOSORTER_APPROVE_UPGRADE=VERIFIED_BACKUP_AND_ROLLBACK`.
 6. Проверить `docker compose ps`, `GET /api/health`, авторизованный `GET /api/system/status` и heartbeat `services.megaloc/thumbnail/cleanup`. Проверить единый Vue на `/`, deep links `/fo`/`/references`, assets `/assets/*`, старые `/v3/` и `/static/*` должны отвечать 404. Пустая очередь не является доказательством работы Worker.
 
 ## 2. Согласованный архив и восстановление
@@ -67,6 +66,7 @@ python PhotoSorter/tools/maintenance/staging_probe.py \
 
 Если несоответствие, прекратить новые операции, не запускать старый и новый inference Worker параллельно. Вернуть **code image из предыдущего SHA**, оставить аддитивные SQL таблицы и volume; DB/filesystem возвращать из полного snapshot только при доказанной несогласованности и в согласованном maintenance window. Никаких `DROP`, `rm -rf PhotoSorter/data`, `docker compose down -v`. См. `docs/ROLLBACK.md`.
 
-## Stage 4 feature rollout (требует отдельного приказа)
 
-Обе переменные `PHOTOSORTER_UNIFIED_QUEUE` и `REFERENCE_IMPORT_STAGING_ENABLED` имеют default 0 в общем Compose env. После проверенного offsite backup + isolated restore и при пустой/контролируемой очереди сначала активировать единую FIFO, проверить старые ФО/результаты и версии, затем отдельно staging import. Изменения API, Worker и cleanup активируются согласованно. При проблеме нельзя просто выключить новый Worker при ожидающих reference preparations; см. `REFERENCE_QUEUE_STAGE4.md` и `ROLLBACK.md`. Ни одна строка этого документа не разрешает самовольный VPS rollout.
+## Единый beta pipeline
+
+Очередь ФО и подготовок образцов — только `work_queue.seq`; загрузка образцов всегда доступна через `/api/reference-imports` и сохраняет файлы в `reference_staging`. После полной подготовки публикуется неизменяемая версия библиотеки. Обе версии планировщика и условные флаги переключения удалены. Приёмка — тесты на пустой базе, докачку, FIFO, публикацию и браузеры Chromium/WebKit. Текущая архитектура: [REFERENCE_PIPELINE](REFERENCE_PIPELINE.md).

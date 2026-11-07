@@ -35,7 +35,6 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Run install.sh first}
       DOMAIN: ${DOMAIN:?Set DOMAIN}
       PHOTOSORTER_FORCE_CPU: "1"
-      PHOTOSORTER_REFERENCE_CACHE: "1"
       # Stage 3 is opt-in until real VPS restore/acceptance is approved.
       PHOTOSORTER_UNIFIED_QUEUE: "${PHOTOSORTER_UNIFIED_QUEUE:-0}"
       REFERENCE_IMPORT_STAGING_ENABLED: "${REFERENCE_IMPORT_STAGING_ENABLED:-0}"

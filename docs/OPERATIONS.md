@@ -57,6 +57,7 @@ CI запускает PostgreSQL 17, compile Python, Compose config и unit/inte
 
 Скрипт `install.sh --check` теперь проверяет допустимость cpuset на текущем хосте; обновления существующего volume требуют реального backup и отдельного ack. См. [STAGE4_ROLLOUT](ROLLOUT.md).
 
-## Операционная граница stage 4
 
-По умолчанию `PHOTOSORTER_UNIFIED_QUEUE=0` и `REFERENCE_IMPORT_STAGING_ENABLED=0` в общем Compose env. Отдельно проверьте согласованность переменных между api/worker/cleanup. На проверенном staging переключайте `PHOTOSORTER_UNIFIED_QUEUE=1` первым и `REFERENCE_IMPORT_STAGING_ENABLED=1` только после тестов. Watch: `GET /api/work-queue?scope=active` и `/api/reference-library/status`, audit `GET /api/reference-library/events`. При ошибке подготовки статус `failed` обязан блокировать следующие ФО; оператор вручную принимает retry/skip с подтверждением. Релиз на VPS требует отдельного разрешения владельца; инструкция `REFERENCE_QUEUE_STAGE4.md`.
+## Единый beta pipeline
+
+Очередь ФО и подготовок образцов — только `work_queue.seq`; загрузка образцов всегда доступна через `/api/reference-imports` и сохраняет файлы в `reference_staging`. После полной подготовки публикуется неизменяемая версия библиотеки. Обе версии планировщика и условные флаги переключения удалены. Приёмка — тесты на пустой базе, докачку, FIFO, публикацию и браузеры Chromium/WebKit. Текущая архитектура: [REFERENCE_PIPELINE](REFERENCE_PIPELINE.md).

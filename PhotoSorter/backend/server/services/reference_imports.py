@@ -189,6 +189,7 @@ def reconcile(db,session_id):
 def complete(session_id):
     session_id=_uid(session_id)
     with connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
         if not repository.session(db,session_id,lock=True):
             raise HTTPException(404,"Сессия не найдена")
         job=_complete_locked(db,session_id)

@@ -10,10 +10,10 @@ import {useNoticeStore} from '../../stores/notice'
 import {bytes,errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 
-const props=defineProps<{disabled:boolean;staged?:boolean}>()
+
 const emit=defineEmits<{(e:'finished'):void}>()
 const uploadSettings=useUploadSettingsStore(),notice=useNoticeStore()
-const transfer=useReferenceTransfer(!!props.staged)
+const transfer=useReferenceTransfer()
 const selection=ref<ReferenceSelection|null>(null),plan=ref<ImportPlan|null>(null)
 const checking=ref(false),error=ref('')
 let revision=0
@@ -24,7 +24,7 @@ const errors=computed(()=>[
 const planById=computed<Record<string,ImportPlanEntry>>(()=>
   Object.fromEntries((plan.value?.entries||[]).map(entry=>[entry.sam,entry])))
 const existingCount=computed(()=>plan.value?.entries.filter(entry=>entry.existing).length||0)
-const ready=computed(()=>!props.disabled&&!checking.value&&!transfer.busy.value&&
+const ready=computed(()=>!checking.value&&!transfer.busy.value&&
   !!selection.value?.tasks.length&&!!plan.value&&!errors.value.length)
 
 async function choose(event:Event){
@@ -58,14 +58,10 @@ async function upload(){
     if(checked.errors.length)return
   }catch(err){error.value='Повторная проверка не удалась: '+errorText(err);return}
   finally{checking.value=false}
-  if(props.disabled)return
   const items=selection.value.tasks
   const success=await transfer.start(items,uploadSettings.parallelUploads)
   if(success){
-    notice.add(props.staged
-      ?'Файлы сохранены. Подготовка образцов поставлена в общую очередь.'
-      :'Библиотека обновлена: обработано '+items.length+
-        ' фото, совпадений '+transfer.duplicates.value+'. Ничего не удалено.','ok')
+    notice.add('Образцы загружены. Подготовка поставлена в общую очередь.','ok')
     selection.value=null;plan.value=null
     emit('finished')
   }
@@ -77,9 +73,9 @@ async function upload(){
   <p class="meta">Выберите общую папку. Внутри — папки конструкций строго вида
     <strong>SAM 0004 — Гагарина 64</strong> или <strong>TLT 3245 — Южное шоссе 10</strong>.
     Существующие конструкции дополняются, новые создаются. Фото не заменяются и не удаляются.</p>
-  <label class="upload-drop" :style="{opacity:disabled||transfer.busy.value?'.5':'1'}">
+  <label class="upload-drop" :style="{opacity:transfer.busy.value?'.5':'1'}">
     <input type="file" webkitdirectory directory multiple
-      :disabled="disabled||transfer.busy.value||checking" @change="choose"/>
+      :disabled="transfer.busy.value||checking" @change="choose"/>
     <strong>Выбрать папку библиотеки</strong>
     <div class="meta">Сначала проверим все выбранные файлы и названия папок</div>
   </label>
@@ -131,7 +127,7 @@ async function upload(){
       <div class="row">
         <UiButton v-if="transfer.busy.value" kind="danger" @click="transfer.pause()">Пауза</UiButton>
         <UiButton v-else kind="primary" :disabled="!ready" @click="upload">
-          {{staged?'Загрузить и подготовить':'Создать и дополнить'}}
+          Загрузить и подготовить
         </UiButton>
       </div>
     </div>

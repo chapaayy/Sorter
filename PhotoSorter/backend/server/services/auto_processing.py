@@ -1,8 +1,4 @@
-"""Opt-in server-side MegaLoc scheduling for newly completed manifest batches.
-
-The cleanup service calls schedule_ready periodically; no browser, API process memory
-or network acknowledgement is needed to enqueue. Every decision uses PostgreSQL.
-"""
+"""Persistent FO auto-enqueue; manifest finalization is primary, periodic retry is recovery."""
 from __future__ import annotations
 
 import logging
@@ -107,7 +103,7 @@ def schedule_ready(limit:int=10):
     return results
 
 def enqueue_on_manifest_completion(db,batch_id):
-    """Stage 3: reserve FIFO position in the same transaction as last FO finish.
+    """Reserve FIFO position in the same transaction as the last FO file.
 
     Caller MUST hold advisory key 723409133 before locking the batch row.
     Missing prerequisites are recorded for the cleanup fallback, not a lost FO.

@@ -24,8 +24,7 @@ Restore требует `--confirm-staging`, **новый каталог** и mar
 
 CI `ci_restore_drill.py` действительно вызывает `pg_dump` и `pg_restore` с PostgreSQL17 на двух disposable базах и проверяет SHA файлов, запись БД и inode. **Это не снимок VPS**. Настоящая резервная копия должна быть зашифрована offsite (внутри находятся пароли `.env.generated` и фотографии). Caddy Docker volume с TLS private keys нужно отдельно копировать и восстанавливать. Без offsite restore-test не давать согласие на production rollout. Команды: [STAGE4_ROLLOUT](ROLLOUT.md).
 
-## Новые данные Stage 4
 
-Согласованная внешняя копия должна включать новые PostgreSQL таблицы `reference_library_versions`, `reference_version_members`, `reference_library_events`, `library_notice_cursors`, `fo_library_upload_receipts`, `reference_import_*`, `reference_preparation_*`, `work_queue`; из `PhotoSorter/data` сохранять `reference_staging/`, `reference_objects/`, кэш эмбеддингов, исходники и outputs. Файлы staging/immutable и курсоры должны быть восстановлены вместе с PostgreSQL, а не выборочно. Перед переносом выполнить offsite verify + restore-test на пустой отдельной DB и проверить Caddy TLS volumes. Не использовать `docker compose down -v`.
+## Единый beta pipeline
 
-В Postgres 17 snapshot входит `fo_library_upload_receipts` и миграционная запись `library_notice_cursors` для ранее завершённых ФО (schema `0017`). При восстановлении на другом сервере нельзя сбрасывать cursor: иначе следующая публикация может создать ложное/пропущенное предупреждение.
+Очередь ФО и подготовок образцов — только `work_queue.seq`; загрузка образцов всегда доступна через `/api/reference-imports` и сохраняет файлы в `reference_staging`. После полной подготовки публикуется неизменяемая версия библиотеки. Обе версии планировщика и условные флаги переключения удалены. Приёмка — тесты на пустой базе, докачку, FIFO, публикацию и браузеры Chromium/WebKit. Текущая архитектура: [REFERENCE_PIPELINE](REFERENCE_PIPELINE.md).

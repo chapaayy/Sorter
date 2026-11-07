@@ -8,10 +8,10 @@ from psycopg.types.json import Jsonb
 from app.config import DATA_DIR
 from app.jobs.runtime import Job
 from .database import connect,save_snapshot
-from .db.repositories import queue,work_queue
+from .db.repositories import job_status,work_queue
 
 router=APIRouter(prefix="/api/runs",tags=["jobs"])
-TERMINAL=set(queue.TERMINAL)
+TERMINAL=set(job_status.TERMINAL)
 
 class NewRun(BaseModel):
     batch_id:uuid.UUID
@@ -37,7 +37,7 @@ def list_jobs(limit:int=100,offset:int=0,scope:str|None=None):
             FROM jobs"""+where+""" ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s""",
             (limit,offset)).fetchall()
         total=db.execute("SELECT count(*) AS n FROM jobs"+where).fetchone()["n"]
-        result=[queue.decorated(db,row) for row in rows]
+        result=[job_status.decorated(db,row) for row in rows]
     return {"runs":result,"total":total}
 
 @router.post("",status_code=202)
@@ -54,10 +54,6 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
     Caller has the global scheduling advisory lock; the batch row is FOR UPDATE.
     Existing queue, snapshot and worker contracts remain unchanged.
     """
-    import os
-    if queue.queue_count(db)>=queue.MAX_WAITING and (
-        source=="manual" or os.environ.get("PHOTOSORTER_UNIFIED_QUEUE")!="1"):
-        raise HTTPException(429,"Очередь заполнена: максимум 20 ожидающих запусков")
     batch=locked_batch or db.execute(
         "SELECT id,delete_state,upload_manifest_state,auto_process_state FROM batches "
         "WHERE id=%s FOR UPDATE",(data.batch_id,)).fetchone()
@@ -105,7 +101,7 @@ def get_job(run_id:str):
         row=db.execute("""SELECT id,snapshot,status,created_at,started_at,finished_at
             FROM jobs WHERE id=%s""",(run_id,)).fetchone()
         if not row:raise HTTPException(404,"Задание не найдено")
-        return queue.decorated(db,row)
+        return job_status.decorated(db,row)
 
 @router.post("/{run_id}/stop")
 def stop(run_id:str):

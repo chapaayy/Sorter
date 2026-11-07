@@ -35,16 +35,36 @@ def _page(sam,cursor,limit):
         return page(db,"u.kind='reference' AND u.finalized AND u.sam=%s",
                     (sam,),cursor=cursor,limit=limit)
 
-class RenameSAM(BaseModel):
-    new_sam:str=Field(min_length=8,max_length=80)
+@router.get("")
+def list_references():
+    """Gallery projection of the currently published reference library."""
+    with connect() as db:
+        rows=db.execute("""SELECT u.sam,count(*) AS photos,
+            c.city_code,c.construction_number,c.address,
+            CASE WHEN c.sam IS NOT NULL THEN u.sam || ' — ' || c.address
+                 ELSE u.sam END AS display_name
+            FROM uploads u LEFT JOIN reference_constructions c ON c.sam=u.sam
+            WHERE u.kind='reference' AND u.finalized
+            GROUP BY u.sam,c.sam,c.city_code,c.construction_number,c.address
+            ORDER BY u.sam""").fetchall()
+    return {"sam":rows,"total":sum(row["photos"] for row in rows)}
+
+@router.get("/files")
+def files():
+    with connect() as db:
+        rows=db.execute("""SELECT id,sam,filename,checksum,created_at
+            FROM uploads WHERE kind='reference' AND finalized
+            ORDER BY sam,created_at""").fetchall()
+    return {"files":[{"id":str(row["id"]),"sam":row["sam"],
+             "name":row["filename"],"sha256":row["checksum"]} for row in rows]}
 
 @router.get("/cache/status")
 def cache_status():
     return reference_service.cache_status()
 
-@router.patch("/sam/{sam}")
-def rename_sam(sam:str,payload:RenameSAM):
-    return reference_service.rename(sam,payload.new_sam)
+@router.delete("/files/{reference_id}")
+def delete_photo(reference_id:str):
+    return reference_service.delete_photo(reference_id)
 
 @router.delete("/sam/{sam}")
 def delete_sam(sam:str):

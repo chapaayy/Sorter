@@ -17,7 +17,6 @@ def thumbs(sandbox,monkeypatch):
     monkeypatch.setattr(thumbnails,"DATA_DIR",sandbox)
     monkeypatch.setattr(cache,"ROOT",sandbox/"cache"/"thumbnails")
     monkeypatch.setattr(uploads,"UPLOADS_DIR",sandbox/"uploads")
-    monkeypatch.setattr(uploads,"REFERENCES_DIR",sandbox/"references")
     monkeypatch.setattr(uploads,"PART_DIR",sandbox/"incoming")
     return sandbox
 

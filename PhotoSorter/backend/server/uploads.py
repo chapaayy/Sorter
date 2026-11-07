@@ -1,9 +1,8 @@
-"""Resumable file transfer using offsets; originals are never modified after finalize."""
+"""FO-only resumable upload API; references use /api/reference-imports exclusively."""
 from __future__ import annotations
 import asyncio
 import hashlib
 import os
-import re
 import threading
 import uuid
 from pathlib import Path
@@ -16,18 +15,14 @@ from .services import operations
 from .services import upload_manifest
 from .db.repositories import batches as batch_repository
 from .services import thumbnails
-from .services import construction_catalog
 from .services.disk_guard import check_admission
 from app.config import DATA_DIR
-from app.photos.reader import EXTS
-from app.photos.labels import check_label
+from .services.upload_validation import safe_name,MAX_FILE_BYTES
 
 router=APIRouter(prefix='/api',tags=['uploads'])
 UPLOADS_DIR=DATA_DIR/'uploads'
-REFERENCES_DIR=DATA_DIR/'references'
 PART_DIR=DATA_DIR/'incoming'
 CHUNK_LIMIT=16*1024*1024
-MAX_FILE_BYTES=60*1024*1024
 _LOCKS:dict[str,asyncio.Lock]={}
 _INIT_LOCKS:dict[str,threading.Lock]={}
 _LOCKS_LOCK=threading.Lock()
@@ -43,69 +38,43 @@ def init_lock_for(upload_id):
         return _INIT_LOCKS.setdefault(str(upload_id),threading.Lock())
 
 
-def safe_name(value:str)->str:
-    name=Path(value.replace('\\','/')).name.strip()
-    if not name or name in ('.','..') or len(name)>200 or not re.fullmatch(r'[\w.()\- +]+',name,re.UNICODE):
-        raise HTTPException(422,'Недопустимое имя файла')
-    if Path(name).suffix.lower() not in EXTS:raise HTTPException(422,'Поддерживаются только изображения')
-    return name
-
-
 class BeginUpload(BaseModel):
     kind:str
     filename:str
     size:int=Field(gt=0,le=MAX_FILE_BYTES)
     batch_id:str|None=None
-    sam:str|None=None
-    address:str|None=None
     sha256:str|None=None
     client_upload_id:uuid.UUID|None=None
 
 
-def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
-    if payload.kind not in ('fo','reference'):raise HTTPException(422,'Недопустимый тип загрузки')
+def _create_upload(payload:BeginUpload,file_id:uuid.UUID):
+    if payload.kind!='fo':
+        raise HTTPException(422,'Образцы загружаются только через /api/reference-imports')
     filename=safe_name(payload.filename)
-    batch_id=None;sam=None
-    if payload.kind=='fo':
-        try:batch_id=uuid.UUID(payload.batch_id or '')
-        except ValueError:raise HTTPException(422,'Нужна партия ФО')
-    else:
-        try:sam=check_label(payload.sam or '')
-        except ValueError as exc:raise HTTPException(422,str(exc))
-        if not sam:
-            raise HTTPException(422,'Укажите конструкцию')
-    if payload.sha256 and not re.fullmatch(r'[0-9a-f]{64}',payload.sha256):
+    try:batch_id=uuid.UUID(payload.batch_id or '')
+    except ValueError as exc:raise HTTPException(422,'Нужна партия ФО') from exc
+    if payload.sha256 and not re_full_sha(payload.sha256):
         raise HTTPException(422,'Неверная контрольная сумма')
     check_admission(payload.size)
-    token=operations.start(batch_id,'init') if batch_id else None
+    token=operations.start(batch_id,'init')
     recorded=False
     try:
         with connect() as db:
-            if payload.kind=='reference':db.execute('SELECT pg_advisory_xact_lock(723409133)')
-            if payload.kind=='reference' and (
-                 db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone()
-                 or db.execute("""SELECT 1 FROM work_queue WHERE kind='reference_preparation'
-                    AND state IN ('queued','running','blocked','failed','interrupted') LIMIT 1""").fetchone()):
-                raise HTTPException(409,'Нельзя изменять Образцы во время сортировки или подготовки')
-            if payload.kind=='reference':
-                try: sam=construction_catalog.ensure_upload(db,sam,payload.address)
-                except ValueError as exc: raise HTTPException(422,str(exc)) from exc
-            if batch_id:
-                # A parallel file-init eventually updates this batch row. Acquiring
-                # FOR SHARE first causes a FOR SHARE -> UPDATE deadlock when
-                # several files start together. Take the update lock immediately.
-                batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR NO KEY UPDATE',
-                                 (batch_id,)).fetchone()
-                if not batch:raise HTTPException(404,'Партия не найдена')
-                if batch['delete_state']!='active':raise HTTPException(409,'Партия удаляется')
-                if db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',
-                              (batch_id,)).fetchone():
-                    raise HTTPException(409,'Партия уже использовалась для сортировки')
-                upload_manifest.require_expected_upload(db,batch_id,file_id,filename,payload.size)
-            db.execute('INSERT INTO uploads(id,kind,batch_id,sam,filename,declared_size,checksum) '
-                       'VALUES (%s,%s,%s,%s,%s,%s,%s)',
-                       (file_id,payload.kind,batch_id,sam,filename,payload.size,payload.sha256))
-            if batch_id:db.execute("UPDATE batches SET upload_state='open' WHERE id=%s",(batch_id,))
+            # Global order before batch-row locking (same as auto FIFO enqueue).
+            db.execute('SELECT pg_advisory_xact_lock(723409133)')
+            batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR NO KEY UPDATE',
+                             (batch_id,)).fetchone()
+            if not batch:raise HTTPException(404,'Партия не найдена')
+            if batch['delete_state']!='active':raise HTTPException(409,'Партия удаляется')
+            if db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',
+                          (batch_id,)).fetchone():
+                raise HTTPException(409,'Партия уже использовалась для сортировки')
+            upload_manifest.require_expected_upload(db,batch_id,file_id,filename,payload.size)
+            db.execute("""INSERT INTO uploads(id,kind,batch_id,filename,
+                declared_size,checksum)
+                VALUES (%s,'fo',%s,%s,%s,%s)""",
+                (file_id,batch_id,filename,payload.size,payload.sha256))
+            db.execute("UPDATE batches SET upload_state='open' WHERE id=%s",(batch_id,))
         recorded=True
         PART_DIR.mkdir(parents=True,exist_ok=True)
         (PART_DIR/f'{file_id}.part').touch(exist_ok=False)
@@ -114,10 +83,15 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
         if recorded:
             with connect() as db:
                 db.execute('DELETE FROM uploads WHERE id=%s AND NOT finalized',(file_id,))
-                if batch_id:batch_repository.refresh_upload_state(db,batch_id)
+                batch_repository.refresh_upload_state(db,batch_id)
         raise
     finally:
-        if token:operations.finish(token)
+        operations.finish(token)
+
+
+def re_full_sha(digest):
+    import re
+    return re.fullmatch(r'[0-9a-f]{64}',digest) is not None
 
 
 @router.post('/uploads')
@@ -218,93 +192,63 @@ async def upload_chunk(upload_id: str, request: Request):
             if token: await asyncio.to_thread(operations.finish, token)
 
 
-def _finalize_sync(upload_id: str):
-    """Hash, verify and register an uploaded photo off the ASGI event loop."""
+def _finalize_sync(upload_id:str):
+    """Verify FO once and reserve its FIFO place on the last manifest file."""
     row=get_upload(upload_id)
-    with connect() as db:
-        if row['batch_id']:
-            batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR SHARE',(row['batch_id'],)).fetchone()
-            if not batch or batch['delete_state']!='active':
-                raise HTTPException(409,'Партия удаляется или удалена')
-        if row['kind']=='reference' and (
-            db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone()
-            or db.execute("""SELECT 1 FROM work_queue WHERE kind='reference_preparation'
-                 AND state IN ('queued','running','blocked','failed','interrupted') LIMIT 1""").fetchone()):
-            raise HTTPException(409,'Нельзя изменять Образцы во время сортировки или подготовки')
-        if row['kind']=='fo' and db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',(row['batch_id'],)).fetchone():
-            raise HTTPException(409,'Партия уже запущена')
-    if row['finalized']:return {'path':row['target_path'],'already_finalized':True}
-    path=PART_DIR/f'{row["id"]}.part'
-    if not path.exists() or path.stat().st_size!=row['declared_size']:
+    if row['kind']!='fo':
+        raise HTTPException(409,'Используйте новую загрузку образцов')
+    if row['finalized']:
+        return {'path':row['target_path'],'already_finalized':True}
+    part=PART_DIR/f'{row["id"]}.part'
+    if not part.is_file() or part.stat().st_size!=row['declared_size']:
         current=get_upload(upload_id)
         if current['finalized']:
             return {'path':current['target_path'],'already_finalized':True}
         raise HTTPException(409,'Файл загружен не полностью')
-    with path.open('rb') as stream:
+    with part.open('rb') as stream:
         digest=hashlib.file_digest(stream,'sha256').hexdigest()
-    if row['checksum'] and digest!=row['checksum']:raise HTTPException(422,'SHA-256 не совпадает')
+    if row['checksum'] and digest!=row['checksum']:
+        raise HTTPException(422,'SHA-256 не совпадает')
     try:
-        with Image.open(path) as im:
+        with Image.open(part) as im:
             if im.width*im.height>PIXEL_LIMIT:
                 raise HTTPException(422,'Слишком большое разрешение изображения')
             im.verify()
-    except (OSError,UnidentifiedImageError,ValueError):
-        raise HTTPException(422,'Файл не является корректным изображением')
-    # Prevent duplicates when a SAM folder upload is restarted after an error.
-    # The transaction lock covers both the duplicate check and registration.
+    except (OSError,UnidentifiedImageError,ValueError) as exc:
+        raise HTTPException(422,'Файл не является корректным изображением') from exc
     with connect() as db:
-        if row['kind']=='fo' and os.environ.get("PHOTOSORTER_UNIFIED_QUEUE")=="1":
-            # Strict lock order: global FIFO first, then batch FOR UPDATE.
-            db.execute("SELECT pg_advisory_xact_lock(723409133)")
-        if row['kind']=='fo':
-            # Serialize commit/reconciliation with other finishes and enqueue.
-            batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR UPDATE',
-                             (row['batch_id'],)).fetchone()
-            if not batch or batch['delete_state']!='active':
-                raise HTTPException(409,'Партия удаляется или удалена')
-            current=db.execute('SELECT finalized,target_path FROM uploads WHERE id=%s FOR UPDATE',
-                               (row['id'],)).fetchone()
-            if current['finalized']:
-                return {'path':current['target_path'],'already_finalized':True}
-        if row['kind']=='reference':
-            db.execute('SELECT pg_advisory_xact_lock(723409133)')
-            if db.execute("""SELECT 1 FROM work_queue WHERE kind='reference_preparation'
-                AND state IN ('queued','running','blocked','failed','interrupted') LIMIT 1""").fetchone():
-                raise HTTPException(409,'Подготовка образцов ожидает завершения')
-            db.execute('SELECT pg_advisory_xact_lock(723409134)')
-            previous=db.execute(
-                "SELECT target_path FROM uploads WHERE kind='reference' AND finalized "
-                "AND sam=%s AND checksum=%s LIMIT 1",(row['sam'],digest)).fetchone()
-            if previous:
-                path.unlink()
-                db.execute('DELETE FROM uploads WHERE id=%s',(row['id'],))
-                return {'path':previous['target_path'],'sha256':digest,
-                        'already_finalized':False,'already_present':True}
-        base=UPLOADS_DIR/str(row['batch_id']) if row['kind']=='fo' else REFERENCES_DIR/row['sam']
+        db.execute('SELECT pg_advisory_xact_lock(723409133)')
+        batch=db.execute("""SELECT delete_state FROM batches
+            WHERE id=%s FOR UPDATE""",(row['batch_id'],)).fetchone()
+        if not batch or batch['delete_state']!='active':
+            raise HTTPException(409,'Партия удаляется или удалена')
+        if db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',
+                      (row['batch_id'],)).fetchone():
+            raise HTTPException(409,'Партия уже запущена')
+        current=db.execute("""SELECT finalized,target_path FROM uploads
+            WHERE id=%s FOR UPDATE""",(row['id'],)).fetchone()
+        if current['finalized']:
+            return {'path':current['target_path'],'already_finalized':True}
+        base=UPLOADS_DIR/str(row['batch_id'])
         base.mkdir(parents=True,exist_ok=True)
         target=base/f'{digest[:20]}_{row["filename"]}'
         if target.exists():
             with target.open('rb') as stream:
-                previous_digest=hashlib.file_digest(stream,'sha256').hexdigest()
-            if previous_digest!=digest:
-                raise HTTPException(409,'Конфликт имён')
-            if row['kind']!='fo': path.unlink()
-        elif row['kind']=='fo':
-            # Keep .part until the DB transaction commits. A crash between
-            # file placement and commit can then be retried without source bytes.
-            os.link(path,target)
-        else:path.replace(target)
-        if row['kind']=='fo': target.chmod(0o444)
-        db.execute('UPDATE uploads SET finalized=true,received=declared_size,checksum=%s,target_path=%s '
-                   'WHERE id=%s',(digest,str(target),row['id']))
+                old=hashlib.file_digest(stream,'sha256').hexdigest()
+            if old!=digest:raise HTTPException(409,'Конфликт имён ФО')
+        else:
+            # Keep source .part intact until SQL commit, allowing safe retry.
+            os.link(part,target)
+        target.chmod(0o444)
+        db.execute("""UPDATE uploads SET finalized=true,received=declared_size,
+            checksum=%s,target_path=%s WHERE id=%s""",(digest,str(target),row['id']))
         thumbnails.enqueue(db,row['id'],digest)
-        if row['batch_id']:
-            complete=upload_manifest.reconcile_locked(db,row['batch_id'])
-            if complete and os.environ.get("PHOTOSORTER_UNIFIED_QUEUE")=="1":
-                from .services.auto_processing import enqueue_on_manifest_completion
-                enqueue_on_manifest_completion(db,row['batch_id'])
-            batch_repository.refresh_upload_state(db,row['batch_id'])
-    if row['kind']=='fo':path.unlink(missing_ok=True)
+        complete=upload_manifest.reconcile_locked(db,row['batch_id'])
+        if complete:
+            from .services.auto_processing import enqueue_on_manifest_completion
+            enqueue_on_manifest_completion(db,row['batch_id'])
+        batch_repository.refresh_upload_state(db,row['batch_id'])
+    part.unlink(missing_ok=True)
     return {'path':str(target),'sha256':digest,'already_finalized':False}
 
 
@@ -339,11 +283,9 @@ def _prepare_direct_upload_locked(upload_id: str, payload: BeginUpload) -> dict:
 
     name = safe_name(payload.filename)
     batch_id = str(row['batch_id']) if row['batch_id'] else ''
-    expected_sam = check_label(payload.sam) if payload.kind == 'reference' else ''
     if (row['kind'] != payload.kind or row['filename'] != name or
             row['declared_size'] != payload.size or
-            batch_id != (payload.batch_id or '') or
-            (row['sam'] or '') != expected_sam):
+            batch_id != (payload.batch_id or '')):
         raise HTTPException(409, 'Идентификатор занят другой загрузкой')
     return row
 
@@ -351,14 +293,13 @@ def _prepare_direct_upload_locked(upload_id: str, payload: BeginUpload) -> dict:
 @router.put('/uploads/direct/{upload_id}')
 async def direct_upload(
     upload_id: str, request: Request, kind: str, filename: str,
-    size: int, batch_id: str = '', sam: str = '', address: str = ''
+    size: int, batch_id: str = ''
 ):
     """Single-request upload; keep the resumable PATCH fallback."""
     try:uuid.UUID(upload_id)
     except ValueError:raise HTTPException(404,'Загрузка не найдена')
     payload=BeginUpload(kind=kind,filename=filename,size=size,
-                        batch_id=batch_id or None,sam=sam or None,
-                        address=address or None)
+                        batch_id=batch_id or None)
     async with lock_for(upload_id):
         row=await asyncio.to_thread(_prepare_direct_upload,upload_id,payload)
         token=await asyncio.to_thread(operations.start,row['batch_id'],'upload') if row['batch_id'] else None
@@ -394,52 +335,6 @@ async def direct_upload(
         finally:
             if token:await asyncio.to_thread(operations.finish,token)
 
-
-@router.get('/references')
-def references_status():
-    with connect() as db:
-        rows=db.execute("""SELECT u.sam,count(*) AS photos,
-                   c.city_code,c.construction_number,c.address,
-                   CASE WHEN c.sam IS NOT NULL THEN u.sam || ' — ' || c.address
-                        ELSE u.sam END AS display_name
-                   FROM uploads u LEFT JOIN reference_constructions c ON c.sam=u.sam
-                   WHERE u.kind='reference' AND u.finalized
-                   GROUP BY u.sam,c.sam,c.city_code,c.construction_number,c.address
-                   ORDER BY u.sam""").fetchall()
-    return {'sam':rows,'total':sum(row['photos'] for row in rows)}
-
-
-@router.get('/references/files')
-def list_reference_files():
-    with connect() as db:
-        rows=db.execute("SELECT id,sam,filename,checksum,created_at FROM uploads "
-                        "WHERE kind='reference' AND finalized ORDER BY sam,created_at").fetchall()
-    return {'files':[{'id':str(row['id']),'sam':row['sam'],'name':row['filename'],
-                       'sha256':row['checksum']} for row in rows]}
-
-
-@router.delete('/references/files/{reference_id}')
-def remove_reference(reference_id:str):
-    try: uid=uuid.UUID(reference_id)
-    except ValueError:raise HTTPException(404,'Образец не найден')
-    with connect() as db:
-        db.execute('SELECT pg_advisory_xact_lock(723409133)')
-        if db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
-            raise HTTPException(409,'Нельзя удалять Образцы во время сортировки')
-        row=db.execute("SELECT target_path,sam FROM uploads WHERE id=%s AND kind='reference' AND finalized FOR UPDATE",
-                       (uid,)).fetchone()
-        if row is None:raise HTTPException(404,'Образец не найден')
-        file=Path(row['target_path']).resolve()
-        if not file.is_relative_to(REFERENCES_DIR.resolve()):raise HTTPException(409,'Неверный путь Образца')
-        db.execute('DELETE FROM uploads WHERE id=%s',(uid,))
-        if not db.execute("SELECT 1 FROM uploads WHERE kind='reference' AND sam=%s LIMIT 1",
-                          (row['sam'],)).fetchone():
-            db.execute("DELETE FROM reference_constructions WHERE sam=%s",(row['sam'],))
-    # An identical image may be represented by multiple records: keep it if still referenced.
-    with connect() as db:
-        referenced=db.execute('SELECT 1 FROM uploads WHERE target_path=%s LIMIT 1',(str(file),)).fetchone()
-    if not referenced:file.unlink(missing_ok=True)
-    return {'deleted':True}
 
 @router.delete('/uploads/{upload_id}')
 async def cancel_upload(upload_id:str):

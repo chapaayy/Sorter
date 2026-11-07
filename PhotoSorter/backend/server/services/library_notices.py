@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from ..database import connect
 
 INSTALLATION="installation"
-RECOGNITION_EVENTS=("reference_prepared","legacy_reconcile")
+RECOGNITION_EVENTS=("reference_prepared",)
 MESSAGE=("Образцы конструкций обновились с момента предыдущей загрузки ФО. "
          "Результаты новых обработок могут отличаться от прежних.")
 

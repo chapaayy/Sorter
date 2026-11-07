@@ -39,35 +39,6 @@ def test_zip_valid_sam_names():
     assert archive_member("SAM-0217-A","84fa_photo.jpg")=="SAM-0217-A/84fa_photo.jpg"
     assert archive_member("_Неопределено","photo.jpg")=="_Неопределено/photo.jpg"
 
-def test_published_sam_history_blocks_rename_and_delete(sandbox,monkeypatch):
-    from server.services import references,cleanup
-    from server.storage.paths import run_dir
-    monkeypatch.setattr(references,"REFS",sandbox/"references")
-    monkeypatch.setattr(references,"DATA_DIR",sandbox)
-    sam="SAM-1900"
-    folder=sandbox/"references"/sam
-    folder.mkdir(parents=True)
-    photo=folder/"file.jpg"
-    photo.write_bytes(b"saved-original")
-    identifier=uuid.uuid4()
-    with connect() as db:
-        db.execute("""INSERT INTO uploads(id,kind,sam,filename,declared_size,received,
-          checksum,finalized,target_path) VALUES (%s,'reference',%s,'file.jpg',14,14,%s,true,%s)""",
-          (identifier,sam,hashlib.sha256(photo.read_bytes()).hexdigest(),str(photo)))
-    own=_batch(sandbox,with_photo=False)
-    run=_job(sandbox,own,"completed")
-    manifest=run_dir(run,sandbox/"outputs")/"megaloc"/"manifest.json"
-    manifest.parent.mkdir(parents=True)
-    manifest.write_text('[{"assigned_sam":"'+sam+'","reference":"'+str(photo)+'"}]',encoding="utf8")
-    for action in (lambda:references.rename(sam,"SAM-1901"),lambda:references.delete(sam)):
-        with pytest.raises(HTTPException) as exc:action()
-        assert exc.value.status_code==409
-        assert photo.read_bytes()==b"saved-original"
-    cleanup.request(own)
-    assert cleanup.cleanup_one(own)=="completed"
-    assert references.rename(sam,"SAM-1901")["renamed"]
-    assert references.delete("SAM-1901")["deleted"]
-
 def test_large_image_pixel_bomb_is_rejected_before_publishing(thumbs,monkeypatch):
     from server import uploads
     from server.services import cleanup

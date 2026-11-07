@@ -10,6 +10,7 @@ from app.photos.construction import parse_folder_name, parse_key
 from server.database import connect
 from server.services import construction_catalog, references
 from .test_stage2_platform import thumbs, _jpg
+from .test_unified_queue_stage3 import system
 from .test_stage1_lifecycle import sandbox, db
 
 
@@ -50,71 +51,55 @@ def test_preview_reports_all_invalid_and_never_mutates_database(thumbs):
         ).fetchone() is None
 
 
-def test_existing_construction_is_extended_and_photo_duplicates_are_skipped(thumbs,monkeypatch):
-    from server import uploads
-    monkeypatch.setattr(references,"REFS",thumbs/"references")
-    number=str(uuid.uuid4().int % 10**8).zfill(8)
-    key="SAM "+number
-    address="Гагарина 64"
-    folder=key+" — "+address
-    jpeg=_jpg()
 
-    def finalize(raw,filename,include_address):
-        ident=uuid.uuid4()
-        uploads._create_upload(uploads.BeginUpload(kind="reference",
-            sam=key,address=address if include_address else None,
-            filename=filename,size=len(raw)),ident)
-        (thumbs/"incoming"/f"{ident}.part").write_bytes(raw)
-        return uploads._finalize_sync(str(ident))
-
-    try:
-        first=finalize(jpeg,"image_01.jpg",True)
-        assert first["already_finalized"] is False
-        preview=construction_catalog.preview([folder])
-        assert preview["errors"]==[]
-        assert preview["entries"][0]["existing"] is True
-        assert preview["entries"][0]["photos"]==1
-        duplicate=finalize(jpeg,"image_duplicated.jpg",True)
-        assert duplicate["already_present"] is True
-        second=finalize(_jpg(exif=True),"image_02.jpg",False)
-        assert second["already_finalized"] is False
-        with connect() as db:
-            count=db.execute("SELECT count(*) AS n FROM uploads WHERE sam=%s AND finalized",(key,)).fetchone()["n"]
-        assert count==2
-        with pytest.raises(HTTPException) as exc:
-            uploads._create_upload(uploads.BeginUpload(kind="reference",
-                sam=key,address="Другой адрес",filename="bad.jpg",size=len(jpeg)),uuid.uuid4())
-        assert exc.value.status_code==409
-        assert construction_catalog.change_address(key,"Гагарина 64А")["address"]=="Гагарина 64А"
-        assert len(construction_catalog.preview([folder])["errors"])==1
-        assert construction_catalog.preview([key+" — Гагарина 64А"])["errors"]==[]
-    finally:
-        references.delete(key)
-    with connect() as db:
-        assert db.execute("SELECT 1 FROM reference_constructions WHERE sam=%s",(key,)).fetchone() is None
+def test_existing_construction_is_extended_by_a_new_staging_session(system):
+    from server.services import reference_imports,reference_uploads
+    from server.api.routes.reference_imports import ImportFile
+    from .test_unified_queue_stage3 import add_published_reference
+    key,path=add_published_reference(system,sam="SAM 0004",address="Гагарина 64")
+    before=construction_catalog.preview(["SAM 0004 — Гагарина 64"])
+    assert before["entries"][0]["photos"]==1
+    assert before["entries"][0]["existing"]
+    raw=_jpg(exif=True)
+    sid=uuid.uuid4()
+    fid=uuid.uuid4()
+    reference_imports.create(sid)
+    reference_imports.register_manifest(sid,[ImportFile(
+        upload_id=fid,sam="SAM 0004",relative_path="new.jpg",filename="new.jpg",
+        size=len(raw))])
+    reference_uploads.append(sid,fid,0,raw)
+    result=reference_uploads.finish(sid,fid)
+    assert not result["already_present"]
+    assert reference_imports.status(sid)["state"]=="complete"
+    assert construction_catalog.preview(["SAM 0004 — Гагарина 64"])["entries"][0]["photos"]==1, (
+        "Staging is invisible until the CPU preparation publishes the whole version")
 
 
-def test_new_construction_cannot_be_created_without_an_address(thumbs):
-    from server import uploads
-    number=str(uuid.uuid4().int % 10**8).zfill(8)
+def test_new_construction_requires_address_before_any_upload(system):
+    from server.services import reference_imports
+    from server.api.routes.reference_imports import ImportFile
+    fid=uuid.uuid4()
+    sid=uuid.uuid4()
+    reference_imports.create(sid)
     with pytest.raises(HTTPException) as exc:
-        uploads._create_upload(uploads.BeginUpload(
-            kind="reference",sam="TLT "+number,filename="image.jpg",size=100),uuid.uuid4())
+        reference_imports.register_manifest(sid,[ImportFile(
+            upload_id=fid,sam="TLT 3245",relative_path="photo.jpg",
+            filename="photo.jpg",size=len(_jpg()))])
     assert exc.value.status_code==422
 
-def test_new_construction_keys_reach_megaloc_scanner_and_zip(tmp_path):
-    from app.photos.scanner import references as scan_references
+
+def test_city_code_labels_can_be_exported_from_immutable_snapshot(system,tmp_path):
+    from .test_unified_queue_stage3 import add_published_reference
+    from server.services import reference_publication
+    from server.db.repositories import reference_versions
     from app.results.copier import copy_photo
     from server.api.routes.downloads import archive_member
-    root=tmp_path/"references"
-    sam="TLT 3245"
-    folder=root/sam
-    folder.mkdir(parents=True)
-    photo=folder/"sample.jpg"
-    photo.write_bytes(_jpg())
-    scanned=scan_references(root)
-    assert scanned==[(photo,sam)]
-    published=copy_photo(photo,tmp_path/"result",sam)
-    assert published.is_file()
-    assert published.parent.name==sam
-    assert archive_member(sam,published.name).startswith("TLT 3245/")
+    add_published_reference(system,sam="TLT 3245",address="Южное шоссе 10")
+    with connect() as db:
+        current=reference_versions.current(db)
+        pinned=reference_publication.snapshot(db,current["id"])
+    assert pinned[0]["sam"]=="TLT 3245"
+    result=copy_photo(__import__("pathlib").Path(pinned[0]["path"]),
+                      tmp_path/"results","TLT 3245")
+    assert result.is_file()
+    assert archive_member("TLT 3245",result.name).startswith("TLT 3245/")

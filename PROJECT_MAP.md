@@ -4,7 +4,8 @@
 Браузер: один Vue 3 SPA (/)
   ├─ /fo              Фотоотчёты, загрузка партий, просмотр
   ├─ /references      Библиотека конструкций: массовый импорт и добавление фото
-  ├─ /processing      Очередь MegaLoc, запуск/остановка
+  ├─ /processing      Текущее задание, настройки, история ФО
+  ├─ /queue           Единая FIFO: ФО и подготовка эталонов
   ├─ /results         Галереи результатов, ZIP, подтверждение
   ├─ /logs            Логи и фильтры
   ├─ /settings        Темы, диск, жизненный цикл, состояние служб
@@ -98,18 +99,35 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 
 См. [Инструкция импорта образцов](docs/REFERENCE_IMPORT.md), [FILE_INDEX](FILE_INDEX.md), [AGENTS](AGENTS.md), [API](docs/API.md), [BACKUP_RESTORE](docs/BACKUP_RESTORE.md).
 
-## Reference queue — этап 1, без изменения runtime
 
-`server/db/migrations/0011..0013` → новые таблицы sessions, work_queue, reference versions/notices. `server/services/reference_versions.py` → проверяемая однократная V1 metadata в `database.initialize()`. `server/db/repositories/{reference_imports,reference_versions,work_queue}.py` → пассивные операции. Старые `jobs.py` и `worker.py` пока остаются единственным исполняемым планировщиком. Подробности: `docs/REFERENCE_QUEUE_STAGE1.md`.
+## Единая рабочая цепочка
 
-## Изолированный импорт образцов (этап 2)
+```text
+Vue /fo → manifest ФО → /api/uploads → uploads + batches
+                                     └── auto_processing → jobs + work_queue(seq)
+Vue /references → manifest образцов → /api/reference-imports
+                                     ├── reference_import_sessions/files
+                                     └── reference_staging/ → reference_preparation_jobs
+                                                           └── work_queue(seq)
+                         │
+                         ▼
+                    server/worker.py
+                         ├─ fo_processing → frozen reference_version_members
+                         │                  → app/jobs/worker.py → MegaLoc → outputs
+                         └─ reference_preparation → workers/reference_prepare.py
+                              ├─ reference_cache.py (SHA-256 + model signature)
+                              ├─ services/reference_gallery.py (UI projection)
+                              └─ services/reference_publication.py
+                                    └─ one atomic current_version_id
+```
 
-`api/routes/reference_imports.py` (gated JSON/byte HTTP) → `services/reference_imports.py` (манифест, состояния, завершение, enqueue) + `services/reference_uploads.py` (части, SHA, duplicate receipt) → `db/repositories/reference_imports.py` (SQL, FIFO) и `storage/reference_objects.py` (изолированный staging, immutable links). `frontend/src/api/referenceImports.ts` — контракты клиента, **пока без подключения к существующему UI**. Миграция `0014_reference_import_transfers.sql`. Только завершённая сессия создаёт future prep job, текущий worker остаётся прежним.
+`services/reference_imports.py` и `services/reference_uploads.py` отвечают
+за manifest/докачку/дедупликацию, не за inference. `db/repositories/work_queue.py`
+единственный диспетчер CPU; `db/repositories/job_status.py` лишь формирует
+публичное состояние ФО. `services/references.py` предоставляет управление
+опубликованными объектами с созданием новой версии.
 
-## Единый Worker и версии (этап 3)
+`library_notice_cursors` + `reference_library_events` управляют
+однократными уведомлениями о смене опубликованной версии.
 
-`server/db/repositories/work_queue.py` → единый FIFO claim, backfill, recover, snapshot. `server/worker.py` → dispatch старого ServerJob и `server/workers/reference_prepare.py` по одному advisory leader. `server/services/reference_publication.py` → синхронизация legacy и атомарная публикация. `server/storage/reference_versions.py` → защищённые копии legacy исходников; staging исходники остаются в `server/storage/reference_objects.py`. `server/reference_cache.py` → кэш для immutable/staging и старых references, не ФО. `server/api/routes/work_queue.py` → статусы и восстановление. `app/jobs/worker.py` выбирает pinned manifest без изменения `app/recognition/`. См. `docs/REFERENCE_QUEUE_STAGE3.md`.
-
-## Этап 4: Vue и уведомления
-
-`frontend/src/features/queue/{QueueView,QueueTaskRow,QueueTaskDetail}.vue` → единая очередь + stop/skip/retry; `frontend/src/api/workQueue.ts` и `frontend/src/types/workQueue.ts` → API/types; `frontend/src/utils/queuePresentation.ts` → статусы/фактическая длительность. `frontend/src/features/references/ReferencePreparationStatus.vue` → стадии и опубликованная версия; `frontend/src/composables/useStagedReferenceTransfer.ts` → checksum, manifest, resumption, staging API; прежний `useReferenceTransfer.ts` выбирает новый/старый путь флагом. `frontend/src/features/fo/ReferenceUpdateNotice.vue` + `frontend/src/api/libraryNotices.ts` → однократный баннер и просмотр событий. Backend `server/services/library_notices.py` + `server/api/routes/library_notices.py` + миграция `0016_library_notice_delivery.sql` — cursor/ack/receipts. Новый `GET /api/reference-imports` агрегирует сессии, общая очередь поддерживает `scope`. Подробнее `docs/REFERENCE_QUEUE_STAGE4.md`.
+Подробнее `docs/REFERENCE_PIPELINE.md`.

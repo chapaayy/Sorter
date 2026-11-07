@@ -32,6 +32,7 @@ CI не имитирует физический VPN и не использует
 
 См. [BACKUP_RESTORE](BACKUP_RESTORE.md), [ROLLOUT](ROLLOUT.md), [ACCEPTANCE](ACCEPTANCE.md) и [TESTING](TESTING.md).
 
-## Расширение до очереди образцов и уведомлений
 
-К предыдущей приёмке добавить `/queue` (без дублирующей очереди в `/processing`), фактические N/M/ошибки, подтверждённые retry/stop/skip, последние import sessions и published_at в `/references`. ФО: прошлый upload V12 → публикация V13 → новый upload = одно предупреждение; ack в PostgreSQL, другой браузер без повторения; duplicate/address-only не создают ложных notice. Реальные 545+ образцов: upload параллельно активному FO, SHA+manifest, прерывание VPN, refresh и restart Worker, без частичной публикации. Провести отдельную backup/restore и 189/1315 реальных FO, прежде чем разрешать production.
+## Единый beta pipeline
+
+Очередь ФО и подготовок образцов — только `work_queue.seq`; загрузка образцов всегда доступна через `/api/reference-imports` и сохраняет файлы в `reference_staging`. После полной подготовки публикуется неизменяемая версия библиотеки. Обе версии планировщика и условные флаги переключения удалены. Приёмка — тесты на пустой базе, докачку, FIFO, публикацию и браузеры Chromium/WebKit. Текущая архитектура: [REFERENCE_PIPELINE](REFERENCE_PIPELINE.md).

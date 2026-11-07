@@ -1,4 +1,4 @@
--- Stage 1: passive FIFO ledger. Existing worker and /api/runs still use jobs.
+-- Single authoritative FIFO ledger for FO and reference preparation.
 CREATE TABLE IF NOT EXISTS work_queue (
  seq BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  kind TEXT NOT NULL CHECK (kind IN ('fo_processing','reference_preparation')),
@@ -17,9 +17,3 @@ CREATE TABLE IF NOT EXISTS work_queue (
 );
 CREATE INDEX IF NOT EXISTS idx_work_queue_active
  ON work_queue(seq) WHERE state IN ('queued','running','blocked');
--- Migration is executed under the same advisory lock as existing enqueue.
--- The historical order is created_at, id, even for identical timestamps.
-INSERT INTO work_queue(kind,fo_run_id,state,created_at)
- SELECT 'fo_processing',id,'queued',created_at
- FROM jobs WHERE status='queued' ORDER BY created_at,id
- ON CONFLICT (fo_run_id) DO NOTHING;

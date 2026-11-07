@@ -1,4 +1,4 @@
-"""PostgreSQL state for web sessions, uploaded files, reference metadata and jobs."""
+"""PostgreSQL state for web sessions, FO/gallery rows, FIFO and versions."""
 from __future__ import annotations
 import os
 import time

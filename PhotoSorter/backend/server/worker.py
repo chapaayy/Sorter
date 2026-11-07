@@ -5,7 +5,7 @@ import psycopg
 from psycopg.rows import dict_row
 from .database import connect,wait_and_initialize,DB_URL
 from .services import heartbeat
-from .db.repositories import queue,work_queue
+from .db.repositories import work_queue
 from .workers import reference_prepare
 from .jobs import ServerJob
 
@@ -17,27 +17,18 @@ def stop(*_):
     global RUN
     RUN=False
 
-def unified_enabled():
-    return os.environ.get('PHOTOSORTER_UNIFIED_QUEUE') == '1'
-
 def claim_job():
     with connect() as db:
-        if unified_enabled():
-            return work_queue.claim_next(db)
-        return queue.next_job(db)
+        return work_queue.claim_next(db)
 
 def _process_task(item):
-    if not unified_enabled():
-        ServerJob(item).run()
-        return
     if item['kind']=='fo_processing':
         info=item['info']
         try:
             ServerJob(info).run()
         except BaseException as exc:
             with connect() as db:
-                queue.finish_job(db,item['id'],'failed')
-                work_queue.finish_fo(db,item['id'],'failed')
+                work_queue.fail_fo(db,item['id'])
             raise
         return
     try:
@@ -73,13 +64,12 @@ def main():
                     time.sleep(5)
                     continue
                 with connect() as db:
-                    queue.mark_interrupted(db)
-                    if unified_enabled():work_queue.mark_interrupted(db)
+                    work_queue.mark_interrupted(db)
                 watch_stop=threading.Event()
                 watcher=threading.Thread(target=_leader_watch,args=(leader,watch_stop),daemon=True)
                 watcher.start()
                 try:
-                    logging.info("MegaLoc leader ready; FIFO queue enabled")
+                    logging.info("MegaLoc leader ready; unified FIFO")
                     while RUN:
                         try:info=claim_job()
                         except Exception:

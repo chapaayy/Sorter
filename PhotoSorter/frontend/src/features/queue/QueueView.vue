@@ -2,7 +2,6 @@
 import {computed,onMounted,ref} from 'vue'
 import {workQueueApi} from '../../api/workQueue'
 import {runApi} from '../../api/runs'
-import {libraryNoticesApi} from '../../api/libraryNotices'
 import {usePolling} from '../../composables/usePolling'
 import {useNoticeStore} from '../../stores/notice'
 import {errorText} from '../../utils/format'
@@ -16,21 +15,19 @@ import QueueTaskDetail from './QueueTaskDetail.vue'
 
 const notice=useNoticeStore()
 const tasks=ref<QueueTask[]>([]),history=ref<QueueTask[]>([]),historyTotal=ref(0)
-const activeTotal=ref(0),busy=ref(''),error=ref(''),unified=ref(false)
+const activeTotal=ref(0),busy=ref(''),error=ref('')
 const expanded=ref(false),detail=ref<string|null>(null)
 const confirm=ref<{task:QueueTask;action:'stop'|'retry'|'skip'}|null>(null)
 const active=computed(()=>[...tasks.value].sort((a,b)=>a.seq-b.seq))
 const blocking=computed(()=>active.value.find(hasBlockingFailure))
 async function refresh(){
   try{
-    const [q,h,flags]=await Promise.all([
+    const [q,h]=await Promise.all([
       workQueueApi.list('active',200),
-      workQueueApi.list('history',30),
-      libraryNoticesApi.status()
+      workQueueApi.list('history',30)
     ])
     tasks.value=q.tasks;activeTotal.value=q.total
     history.value=h.tasks;historyTotal.value=h.total
-    unified.value=flags.unified_queue_enabled
     error.value=''
   }catch(e){error.value=errorText(e)}
 }
@@ -74,10 +71,6 @@ function message(){
   <template #actions><UiButton small @click="refresh">Обновить</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:15px">{{error}}</div>
-<div v-if="!unified" class="alert" style="margin-bottom:15px" role="status">
-  Новая FIFO пока не активирована на сервере. Показана история зарегистрированных задач;
-  действующая обработка ФО работает в прежнем режиме.
-</div>
 <div v-if="blocking" class="alert error" role="alert" style="margin-bottom:16px">
   <strong>Требуется исправить подготовку образцов.</strong>
   Следующие ФО не запускаются, пока вы не повторите подготовку или явно не пропустите обновление.

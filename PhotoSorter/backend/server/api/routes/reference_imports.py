@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import uuid
 
 from fastapi import APIRouter,HTTPException,Request
@@ -12,13 +11,6 @@ from ...services import reference_imports,reference_uploads
 from ...storage.reference_objects import CHUNK_LIMIT
 
 router=APIRouter(prefix="/api/reference-imports",tags=["reference-imports"])
-
-def _enabled():
-    # Prevent accidentally populating a queue that stage-1 worker cannot claim.
-    # Stage 3 activation is a separate, tested deployment decision.
-    if (os.environ.get("REFERENCE_IMPORT_STAGING_ENABLED")!="1" or
-        os.environ.get("PHOTOSORTER_UNIFIED_QUEUE")!="1"):
-        raise HTTPException(503,"Новая загрузка образцов пока не включена")
 
 class NewSession(BaseModel):
     client_session_id:uuid.UUID
@@ -40,32 +32,26 @@ class DuplicateConfirmation(BaseModel):
 
 @router.post("",status_code=201)
 def create(data:NewSession):
-    _enabled()
     return reference_imports.create(data.client_session_id)
 
 @router.put("/{session_id}/manifest")
 def register(session_id:uuid.UUID,data:Manifest):
-    _enabled()
     return reference_imports.register_manifest(session_id,data.files)
 
 @router.get("")
 def list_sessions(limit:int=25,offset:int=0):
-    _enabled()
     return reference_imports.list_sessions(limit,offset)
 
 @router.get("/{session_id}")
 def get_session(session_id:uuid.UUID):
-    _enabled()
     return reference_imports.status(session_id)
 
 @router.get("/{session_id}/files/{upload_id}")
 def get_file(session_id:uuid.UUID,upload_id:uuid.UUID):
-    _enabled()
     return reference_imports.file_status(session_id,upload_id)
 
 @router.patch("/{session_id}/files/{upload_id}")
 async def chunk(session_id:uuid.UUID,upload_id:uuid.UUID,request:Request):
-    _enabled()
     try:
         offset=int(request.headers.get("upload-offset","-1"))
     except ValueError as exc:
@@ -87,16 +73,13 @@ async def chunk(session_id:uuid.UUID,upload_id:uuid.UUID,request:Request):
 
 @router.post("/{session_id}/files/{upload_id}/finish")
 async def finish(session_id:uuid.UUID,upload_id:uuid.UUID):
-    _enabled()
     return await asyncio.to_thread(reference_uploads.finish,session_id,upload_id)
 
 @router.post("/{session_id}/files/{upload_id}/duplicate")
 async def duplicate(session_id:uuid.UUID,upload_id:uuid.UUID,data:DuplicateConfirmation):
-    _enabled()
     return await asyncio.to_thread(reference_uploads.confirm_duplicate,
                                    session_id,upload_id,data.sha256)
 
 @router.post("/{session_id}/complete")
 async def complete(session_id:uuid.UUID):
-    _enabled()
     return await asyncio.to_thread(reference_imports.complete,session_id)

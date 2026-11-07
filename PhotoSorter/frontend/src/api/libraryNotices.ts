@@ -1,7 +1,5 @@
 import {api,post,query} from './client'
 export interface LibraryStatus {
-  unified_queue_enabled:boolean
-  staged_imports_enabled:boolean
   current_version_id:number|null
   current_version:number|null
   published_at:string|null

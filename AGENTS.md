@@ -44,18 +44,27 @@
 - `FILE_INDEX.md` — текущие обязанности значимых файлов.
 - `docs/BACKUP_RESTORE.md`, `docs/ROLLBACK.md`, `docs/OPERATIONS.md` — безопасность данных и операционные действия.
 
-## Этап 1 общей очереди (07.11.2026)
 
-Новые `work_queue`/reference-version таблицы пассивны до отдельного включения этапа 3. Не использовать их для claim вместо старой `jobs`-очереди и не разрешать параллельную загрузку образцов до staging + snapshot. Перед активацией повторно согласовать V1 с legacy uploads. См. `docs/REFERENCE_QUEUE_STAGE1.md`.
+## Текущая архитектура — без переключателей
 
-## Этап 2 импорта образцов
-
-`server/api/routes/reference_imports.py` обслуживает отдельные staging-сессии только при `REFERENCE_IMPORT_STAGING_ENABLED=1` (по умолчанию выключено). До активации единого Worker в этапе 3 не включать этот переключатель на рабочем сервере и не снимать блокировку legacy UI. Не направлять staged images в `data/references/` до их полной подготовки и атомарной публикации. Не чистить/удалять файлы активных или завершённых сессий без отдельного безопасного механизма. См. `docs/REFERENCE_QUEUE_STAGE2.md`.
-
-## Общая FIFO — этап 3
-
-Не включать `REFERENCE_IMPORT_STAGING_ENABLED=1` без `PHOTOSORTER_UNIFIED_QUEUE=1`. Один global leader выполняет оба вида тяжёлых заданий; `work_queue.seq` — источник порядка. Snapshot published reference members фиксируется только на claim ФО; ссылки должны быть immutable. Любая неудачная подготовка запрещает молчаливый claim следующего ФО до retry или явного skip. Запрет изменений MegaLoc maths сохраняется. Прежде чем снимать старую UI-блокировку, проверить `docs/REFERENCE_QUEUE_STAGE3.md` и полный staging restore/acceptance.
-
-## Этап 4 (UI/FIFO/notices)
-
-`features/queue` — **единственная** общая очередь; `features/processing` — текущий FO-run/история, не вторая очередь. В staging режиме `useStagedReferenceTransfer` обязательна регистрация всего manifest и SHA каждой фотографии; browser localStorage содержит только идентификатор сессии, SQL остаётся источником истины. `services/library_notices` показывает предупреждение **только после прошлой завершённой ФО**, ack строго по запросу пользователя и не раньше; техническая immutable-копия и изменение адреса не повышают recognition alert. Без внешней проверенной копии VPS и отдельного разрешения не выкатывать. Подробности в `docs/REFERENCE_QUEUE_STAGE4.md`.
+- **Это бета-тест**, а не production. VPS/БД/кэш и тестовые ФО на VPS можно сбросить
+  при явном желании владельца: исходные наборы он хранит на собственном ПК.
+  Не вносить защитные fallback-ветки ради старых установок.
+- Единственный планировщик: `db/repositories/work_queue.py`; Worker:
+  `server/worker.py`. Очередь объединяет ФО и подготовку образцов.
+  Код старых очередей не возвращать.
+- Единственный приём образцов: `/api/reference-imports` через
+  `server/services/reference_imports.py`, `reference_uploads.py`
+  и `storage/reference_objects.py`. Нельзя возвращать
+  `kind=reference` в `/api/uploads`.
+- `uploads.py` отвечает только за ФО. `services/reference_publication.py`
+  атомарно публикует версии; MegaLoc берёт исключительно pinned manifest;
+  `reference_gallery.py` хранит лишь представление готовых файлов.
+- Изменения образцов не изменяют результаты прежних запусков. Удаление
+  публикует новую версию, а исходные immutable объекты для истории сохраняются.
+- Структура: один файл — одна задача; нет дублирующих API, постоянных
+  flags/режимов и версий UI. При удалении/перемещении модулей сразу обновлять
+  `FILE_INDEX.md`, `PROJECT_MAP.md`, тесты и инструкции.
+- Проверять не только старые unit/e2e, но и fresh DB + первый импорт + FIFO
+  `ФО → подготовка → ФО`, конкуренцию, восстановление, кривые/дублирующиеся
+  фото, abort, версию на claim и браузеры Chromium/WebKit.

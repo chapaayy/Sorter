@@ -5,14 +5,12 @@ import hashlib
 from pathlib import Path
 
 from app.system.model_store import signature
-from app.config import DATA_DIR
-REFERENCE_GALLERY=DATA_DIR/"references"
 from app.recognition.engines.megaloc.extractor import MegaLocEngine
 from ..database import connect
 from ..reference_cache import ReferenceCachedMegaLoc,cached_feature
-from ..storage import reference_objects,reference_versions as objects
+from ..storage import reference_objects
 from ..services import reference_publication
-from ..services import thumbnails
+from ..services.reference_gallery import index_published
 
 CHUNK=24
 
@@ -92,39 +90,6 @@ def _prepare_embeddings(job_id,items,model_signature):
         if engine is not None:
             engine.unload()
 
-def _mirror_reference(db,item,source):
-    """Create legacy-gallery hardlink without altering immutable staged input."""
-    from ..storage.reference_objects import verify
-    from app.photos.construction import parse_key
-    from pathlib import Path
-    import os
-    base=REFERENCE_GALLERY
-    destination_dir=base/item["sam"]
-    if base.is_symlink() or destination_dir.is_symlink():
-        raise ValueError("Недоверенный каталог образцов")
-    destination_dir.mkdir(parents=True,exist_ok=True)
-    target=destination_dir/(str(item["upload_id"])+"_"+item["filename"])
-    if target.is_symlink():
-        raise ValueError("Недоверенный путь Образца")
-    if not target.exists():
-        try:
-            os.link(source,target,follow_symlinks=False)
-        except FileExistsError:
-            pass
-    verify(target,base,item["declared_size"],digest=item["checksum"])
-    existing=db.execute("SELECT id FROM uploads WHERE id=%s",(item["upload_id"],)).fetchone()
-    if existing:
-        raise ValueError("Идентификатор staged файла уже занят в старых образцах")
-    if not existing:
-        db.execute("""
-            INSERT INTO uploads(id,kind,batch_id,sam,filename,declared_size,
-                received,checksum,finalized,target_path)
-            VALUES (%s,'reference',NULL,%s,%s,%s,%s,%s,true,%s)
-        """,(item["upload_id"],item["sam"],item["filename"],
-             item["declared_size"],item["declared_size"],
-             item["checksum"],str(target)))
-        thumbnails.enqueue(db,item["upload_id"],item["checksum"])
-
 def run(job_id):
     """Preparation does not publish anything until all embedding work succeeds."""
     with connect() as db:
@@ -190,7 +155,6 @@ def run(job_id):
         """).fetchone()
         if not state or state["current_version_id"] is None:
             raise RuntimeError("Нет опубликованной базы образцов")
-        previous=reference_publication.snapshot(db,state["current_version_id"])
         from ..db.repositories import reference_versions as version_repo
         members=[dict(m) for m in version_repo.members(db,state["current_version_id"])]
         seen={(m["sam"],m["source_hash"]) for m in members}
@@ -223,11 +187,10 @@ def run(job_id):
         version,changed=reference_publication.publish(
             db,members,fp,job_id=job_id,event_kind="reference_prepared")
         for item in actual:
-            # Gallery/backwards-compatible files are a mirror, not the source
-            # consumed by pinned FO jobs.
+            # The gallery index is independent from immutable recognition input.
             if not db.execute("SELECT 1 FROM uploads WHERE kind='reference' AND finalized AND sam=%s AND checksum=%s LIMIT 1",
                               (item["sam"],item["checksum"])).fetchone():
-                _mirror_reference(db,item,Path(item["stored_path"]))
+                index_published(db,item)
         db.execute("""
             UPDATE reference_preparation_jobs SET state='completed',
                 completed_count=total_count,model_signature=%s,error=NULL,

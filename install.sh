@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Preserve credentials and live volumes across updates. No automatic backups/deletes.
+# Beta install/update: one deployment path, no version-selection switches.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -92,12 +92,7 @@ if [[ "$MODE" == "--check" ]]; then
 fi
 
 if [[ "$EXISTING_POSTGRES" -eq 1 ]]; then
-  if [[ "${PHOTOSORTER_APPROVE_UPGRADE:-}" != "VERIFIED_BACKUP_AND_ROLLBACK" ]]; then
-    echo '[BLOCKED] Upgrade requires a tested offsite backup and explicit approval.' >&2
-    echo 'After verification, set PHOTOSORTER_APPROVE_UPGRADE=VERIFIED_BACKUP_AND_ROLLBACK.' >&2
-    exit 1
-  fi
-  echo '[INFO] Existing credentials/volumes preserved; updating containers only.'
+  echo '[INFO] Updating beta test containers; existing Docker volumes are unchanged.'
 fi
 
 mkdir -p Models/models/megaloc Models/cache/huggingface/{hub,xet} Models/cache/{torch,xdg,downloads} PhotoSorter/data/{references,uploads,runs,cache,outputs}

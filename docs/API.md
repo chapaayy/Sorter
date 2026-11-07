@@ -141,6 +141,7 @@
 - `PATCH /api/references/sam/{sam}` / `DELETE`: если SAM встретилась в опубликованном историческом manifest, возвращает HTTP 409. Записанные manifests и source References не меняются при отказе.
 - Изменение БД: `0007_service_heartbeat.sql` (таблица worker presence), никакие таблицы партий, uploads, MegaLoc scores не переопределены.
 
-## Stage 4: единая очередь и уведомления
 
-`GET /api/work-queue?scope=active|history|all&limit=100&offset=0` отдаёт задачи двух видов в порядке `seq` (для active — ASC, history — DESC), реальные статусы подготовки, счётчики и batch display_name. `GET /api/reference-imports` возвращает сессии и количество переданных/дублирующихся файлов при включённом staged режиме. `GET /api/reference-library/status` возвращает опубликованную версию и флаги `unified_queue_enabled`, `staged_imports_enabled`, а также `notice`, `notice_version_id`, `pending_changes`, `message`. `GET /api/reference-library/events` отдаёт историю изменений с actor/details. `POST /api/reference-library/notices/ack` с `version_id` — единственная операция подтверждения (монотонный cursor). HTTP GET ни в одном случае не признаётся показом. Для подготовки: `POST /api/reference-preparations/{id}/retry|skip` с `idempotency_key`, `POST /stop` на выполняющееся задание. Актуальная инструкция: [REFERENCE_QUEUE_STAGE4](REFERENCE_QUEUE_STAGE4.md).
+## Единый beta pipeline
+
+Очередь ФО и подготовок образцов — только `work_queue.seq`; загрузка образцов всегда доступна через `/api/reference-imports` и сохраняет файлы в `reference_staging`. После полной подготовки публикуется неизменяемая версия библиотеки. Обе версии планировщика и условные флаги переключения удалены. Приёмка — тесты на пустой базе, докачку, FIFO, публикацию и браузеры Chromium/WebKit. Текущая архитектура: [REFERENCE_PIPELINE](REFERENCE_PIPELINE.md).

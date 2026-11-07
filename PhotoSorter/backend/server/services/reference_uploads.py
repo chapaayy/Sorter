@@ -58,6 +58,8 @@ def append(session_id,upload_id,offset,data):
 def finish(session_id,upload_id):
     session_id,upload_id=reference_imports._uid(session_id),reference_imports._uid(upload_id)
     with connect() as db:
+        # FIFO lock first, then file/session locks. No dependency deadlocks.
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
         session,entry=reference_imports._file_state(db,session_id,upload_id,lock=True)
         if entry["state"]=="finalized":
             return {"sha256":entry["checksum"],"already_finalized":True}
@@ -105,6 +107,8 @@ def confirm_duplicate(session_id,upload_id,digest):
     if not reference_imports._SHA.fullmatch(digest):
         raise HTTPException(422,"Укажите корректный SHA-256")
     with connect() as db:
+        # FIFO lock first, then file/session locks. No dependency deadlocks.
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
         session,entry=reference_imports._file_state(db,session_id,upload_id,lock=True)
         if entry["state"]=="finalized":
             if entry["checksum"]!=digest:

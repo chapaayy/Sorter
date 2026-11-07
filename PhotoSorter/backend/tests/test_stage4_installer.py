@@ -58,16 +58,14 @@ def test_upgrade_blocks_missing_original_secrets(deploy):
     assert not (root/".env.generated").exists()
     assert not any(line.endswith("up -d --build") for line in log.read_text().splitlines())
 
-def test_upgrade_requires_explicit_backup_ack(deploy):
+def test_beta_upgrade_uses_one_command_without_approval_switches(deploy):
     root,run,log=deploy
     before=(root/".env.generated").read_bytes()
-    assert run("--deploy").returncode!=0
-    assert not any(line.endswith("up -d --build") for line in log.read_text().splitlines())
-    yes=run("--deploy",overrides={"PHOTOSORTER_APPROVE_UPGRADE":"VERIFIED_BACKUP_AND_ROLLBACK"})
-    assert yes.returncode==0,yes.stderr
+    result=run("--deploy")
+    assert result.returncode==0,result.stderr
     assert any(line.endswith("up -d --build") for line in log.read_text().splitlines())
     assert (root/".env.generated").read_bytes()==before
-    assert "password" not in yes.stdout.lower()
+    assert "password" not in result.stdout.lower()
 
 def test_invalid_cpu_preflight_fails_without_up(deploy):
     root,run,log=deploy

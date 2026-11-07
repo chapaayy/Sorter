@@ -1,9 +1,9 @@
 -- Stage 3: immutable member origins and safe action/audit state.
 ALTER TABLE reference_version_members
- ADD COLUMN IF NOT EXISTS source_kind TEXT NOT NULL DEFAULT 'legacy';
+ ADD COLUMN IF NOT EXISTS source_kind TEXT NOT NULL DEFAULT 'staged';
 ALTER TABLE reference_version_members
  ADD CONSTRAINT reference_version_source_kind_check
- CHECK (source_kind IN ('legacy','staged'));
+ CHECK (source_kind='staged');
 ALTER TABLE reference_preparation_jobs ADD COLUMN IF NOT EXISTS stop_requested BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE TABLE IF NOT EXISTS reference_preparation_actions (
  job_id UUID NOT NULL REFERENCES reference_preparation_jobs(id) ON DELETE RESTRICT,

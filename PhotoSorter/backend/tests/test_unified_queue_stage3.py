@@ -1,7 +1,4 @@
-"""Stage 3 unified FIFO: real isolated PostgreSQL, immutable staged file and snapshots.
-
-No model inference: precomputed cache vectors verify the publication contract.
-"""
+"""Clean beta integration: one FIFO, first published version and staged references."""
 from __future__ import annotations
 
 import hashlib
@@ -17,7 +14,8 @@ from psycopg.conninfo import make_conninfo
 from server import database,jobs
 from server.db.repositories import work_queue,reference_versions
 from server.services import reference_imports,reference_uploads,reference_publication
-from server.storage import reference_objects,reference_versions as objects
+from server.storage import reference_objects
+from server.services import reference_gallery,references as library_service
 from server.workers import reference_prepare
 from server.api.routes import work_queue as actions
 from .test_stage2_platform import _jpg
@@ -34,14 +32,12 @@ def system(tmp_path,monkeypatch):
     root=tmp_path/"data"
     refs=root/"references"
     refs.mkdir(parents=True)
-    monkeypatch.setattr(objects,"ROOT",root/"reference_objects")
-    monkeypatch.setattr(objects,"LEGACY_ROOT",refs)
-    monkeypatch.setattr(reference_objects,"ROOT",root/"reference_staging")
-    monkeypatch.setattr(reference_objects,"LEGACY_ROOT",refs)
-    monkeypatch.setattr(reference_prepare,"REFERENCE_GALLERY",refs)
+    staging=root/"reference_staging"
+    monkeypatch.setattr(reference_objects,"ROOT",staging)
+    monkeypatch.setattr(reference_gallery,"GALLERY",refs)
     monkeypatch.setattr(reference_prepare,"signature",lambda:"stage3-model")
+    monkeypatch.setattr(reference_publication,"signature",lambda:"stage3-model")
     monkeypatch.setattr(work_queue,"signature",lambda:"stage3-model")
-    monkeypatch.setenv("PHOTOSORTER_UNIFIED_QUEUE","1")
     from server import reference_cache
     cache=root/"cache"/"megaloc"/"references"
     cache.mkdir(parents=True)
@@ -53,18 +49,30 @@ def system(tmp_path,monkeypatch):
         with psycopg.connect(url) as admin:
             admin.execute('DROP SCHEMA "'+schema+'" CASCADE')
 
-def add_legacy(root):
-    ref=root/"references"/"SAM-0001"/"one.jpg"
-    ref.parent.mkdir(parents=True,exist_ok=True)
+def add_published_reference(root,sam="SAM 0001",address="Победы 12"):
+    """Pre-populate only the current immutable library, never a legacy upload."""
     raw=_jpg()
-    ref.write_bytes(raw)
     key=uuid.uuid4()
+    sid=uuid.uuid4()
+    file=reference_objects.object_path(sid,key,"one.jpg")
+    file.parent.mkdir(parents=True,exist_ok=True)
+    file.write_bytes(raw)
+    digest=hashlib.sha256(raw).hexdigest()
     with database.connect() as db:
-        db.execute("""INSERT INTO uploads(id,kind,sam,filename,declared_size,
-           received,checksum,finalized,target_path)
-           VALUES (%s,'reference','SAM-0001','one.jpg',%s,%s,%s,true,%s)""",
-           (key,len(raw),len(raw),hashlib.sha256(raw).hexdigest(),str(ref)))
-    return key,ref
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        from app.photos.construction import parse_key
+        city,number=parse_key(sam)
+        db.execute("""INSERT INTO reference_constructions(sam,city_code,
+            construction_number,address) VALUES (%s,%s,%s,%s)""",
+            (sam,city,number,address))
+        entry={"reference_id":key,"sam":sam,"filename":"one.jpg",
+               "source_hash":digest,"target_path":str(file),
+               "declared_size":len(raw),"source_kind":"staged"}
+        reference_publication.publish(db,[entry],"stage3-model")
+        reference_gallery.index_published(db,{
+            "upload_id":key,"sam":sam,"filename":"one.jpg",
+            "checksum":digest,"declared_size":len(raw),"stored_path":str(file)})
+    return key,file
 
 def add_fo():
     batch=uuid.uuid4()
@@ -108,7 +116,7 @@ def finish_fo(run_id):
         work_queue.finish_fo(db,run_id,"completed")
 
 def test_fifo_5_fo_prep_fo_has_frozen_v_before_and_after(system):
-    add_legacy(system)
+    add_published_reference(system)
     first=[add_fo() for _ in range(5)]
     sid,uid,path,digest,pid=prepare_import(system)
     final=add_fo()
@@ -126,7 +134,7 @@ def test_fifo_5_fo_prep_fo_has_frozen_v_before_and_after(system):
         initial_versions.append(task["info"]["reference_version"])
         first_path=task["info"]["reference_members"][0]["path"]
         assert Path(first_path).is_file()
-        assert "/reference_objects/" in first_path
+        assert "/reference_staging/" in first_path
         finish_fo(run_id)
     assert len(set(initial_versions))==1
     with database.connect() as db:
@@ -142,11 +150,11 @@ def test_fifo_5_fo_prep_fo_has_frozen_v_before_and_after(system):
     assert task["id"]==final
     assert task["info"]["reference_version"]==result["version"]
     assert len(task["info"]["reference_members"])==2
-    assert {x["sam"] for x in task["info"]["reference_members"]}=={"SAM-0001","SAM 0004"}
+    assert {x["sam"] for x in task["info"]["reference_members"]}=={"SAM 0001","SAM 0004"}
     finish_fo(final)
 
 def test_failure_blocks_later_fo_until_retry_or_explicit_skip(system):
-    add_legacy(system)
+    add_published_reference(system)
     sid,uid,path,digest,pid=prepare_import(system)
     run=add_fo()
     with database.connect() as db:
@@ -179,20 +187,21 @@ def test_failure_blocks_later_fo_until_retry_or_explicit_skip(system):
     assert len(next_item["info"]["reference_members"])==1
     finish_fo(run)
 
-def test_legacy_snapshots_use_immutable_paths_not_deleted_legacy(system):
-    key,path=add_legacy(system)
+def test_pinned_reference_is_not_the_mutable_gallery_file(system):
+    key,path=add_published_reference(system)
     run=add_fo()
     with database.connect() as db:
         item=work_queue.claim_next(db)
     pinned=Path(item["info"]["reference_members"][0]["path"])
     original=pinned.read_bytes()
-    path.unlink()
+    gallery=system/"references"/"SAM 0001"/(str(key)+"_one.jpg")
+    assert gallery.is_file() and pinned!=gallery
+    gallery.unlink()
     assert pinned.read_bytes()==original
-    assert pinned!=path
     finish_fo(run)
 
 def test_readiness_never_queues_half_uploaded_session(system):
-    add_legacy(system)
+    add_published_reference(system)
     fid=uuid.uuid4()
     sid=uuid.uuid4()
     reference_imports.create(sid)
@@ -211,7 +220,7 @@ def test_auto_fo_reserves_fifo_on_final_manifest_file(system,monkeypatch):
     from types import SimpleNamespace
     from server import uploads
     from server.services import upload_manifest,auto_processing
-    add_legacy(system)
+    add_published_reference(system)
     raw=_jpg()
     batch=uuid.uuid4()
     file_id=uuid.uuid4()
@@ -244,14 +253,14 @@ def test_auto_fo_reserves_fifo_on_final_manifest_file(system,monkeypatch):
                           (batch,)).fetchone()["n"]==1
 
 def test_duplicate_only_preparation_does_not_create_version(system):
-    ref_id,path=add_legacy(system)
+    ref_id,path=add_published_reference(system)
     raw=path.read_bytes()
     digest=hashlib.sha256(raw).hexdigest()
     sid,fid=uuid.uuid4(),uuid.uuid4()
     reference_imports.create(sid)
     from server.api.routes.reference_imports import ImportFile
-    entry=ImportFile(upload_id=fid,sam="SAM-0001",
-        relative_path="SAM-0001/duplicate.jpg",filename="duplicate.jpg",
+    entry=ImportFile(upload_id=fid,sam="SAM 0001",
+        relative_path="SAM 0001/duplicate.jpg",filename="duplicate.jpg",
         size=len(raw),sha256=digest)
     reference_imports.register_manifest(sid,[entry])
     assert reference_uploads.confirm_duplicate(sid,fid,digest)["already_present"]
@@ -266,7 +275,7 @@ def test_duplicate_only_preparation_does_not_create_version(system):
         assert db.execute("SELECT count(*) AS n FROM reference_library_versions").fetchone()["n"]==current
 
 def test_interrupted_preparation_is_barrier_until_retry(system):
-    add_legacy(system)
+    add_published_reference(system)
     sid,uid,path,digest,pid=prepare_import(system)
     after=add_fo()
     with database.connect() as db:
@@ -282,7 +291,7 @@ def test_interrupted_preparation_is_barrier_until_retry(system):
         assert again["seq"]==task["seq"]
 
 def test_stop_running_preparation_does_not_implicitly_skip_change(system):
-    add_legacy(system)
+    add_published_reference(system)
     sid,uid,path,digest,pid=prepare_import(system)
     later=add_fo()
     with database.connect() as db:
@@ -304,41 +313,65 @@ def test_stop_running_preparation_does_not_implicitly_skip_change(system):
         assert resumed["id"]==later
     finish_fo(later)
 
-def test_deleted_duplicate_source_cannot_be_silently_published(system):
-    source_id,original=add_legacy(system)
-    other_id=uuid.uuid4()
-    other=system/"references"/"SAM-0002"/"other.jpg"
-    other.parent.mkdir(parents=True)
-    raw=_jpg(exif=True)
-    other.write_bytes(raw)
-    with database.connect() as db:
-        db.execute("""INSERT INTO uploads(id,kind,sam,filename,declared_size,
-            received,checksum,finalized,target_path)
-            VALUES (%s,'reference','SAM-0002','other.jpg',
-                    %s,%s,%s,true,%s)""",
-                    (other_id,len(raw),len(raw),hashlib.sha256(raw).hexdigest(),str(other)))
-    digest=hashlib.sha256(original.read_bytes()).hexdigest()
+def test_delete_does_not_jump_ahead_of_queued_preparation(system):
+    source_id,original=add_published_reference(system)
+    raw=original.read_bytes()
+    digest=hashlib.sha256(raw).hexdigest()
     sid,uid=uuid.uuid4(),uuid.uuid4()
     from server.api.routes.reference_imports import ImportFile
     reference_imports.create(sid)
     reference_imports.register_manifest(sid,[ImportFile(
-       upload_id=uid,sam="SAM-0001",
-       relative_path="SAM-0001/duplicate.jpg",filename="duplicate.jpg",
-       size=len(original.read_bytes()),sha256=digest)])
+       upload_id=uid,sam="SAM 0001",
+       relative_path="SAM 0001/duplicate.jpg",filename="duplicate.jpg",
+       size=len(raw),sha256=digest)])
     assert reference_uploads.confirm_duplicate(sid,uid,digest)["already_present"]
-    # Legacy edit occurred while the staged session was uploading, before
-    # its CPU preparation claim; the original duplicate source disappeared.
-    with database.connect() as db:
-        db.execute("DELETE FROM uploads WHERE id=%s",(source_id,))
-    original.unlink()
+    with pytest.raises(HTTPException) as conflict:
+        library_service.delete_photo(source_id)
+    assert conflict.value.status_code==409
     with database.connect() as db:
         job=work_queue.claim_next(db)
-        before=reference_versions.current(db)["id"]
+        before=reference_versions.current(db)["version_number"]
     assert job["kind"]=="reference_preparation"
-    with pytest.raises(ValueError,match="дубля"):
-        reference_prepare.run(job["id"])
+    result=reference_prepare.run(job["id"])
+    assert result["changed"] is False
+    assert result["version"]==before
+
+
+def test_clean_database_allows_first_reference_import(system):
+    """No manual legacy seeding, no feature flag, no model inference for cached refs."""
     with database.connect() as db:
-        assert reference_versions.current(db)["id"]==before
-        record=db.execute("SELECT failed_count FROM reference_preparation_jobs WHERE id=%s",
-                          (job["id"],)).fetchone()
-        assert record["failed_count"]==1
+        current=reference_versions.current(db)
+        assert current["version_number"]==1
+        assert reference_versions.members(db,current["id"])==[]
+    sid,uid,path,digest,pid=prepare_import(system)
+    cache_vector(system,digest)
+    with database.connect() as db:
+        task=work_queue.claim_next(db)
+        assert task["kind"]=="reference_preparation"
+    result=reference_prepare.run(task["id"])
+    assert result["changed"] is True
+    assert result["version"]==2
+    with database.connect() as db:
+        assert len(reference_versions.members(db,reference_versions.current(db)["id"]))==1
+        assert db.execute("SELECT count(*) AS n FROM uploads WHERE kind='reference'").fetchone()["n"]==1
+    assert library_service.cache_status()["total"]==1
+
+
+def test_reference_upload_is_accepted_during_running_fo(system):
+    add_published_reference(system)
+    run=add_fo()
+    with database.connect() as db:
+        task=work_queue.claim_next(db)
+        assert task["kind"]=="fo_processing"
+        assert len(task["info"]["reference_members"])==1
+    sid,uid,path,digest,pid=prepare_import(system)
+    with database.connect() as db:
+        next_task=work_queue.claim_next(db)
+        assert next_task is None
+        queued=db.execute("""SELECT state FROM work_queue
+            WHERE reference_job_id=%s""",(uuid.UUID(pid),)).fetchone()
+        assert queued["state"]=="queued"
+    finish_fo(run)
+    with database.connect() as db:
+        next_task=work_queue.claim_next(db)
+        assert next_task["kind"]=="reference_preparation"

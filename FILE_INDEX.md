@@ -68,7 +68,6 @@
 | `backend/server/db/migration_runner.py` | Пошаговая миграция PostgreSQL |
 | `backend/server/db/migrations/0001…0010*.sql` | **Аддитивная история схемы БД**, включая манифест ФО и настройки opt-in автообработки |
 | `backend/server/db/repositories/batches.py` | SQL для партий, совместимые с манифестом правила `upload_state` |
-| `backend/server/db/repositories/queue.py` | Очередь MegaLoc и лидер |
 | `backend/server/db/repositories/pagination.py` | Cursor pagination для галерей |
 | `backend/server/storage/paths.py` | Проверенные доверенные пути |
 | `backend/server/storage/hardlinks.py` | Hard Link с безопасным fallback |
@@ -175,55 +174,32 @@
 - `PhotoSorter/frontend/src/styles/select.css` — стили кастомного выпадающего меню.
 - `PhotoSorter/frontend/e2e/navigation.spec.ts` — браузерная проверка выбора партии, Esc и существующей навигации.
 
-## Этап 1 очереди и версий (07.11.2026)
 
-- `PhotoSorter/backend/server/db/migrations/0011_reference_sessions.sql` — сессии, manifest и подготовка образцов.
-- `PhotoSorter/backend/server/db/migrations/0012_work_queue.sql` — пассивный общий FIFO ledger с backfill legacy queued jobs.
-- `PhotoSorter/backend/server/db/migrations/0013_reference_versions_notices.sql` — опубликованные версии, члены, events и курсоры уведомлений.
-- `PhotoSorter/backend/server/db/repositories/work_queue.py` — backfill и чтение пассивной очереди.
-- `PhotoSorter/backend/server/db/repositories/reference_imports.py` — чтение состояния импорта/подготовки.
-- `PhotoSorter/backend/server/db/repositories/reference_versions.py` — чтение версий и состава.
-- `PhotoSorter/backend/server/services/reference_versions.py` — проверка SHA-256/path и однократная публикация legacy V1.
-- `PhotoSorter/backend/tests/test_reference_queue_stage1.py` — SQL и восстановление baseline.
-- `docs/REFERENCE_QUEUE_STAGE1.md` — архитектурная граница и активация следующих этапов.
+## Единственный reference/FIFO pipeline
 
-## Новые файлы этапа 2 (07.11.2026)
+| Файл | Ответственность |
+|---|---|
+| `PhotoSorter/backend/server/db/repositories/work_queue.py` | FIFO `seq`, claim, остановка/сбой/возобновление |
+| `PhotoSorter/backend/server/db/repositories/job_status.py` | Только публичные статусы и позиции ФО |
+| `PhotoSorter/backend/server/db/repositories/reference_imports.py` | SQL сессии, файлы, prep job |
+| `PhotoSorter/backend/server/db/repositories/reference_versions.py` | Чтение опубликованного снимка |
+| `PhotoSorter/backend/server/services/reference_imports.py` | Полный манифест, финализация сессии |
+| `PhotoSorter/backend/server/services/reference_uploads.py` | SHA-256, чанки, дедупликация |
+| `PhotoSorter/backend/server/services/reference_publication.py` | V1/новые неизменяемые версии, атомарная публикация |
+| `PhotoSorter/backend/server/services/reference_gallery.py` | Галерея как производное от готовых файлов |
+| `PhotoSorter/backend/server/services/references.py` | Удаление из опубликованной версии и кэш-статус |
+| `PhotoSorter/backend/server/services/upload_validation.py` | Общая валидация имени и размера фото |
+| `PhotoSorter/backend/server/workers/reference_prepare.py` | CPU-подготовка MegaLoc, публикация и прогресс |
+| `PhotoSorter/backend/server/storage/reference_objects.py` | Изолированное файловое staging-хранилище |
+| `PhotoSorter/backend/server/api/routes/reference_imports.py` | API сессий, файлов, статуса и возобновления |
+| `PhotoSorter/backend/server/api/routes/references.py` | Каталог/галерея/удаление |
+| `PhotoSorter/frontend/src/composables/useReferenceTransfer.ts` | Единственный resumable загрузчик образцов |
+| `PhotoSorter/frontend/src/types/referenceTransfer.ts` | Тип выбранного образца |
+| `PhotoSorter/frontend/src/features/queue/*` | Общая очередь |
+| `PhotoSorter/frontend/src/features/references/*` | Загрузка, статус подготовки, библиотека |
+| `PhotoSorter/frontend/src/features/fo/ReferenceUpdateNotice.vue` | Однократное предупреждение |
 
-- `PhotoSorter/backend/server/db/migrations/0014_reference_import_transfers.sql` — размер полученных данных, адрес и сохранённый staging путь.
-- `PhotoSorter/backend/server/db/repositories/reference_imports.py` — транзакционные операции импорта и единожды поставленное prep-задание.
-- `PhotoSorter/backend/server/storage/reference_objects.py` — пути, запись частей, SHA, форматы, стабильные объекты.
-- `PhotoSorter/backend/server/services/reference_imports.py` — проверка манифеста, каталог, сверка статуса, завершение сессии.
-- `PhotoSorter/backend/server/services/reference_uploads.py` — докачка частей, finalize, подтверждённые дубликаты.
-- `PhotoSorter/backend/server/api/routes/reference_imports.py` — отдельные маршруты импорта, по умолчанию 503 до включения.
-- `PhotoSorter/frontend/src/api/referenceImports.ts` — типы статусов и запросы для будущего UI.
-- `PhotoSorter/backend/tests/test_reference_import_stage2.py` — PostgreSQL + staging, retry, concurrent, duplicate и checksum регрессии.
-- `docs/REFERENCE_QUEUE_STAGE2.md` — контракт и безопасная граница внедрения.
-
-## Этап 3 — новые/изменённые модули
-
-- `backend/server/db/migrations/0015_unified_worker.sql` — source_kind и idempotent действия подготовки/ошибки.
-- `backend/server/storage/reference_versions.py` — создание immutable копий legacy эталонов.
-- `backend/server/services/reference_publication.py` — версия/состав/публикация и доактивационная сверка legacy.
-- `backend/server/workers/reference_prepare.py` — единственный CPU-процесс подготовки, cache, progress, публикация.
-- `backend/server/db/repositories/work_queue.py` — FIFO claim + snapshot, восстановление и блокировка при ошибке.
-- `backend/server/api/routes/work_queue.py` — список задач и явные retry/skip.
-- `backend/tests/test_unified_queue_stage3.py` — PostgreSQL сценарии FIFO/snapshot/failure/recovery.
-- `docs/REFERENCE_QUEUE_STAGE3.md` — архитектура и правила безопасного включения.
-
-## Файлы этапа 4 (07.11.2026)
-
-- `PhotoSorter/backend/server/db/migrations/0016_library_notice_delivery.sql` — один receipt на завершённую FO-партию.
-- `PhotoSorter/backend/server/services/library_notices.py` — SQL cursor, распознавательные ревизии, ack, история.
-- `PhotoSorter/backend/server/api/routes/library_notices.py` — status/events/ack REST.
-- `PhotoSorter/frontend/src/api/{workQueue,libraryNotices}.ts` — типизированный REST.
-- `PhotoSorter/frontend/src/types/workQueue.ts` — контракты FIFO.
-- `PhotoSorter/frontend/src/utils/queuePresentation.ts` — подписи/фактические длительности.
-- `PhotoSorter/frontend/src/features/queue/{QueueView,QueueTaskRow,QueueTaskDetail}.vue` — единая UI-очередь, детали, действия.
-- `PhotoSorter/frontend/src/features/references/ReferencePreparationStatus.vue` — прогресс/публикация образцов.
-- `PhotoSorter/frontend/src/composables/useStagedReferenceTransfer.ts` — manifest/SHA/resume и staging chunks.
-- `PhotoSorter/frontend/src/features/fo/ReferenceUpdateNotice.vue` — одно уведомление о новой опубликованной версии.
-- `PhotoSorter/backend/tests/test_library_notices_stage4.py` — SQL notices, FIFO scopes, idempotent receipts.
-- `PhotoSorter/frontend/tests/{workQueue,libraryNoticesApi}.test.ts` — UI helpers и API-контракты.
-- `docs/REFERENCE_QUEUE_STAGE4.md` — договорённые сценарии и граница деплоя.
-
-- `PhotoSorter/backend/server/db/migrations/0017_notice_existing_fo_baseline.sql` — одноразовый начальный cursor для установок с ранее завершёнными ФО без выдуманных исторических версий.
+SQL-изменения до `0016_library_notice_delivery.sql` сохраняются
+как последовательные миграции **схемы**, но не содержат альтернативных
+обработчиков/версий приложения. Более подробная текущая схема в
+`docs/REFERENCE_PIPELINE.md`.

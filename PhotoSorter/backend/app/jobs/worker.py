@@ -1,24 +1,20 @@
 """Single MegaLoc run: FO grouping first, SAM matching second, safe export last."""
 from __future__ import annotations
 import time
-import os
 import traceback
 from pathlib import Path
 from ..recognition.engines.megaloc.extractor import MegaLocEngine
 from ..recognition.pipeline import match_grouped_megaloc
 from ..recognition.errors import JobCancelled
-from ..photos.scanner import images, references, validate
+from ..photos.scanner import images, validate
 from ..results.repository import save_model
 
 def process(job):
     info=job.info
     job.log('INFO','Сканирование папок и проверка изображений')
     scan_started=time.perf_counter()
-    if info.get("reference_members") is not None:
-        # Pinned at DB claim; never rescan mutable live reference directories.
-        refs=[(Path(member["path"]),member["sam"]) for member in info["reference_members"]]
-    else:
-        refs=references(Path(info['references']),warn=lambda s:job.log('WARNING',s))
+    # Only the immutable version pinned on FIFO claim can be consumed.
+    refs=[(Path(member["path"]),member["sam"]) for member in info["reference_members"]]
     all_queries=images(Path(info['new_photos']))
     scan_seconds=round(time.perf_counter()-scan_started,3)
     stamps={str(path):(path.stat().st_size,path.stat().st_mtime_ns) for path in all_queries}
@@ -44,9 +40,8 @@ def process(job):
     try:
         load_started=time.perf_counter()
         engine=MegaLocEngine()
-        if info.get("reference_members") is not None or os.environ.get("PHOTOSORTER_REFERENCE_CACHE") == "1":
-            from server.reference_cache import ReferenceCachedMegaLoc
-            engine=ReferenceCachedMegaLoc(engine)
+        from server.reference_cache import ReferenceCachedMegaLoc
+        engine=ReferenceCachedMegaLoc(engine)
         timings['model_load_seconds']=round(time.perf_counter()-load_started,3)
         job.progress(name,'loading',1,1,'MegaLoc загружена')
         job.log('INFO',f'Устройство: {engine.device}',name)

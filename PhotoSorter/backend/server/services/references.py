@@ -1,162 +1,82 @@
-"""Explicit SAM management. PostgreSQL validates ownership; links precede row update."""
+"""Published reference management on the one immutable staging architecture.
+
+Deletion creates a new version; previous immutable objects remain available
+to historical FO snapshots. Staged uploads are always accepted independently.
+"""
 from __future__ import annotations
-import errno,os,re,shutil
 from pathlib import Path
 from fastapi import HTTPException
-from app.config import DATA_DIR
-from ..storage.paths import run_dir
-from app.photos.labels import check_label
 from app.photos.construction import parse_key
 from app.system.model_store import signature
 from ..database import connect
-from ..storage.paths import owned_file,owned_directory
+from ..db.repositories import reference_versions
+from . import reference_publication
 
-REFS=DATA_DIR/"references"
-
-def sam_id(value):
-    # New city/number keys and existing legacy SAM-xxxx rows can coexist.
+def _sam(value):
     try:
         parse_key(value)
-        return value
-    except ValueError:
-        pass
-    try:label=check_label(value)
-    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
-    if not re.fullmatch(r"SAM-\d{4}(?:-[A-Za-zА-Яа-я0-9]{1,8}){0,2}",label):
-        raise HTTPException(422,"Некорректный идентификатор конструкции")
-    return label
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    return value
 
-def _editable(db,source):
+def _idle(db):
+    # Synchronous removals cannot jump ahead of earlier FIFO work. Uploads
+    # never use this guard: they always go to staging.
+    if db.execute("""SELECT 1 FROM work_queue WHERE state IN
+       ('queued','running','failed','interrupted','blocked') LIMIT 1""").fetchone():
+        raise HTTPException(409,"Удаление доступно после завершения очереди")
+
+def _edit(db,*,sam=None,reference_id=None):
     db.execute("SELECT pg_advisory_xact_lock(723409133)")
-    if (db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone()
-        or db.execute("""SELECT 1 FROM work_queue WHERE kind='reference_preparation'
-            AND state IN ('queued','running','blocked','failed','interrupted') LIMIT 1""").fetchone()):
-        raise HTTPException(409,"Образцы заблокированы на время обработки или подготовки")
-    if db.execute("""SELECT 1 FROM uploads WHERE kind='reference' AND sam=%s
-                   AND NOT finalized LIMIT 1""",(source,)).fetchone():
-        raise HTTPException(409,"Дождитесь окончания загрузок этой SAM")
+    _idle(db)
+    state=db.execute("""SELECT current_version_id FROM reference_library_state
+        WHERE id=1 FOR UPDATE""").fetchone()
+    if not state or state["current_version_id"] is None:
+        raise HTTPException(409,"Библиотека не инициализирована")
+    members=[dict(m) for m in reference_versions.members(db,state["current_version_id"])]
+    selected=[m for m in members if
+        (m["sam"]==sam if sam is not None else m["reference_id"]==reference_id)]
+    if not selected:
+        raise HTTPException(404,"Образец или конструкция не найдены")
+    remaining=[m for m in members if m not in selected]
+    current=reference_versions.current(db)
+    fp=signature()
+    if current["model_signature"] and fp!=current["model_signature"]:
+        raise HTTPException(409,"Сначала подготовьте библиотеку с текущей моделью")
+    version,_=reference_publication.publish(db,remaining,fp,event_kind="reference_prepared")
+    if sam is None:
+        db.execute("DELETE FROM uploads WHERE id=%s AND kind='reference'",(reference_id,))
+    else:
+        db.execute("DELETE FROM uploads WHERE sam=%s AND kind='reference'",(sam,))
+        db.execute("DELETE FROM reference_constructions WHERE sam=%s",(sam,))
+    return version,len(selected)
 
-def _historical_reference_guard(db,sam):
-    """Fail closed if a published run still names this SAM in its immutable manifest.
-
-    Rename/delete must not silently invalidate a historic score/reference path.
-    No modification to MegaLoc output manifests or model weights.
-    """
-    rows=db.execute("""SELECT id FROM jobs
-        WHERE status IN ('completed','completed_with_errors')""").fetchall()
-    marker=sam.encode('utf-8')
-    for row in rows:
-        try:
-            manifest=run_dir(row["id"],DATA_DIR/"outputs")/"megaloc"/"manifest.json"
-        except ValueError:
-            raise HTTPException(409,"Исторический запуск с неверным ID; SAM не изменена")
-        if manifest.is_symlink():
-            raise HTTPException(409,"Недоверенный исторический manifest; SAM не изменена")
-        if not manifest.is_file():
-            continue
-        with manifest.open("rb") as stream:
-            carry=b""
-            while chunk:=stream.read(256*1024):
-                if marker in carry+chunk:
-                    raise HTTPException(409,"SAM используется в сохранённых результатах. Сначала сохраните архивы и согласуйте миграцию.")
-                carry=chunk[-len(marker):]
-
-def cache_status():
-    try:sig=signature()
-    except (OSError,ValueError):sig=None
+def delete_photo(reference_id):
+    import uuid
+    try:uid=uuid.UUID(str(reference_id))
+    except ValueError as exc:raise HTTPException(422,"Неверный ID образца") from exc
     with connect() as db:
-        row=db.execute("""SELECT count(DISTINCT u.checksum) AS total,
-         count(DISTINCT u.checksum) FILTER(WHERE EXISTS (
-          SELECT 1 FROM reference_cache c
-          WHERE c.source_hash=u.checksum AND c.model_signature=%s)) AS cached
-         FROM uploads u WHERE u.kind='reference' AND u.finalized""",
-         (sig or "",)).fetchone()
-    return {"total":row["total"],"cached":row["cached"],"current_signature":sig}
-
-def rename(source,target):
-    source=sam_id(source)
-    target=sam_id(target)
-    if source==target:return {"sam":source,"renamed":False}
-    if not source.startswith("SAM-") or not target.startswith("SAM-"):
-        raise HTTPException(422,"Номер новой конструкции не переименовывается. Измените адрес отдельно.")
-    old_root=owned_directory(REFS/source,REFS)
-    new_root=owned_directory(REFS/target,REFS)
-    if new_root.exists():raise HTTPException(409,"Папка SAM с новым именем уже существует")
-    created=[]
-    old_paths=[]
-    try:
-        with connect() as db:
-            _editable(db,source)
-            _historical_reference_guard(db,source)
-            if db.execute("""SELECT 1 FROM reference_version_members
-               WHERE sam=%s AND source_kind='staged' LIMIT 1""",(source,)).fetchone():
-                raise HTTPException(409,"Опубликованные подготовленные образцы нельзя переименовать старым способом")
-            if db.execute("""SELECT 1 FROM uploads WHERE kind='reference' AND sam=%s LIMIT 1""",
-                          (target,)).fetchone():
-                raise HTTPException(409,"SAM с таким именем уже существует")
-            rows=db.execute("""SELECT id,target_path FROM uploads
-                WHERE kind='reference' AND sam=%s AND finalized
-                ORDER BY id FOR UPDATE""",(source,)).fetchall()
-            if not rows:raise HTTPException(404,"SAM не найдена")
-            moves={}
-            for row in rows:
-                src=owned_file(Path(row["target_path"]),old_root)
-                if not src.is_file():raise HTTPException(409,"Исходный Образец недоступен")
-                new=owned_file(new_root/src.name,REFS)
-                if new.exists():raise HTTPException(409,"Конфликт имён SAM")
-                moves[str(src)]=new
-                old_paths.append(src)
-            new_root.mkdir(parents=True,exist_ok=False)
-            for src,new in moves.items():
-                try:os.link(src,new,follow_symlinks=False)
-                except OSError as exc:
-                    if exc.errno!=errno.EXDEV:raise
-                    # Safe fallback when mount prevents hardlinks, never overwrite target.
-                    with open(src,"rb") as origin,open(new,"xb") as destination:
-                        shutil.copyfileobj(origin,destination,1024*1024)
-                created.append(new)
-            for row in rows:
-                src=Path(row["target_path"])
-                db.execute("""UPDATE uploads SET sam=%s,target_path=%s WHERE id=%s""",
-                    (target,str(moves[str(src)]),row["id"]))
-    except Exception:
-        # Before DB commit originals remain authoritative. Clean only new files.
-        for path in created:path.unlink(missing_ok=True)
-        try:new_root.rmdir()
-        except OSError:pass
-        raise
-    # Post-commit cleanup is best effort: crash leaves harmless old hardlinks, not missing originals.
-    with connect() as db:
-        for old in set(old_paths):
-            if not db.execute("SELECT 1 FROM uploads WHERE target_path=%s LIMIT 1",
-                              (str(old),)).fetchone():
-                old.unlink(missing_ok=True)
-    try:old_root.rmdir()
-    except OSError:pass
-    return {"sam":target,"renamed":True,"photos":len(rows)}
+        version,count=_edit(db,reference_id=uid)
+    return {"deleted":True,"version":version["version_number"],"photos":count}
 
 def delete(source):
-    source=sam_id(source)
-    root=owned_directory(REFS/source,REFS)
+    source=_sam(source)
     with connect() as db:
-        _editable(db,source)
-        _historical_reference_guard(db,source)
-        if db.execute("""SELECT 1 FROM reference_version_members
-             WHERE sam=%s AND source_kind='staged' LIMIT 1""",(source,)).fetchone():
-            raise HTTPException(409,"Опубликованные подготовленные образцы нельзя удалить старым способом")
-        rows=db.execute("""SELECT id,target_path FROM uploads
-            WHERE kind='reference' AND sam=%s AND finalized FOR UPDATE""",
-            (source,)).fetchall()
-        if not rows:raise HTTPException(404,"SAM не найдена")
-        files=[owned_file(Path(row["target_path"]),root) for row in rows]
-        db.execute("""DELETE FROM uploads WHERE kind='reference' AND sam=%s""",(source,))
-        db.execute("DELETE FROM reference_constructions WHERE sam=%s",(source,))
-    # Never unlink a shared target path still referenced by another SAM.
+        version,count=_edit(db,sam=source)
+    return {"deleted":True,"sam":source,"photos":count,
+            "version":version["version_number"]}
+
+def cache_status():
+    try:fp=signature()
+    except (OSError,ValueError):fp=None
     with connect() as db:
-        for path in set(files):
-            if not db.execute("SELECT 1 FROM uploads WHERE target_path=%s LIMIT 1",
-                              (str(path),)).fetchone():
-                path.unlink(missing_ok=True)
-    try:root.rmdir()
-    except OSError:pass
-    return {"deleted":True,"sam":source,"photos":len(rows)}
+        row=db.execute("""
+            SELECT count(DISTINCT m.source_hash) AS total,
+               count(DISTINCT m.source_hash) FILTER (WHERE EXISTS (
+                 SELECT 1 FROM reference_cache c
+                 WHERE c.source_hash=m.source_hash AND c.model_signature=%s)) AS cached
+            FROM reference_version_members m
+            JOIN reference_library_state s ON s.current_version_id=m.version_id
+            WHERE s.id=1
+        """,(fp or "",)).fetchone()
+    return {"total":row["total"],"cached":row["cached"],"current_signature":fp}
