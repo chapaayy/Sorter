@@ -45,17 +45,49 @@ def update(threads:int):
         db.execute("UPDATE processing_settings SET cpu_threads=%s,updated_at=now() WHERE id=1",(threads,))
     return read()
 
+def available_cpu_count():
+    try:
+        return max(1,len(os.sched_getaffinity(0)))
+    except (AttributeError,OSError):
+        return max(1,os.cpu_count() or 1)
+
+
+def max_model_cpus():
+    total=available_cpu_count()
+    return min(max_threads(),max(1,total-1))
+
+
+def update_budget(model_cpus:int):
+    from fastapi import HTTPException
+    if not isinstance(model_cpus,int) or not 1<=model_cpus<=max_model_cpus():
+        raise HTTPException(422,f'Для модели доступно от 1 до {max_model_cpus()} CPU')
+    # Both FIFO kinds use a single identical budget. Existing jobs remain untouched.
+    with connect() as db:
+        db.execute('''UPDATE processing_settings SET cpu_mode='manual',
+            fo_cpu_threads=%s,reference_cpu_threads=%s,cpu_threads=%s,
+            updated_at=now() WHERE id=1''',(model_cpus,model_cpus,model_cpus))
+    return workload_settings()
+
+
 def workload_settings():
     with connect() as db:
         row=db.execute("""SELECT cpu_mode,fo_cpu_threads,reference_cpu_threads
             FROM processing_settings WHERE id=1""").fetchone()
+    total=available_cpu_count()
+    selected=max_threads() if row['cpu_mode']=='auto' else row['fo_cpu_threads']
+    model=min(max_model_cpus(),selected)
     return {
+        "total_cpus":total,
+        "model_cpus":model,
+        "system_cpus":total-model,
+        "max_model_cpus":max_model_cpus(),
+        "model_limit_applies":"next_task",
+        "background_policy":"cpu_shares_no_quota",
         "mode":row["cpu_mode"],
         "fo_threads":row["fo_cpu_threads"],
         "reference_threads":row["reference_cpu_threads"],
         "max_threads":max_threads(),
-        "thumbnail_cpu_quota":float(os.environ.get("PHOTOSORTER_THUMBNAIL_CPUS","0.35")),
-        "cleanup_cpu_quota":float(os.environ.get("PHOTOSORTER_CLEANUP_CPUS","0.25")),
+
         "zip_mode":"single_thread_in_worker",
         "docker_limits_editable":False,
         "applies":"next_task",

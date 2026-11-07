@@ -25,8 +25,12 @@ def _process_task(item):
     # Apply the single persisted CPU setting only between FIFO tasks.
     from app.system.performance import set_runtime_threads
     from .services.compute_settings import for_worker
+    from .services.worker_cpu_affinity import allocate
     with connect() as db:
-        set_runtime_threads(for_worker(db,item['kind']))
+        cpu_limit=for_worker(db,item['kind'])
+    # Restrict the actual worker process and inherited inference/ZIP threads.
+    allocate(cpu_limit)
+    set_runtime_threads(cpu_limit)
     if item['kind']=='fo_processing':
         info=item['info']
         try:

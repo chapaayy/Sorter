@@ -32,9 +32,10 @@ def update_cpu_settings(payload:CpuSettings):
     return compute_settings.update(payload.threads)
 
 class WorkloadSettings(BaseModel):
-    mode:str
-    fo_threads:int=Field(ge=1,le=32)
-    reference_threads:int=Field(ge=1,le=32)
+    model_cpus:int|None=Field(default=None,ge=1,le=32)
+    mode:str|None=None
+    fo_threads:int|None=Field(default=None,ge=1,le=32)
+    reference_threads:int|None=Field(default=None,ge=1,le=32)
 
 @router.get("/workloads")
 def workload_settings():
@@ -44,4 +45,9 @@ def workload_settings():
 @router.patch("/workloads")
 def update_workloads(payload:WorkloadSettings):
     from ...services import compute_settings
+    if payload.model_cpus is not None:
+        return compute_settings.update_budget(payload.model_cpus)
+    if payload.mode is None or payload.fo_threads is None or payload.reference_threads is None:
+        from fastapi import HTTPException
+        raise HTTPException(422,'Укажите количество CPU для модели')
     return compute_settings.update_workloads(payload.mode,payload.fo_threads,payload.reference_threads)
