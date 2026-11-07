@@ -29,12 +29,15 @@ def test_estimates_progress_for_entire_run_and_eta_adapts():
     tracker.update('megaloc','queries',30,189,50)
     info=tracker.calculate(50)
     assert 0 < info['overall_percent'] < 100
-    assert info['estimated_remaining_seconds'] is not None
-    assert info['estimated_remaining_seconds'] > 0
+    # The new ZIP stage has not been measured yet, so a numeric ETA would
+    # pretend we know the future archive duration.
+    assert info['estimated_remaining_seconds'] is None
+    assert info['eta_status']=='partial'
     tracker.update('megaloc','queries',80,189,80)
     second=tracker.calculate(80)
     assert second['overall_percent'] >= info['overall_percent']
-    assert second['estimated_remaining_seconds'] >= 0
+    assert second['estimated_remaining_seconds'] is None
+    assert second['eta_status']=='partial'
     assert tracker.calculate(100,finished=True)['overall_percent']==100
 
 

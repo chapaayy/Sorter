@@ -21,6 +21,11 @@ async function refresh(){
 }
 onMounted(()=>{void refresh()})
 usePolling(refresh,2200)
+async function retryArchive(){
+  busy.value=true
+  try{await runApi.retryArchive(id);await refresh()}
+  catch(e){error.value=errorText(e)}finally{busy.value=false}
+}
 async function stop(){
   busy.value=true
   try{await runApi.stop(id);confirmStop.value=false;await refresh()}
@@ -30,7 +35,10 @@ async function stop(){
 <template>
 <div class="row" style="margin-bottom:22px"><RouterLink to="/queue?view=history" class="meta">← История очереди</RouterLink></div>
 <PageHeader eyebrow="ОЧЕРЕДЬ / ПОДРОБНОСТИ" :title="batch?.display_name||'Запуск '+id" :subtitle="'MegaLoc · '+date(run?.started_at)+' · '+(run?runLabels[run.status]||run.status:'Загрузка…')">
-  <template #actions><UiButton v-if="run&&(run.status==='queued'||run.status==='running')" kind="danger" :loading="busy" @click="confirmStop=true">{{run.status==='queued'?'Убрать из очереди':'Остановить'}}</UiButton>
+  <template #actions>
+    <UiButton v-if="run?.archive_state==='failed'&&run.status==='failed'"
+      :loading="busy" kind="primary" @click="retryArchive">Повторить подготовку ZIP</UiButton>
+    <UiButton v-if="run&&(run.status==='queued'||run.status==='running')" kind="danger" :loading="busy" @click="confirmStop=true">{{run.status==='queued'?'Убрать из очереди':'Остановить'}}</UiButton>
     <RouterLink v-if="run&&!isActive(run.status)" :to="'/fo/'+run.batch_id" class="btn">Обработать повторно в ФО</RouterLink>
     <RouterLink v-if="run&&isComplete(run.status)" class="btn primary" :to="'/results/'+id">Результаты →</RouterLink>
   </template>

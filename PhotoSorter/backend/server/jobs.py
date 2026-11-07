@@ -110,6 +110,11 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
     return {**info,"queue_position":position}
 
 
+@router.post("/{run_id}/archive/retry",status_code=202)
+def retry_archive(run_id:str):
+    from .services.archive_retries import request
+    return request(run_id)
+
 @router.get("/{run_id}")
 def get_job(run_id:str):
     with connect() as db:

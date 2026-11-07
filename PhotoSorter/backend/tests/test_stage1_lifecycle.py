@@ -153,10 +153,13 @@ def test_cleanup_only_owned_paths_multiple_runs_and_idempotent(sandbox):
         run_folder=sandbox/"runs"/run
         run_folder.mkdir()
         (run_folder/"run.json").write_text("{}",encoding="utf8")
+        zip_dir=paths.run_dir(run)/".archives"
+        zip_dir.mkdir()
+        (zip_dir/"ready.zip").write_bytes(b"completed ZIP")
     assert cleanup.request(own)["state"]=="deleting"
     assert cleanup.cleanup_one(own)=="completed"
     assert not paths.batch_dir(own).exists()
-    assert all(not paths.run_dir(run).exists() for run in runs)
+    assert all(not paths.run_dir(run).exists() for run in runs)  # includes .archives ZIP files
     assert all(not (sandbox/"runs"/run).exists() for run in runs)
     assert paths.batch_dir(other).exists()
     assert protected.read_bytes()==b"permanent-reference"
@@ -292,6 +295,44 @@ def test_warning_for_stale_unconfirmed_and_seven_day_notice(sandbox):
     assert retention.status(own)["warning"] is True
     cleanup.request(own)
     cleanup.cleanup_one(own)
+
+
+def test_short_retention_can_be_assigned_only_after_completed_zip(sandbox):
+    from server.services import retention,cleanup
+    from server.database import connect
+    own=_batch(sandbox)
+    original=retention.settings()
+    try:
+        assert retention.update_settings(True,3,"minutes")["unit"]=="minutes"
+        with connect() as db:
+            retention.schedule(db,own,"20261107T120000-abcdef123456")
+        row=retention.status(own)
+        assert row["delete_after_at"] is not None
+        assert row["download_confirmed_at"] is None
+        with connect() as db:
+            diff=db.execute("""SELECT extract(epoch from (delete_after_at-now())) AS seconds
+                FROM batches WHERE id=%s""",(own,)).fetchone()["seconds"]
+        assert 170<float(diff)<=180
+    finally:
+        retention.update_settings(original["enabled"],original["value"],original["unit"])
+        cleanup.request(own)
+        cleanup.cleanup_one(own)
+
+
+def test_disabled_retention_does_not_assign_deadline(sandbox):
+    from server.services import retention,cleanup
+    from server.database import connect
+    own=_batch(sandbox)
+    original=retention.settings()
+    try:
+        retention.update_settings(False,1,"minutes")
+        with connect() as db:
+            retention.schedule(db,own,"20261107T120000-abcdef123456")
+        assert retention.status(own)["delete_after_at"] is None
+    finally:
+        retention.update_settings(original["enabled"],original["value"],original["unit"])
+        cleanup.request(own)
+        cleanup.cleanup_one(own)
 
 def test_hardlink_collision_does_not_unlink_original_result(tmp_path):
     src=tmp_path/"original.jpg"

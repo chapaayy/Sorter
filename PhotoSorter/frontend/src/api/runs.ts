@@ -8,6 +8,7 @@ export const runApi={
   one:(id:string)=>api<Run>('/runs/'+encodeURIComponent(id)),
   start:(id:string,threshold:number)=>post<Run>('/runs',{batch_id:id,grouping_threshold:threshold}),
   stop:(id:string)=>post<Run>('/runs/'+id+'/stop',{}),
+  retryArchive:(id:string)=>post<{run_id:string;state:string}>('/runs/'+encodeURIComponent(id)+'/archive/retry',{}),
   models:()=>api<ModelInfo>('/models'),
   autoSettings:()=>api<ProcessingSettings>('/processing-settings'),
   saveAutoSettings:(enabled:boolean,threshold:number)=>api<ProcessingSettings>(

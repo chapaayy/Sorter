@@ -5,7 +5,7 @@ import signal
 import time
 from ..database import wait_and_initialize
 from ..services import heartbeat
-from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing
+from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing,archive_retries
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
 RUN=True
@@ -17,6 +17,8 @@ def stop(*_):
 
 def run_cycle():
     global NEXT_GC
+    for run_id,state in archive_retries.process_pending(limit=1):
+        logging.info('ZIP-only retry %s: %s',run_id,state)
     for batch_id,run_id in auto_processing.schedule_ready():
         logging.info('Auto processing queued for %s: %s',batch_id,run_id)
     for batch_id in retention.due_batch_ids():
