@@ -24,6 +24,7 @@ def deploy(tmp_path):
     docker=stub/"docker"
     docker.write_text("""#!/bin/sh
 echo "$*" >> "$STAGE4_DOCKER_LOG"
+if [ "$1" = compose ]; then echo "$PHOTOSORTER_CADDY_TCP_CC" >> "$STAGE4_CADDY_TCP_CC_LOG"; fi
 if [ "$1" = volume ] && [ "$2" = inspect ]; then
   [ "$STAGE4_VOLUME" = 1 ] && exit 0 || exit 1
 fi
@@ -51,6 +52,7 @@ esac
     env=os.environ.copy()
     env.update({"PATH":str(stub)+":"+env["PATH"],
         "STAGE4_DOCKER_LOG":str(tmp_path/"docker.log"),
+        "STAGE4_CADDY_TCP_CC_LOG":str(tmp_path/"caddy-tcp.log"),
         "STAGE4_VOLUME":"1",
         "STAGE4_BBR_MODULE":"ok",
         "STAGE4_BBR_LOADED":str(tmp_path/"loaded"),
@@ -117,6 +119,7 @@ def test_deploy_enables_bbr_without_touching_qdisc(deploy):
     assert (etc/"modules-load.d/99-photosorter-bbr.conf").read_text().strip()=="tcp_bbr"
     assert (root.parent/"active").read_text().strip()=="bbr"
     assert "BBR enabled" in result.stdout
+    assert (root.parent/"caddy-tcp.log").read_text().splitlines()[-1]=="bbr"
 
 def test_bbr_opt_out_does_not_touch_host(deploy):
     root,run,log=deploy
@@ -124,12 +127,14 @@ def test_bbr_opt_out_does_not_touch_host(deploy):
     assert result.returncode==0,result.stderr
     assert not (root.parent/"mock-etc").exists()
     assert not (root.parent/"loaded").exists()
+    assert (root.parent/"caddy-tcp.log").read_text().splitlines()[-1]=="cubic"
 
 def test_missing_bbr_module_warns_but_site_still_deploys(deploy):
     root,run,log=deploy
     result=run("--deploy",overrides={"STAGE4_BBR_MODULE":"missing"})
     assert result.returncode==0,result.stderr
     assert "module unavailable" in result.stderr
+    assert (root.parent/"caddy-tcp.log").read_text().splitlines()[-1]=="cubic"
     assert not (root.parent/"mock-etc").exists()
     assert any(line.endswith("up -d --build") for line in log.read_text().splitlines())
 

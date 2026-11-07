@@ -8,6 +8,9 @@ services:
         max-size: "10m"
         max-file: "3"
     restart: unless-stopped
+    # TCP congestion control is namespaced: force the same algorithm in Caddy.
+    sysctls:
+      net.ipv4.tcp_congestion_control: "${PHOTOSORTER_CADDY_TCP_CC:-cubic}"
     environment:
       DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
     ports:

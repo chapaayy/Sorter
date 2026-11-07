@@ -98,6 +98,12 @@ fi
 
 # Optional Linux host networking optimization, not a Docker setting.
 bash PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --apply
+# Caddy has a separate network namespace; configure it explicitly at container creation.
+ACTIVE_TCP_CC="$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || true)"
+case "$ACTIVE_TCP_CC" in
+  bbr|cubic|reno) export PHOTOSORTER_CADDY_TCP_CC="$ACTIVE_TCP_CC" ;;
+  *) echo '[WARN] Could not determine host TCP algorithm; Caddy uses default CUBIC.' >&2 ;;
+esac
 
 mkdir -p Models/models/megaloc Models/cache/huggingface/{hub,xet} Models/cache/{torch,xdg,downloads} PhotoSorter/data/{references,uploads,runs,cache,outputs}
 if [[ "$EXISTING_POSTGRES" -eq 0 ]]; then
