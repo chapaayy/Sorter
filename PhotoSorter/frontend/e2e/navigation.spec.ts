@@ -169,7 +169,7 @@ test('desktop navigation collapses to icons and remembers preference',async({pag
   const widthBefore=await page.locator('.sidebar').evaluate(el=>el.getBoundingClientRect().width)
   await page.getByRole('button',{name:'Свернуть боковое меню'}).click()
   await expect(shell).toHaveClass(/is-sidebar-collapsed/)
-  await expect(page.locator('.sidebar .nav-link').first()).toHaveAttribute('title','ФО')
+  await expect(page.locator('.sidebar .nav-link').first()).toHaveAttribute('title','Фотографии')
   await expect(page.getByRole('link',{name:'Образцы'})).toBeVisible()
   const widthAfter=await page.locator('.sidebar').evaluate(el=>el.getBoundingClientRect().width)
   expect(widthAfter).toBeLessThan(widthBefore)
