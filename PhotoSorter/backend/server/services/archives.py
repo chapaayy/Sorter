@@ -83,6 +83,14 @@ def prepare(run_id:str,sam:str|None,selected:list[tuple[Path,str]],*,progress=No
                             if progress:progress(done,total)
                     output.flush()
                     os.fsync(output.fileno())
+                # Publishing an archive is the last completion gate: verify
+                # every entry's CRC and count before making the ZIP visible.
+                with zipfile.ZipFile(tmp,"r") as verified:
+                    if len(verified.infolist())!=len(selected):
+                        raise OSError("ZIP не содержит все фотографии")
+                    corrupt=verified.testzip()
+                    if corrupt is not None:
+                        raise OSError("Ошибка проверки ZIP: "+corrupt)
                 os.chmod(tmp,0o444)
                 os.replace(tmp,target)
                 return target

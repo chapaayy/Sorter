@@ -12,10 +12,19 @@ import RunProgress from './RunProgress.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 const route=useRoute(),id=String(route.params.runId)
 const run=ref<Run|null>(null),batch=ref<Batch|null>(null),busy=ref(false),error=ref(''),confirmStop=ref(false)
+const archiveHealth=ref<{state:string;can_retry:boolean}|null>(null)
+let inspectedArchive=false
 async function refresh(){
   try{
     run.value=await runApi.one(id)
     if(!batch.value&&run.value.batch_id)batch.value=await batchApi.one(run.value.batch_id)
+    if(run.value.archive_state!=='ready'){
+      archiveHealth.value=null;inspectedArchive=false
+    }else if(!inspectedArchive){
+      inspectedArchive=true
+      try{archiveHealth.value=await runApi.archiveStatus(id)}
+      catch{inspectedArchive=false}
+    }
     error.value=''
   }catch(e){error.value=errorText(e)}
 }
@@ -36,14 +45,19 @@ async function stop(){
 <div class="row" style="margin-bottom:22px"><RouterLink to="/queue?view=history" class="meta">← История очереди</RouterLink></div>
 <PageHeader eyebrow="ОЧЕРЕДЬ / ПОДРОБНОСТИ" :title="batch?.display_name||'Запуск '+id" :subtitle="'MegaLoc · '+date(run?.started_at)+' · '+(run?runLabels[run.status]||run.status:'Загрузка…')">
   <template #actions>
-    <UiButton v-if="run?.archive_state==='failed'&&['failed','interrupted'].includes(run.status)"
-      :loading="busy" kind="primary" @click="retryArchive">Повторить подготовку ZIP</UiButton>
+    <UiButton v-if="(run?.archive_state==='failed'&&['failed','interrupted'].includes(run.status))||archiveHealth?.can_retry"
+      :loading="busy" kind="primary" @click="retryArchive">
+      {{archiveHealth?.state==='missing'?'Восстановить ZIP':'Повторить подготовку ZIP'}}
+    </UiButton>
     <UiButton v-if="run&&(run.status==='queued'||run.status==='running')" kind="danger" :loading="busy" @click="confirmStop=true">{{run.status==='queued'?'Убрать из очереди':'Остановить'}}</UiButton>
     <RouterLink v-if="run&&!isActive(run.status)" :to="'/fo/'+run.batch_id" class="btn">Обработать повторно в ФО</RouterLink>
     <RouterLink v-if="run&&isComplete(run.status)" class="btn primary" :to="'/results/'+id">Результаты →</RouterLink>
   </template>
 </PageHeader>
 <div v-if="error" class="alert error">{{error}}</div>
+<div v-if="archiveHealth?.state==='missing'" class="alert error" role="alert">
+  Полный архив отсутствует или повреждён. Можно восстановить ZIP без повторного запуска MegaLoc.
+</div>
 <RunProgress v-if="run" :run="run"/>
 <div v-if="run" class="panel stack" style="margin-top:20px">
   <h2>Параметры и действия</h2>

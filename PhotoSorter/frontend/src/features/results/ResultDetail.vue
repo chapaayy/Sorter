@@ -4,6 +4,7 @@ import {useRoute,useRouter} from 'vue-router'
 import {batchApi} from '../../api/batches'
 import {resultApi} from '../../api/results'
 import {referenceApi} from '../../api/references'
+import {runApi} from '../../api/runs'
 import {useCursor} from '../../composables/useCursor'
 import type {Batch,Run,ResultPhoto,Retention} from '../../types/api'
 import {bytes,date,errorText,friendlySam,isComplete} from '../../utils/format'
@@ -20,6 +21,7 @@ const run=ref<Run|null>(null),batch=ref<Batch|null>(null),retention=ref<Retentio
 const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),referenceNames=ref<Record<string,string>>({}),mode=ref<'sam'|'group'>('sam')
 const selected=ref(''),lastSam=ref(''),lastGroup=ref(''),error=ref(''),busy=ref(false)
 const viewer=ref<number|null>(null),deleteWhole=ref(false)
+const archiveMissing=ref(false),archiveRetryBusy=ref(false)
 const displaySam=(sam:string)=>referenceNames.value[sam]||friendlySam(sam)
 const list=computed(()=>Object.entries(mode.value==='sam'?sams.value:groups.value)
   .sort(([a],[b])=>a==='_Неопределено'?1:b==='_Неопределено'?-1:a.localeCompare(b,'ru',{numeric:true}))
@@ -40,6 +42,10 @@ onMounted(async()=>{
   try{
     run.value=await resultApi.one(id)
     if(!isComplete(run.value.status)){error.value='Этот запуск ещё не завершён';return}
+    if(run.value.archive_state==='ready'){
+      const health=await runApi.archiveStatus(id)
+      archiveMissing.value=health.state==='missing'
+    }
     const [b,s,g,refs]=await Promise.all([batchApi.one(run.value.batch_id),resultApi.sam(id),resultApi.groups(id),referenceApi.list().catch(()=>null)])
     referenceNames.value=Object.fromEntries((refs?.sam||[]).map(item=>[item.sam,item.display_name||item.sam]))
     batch.value=b;sams.value=s;groups.value=g;selected.value=list.value[0]?.id||''
@@ -52,6 +58,16 @@ function download(sam?:string){
   anchor.download='photosorter-'+id+'.zip'
   document.body.append(anchor)
   anchor.click();anchor.remove()
+}
+async function restoreArchive(){
+  if(archiveRetryBusy.value)return
+  archiveRetryBusy.value=true
+  try{
+    await runApi.retryArchive(id)
+    notice.add('ZIP поставлен на восстановление без повторной сортировки','ok')
+    await router.push('/queue/runs/'+id)
+  }catch(e){error.value=errorText(e)}
+  finally{archiveRetryBusy.value=false}
 }
 async function extend(){
   if(!batch.value)return
@@ -69,9 +85,13 @@ async function deleteBatch(){
 <template>
 <div class="row" style="margin-bottom:22px"><RouterLink class="meta" to="/results">← Все результаты</RouterLink></div>
 <PageHeader eyebrow="РЕЗУЛЬТАТЫ / MEGALOC" :title="batch?.display_name||'Результат запуска'" :subtitle="total+' ФО · '+Object.keys(groups).length+' групп ФО · '+date(run?.started_at)">
-  <template #actions><UiButton kind="primary" :disabled="!run||!isComplete(run.status)" @click="download()">↓ Скачать всю сортировку ZIP</UiButton><UiButton kind="danger" :disabled="!batch" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
+  <template #actions><UiButton kind="primary" :disabled="!run||!isComplete(run.status)||archiveMissing" @click="download()">↓ Скачать всю сортировку ZIP</UiButton><UiButton kind="danger" :disabled="!batch" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
+<div v-if="archiveMissing" class="alert error row between wrap" role="alert" style="margin-bottom:18px">
+  <span>Полный ZIP отсутствует или повреждён. Результаты MegaLoc сохранены.</span>
+  <UiButton kind="primary" :loading="archiveRetryBusy" @click="restoreArchive">Восстановить ZIP</UiButton>
+</div>
 <section v-if="batch&&run" class="panel stack" style="margin-bottom:18px">
   <div class="row between wrap">
     <div><strong>Готовый ZIP</strong>

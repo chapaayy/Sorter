@@ -9,6 +9,8 @@ export const runApi={
   start:(id:string,threshold:number)=>post<Run>('/runs',{batch_id:id,grouping_threshold:threshold}),
   stop:(id:string)=>post<Run>('/runs/'+id+'/stop',{}),
   retryArchive:(id:string)=>post<{run_id:string;state:string}>('/runs/'+encodeURIComponent(id)+'/archive/retry',{}),
+  archiveStatus:(id:string)=>api<{run_id:string;state:string;can_retry:boolean}>(
+    '/runs/'+encodeURIComponent(id)+'/archive/status'),
   models:()=>api<ModelInfo>('/models'),
   autoSettings:()=>api<ProcessingSettings>('/processing-settings'),
   saveAutoSettings:(enabled:boolean,threshold:number)=>api<ProcessingSettings>(
