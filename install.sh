@@ -87,6 +87,7 @@ then
 fi
 
 if [[ "$MODE" == "--check" ]]; then
+  bash PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --check
   echo '[OK] Read-only preflight passed. No files or containers changed.'
   exit 0
 fi
@@ -94,6 +95,9 @@ fi
 if [[ "$EXISTING_POSTGRES" -eq 1 ]]; then
   echo '[INFO] Updating beta test containers; existing Docker volumes are unchanged.'
 fi
+
+# Optional Linux host networking optimization, not a Docker setting.
+bash PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --apply
 
 mkdir -p Models/models/megaloc Models/cache/huggingface/{hub,xet} Models/cache/{torch,xdg,downloads} PhotoSorter/data/{references,uploads,runs,cache,outputs}
 if [[ "$EXISTING_POSTGRES" -eq 0 ]]; then
