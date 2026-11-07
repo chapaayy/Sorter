@@ -19,6 +19,9 @@ from .test_stage1_lifecycle import sandbox, db
     ("SAM 003 — Московское шоссе 15", "SAM 003", "Московское шоссе 15"),
     ("SAM 01 — Полевая 12", "SAM 01", "Полевая 12"),
     ("TLT 3245 — Южное шоссе 10", "TLT 3245", "Южное шоссе 10"),
+    ("MSK 0042 — Ленина 1", "MSK 0042", "Ленина 1"),
+    ("KZN 8 — Победы 3", "KZN 8", "Победы 3"),
+    ("ABCDE 123 — Садовая 2", "ABCDE 123", "Садовая 2"),
 ])
 def test_parse_construction_folders(name,key,address):
     parsed=parse_folder_name(name)
@@ -30,7 +33,7 @@ def test_parse_construction_folders(name,key,address):
     "SAM-0004", "SAM-0004 — Гагарина 64", "SAM 0004",
     "SAM 0004 - Гагарина 64", "sam 0004 — Гагарина 64",
     "SAM 0004 — ", "SAM 0004 — Пр-т/Ленина",
-    "XYZ 0004 — Адрес", "SAM 0004 — Адрес.",
+    "X1Z 0004 — Адрес", "SAM 0004 — Адрес.",
     "SAM 0004 —  Два пробела", "SAM 0004 — Адрес\\folder"
 ])
 def test_strict_import_rejects_invalid_folder(invalid):
@@ -40,7 +43,7 @@ def test_strict_import_rejects_invalid_folder(invalid):
 
 def test_preview_reports_all_invalid_and_never_mutates_database(thumbs):
     result=construction_catalog.preview([
-        "SAM 0004 — Гагарина 64", "SAM-0004", "XYZ 1234 — Адрес"
+        "SAM 0004 — Гагарина 64", "SAM-0004", "X1Z 1234 — Адрес"
     ])
     assert len(result["errors"])==2
     assert len(result["entries"])==1
@@ -159,3 +162,40 @@ def test_unknown_custom_construction_does_not_bypass_manifest_catalog(system):
             upload_id=uuid.uuid4(),sam="LED без регистрации",relative_path="photo.jpg",
             filename="photo.jpg",size=len(_jpg()))])
     assert err.value.status_code==422
+
+
+
+def test_manually_entered_city_code_is_accepted_for_catalog_and_bulk_import(system):
+    from server.api.routes import references as api
+    from server.services import reference_imports
+    from server.api.routes.reference_imports import ImportFile
+
+    # No city-registration or allowlist step: validate the format only.
+    created=construction_catalog.create("standard",city_code="MSK",number="0042",
+                                        address="Ленина 1")
+    assert created["sam"]=="MSK 0042"
+    assert created["city_code"]=="MSK"
+    assert next(row for row in api.list_references()["sam"]
+                if row["sam"]=="MSK 0042")["display_name"]=="MSK 0042 — Ленина 1"
+    plan=construction_catalog.preview(["MSK 0042 — Ленина 1",
+                                       "KZN 0008 — Победы 3"])
+    assert plan["errors"]==[]
+    assert len(plan["entries"])==2
+    assert plan["entries"][0]["existing"]
+    assert not plan["entries"][1]["existing"]
+
+    session=uuid.uuid4()
+    reference_imports.create(session)
+    registered=reference_imports.register_manifest(session,[ImportFile(
+        upload_id=uuid.uuid4(),sam="MSK 0042",relative_path="photo.jpg",
+        filename="photo.jpg",size=len(_jpg()))])
+    assert registered["expected"]==1
+
+
+@pytest.mark.parametrize("invalid",[
+    "M 0004", "ABCDEF 0004", "M1K 0004", "msk 0004",
+    "MSK-0004", "MSK 00A4"
+])
+def test_manual_city_format_stays_strict(invalid):
+    with pytest.raises(ValueError):
+        parse_key(invalid)

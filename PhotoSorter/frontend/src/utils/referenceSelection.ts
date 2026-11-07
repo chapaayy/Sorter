@@ -1,5 +1,5 @@
 /** Strict, fully-audited selection for bulk construction reference imports.
- * The server remains authoritative for city codes and existing addresses.
+ * City codes are any 2–5 uppercase Latin letters; server validates the format and known addresses.
  */
 import {ALLOWED,MAX_IMAGE_UPLOAD_BYTES} from './upload'
 import type {UploadEntry} from './upload'

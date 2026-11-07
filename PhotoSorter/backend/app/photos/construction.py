@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-CITIES = {"SAM": "Самара", "TLT": "Тольятти"}
+CITIES = {"SAM": "Самара", "TLT": "Тольятти"}  # Examples for UI, not a city allowlist.
 _NAME = re.compile(r"(?P<city>[A-Z]{2,5}) (?P<number>[0-9]{1,8}) — (?P<address>.+)\Z")
 _KEY = re.compile(r"(?P<city>[A-Z]{2,5}) (?P<number>[0-9]{1,8})\Z")
 _UNSAFE_ADDRESS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -31,8 +31,6 @@ def parse_key(value: str) -> tuple[str, str]:
     if match is None:
         raise ValueError("Идентификатор должен иметь вид SAM 0004")
     city = match["city"]
-    if city not in CITIES:
-        raise ValueError(f"Неизвестный код города: {city}")
     return city, match["number"]
 
 
@@ -43,8 +41,6 @@ def parse_folder_name(value: str) -> Construction:
     if match is None:
         raise ValueError("Ожидается формат: SAM 0004 — Гагарина 64")
     city, number, address = match["city"], match["number"], match["address"]
-    if city not in CITIES:
-        raise ValueError(f"Неизвестный код города: {city}")
     if (len(address) > 120 or address != address.strip() or
             address.endswith(".") or not address.strip() or
             _UNSAFE_ADDRESS.search(address) or "  " in address):

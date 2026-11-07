@@ -191,6 +191,8 @@ describe('strict construction library imports',()=>{
       sam:'SAM 0004',number:'0004',address:'Гагарина 64'
     })
     expect(parseConstructionFolder('TLT 01 — Ленина 25')?.sam).toBe('TLT 01')
+    expect(parseConstructionFolder('MSK 0004 — Арбат 3')?.sam).toBe('MSK 0004')
+    expect(parseConstructionFolder('KZN 17 — Центральная 10')?.sam).toBe('KZN 17')
     expect(parseConstructionFolder('SAM-0004 — Гагарина 64')).toBeNull()
     expect(parseConstructionFolder('SAM 0004 - Гагарина 64')).toBeNull()
     expect(parseConstructionFolder('SAM 0004')).toBeNull()

@@ -14,14 +14,14 @@ const emit=defineEmits<{
 }>()
 const mode=ref<Mode>('standard'),city=ref('SAM'),number=ref(''),address=ref(''),name=ref('')
 const busy=ref(false),importBusy=ref(false),error=ref('')
-const title=computed(()=>city.value.toUpperCase()+' '+number.value.trim()+' — '+address.value.trim())
+const title=computed(()=>city.value.trim().toUpperCase()+' '+number.value.trim()+' — '+address.value.trim())
 function close(){if(!busy.value&&!importBusy.value)emit('close')}
 async function save(){
  if(busy.value||importBusy.value)return
  busy.value=true;error.value=''
  try{
   const payload=mode.value==='standard'
-    ?{kind:'standard' as const,city_code:city.value.toUpperCase(),number:number.value.trim(),address:address.value.trim()}
+    ?{kind:'standard' as const,city_code:city.value.trim().toUpperCase(),number:number.value.trim(),address:address.value.trim()}
     :{kind:'custom' as const,name:name.value.trim()}
   const entry=await referenceApi.createConstruction(payload)
   emit('created',entry)
@@ -46,7 +46,11 @@ function importState(running:boolean){importBusy.value=running}
     <template v-if="mode==='standard'">
      <div class="grid2">
       <label class="field">Код города
-       <select v-model="city" required><option value="SAM">SAM — Самара</option><option value="TLT">TLT — Тольятти</option></select>
+       <input v-model.trim="city" @input="city=city.toUpperCase()" required
+         minlength="2" maxlength="5" pattern="[A-Z]{2,5}"
+         autocapitalize="characters" autocomplete="off" :spellcheck="false"
+         placeholder="SAM, MSK, KZN"/>
+       <span class="meta">Любой код из 2–5 латинских букв</span>
       </label>
       <label class="field">Номер конструкции
        <input v-model="number" required maxlength="8" pattern="[0-9]{1,8}" placeholder="0004"/></label>
