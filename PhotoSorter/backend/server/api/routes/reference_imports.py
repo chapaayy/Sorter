@@ -16,7 +16,8 @@ router=APIRouter(prefix="/api/reference-imports",tags=["reference-imports"])
 def _enabled():
     # Prevent accidentally populating a queue that stage-1 worker cannot claim.
     # Stage 3 activation is a separate, tested deployment decision.
-    if os.environ.get("REFERENCE_IMPORT_STAGING_ENABLED")!="1":
+    if (os.environ.get("REFERENCE_IMPORT_STAGING_ENABLED")!="1" or
+        os.environ.get("PHOTOSORTER_UNIFIED_QUEUE")!="1"):
         raise HTTPException(503,"Новая загрузка образцов пока не включена")
 
 class NewSession(BaseModel):

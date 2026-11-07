@@ -51,3 +51,7 @@
 ## Этап 2 импорта образцов
 
 `server/api/routes/reference_imports.py` обслуживает отдельные staging-сессии только при `REFERENCE_IMPORT_STAGING_ENABLED=1` (по умолчанию выключено). До активации единого Worker в этапе 3 не включать этот переключатель на рабочем сервере и не снимать блокировку legacy UI. Не направлять staged images в `data/references/` до их полной подготовки и атомарной публикации. Не чистить/удалять файлы активных или завершённых сессий без отдельного безопасного механизма. См. `docs/REFERENCE_QUEUE_STAGE2.md`.
+
+## Общая FIFO — этап 3
+
+Не включать `REFERENCE_IMPORT_STAGING_ENABLED=1` без `PHOTOSORTER_UNIFIED_QUEUE=1`. Один global leader выполняет оба вида тяжёлых заданий; `work_queue.seq` — источник порядка. Snapshot published reference members фиксируется только на claim ФО; ссылки должны быть immutable. Любая неудачная подготовка запрещает молчаливый claim следующего ФО до retry или явного skip. Запрет изменений MegaLoc maths сохраняется. Прежде чем снимать старую UI-блокировку, проверить `docs/REFERENCE_QUEUE_STAGE3.md` и полный staging restore/acceptance.

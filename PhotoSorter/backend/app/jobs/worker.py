@@ -14,7 +14,11 @@ def process(job):
     info=job.info
     job.log('INFO','Сканирование папок и проверка изображений')
     scan_started=time.perf_counter()
-    refs=references(Path(info['references']),warn=lambda s:job.log('WARNING',s))
+    if info.get("reference_members") is not None:
+        # Pinned at DB claim; never rescan mutable live reference directories.
+        refs=[(Path(member["path"]),member["sam"]) for member in info["reference_members"]]
+    else:
+        refs=references(Path(info['references']),warn=lambda s:job.log('WARNING',s))
     all_queries=images(Path(info['new_photos']))
     scan_seconds=round(time.perf_counter()-scan_started,3)
     stamps={str(path):(path.stat().st_size,path.stat().st_mtime_ns) for path in all_queries}
@@ -40,7 +44,7 @@ def process(job):
     try:
         load_started=time.perf_counter()
         engine=MegaLocEngine()
-        if os.environ.get("PHOTOSORTER_REFERENCE_CACHE") == "1":
+        if info.get("reference_members") is not None or os.environ.get("PHOTOSORTER_REFERENCE_CACHE") == "1":
             from server.reference_cache import ReferenceCachedMegaLoc
             engine=ReferenceCachedMegaLoc(engine)
         timings['model_load_seconds']=round(time.perf_counter()-load_started,3)

@@ -14,9 +14,11 @@ _EDIT_LOCK = 723409133
 
 
 def _active_jobs(db):
-    return db.execute(
+    return (db.execute(
         "SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1"
-    ).fetchone() is not None
+    ).fetchone() is not None or
+        db.execute("""SELECT 1 FROM work_queue WHERE kind='reference_preparation'
+          AND state IN ('queued','running','failed','interrupted','blocked') LIMIT 1""").fetchone() is not None)
 
 
 def preview(folders: list[str]) -> dict:

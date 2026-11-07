@@ -123,7 +123,8 @@ def test_additive_migration_legacy_rows_survive(db):
                 "0011_reference_sessions.sql",
                 "0012_work_queue.sql",
                 "0013_reference_versions_notices.sql",
-                "0014_reference_import_transfers.sql"}
+                "0014_reference_import_transfers.sql",
+                "0015_unified_worker.sql"}
             assert conn.execute("SELECT id FROM batches WHERE id=%s",(old,)).fetchone()[0]==old
         finally:
             conn.execute("RESET search_path")

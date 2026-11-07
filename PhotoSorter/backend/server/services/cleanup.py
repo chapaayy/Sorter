@@ -33,6 +33,9 @@ def request(batch_id, *, only_if_due=False):
                to_jsonb(CASE WHEN status='queued' THEN 'stopped' ELSE 'stopping' END)),
             updated_at=now()
             WHERE batch_id=%s AND status IN ('queued','running','stopping')""",(batch_id,))
+        db.execute("""UPDATE work_queue w SET state='stopped',finished_at=now()
+            FROM jobs j WHERE w.fo_run_id=j.id AND j.batch_id=%s
+            AND w.state='queued' AND j.status='stopped'""",(batch_id,))
         db.execute("""INSERT INTO cleanup_tasks(batch_id,state) VALUES (%s,'pending')
             ON CONFLICT(batch_id) DO UPDATE SET state='pending',error=NULL,
             updated_at=now()""",(batch_id,))

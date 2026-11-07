@@ -8,7 +8,7 @@ from psycopg.types.json import Jsonb
 from app.config import DATA_DIR
 from app.jobs.runtime import Job
 from .database import connect,save_snapshot
-from .db.repositories import queue
+from .db.repositories import queue,work_queue
 
 router=APIRouter(prefix="/api/runs",tags=["jobs"])
 TERMINAL=set(queue.TERMINAL)
@@ -54,7 +54,9 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
     Caller has the global scheduling advisory lock; the batch row is FOR UPDATE.
     Existing queue, snapshot and worker contracts remain unchanged.
     """
-    if queue.queue_count(db)>=queue.MAX_WAITING:
+    import os
+    if queue.queue_count(db)>=queue.MAX_WAITING and (
+        source=="manual" or os.environ.get("PHOTOSORTER_UNIFIED_QUEUE")!="1"):
         raise HTTPException(429,"Очередь заполнена: максимум 20 ожидающих запусков")
     batch=locked_batch or db.execute(
         "SELECT id,delete_state,upload_manifest_state,auto_process_state FROM batches "
@@ -89,6 +91,7 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
         WHERE id=%s""",(data.batch_id,))
     db.execute("INSERT INTO jobs(id,batch_id,status,snapshot) VALUES (%s,%s,'queued',%s)",
                (run_id,data.batch_id,Jsonb(info)))
+    work_queue.insert_fo(db,run_id)
     if source=="manual" and batch["auto_process_state"]=="waiting":
         db.execute("""UPDATE batches SET auto_process_state='manual',
             auto_process_error=NULL WHERE id=%s""",(data.batch_id,))
@@ -117,6 +120,8 @@ def stop(run_id:str):
             finished_at=CASE WHEN %s='stopped' THEN now() ELSE finished_at END,
             updated_at=now() WHERE id=%s""",
             (info["status"],Jsonb(info),info["status"],run_id))
+        if info["status"]=="stopped":
+            work_queue.finish_fo(db,run_id,"stopped")
     return info
 
 class ServerJob(Job):

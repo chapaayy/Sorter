@@ -5,7 +5,8 @@ import psycopg
 from psycopg.rows import dict_row
 from .database import connect,wait_and_initialize,DB_URL
 from .services import heartbeat
-from .db.repositories import queue
+from .db.repositories import queue,work_queue
+from .workers import reference_prepare
 from .jobs import ServerJob
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
@@ -16,9 +17,40 @@ def stop(*_):
     global RUN
     RUN=False
 
+def unified_enabled():
+    return os.environ.get('PHOTOSORTER_UNIFIED_QUEUE') == '1'
+
 def claim_job():
     with connect() as db:
+        if unified_enabled():
+            return work_queue.claim_next(db)
         return queue.next_job(db)
+
+def _process_task(item):
+    if not unified_enabled():
+        ServerJob(item).run()
+        return
+    if item['kind']=='fo_processing':
+        info=item['info']
+        try:
+            ServerJob(info).run()
+        except BaseException as exc:
+            with connect() as db:
+                queue.finish_job(db,item['id'],'failed')
+                work_queue.finish_fo(db,item['id'],'failed')
+            raise
+        return
+    try:
+        result=reference_prepare.run(item['id'])
+        logging.info('Reference preparation %s completed: %s',item['id'],result)
+    except BaseException as exc:
+        reason=f'{type(exc).__name__}: {exc}'[:1000]
+        logging.exception('Reference preparation %s failed',item['id'])
+        with connect() as db:
+            status='interrupted' if isinstance(exc,reference_prepare.PreparationCancelled) else 'failed'
+            work_queue.finish_preparation(db,item['id'],status,reason)
+        if isinstance(exc,(KeyboardInterrupt,SystemExit)):
+            raise
 
 def _leader_watch(connection,stop_event):
     while not stop_event.wait(5):
@@ -40,18 +72,25 @@ def main():
                     logging.info("Another MegaLoc worker owns global leader lock")
                     time.sleep(5)
                     continue
-                with connect() as db:queue.mark_interrupted(db)
+                with connect() as db:
+                    queue.mark_interrupted(db)
+                    if unified_enabled():work_queue.mark_interrupted(db)
                 watch_stop=threading.Event()
                 watcher=threading.Thread(target=_leader_watch,args=(leader,watch_stop),daemon=True)
                 watcher.start()
                 try:
                     logging.info("MegaLoc leader ready; FIFO queue enabled")
                     while RUN:
-                        info=claim_job()
+                        try:info=claim_job()
+                        except Exception:
+                            logging.exception('Could not claim next task; FIFO is blocked safely')
+                            time.sleep(5)
+                            continue
                         if info:
-                            logging.info("Processing %s",info["id"])
-                            try:ServerJob(info).run()
-                            except Exception:logging.exception("Unhandled job exception for %s",info["id"])
+                            ident=info['id']
+                            logging.info('Processing %s',ident)
+                            try:_process_task(info)
+                            except Exception:logging.exception('Unhandled job exception for %s',ident)
                         else:time.sleep(1)
                 finally:
                     watch_stop.set()

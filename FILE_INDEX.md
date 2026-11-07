@@ -199,3 +199,14 @@
 - `PhotoSorter/frontend/src/api/referenceImports.ts` — типы статусов и запросы для будущего UI.
 - `PhotoSorter/backend/tests/test_reference_import_stage2.py` — PostgreSQL + staging, retry, concurrent, duplicate и checksum регрессии.
 - `docs/REFERENCE_QUEUE_STAGE2.md` — контракт и безопасная граница внедрения.
+
+## Этап 3 — новые/изменённые модули
+
+- `backend/server/db/migrations/0015_unified_worker.sql` — source_kind и idempotent действия подготовки/ошибки.
+- `backend/server/storage/reference_versions.py` — создание immutable копий legacy эталонов.
+- `backend/server/services/reference_publication.py` — версия/состав/публикация и доактивационная сверка legacy.
+- `backend/server/workers/reference_prepare.py` — единственный CPU-процесс подготовки, cache, progress, публикация.
+- `backend/server/db/repositories/work_queue.py` — FIFO claim + snapshot, восстановление и блокировка при ошибке.
+- `backend/server/api/routes/work_queue.py` — список задач и явные retry/skip.
+- `backend/tests/test_unified_queue_stage3.py` — PostgreSQL сценарии FIFO/snapshot/failure/recovery.
+- `docs/REFERENCE_QUEUE_STAGE3.md` — архитектура и правила безопасного включения.

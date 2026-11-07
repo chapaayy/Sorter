@@ -28,8 +28,10 @@ def sam_id(value):
 
 def _editable(db,source):
     db.execute("SELECT pg_advisory_xact_lock(723409133)")
-    if db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
-        raise HTTPException(409,"Образцы заблокированы на время обработки")
+    if (db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone()
+        or db.execute("""SELECT 1 FROM work_queue WHERE kind='reference_preparation'
+            AND state IN ('queued','running','blocked','failed','interrupted') LIMIT 1""").fetchone()):
+        raise HTTPException(409,"Образцы заблокированы на время обработки или подготовки")
     if db.execute("""SELECT 1 FROM uploads WHERE kind='reference' AND sam=%s
                    AND NOT finalized LIMIT 1""",(source,)).fetchone():
         raise HTTPException(409,"Дождитесь окончания загрузок этой SAM")
@@ -86,6 +88,9 @@ def rename(source,target):
         with connect() as db:
             _editable(db,source)
             _historical_reference_guard(db,source)
+            if db.execute("""SELECT 1 FROM reference_version_members
+               WHERE sam=%s AND source_kind='staged' LIMIT 1""",(source,)).fetchone():
+                raise HTTPException(409,"Опубликованные подготовленные образцы нельзя переименовать старым способом")
             if db.execute("""SELECT 1 FROM uploads WHERE kind='reference' AND sam=%s LIMIT 1""",
                           (target,)).fetchone():
                 raise HTTPException(409,"SAM с таким именем уже существует")
@@ -136,6 +141,9 @@ def delete(source):
     with connect() as db:
         _editable(db,source)
         _historical_reference_guard(db,source)
+        if db.execute("""SELECT 1 FROM reference_version_members
+             WHERE sam=%s AND source_kind='staged' LIMIT 1""",(source,)).fetchone():
+            raise HTTPException(409,"Опубликованные подготовленные образцы нельзя удалить старым способом")
         rows=db.execute("""SELECT id,target_path FROM uploads
             WHERE kind='reference' AND sam=%s AND finalized FOR UPDATE""",
             (source,)).fetchall()

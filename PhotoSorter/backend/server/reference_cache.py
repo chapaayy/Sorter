@@ -14,7 +14,26 @@ from app.system.model_store import signature
 from .database import connect
 
 REFERENCE_ROOT=(DATA_DIR/'references').resolve()
+# Only these directories may contain reference inputs, never FO uploads.
+REFERENCE_ROOTS=(REFERENCE_ROOT,(DATA_DIR/'reference_objects').resolve(),
+                 (DATA_DIR/'reference_staging').resolve())
 CACHE_DIR=DATA_DIR/'cache'/'megaloc'/'references'
+
+def cached_feature(db,digest,fingerprint):
+    """Validate the stored vector before trusting a DB cache hit."""
+    row=db.execute("""SELECT cache_path FROM reference_cache
+        WHERE source_hash=%s AND model_signature=%s""",(digest,fingerprint)).fetchone()
+    if not row:return None
+    target=Path(row["cache_path"])
+    if not target.resolve().is_relative_to(CACHE_DIR.resolve()) or not target.is_file():
+        return None
+    try:
+        arr=np.load(target,allow_pickle=False)
+        if arr.ndim==1 and arr.size>0 and np.isfinite(arr).all():
+            return arr.astype('float32')
+    except (OSError,ValueError,EOFError):
+        pass
+    return None
 
 
 class ReferenceCachedMegaLoc:
@@ -34,7 +53,8 @@ class ReferenceCachedMegaLoc:
         paths=[Path(p) for p in paths]
         if not paths:return
         # FO always uses the original bounded batched extractor.
-        if not all(p.resolve().is_relative_to(REFERENCE_ROOT) for p in paths):
+        if not all(any(p.resolve().is_relative_to(root) for root in REFERENCE_ROOTS)
+                   for p in paths):
             yield from self.engine.extract_many(paths,stop=stop)
             return
         cached={};missing=[];hashes={}
@@ -45,17 +65,10 @@ class ReferenceCachedMegaLoc:
                     with path.open('rb') as stream:
                         digest=hashlib.file_digest(stream,'sha256').hexdigest()
                     hashes[path]=digest
-                    row=db.execute('SELECT cache_path FROM reference_cache WHERE source_hash=%s AND model_signature=%s',
-                                   (digest,self.fingerprint)).fetchone()
-                    if row:
-                        cache=Path(row['cache_path'])
-                        if cache.is_relative_to(CACHE_DIR.resolve()) and cache.is_file():
-                            try:
-                                arr=np.load(cache,allow_pickle=False)
-                                if arr.ndim==1 and arr.size>0 and np.isfinite(arr).all():
-                                    cached[path]=(arr.astype('float32'),None)
-                                    continue
-                            except (OSError,ValueError,EOFError):pass
+                    vector=cached_feature(db,digest,self.fingerprint)
+                    if vector is not None:
+                        cached[path]=(vector,None)
+                        continue
                     missing.append(path)
                 except Exception as exc:cached[path]=(None,exc)
         generated={}

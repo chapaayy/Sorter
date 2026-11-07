@@ -98,3 +98,7 @@ PYTHONPATH=PhotoSorter/backend python -m pytest -q PhotoSorter/backend/tests
 ### Этап 2: staging-импорт образцов (API выключен)
 
 Добавлены отдельные серверные сессии и восстановление загрузок образцов через `data/reference_staging/`, с подтверждением дублей и отдельными задачами подготовки в будущей общей очереди. До этапа 3 **не включайте** `REFERENCE_IMPORT_STAGING_ENABLED=1`: текущий Worker ещё не исполняет новые задачи. Старые загрузки и UI продолжают работать без изменений. См. [docs/REFERENCE_QUEUE_STAGE2.md](docs/REFERENCE_QUEUE_STAGE2.md).
+
+### Общая очередь и подготовка образцов (этап 3)
+
+Реализованы FIFO-dispatch по `work_queue`, immutable версии библиотеки, подготовка образцов через кэш и закрепление версии на старте ФО. Для безопасного перехода новая схема активируется только с `PHOTOSORTER_UNIFIED_QUEUE=1`; staging также требует `REFERENCE_IMPORT_STAGING_ENABLED=1`. По умолчанию работающий сайт не переключается; порядок включения и ограничения описаны в [docs/REFERENCE_QUEUE_STAGE3.md](docs/REFERENCE_QUEUE_STAGE3.md). VPS не обновлялся.

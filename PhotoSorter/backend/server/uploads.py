@@ -82,9 +82,11 @@ def _create_upload(payload:BeginUpload, file_id:uuid.UUID):
     try:
         with connect() as db:
             if payload.kind=='reference':db.execute('SELECT pg_advisory_xact_lock(723409133)')
-            if payload.kind=='reference' and db.execute(
-                 "SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
-                raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
+            if payload.kind=='reference' and (
+                 db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone()
+                 or db.execute("""SELECT 1 FROM work_queue WHERE kind='reference_preparation'
+                    AND state IN ('queued','running','blocked','failed','interrupted') LIMIT 1""").fetchone()):
+                raise HTTPException(409,'Нельзя изменять Образцы во время сортировки или подготовки')
             if payload.kind=='reference':
                 try: sam=construction_catalog.ensure_upload(db,sam,payload.address)
                 except ValueError as exc: raise HTTPException(422,str(exc)) from exc
@@ -224,8 +226,11 @@ def _finalize_sync(upload_id: str):
             batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR SHARE',(row['batch_id'],)).fetchone()
             if not batch or batch['delete_state']!='active':
                 raise HTTPException(409,'Партия удаляется или удалена')
-        if row['kind']=='reference' and db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone():
-            raise HTTPException(409,'Нельзя изменять Образцы во время сортировки')
+        if row['kind']=='reference' and (
+            db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','stopping') LIMIT 1").fetchone()
+            or db.execute("""SELECT 1 FROM work_queue WHERE kind='reference_preparation'
+                 AND state IN ('queued','running','blocked','failed','interrupted') LIMIT 1""").fetchone()):
+            raise HTTPException(409,'Нельзя изменять Образцы во время сортировки или подготовки')
         if row['kind']=='fo' and db.execute('SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1',(row['batch_id'],)).fetchone():
             raise HTTPException(409,'Партия уже запущена')
     if row['finalized']:return {'path':row['target_path'],'already_finalized':True}
@@ -248,6 +253,9 @@ def _finalize_sync(upload_id: str):
     # Prevent duplicates when a SAM folder upload is restarted after an error.
     # The transaction lock covers both the duplicate check and registration.
     with connect() as db:
+        if row['kind']=='fo' and os.environ.get("PHOTOSORTER_UNIFIED_QUEUE")=="1":
+            # Strict lock order: global FIFO first, then batch FOR UPDATE.
+            db.execute("SELECT pg_advisory_xact_lock(723409133)")
         if row['kind']=='fo':
             # Serialize commit/reconciliation with other finishes and enqueue.
             batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR UPDATE',
@@ -260,6 +268,9 @@ def _finalize_sync(upload_id: str):
                 return {'path':current['target_path'],'already_finalized':True}
         if row['kind']=='reference':
             db.execute('SELECT pg_advisory_xact_lock(723409133)')
+            if db.execute("""SELECT 1 FROM work_queue WHERE kind='reference_preparation'
+                AND state IN ('queued','running','blocked','failed','interrupted') LIMIT 1""").fetchone():
+                raise HTTPException(409,'Подготовка образцов ожидает завершения')
             db.execute('SELECT pg_advisory_xact_lock(723409134)')
             previous=db.execute(
                 "SELECT target_path FROM uploads WHERE kind='reference' AND finalized "
@@ -288,7 +299,10 @@ def _finalize_sync(upload_id: str):
                    'WHERE id=%s',(digest,str(target),row['id']))
         thumbnails.enqueue(db,row['id'],digest)
         if row['batch_id']:
-            upload_manifest.reconcile_locked(db,row['batch_id'])
+            complete=upload_manifest.reconcile_locked(db,row['batch_id'])
+            if complete and os.environ.get("PHOTOSORTER_UNIFIED_QUEUE")=="1":
+                from .services.auto_processing import enqueue_on_manifest_completion
+                enqueue_on_manifest_completion(db,row['batch_id'])
             batch_repository.refresh_upload_state(db,row['batch_id'])
     if row['kind']=='fo':path.unlink(missing_ok=True)
     return {'path':str(target),'sha256':digest,'already_finalized':False}

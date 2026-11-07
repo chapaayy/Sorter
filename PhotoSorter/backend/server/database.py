@@ -107,3 +107,6 @@ def save_snapshot(info):
           updated_at=now(),
           finished_at=CASE WHEN %s THEN now() ELSE finished_at END
           WHERE id=%s""",(terminal,state,Jsonb(info),terminal,state,terminal,info['id']))
+        if terminal:
+            from .db.repositories import work_queue
+            work_queue.finish_fo(db,info['id'],state)

@@ -266,4 +266,7 @@ def test_legacy_api_stays_separate_and_staged_routes_default_off(isolated_import
         routes._enabled()
     assert blocked.value.status_code==503
     monkeypatch.setenv("REFERENCE_IMPORT_STAGING_ENABLED","1")
+    with pytest.raises(HTTPException):
+        routes._enabled()
+    monkeypatch.setenv("PHOTOSORTER_UNIFIED_QUEUE","1")
     routes._enabled()

@@ -105,3 +105,31 @@ def schedule_ready(limit:int=10):
         except Exception:
             LOGGER.exception("Auto enqueue failed for batch %s",batch_id)
     return results
+
+def enqueue_on_manifest_completion(db,batch_id):
+    """Stage 3: reserve FIFO position in the same transaction as last FO finish.
+
+    Caller MUST hold advisory key 723409133 before locking the batch row.
+    Missing prerequisites are recorded for the cleanup fallback, not a lost FO.
+    """
+    from .. import jobs
+    batch=db.execute("""SELECT id,auto_process_state,auto_process_threshold,
+       upload_manifest_state,delete_state FROM batches WHERE id=%s""",
+       (batch_id,)).fetchone()
+    if (not batch or batch["auto_process_state"]!="waiting" or
+         batch["upload_manifest_state"]!="complete" or
+         batch["delete_state"]!="active"):
+        return None
+    try:
+        with db.transaction():
+            result=jobs._enqueue_locked(db,jobs.NewRun(
+                batch_id=batch_id,grouping_threshold=batch["auto_process_threshold"]),
+                source="automatic",locked_batch=batch)
+    except HTTPException as exc:
+        db.execute("""UPDATE batches SET auto_process_error=%s WHERE id=%s""",
+                   (str(exc.detail)[:500],batch_id))
+        return None
+    db.execute("""UPDATE batches SET auto_process_state='queued',
+        auto_process_run_id=%s,auto_process_error=NULL WHERE id=%s""",
+        (result["id"],batch_id))
+    return result["id"]
