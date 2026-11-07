@@ -19,11 +19,11 @@ const emit=defineEmits<{
 }>()
 const entries=ref<UploadEntry[]>([]),folder=ref(''),batchId=ref(''),running=ref(false),error=ref(''),finished=ref(0)
 const amounts=ref<number[]>([]),phase=ref('')
-const autoProcess=ref(false),autoThreshold=ref(.50),manifestRegistered=ref(false)
+const autoProcess=ref(false),autoThreshold=ref(.50),manifestRegistered=ref(false),hasSavedSession=ref(false)
 let controller:AbortController|null=null
 const total=computed(()=>entries.value.reduce((s,e)=>s+e.file.size,0))
 const uploaded=computed(()=>amounts.value.reduce((a,b)=>a+b,0))
-const resumable=computed(()=>!!entries.value.length&&!!storedId())
+const resumable=computed(()=>!!entries.value.length&&hasSavedSession.value)
 const percent=computed(()=>total.value?Math.min(100,100*uploaded.value/total.value):0)
 watch([running,percent,phase],()=>emit('state',running.value,percent.value,phase.value),{immediate:true})
 const notice=useNoticeStore(),uploadSettings=useUploadSettingsStore()
@@ -43,14 +43,14 @@ function choose(e:Event){
     const batch=directoryEntries(files)
     entries.value=batch.entries;folder.value=batch.folder;batchId.value='';amounts.value=entries.value.map(()=>0)
     manifestRegistered.value=false
-    error.value='';finished.value=0;phase.value=''
+    error.value='';finished.value=0;phase.value='';hasSavedSession.value=!!storedId()
   }catch(err){error.value=errorText(err)}
 }
 function storageKey(){
   return 'ps.folder:'+folder.value+':'+entries.value.length+':'+total.value
 }
 function storedId(){try{return localStorage.getItem(storageKey())}catch{return null}}
-function saveId(id:string){try{localStorage.setItem(storageKey(),id)}catch{}}
+function saveId(id:string){try{localStorage.setItem(storageKey(),id)}catch{};hasSavedSession.value=true}
 async function start(){
   if(!entries.value.length||running.value)return
   error.value='';running.value=true;phase.value='Подготовка партии…';controller=new AbortController()
