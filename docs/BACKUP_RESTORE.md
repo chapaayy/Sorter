@@ -27,3 +27,5 @@ CI `ci_restore_drill.py` действительно вызывает `pg_dump` �
 ## Новые данные Stage 4
 
 Согласованная внешняя копия должна включать новые PostgreSQL таблицы `reference_library_versions`, `reference_version_members`, `reference_library_events`, `library_notice_cursors`, `fo_library_upload_receipts`, `reference_import_*`, `reference_preparation_*`, `work_queue`; из `PhotoSorter/data` сохранять `reference_staging/`, `reference_objects/`, кэш эмбеддингов, исходники и outputs. Файлы staging/immutable и курсоры должны быть восстановлены вместе с PostgreSQL, а не выборочно. Перед переносом выполнить offsite verify + restore-test на пустой отдельной DB и проверить Caddy TLS volumes. Не использовать `docker compose down -v`.
+
+В Postgres 17 snapshot входит `fo_library_upload_receipts` и миграционная запись `library_notice_cursors` для ранее завершённых ФО (schema `0017`). При восстановлении на другом сервере нельзя сбрасывать cursor: иначе следующая публикация может создать ложное/пропущенное предупреждение.

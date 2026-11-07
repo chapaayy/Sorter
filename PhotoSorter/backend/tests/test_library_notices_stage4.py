@@ -154,3 +154,80 @@ def test_active_and_history_queue_views_are_disjoint(system):
     assert [task["fo_run_id"] for task in history["tasks"]]==[one]
     with pytest.raises(HTTPException):
         api_queue.list_work_queue(scope="invalid")
+
+def test_migration_seeds_existing_fo_without_fabricating_earlier_revision(system):
+    """Upgrades must remember yesterday's FO before tomorrow's reference update."""
+    from pathlib import Path
+    from server.db.migration_runner import MIGRATIONS
+    own=batch()
+    with database.connect() as db:
+        db.execute("""UPDATE batches SET upload_manifest_state='complete',
+             upload_manifest_completed_at=now() WHERE id=%s""",(own,))
+        assert library_notices.status()["last_fo_uploaded_at"] is None
+        # This simulated old installation already has finished FO but no
+        # installation notification cursor at the time stage4 is installed.
+        migration=(MIGRATIONS/"0017_notice_existing_fo_baseline.sql").read_text(encoding="utf-8")
+        statements="\n".join(
+            row for row in migration.splitlines()
+            if not row.lstrip().startswith("--"))
+        for statement in statements.split(";"):
+            if statement.strip():db.execute(statement)
+        seeded=db.execute("""SELECT last_fo_upload_version_id,
+                 acknowledged_version_id,last_fo_uploaded_at
+                 FROM library_notice_cursors WHERE scope_key='installation'""").fetchone()
+        current=db.execute("SELECT current_version_id FROM reference_library_state WHERE id=1").fetchone()["current_version_id"]
+        assert seeded["last_fo_upload_version_id"]==current
+        assert seeded["acknowledged_version_id"]==current
+        assert seeded["last_fo_uploaded_at"] is not None
+    version=publish()
+    assert library_notices.status()["notice"]
+    assert library_notices.status()["notice_version_id"]==version
+    # Running the same migration again can never hide an unacknowledged update.
+    with database.connect() as db:
+        for statement in statements.split(";"):
+            if statement.strip():db.execute(statement)
+    assert library_notices.status()["notice"]
+
+
+def test_first_completed_legacy_fo_baseline_migration_no_duplicate_cursor(system):
+    """An existing installation with already processed FO has a baseline."""
+    from server.db.migration_runner import MIGRATIONS
+    from psycopg.types.json import Jsonb
+    own=batch()
+    photo=uuid.uuid4()
+    run_id="20261107T190000-"+uuid.uuid4().hex[:12]
+    with database.connect() as db:
+        db.execute("""INSERT INTO uploads(id,kind,batch_id,filename,declared_size,
+             received,finalized) VALUES (%s,'fo',%s,'legacy.jpg',100,100,true)
+        """,(photo,own))
+        db.execute("""INSERT INTO jobs(id,batch_id,status,snapshot)
+             VALUES (%s,%s,'completed',%s)""",(run_id,own,Jsonb({"id":run_id})))
+        sql=(MIGRATIONS/"0017_notice_existing_fo_baseline.sql").read_text(encoding="utf-8")
+        sql="\n".join(x for x in sql.splitlines() if not x.lstrip().startswith("--"))
+        db.execute(sql)
+        cursor=db.execute("""SELECT acknowledged_version_id,last_fo_uploaded_at
+            FROM library_notice_cursors WHERE scope_key='installation'""").fetchone()
+        assert cursor and cursor["last_fo_uploaded_at"] is not None
+    assert library_notices.status()["notice"] is False
+    publish()
+    assert library_notices.status()["notice"] is True
+
+def test_bootstrap_seeds_legacy_fo_without_resetting_ack(system):
+    """Startup is idempotent even if 0017 ran before V1 was published."""
+    own=batch()
+    with database.connect() as db:
+        db.execute("""UPDATE batches SET upload_manifest_state='complete',
+            upload_manifest_completed_at=now() WHERE id=%s""",(own,))
+        assert db.execute("""SELECT 1 FROM library_notice_cursors
+            WHERE scope_key='installation'""").fetchone() is None
+    database.initialize()
+    seeded=library_notices.status()
+    assert seeded["last_fo_uploaded_at"] is not None
+    assert seeded["acknowledged_version_id"]==seeded["current_version_id"]
+    v2=publish()
+    assert library_notices.status()["notice"] is True
+    database.initialize()
+    assert library_notices.status()["notice"] is True
+    library_notices.acknowledge(v2)
+    database.initialize()
+    assert library_notices.status()["notice"] is False

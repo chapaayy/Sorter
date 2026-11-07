@@ -125,7 +125,6 @@
 | `frontend/src/features/references/ReferencePhotoUploader.vue` | Добавление фотографий в выбранную конструкцию |
 | `frontend/src/features/processing/` | Панель управления MegaLoc и подробности текущей обработки; запуск из ФО |
 | `frontend/src/features/processing/ProcessingOverview.vue` | Состояние модели, Worker heartbeat, серверные настройки и счётчики |
-| `frontend/src/features/processing/ProcessingQueue.vue` | Упорядоченная очередь и остановка заданий через подтверждение в родителе |
 | `frontend/src/features/processing/ProcessingHistory.vue` | Широкие строки истории с реальными метриками, поиском и пагинацией |
 | `frontend/src/utils/processingDashboard.ts` | Чистые правила сортировки очереди, выбора running, формат измеренных длительностей |
 | `frontend/src/features/results/` | Результаты, ZIP, сохранение/retention |
@@ -226,3 +225,5 @@
 - `PhotoSorter/backend/tests/test_library_notices_stage4.py` — SQL notices, FIFO scopes, idempotent receipts.
 - `PhotoSorter/frontend/tests/{workQueue,libraryNoticesApi}.test.ts` — UI helpers и API-контракты.
 - `docs/REFERENCE_QUEUE_STAGE4.md` — договорённые сценарии и граница деплоя.
+
+- `PhotoSorter/backend/server/db/migrations/0017_notice_existing_fo_baseline.sql` — одноразовый начальный cursor для установок с ранее завершёнными ФО без выдуманных исторических версий.

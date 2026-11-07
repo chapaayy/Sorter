@@ -80,6 +80,10 @@ def initialize():
         # Additive metadata only; legacy file scans and workers remain unchanged.
         from .services.reference_versions import ensure_baseline
         ensure_baseline(db)
+        # On first upgrade V1 may be created *after* SQL migrations. Seed the
+        # installation cursor only once baseline publication is available.
+        from .services.library_notices import seed_existing_fo_cursor
+        seed_existing_fo_cursor(db)
 
 
 def wait_and_initialize(timeout=90):

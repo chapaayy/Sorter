@@ -454,7 +454,7 @@ test('FO library notice appears once, shows events and requires explicit acknowl
   await page.goto('/fo')
   expect(acks).toBe(0)
   await page.getByRole('button',{name:'+ Загрузить папку'}).click()
-  const notice=page.getByRole('region',{name:'Уведомление об обновлении образцов'})
+  const notice=page.locator('section[aria-label="Уведомление об обновлении образцов"]')
   await expect(notice).toBeVisible()
   await expect(notice.getByText('Результаты новых обработок могут отличаться от прежних.')).toBeVisible()
   await notice.getByRole('button',{name:'Что изменилось'}).click()
@@ -529,7 +529,7 @@ test('staged reference upload remains available during active FO and uses manife
   await page.locator('.upload-drop input[type="file"]').setInputFiles({
     name:'new.jpg',mimeType:'image/jpeg',buffer:source
   })
-  await page.getByRole('button',{name:'Добавить фото'}).click()
+  await page.getByRole('button',{name:'Добавить фото',exact:true}).click()
   await expect.poll(()=>queued).toBe(1)
   expect(finished).toBe(true)
   expect(registered.sam).toBe('SAM-0001')

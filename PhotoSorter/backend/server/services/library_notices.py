@@ -38,6 +38,37 @@ def _changed_since(db,version_id):
           AND e.event_kind=ANY(%s)
     """,(version_id, list(RECOGNITION_EVENTS))).fetchone()
 
+def seed_existing_fo_cursor(db):
+    """On upgrade, seed the global acknowledgement after a verified baseline.
+
+    The SQL migration also attempts this for installs with existing versions.
+    This second, ON CONFLICT DO NOTHING path covers direct upgrades where
+    ensure_baseline publishes the first V1 *after* migrations run.
+    """
+    current=_latest(db)
+    if not current or current["id"] is None:
+        return
+    db.execute("""
+        WITH old_completed AS (
+            SELECT MAX(completed_at) AS last_fo FROM (
+                SELECT b.upload_manifest_completed_at AS completed_at
+                FROM batches b
+                WHERE b.upload_manifest_state='complete'
+                  AND b.upload_manifest_completed_at IS NOT NULL
+                UNION ALL
+                SELECT MAX(u.updated_at) AS completed_at
+                FROM jobs j JOIN uploads u ON u.batch_id=j.batch_id
+                  AND u.kind='fo' AND u.finalized
+            ) existing
+        )
+        INSERT INTO library_notice_cursors(
+            scope_key,last_fo_upload_version_id,last_fo_uploaded_at,
+            acknowledged_version_id,acknowledged_at)
+        SELECT %s,%s,old_completed.last_fo,%s,now()
+        FROM old_completed WHERE old_completed.last_fo IS NOT NULL
+        ON CONFLICT(scope_key) DO NOTHING
+    """,(INSTALLATION,current["id"],current["id"]))
+
 def record_completed_fo(db,batch_id):
     """Call in the same transaction as a verified FO-manifest completion.
 
