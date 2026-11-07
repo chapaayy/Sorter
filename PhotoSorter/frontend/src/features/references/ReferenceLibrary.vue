@@ -56,7 +56,7 @@ async function saveAddress(){
   }catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
 function openUpload(mode:'library'|'single'){
-  uploader.launch(mode,mode==='single'?selected.value:'',selectedEntry.value?.display_name||selected.value)
+  uploader.launch(mode,selected.value,selectedEntry.value?.display_name||selected.value)
 }
 async function removeSam(){
   busy.value=true

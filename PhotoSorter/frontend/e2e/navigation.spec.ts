@@ -65,6 +65,7 @@ test.beforeEach(async({page})=>{await mock(page)})
 test('six navigation sections and real data bindings',async({page})=>{
   await page.goto('/fo')
   await expect(page.getByRole('heading',{name:'Фотоотчёты'})).toBeVisible()
+  await expect(page.getByRole('link',{name:'Фотографии',exact:true})).toBeVisible()
   await expect(page.getByText('Выезд Самара 05.11').first()).toBeVisible()
   for(const [path,heading] of [['/references','Образцы'],['/queue','Очередь'],['/results','Результаты'],['/logs','Логи'],['/settings','Настройки']] as const){
     await page.goto(path)
@@ -406,7 +407,7 @@ test('System settings identify a lost Worker heartbeat',async({page})=>{
   }))
   await page.goto('/settings')
   await page.getByRole('button',{name:/Система/}).click()
-  await expect(page.getByText('Нет свежего сигнала')).toBeVisible()
+  await expect(page.getByText('Нет свежего сигнала').first()).toBeVisible()
 })
 test('FO library notice appears once, shows events and requires explicit acknowledgement',async({page})=>{
   let unread=true,acks=0

@@ -7,7 +7,7 @@
   .reference-library-view{min-height:0;flex:1;display:flex;flex-direction:column}
   .reference-library-view .page-head{flex:none;margin-bottom:16px}
   .reference-library-view .split{min-height:0;flex:1;overflow:hidden;align-items:stretch}
-  .reference-library-view .split-aside{min-height:0;overflow:hidden}
+  .reference-library-view .split-aside{min-height:0;overflow:visible}
   .reference-library-view .split-list{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain}
   .reference-library-view .split-main{min-height:0;overflow:hidden;padding:0;display:flex}
   .reference-library-gallery-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;

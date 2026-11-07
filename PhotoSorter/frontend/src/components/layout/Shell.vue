@@ -4,13 +4,13 @@ import {useRoute,RouterLink} from 'vue-router'
 import {useSessionStore} from '../../stores/session'
 import {useSidebarStore} from '../../stores/sidebar'
 import UiIcon from '../ui/UiIcon.vue'
+import UploadCenter from '../upload/UploadCenter.vue'
 
 const menu=ref(false),route=useRoute(),session=useSessionStore(),sidebar=useSidebarStore()
 watch(()=>route.path,()=>{menu.value=false})
 const links=[
-  {to:'/fo',label:'ФО',icon:'photos'},
+  {to:'/fo',label:'Фотографии',icon:'photos'},
   {to:'/references',label:'Образцы',icon:'references'},
-  {to:'/processing',label:'Обработка',icon:'processing'},
   {to:'/queue',label:'Очередь',icon:'queue'},
   {to:'/results',label:'Результаты',icon:'results'},
   {to:'/logs',label:'Логи',icon:'logs'},
@@ -24,7 +24,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
     <div v-if="menu" class="drawer-backdrop" @click="menu=false" aria-hidden="true"></div>
     <aside class="sidebar" :class="{open:menu}" aria-label="Основное меню">
       <div class="sidebar-brand-row">
-        <RouterLink class="brand" to="/fo" aria-label="OUTDOOR PhotoSorter — ФО" @click="menu=false">
+        <RouterLink class="brand" to="/fo" aria-label="OUTDOOR PhotoSorter — Фотографии" @click="menu=false">
           <div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           <div class="brand-text"><strong>OUTDOOR</strong><small>PHOTO SORTER</small></div>
         </RouterLink>
@@ -37,7 +37,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
       </div>
       <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav class="nav-links" aria-label="Разделы">
-        <RouterLink v-for="link in links.slice(0,6)" :key="link.to" :to="link.to"
+        <RouterLink v-for="link in links" :key="link.to" :to="link.to"
           class="nav-link" :aria-label="link.label"
           :title="sidebar.collapsed?link.label:undefined">
           <span class="nav-icon" aria-hidden="true"><UiIcon :name="link.icon"/></span>
@@ -73,5 +73,6 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
       </header>
       <main class="content"><slot/></main>
     </section>
+    <UploadCenter/>
   </div>
 </template>
