@@ -585,3 +585,41 @@ test('desktop references scroll inside two panels without scrolling the whole pa
   expect(await constructions.evaluate(el=>el.scrollTop)).toBeGreaterThan(100)
   expect(await gallery.evaluate(el=>el.scrollTop)).toBeGreaterThan(100)
 })
+
+test('construction creation dialog keeps standard custom and folder import in one window',async({page})=>{
+  await page.goto('/references')
+  await page.getByRole('button',{name:/Создать конструкцию/}).click()
+  const dialog=page.getByRole('dialog',{name:'Создать конструкцию'})
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('tab',{name:'Обычная'})).toHaveAttribute('aria-selected','true')
+  await dialog.getByRole('textbox',{name:'Номер конструкции'}).fill('0004')
+  await dialog.getByRole('textbox',{name:'Адрес конструкции'}).fill('Гагарина 64')
+  await expect(dialog.getByText('SAM 0004 — Гагарина 64')).toBeVisible()
+  await dialog.getByRole('tab',{name:'Индивидуальная'}).click()
+  await expect(dialog.getByRole('textbox',{name:'Индивидуальное название'})).toBeVisible()
+  await dialog.getByRole('tab',{name:'Импорт папки'}).click()
+  await expect(dialog.getByText('Выбрать папку библиотеки')).toBeVisible()
+  await dialog.getByRole('tab',{name:'Обычная'}).click()
+  await expect(dialog.getByText('SAM 0004 — Гагарина 64')).toBeVisible()
+})
+
+test('deleting has a full red card while a failure keeps a normal outline',async({page})=>{
+  let state='deleting'
+  await page.route(/^https?:\/\/[^/]+\/api\/batches(?:\?.*)?$/,route=>respond(route,{
+    batches:[{...batch,delete_state:state,latest_run:run,last_result_run_id:rid}],total:1
+  }))
+  await page.goto('/fo')
+  let card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
+  await expect(card).toHaveClass(/task-card-deleting/)
+  await expect(card.locator('.task-card-status')).toHaveText('Удаляется')
+  await expect(card.locator('.task-card-actions')).toHaveCount(0)
+  await page.goto('/results')
+  await expect(page.locator('.task-card').first()).toHaveClass(/task-card-deleting/)
+  await expect(page.locator('.task-card-status').first()).toHaveText('Удаляется')
+  state='delete_failed'
+  await page.reload()
+  card=page.locator('.task-card').first()
+  await expect(card).toHaveClass(/task-card-danger/)
+  await expect(card).not.toHaveClass(/task-card-deleting/)
+  await expect(card.locator('.task-card-status')).toHaveText('Ошибка удаления')
+})
