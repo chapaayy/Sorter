@@ -21,7 +21,7 @@ const percentage=computed(()=>typeof props.progress==='number' &&
   ?Math.round(props.progress):null)
 </script>
 <template>
-<article class="task-card" :class="{'task-card-active':active,'task-card-deleting':tone==='deleting','task-card-'+tone:true}">
+<article class="task-card" :class="{'task-card-active':active,'task-card-deleting':tone==='deleting',['task-card-'+tone]:true}">
   <div class="task-card-identity">
     <span class="task-card-number">{{number}}</span>
     <div class="task-card-thumbnail">
