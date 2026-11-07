@@ -80,6 +80,10 @@ def _manifest(files):
     return sorted(valid,key=lambda row:(row[3],str(row[0])))
 
 def _check_catalog(db, rows):
+    if db.execute("""
+        SELECT 1 FROM uploads WHERE id=ANY(%s) LIMIT 1
+    """,([row[0] for row in rows],)).fetchone():
+        raise HTTPException(409,"UUID образца уже занят старой загрузкой")
     sams=sorted({row[1] for row in rows})
     catalog={r["sam"]:r["address"] for r in db.execute("""
         SELECT sam,address FROM reference_constructions WHERE sam=ANY(%s)

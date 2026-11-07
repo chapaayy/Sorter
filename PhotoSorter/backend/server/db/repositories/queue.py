@@ -11,6 +11,15 @@ def queue_count(db):
     return db.execute("SELECT count(*) AS n FROM jobs WHERE status='queued'").fetchone()["n"]
 
 def queue_position(db,run_id):
+    import os
+    if os.environ.get("PHOTOSORTER_UNIFIED_QUEUE")=="1":
+        entry=db.execute("SELECT seq,state FROM work_queue WHERE fo_run_id=%s",(run_id,)).fetchone()
+        if not entry or entry["state"]!="queued":
+            return None
+        return db.execute("""SELECT count(*) AS n FROM work_queue
+            WHERE seq<=%s AND (state='queued' OR
+               (kind='reference_preparation' AND state IN ('failed','interrupted','blocked')))
+        """,(entry["seq"],)).fetchone()["n"]
     row=db.execute("SELECT id,created_at,status FROM jobs WHERE id=%s",(run_id,)).fetchone()
     if not row or row["status"]!="queued":return None
     return db.execute("""SELECT count(*) AS n FROM jobs

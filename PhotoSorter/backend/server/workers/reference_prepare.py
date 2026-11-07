@@ -19,6 +19,19 @@ CHUNK=24
 class PreparationCancelled(InterruptedError):
     pass
 
+def _record_file_error(job_id,upload_id,detail):
+    with connect() as db:
+        db.execute("""
+            INSERT INTO reference_preparation_errors(job_id,upload_id,detail)
+            VALUES (%s,%s,%s) ON CONFLICT(job_id,upload_id)
+            DO UPDATE SET detail=excluded.detail,occurred_at=now()
+        """,(job_id,upload_id,str(detail)[:1000]))
+        db.execute("""
+            UPDATE reference_preparation_jobs SET failed_count=(
+                SELECT count(*) FROM reference_preparation_errors WHERE job_id=%s),
+                updated_at=now() WHERE id=%s
+        """,(job_id,job_id))
+
 def _should_stop(job_id):
     with connect() as db:
         row=db.execute("SELECT stop_requested FROM reference_preparation_jobs WHERE id=%s",
@@ -46,12 +59,10 @@ def _prepare_embeddings(job_id,items,model_signature):
     """Reuse (SHA-256,signature) cache and instantiate MegaLoc only if missing."""
     unique={}
     for item in items:
-        key=(item["checksum"],str(item["stored_path"]))
-        unique[key]=Path(item["stored_path"])
-    paths=list(unique.values())
+        unique.setdefault(item["checksum"],Path(item["stored_path"]))
     with connect() as db:
         missing=[]
-        for (digest,_),path in unique.items():
+        for digest,path in unique.items():
             if cached_feature(db,digest,model_signature) is None:
                 missing.append(path)
     if not missing:
@@ -69,6 +80,10 @@ def _prepare_embeddings(job_id,items,model_signature):
             block=missing[offset:offset+CHUNK]
             for path,feature,error in engine.extract_many(block,stop=lambda:_should_stop(job_id)):
                 if error is not None or feature is None:
+                    ident=next((item["upload_id"] for item in items
+                        if item["stored_path"]==str(path)),None)
+                    if ident is not None:
+                        _record_file_error(job_id,ident,error or "empty feature")
                     raise RuntimeError(f"Не удалось подготовить {path.name}: {error}")
                 processed+=1
                 _progress(job_id,min(len(items),processed),len(items))
@@ -98,6 +113,8 @@ def _mirror_reference(db,item,source):
             pass
     verify(target,base,item["declared_size"],digest=item["checksum"])
     existing=db.execute("SELECT id FROM uploads WHERE id=%s",(item["upload_id"],)).fetchone()
+    if existing:
+        raise ValueError("Идентификатор staged файла уже занят в старых образцах")
     if not existing:
         db.execute("""
             INSERT INTO uploads(id,kind,batch_id,sam,filename,declared_size,
@@ -129,9 +146,13 @@ def run(job_id):
         if _should_stop(job_id):
             raise PreparationCancelled("Подготовка остановлена")
         if item["state"]=="finalized":
-            file=reference_objects.verify(item["stored_path"],
-                reference_objects.session_root(session_id),item["declared_size"],
-                digest=item["checksum"])
+            try:
+                file=reference_objects.verify(item["stored_path"],
+                    reference_objects.session_root(session_id),item["declared_size"],
+                    digest=item["checksum"])
+            except (ValueError,OSError,TypeError) as exc:
+                _record_file_error(job_id,item["upload_id"],exc)
+                raise
             actual.append({**item,"stored_path":str(file)})
         elif item["state"]!="duplicate":
             raise ValueError("Не все файлы подготовлены")

@@ -206,3 +206,77 @@ def test_readiness_never_queues_half_uploaded_session(system):
     with database.connect() as db:
         assert db.execute("SELECT count(*) AS n FROM reference_preparation_jobs").fetchone()["n"]==0
         assert db.execute("SELECT count(*) AS n FROM work_queue").fetchone()["n"]==0
+
+def test_auto_fo_reserves_fifo_on_final_manifest_file(system,monkeypatch):
+    from types import SimpleNamespace
+    from server import uploads
+    from server.services import upload_manifest,auto_processing
+    add_legacy(system)
+    raw=_jpg()
+    batch=uuid.uuid4()
+    file_id=uuid.uuid4()
+    with database.connect() as db:
+        db.execute("""INSERT INTO batches(id,display_name) VALUES (%s,'Auto FO')""",
+                   (batch,))
+    files=[SimpleNamespace(upload_id=file_id,relative_path="photo.jpg",
+                           filename="photo.jpg",size=len(raw))]
+    upload_manifest.register(batch,files,auto_process=True,grouping_threshold=.5)
+    monkeypatch.setattr(uploads,"UPLOADS_DIR",system/"uploads")
+    monkeypatch.setattr(uploads,"PART_DIR",system/"incoming")
+    uploads._create_upload(uploads.BeginUpload(
+         kind="fo",batch_id=str(batch),filename="photo.jpg",
+         size=len(raw),sha256=hashlib.sha256(raw).hexdigest()),file_id)
+    (system/"incoming"/(str(file_id)+".part")).write_bytes(raw)
+    uploads._finalize_sync(str(file_id))
+    with database.connect() as db:
+        queued=db.execute("""
+            SELECT b.auto_process_state,b.auto_process_run_id,j.id AS actual_id,
+                   w.seq,w.kind FROM batches b JOIN jobs j ON j.batch_id=b.id
+                   JOIN work_queue w ON w.fo_run_id=j.id WHERE b.id=%s
+        """,(batch,)).fetchone()
+        assert queued["auto_process_state"]=="queued"
+        assert queued["auto_process_run_id"]==queued["actual_id"]
+        assert queued["kind"]=="fo_processing"
+        assert queued["seq"]==1
+    # The cleanup poll must not queue another run.
+    with database.connect() as db:
+        assert db.execute("SELECT count(*) AS n FROM jobs WHERE batch_id=%s",
+                          (batch,)).fetchone()["n"]==1
+
+def test_duplicate_only_preparation_does_not_create_version(system):
+    ref_id,path=add_legacy(system)
+    raw=path.read_bytes()
+    digest=hashlib.sha256(raw).hexdigest()
+    sid,fid=uuid.uuid4(),uuid.uuid4()
+    reference_imports.create(sid)
+    from server.api.routes.reference_imports import ImportFile
+    entry=ImportFile(upload_id=fid,sam="SAM-0001",
+        relative_path="SAM-0001/duplicate.jpg",filename="duplicate.jpg",
+        size=len(raw),sha256=digest)
+    reference_imports.register_manifest(sid,[entry])
+    assert reference_uploads.confirm_duplicate(sid,fid,digest)["already_present"]
+    with database.connect() as db:
+        task=work_queue.claim_next(db)
+        current=reference_versions.current(db)["version_number"]
+    assert task["kind"]=="reference_preparation"
+    result=reference_prepare.run(task["id"])
+    assert result=={"version":current,"changed":False}
+    with database.connect() as db:
+        assert reference_versions.current(db)["version_number"]==current
+        assert db.execute("SELECT count(*) AS n FROM reference_library_versions").fetchone()["n"]==current
+
+def test_interrupted_preparation_is_barrier_until_retry(system):
+    add_legacy(system)
+    sid,uid,path,digest,pid=prepare_import(system)
+    after=add_fo()
+    with database.connect() as db:
+        task=work_queue.claim_next(db)
+        assert task["kind"]=="reference_preparation"
+        work_queue.mark_interrupted(db)
+        assert work_queue.claim_next(db) is None
+    action=actions.PreparationAction(idempotency_key=uuid.uuid4())
+    assert actions.retry(uuid.UUID(pid),action)["state"]=="queued"
+    with database.connect() as db:
+        again=work_queue.claim_next(db)
+        assert again["id"]==task["id"]
+        assert again["seq"]==task["seq"]

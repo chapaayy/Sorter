@@ -6,6 +6,7 @@ All staged/legacy objects must already exist and be checksum-verified.
 from __future__ import annotations
 import hashlib
 import json
+from pathlib import Path
 from ..storage import reference_versions as objects
 from ..db.repositories import reference_versions as repository
 
@@ -69,6 +70,23 @@ def reconcile_legacy(db,*,model_signature):
         ORDER BY sam,id
         FOR SHARE
     """).fetchall()
+    # Fast path: finalized legacy rows already have stable copies and recorded
+    # hashes, so avoid re-reading gigabytes on every FO claim.
+    prior_legacy=[m for m in prior if m["source_kind"]=="legacy"]
+    by_id={m["reference_id"]:m for m in prior_legacy}
+    unchanged=(state["model_signature"]==model_signature and
+        len(prior_legacy)==len(source) and
+        all((row["id"] in by_id and row["checksum"] is not None and
+             by_id[row["id"]]["sam"]==row["sam"] and
+             by_id[row["id"]]["source_hash"]==row["checksum"] and
+             by_id[row["id"]]["declared_size"]==row["declared_size"] and
+             by_id[row["id"]]["filename"]==row["filename"] and
+             Path(by_id[row["id"]]["target_path"]).resolve().is_relative_to(objects.ROOT.resolve()))
+            for row in source))
+    if unchanged:
+        for member in prior:
+            objects.verify_member(member)
+        return state
     legacy=[]
     for row in source:
         stable,digest=objects.stable_legacy(row)
