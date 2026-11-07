@@ -435,3 +435,24 @@ def test_queue_api_supplies_real_fo_progress_photo_counts_and_preview_fallback(s
     inventory=batches.list_all(100,0)
     batch=next(item for item in inventory["batches"] if item["batch_id"]==str(row["batch_id"]))
     assert batch["cover_thumbnail_url"] is None
+
+
+def test_interrupted_zip_stage_can_queue_zip_only_retry(system):
+    """A Worker restart during ZIP must not require another MegaLoc run."""
+    from psycopg.types.json import Jsonb
+    from server.db.repositories import work_queue
+    from server.services import archive_retries
+    add_published_reference(system)
+    run_id=add_fo()
+    with database.connect() as db:
+        db.execute("""UPDATE jobs SET status='running',
+            snapshot=jsonb_set(jsonb_set(snapshot,'{archive_state}',
+                to_jsonb('preparing'::text)),'{models}',%s)
+            WHERE id=%s""",(Jsonb({"megaloc":{"status":"completed"}}),run_id))
+        db.execute("UPDATE work_queue SET state='running' WHERE fo_run_id=%s",(run_id,))
+        work_queue.mark_interrupted(db)
+        row=db.execute("SELECT status,snapshot FROM jobs WHERE id=%s",(run_id,)).fetchone()
+        assert row["status"]=="interrupted"
+        assert row["snapshot"]["archive_state"]=="failed"
+    requested=archive_retries.request(run_id)
+    assert requested["state"]=="pending"
