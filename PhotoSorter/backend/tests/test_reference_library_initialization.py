@@ -77,3 +77,11 @@ def test_address_edit_during_fo_does_not_change_pinned_version(system):
     with database.connect() as db:
         assert reference_versions.current(db)["id"]==version
     finish_fo(run)
+
+def test_failed_fo_history_does_not_forever_block_reference_deletion(system):
+    ident,_=add_published_reference(system)
+    run=add_fo()
+    with database.connect() as db:
+        db.execute("UPDATE jobs SET status='failed',finished_at=now() WHERE id=%s",(run,))
+        work_queue.finish_fo(db,run,"failed")
+    assert references.delete_photo(ident)["deleted"]

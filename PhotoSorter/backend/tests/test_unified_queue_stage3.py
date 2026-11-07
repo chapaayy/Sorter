@@ -391,3 +391,20 @@ def test_sequential_fo_claim_and_queued_stop_do_not_reorder_fifo(system):
         second=work_queue.claim_next(db)
     assert second["id"]==runs[1]
     finish_fo(runs[1])
+
+def test_first_fo_waits_for_earlier_first_reference_preparation(system):
+    sid,uid,path,digest,pid=prepare_import(system)
+    run=add_fo()
+    cache_vector(system,digest)
+    with database.connect() as db:
+        task=work_queue.claim_next(db)
+        assert task["kind"]=="reference_preparation"
+        assert work_queue.position(db,run)==2
+    assert reference_prepare.run(task["id"])["version"]==2
+    with database.connect() as db:
+        following=work_queue.claim_next(db)
+        assert following["kind"]=="fo_processing"
+        assert following["id"]==run
+        assert following["info"]["reference_version"]==2
+        assert len(following["info"]["reference_members"])==1
+    finish_fo(run)

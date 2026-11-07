@@ -33,6 +33,14 @@ def ensure_initial_version(db):
     if not state:
         raise RuntimeError("reference_library_state schema is missing")
     if state["current_version_id"] is not None:
+        incompatible=db.execute("""
+            SELECT 1 FROM reference_version_members
+            WHERE version_id=%s AND source_kind<>'staged' LIMIT 1
+        """,(state["current_version_id"],)).fetchone()
+        if incompatible:
+            raise RuntimeError(
+                "Это база старой бета-версии с прежними образцами. "
+                "Для новой архитектуры требуется чистая тестовая установка.")
         return repository.current(db)
     initial_sig=signature()
     version=db.execute("""

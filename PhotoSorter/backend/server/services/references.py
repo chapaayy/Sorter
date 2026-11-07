@@ -4,7 +4,6 @@ Deletion creates a new version; previous immutable objects remain available
 to historical FO snapshots. Staged uploads are always accepted independently.
 """
 from __future__ import annotations
-from pathlib import Path
 from fastapi import HTTPException
 from app.photos.construction import parse_key
 from app.system.model_store import signature
@@ -22,8 +21,11 @@ def _sam(value):
 def _idle(db):
     # Synchronous removals cannot jump ahead of earlier FIFO work. Uploads
     # never use this guard: they always go to staging.
-    if db.execute("""SELECT 1 FROM work_queue WHERE state IN
-       ('queued','running','failed','interrupted','blocked') LIMIT 1""").fetchone():
+    if db.execute("""SELECT 1 FROM work_queue
+        WHERE state IN ('queued','running')
+           OR (kind='reference_preparation'
+               AND state IN ('failed','interrupted','blocked'))
+        LIMIT 1""").fetchone():
         raise HTTPException(409,"Удаление доступно после завершения очереди")
 
 def _edit(db,*,sam=None,reference_id=None):

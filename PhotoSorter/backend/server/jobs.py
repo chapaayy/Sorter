@@ -77,7 +77,19 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
         JOIN reference_library_state s ON s.current_version_id=m.version_id
         WHERE s.id=1
     """).fetchone()["n"]
-    if count<1 or refs<1:raise HTTPException(422,"Загрузите ФО и Образцы перед сортировкой")
+    if count<1:
+        raise HTTPException(422,"Сначала загрузите фотографии ФО")
+    if refs<1:
+        # The very first library preparation may already be ahead of this FO
+        # in FIFO. Claim will pin V2 only after the prior preparation publishes.
+        has_prior_prep=db.execute("""
+            SELECT 1 FROM work_queue
+            WHERE kind='reference_preparation'
+              AND state IN ('queued','running')
+            LIMIT 1
+        """).fetchone()
+        if not has_prior_prep:
+            raise HTTPException(422,"Сначала загрузите образцы конструкций")
     now=datetime.now(timezone.utc)
     run_id=now.strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:12]
     info={"id":run_id,"status":"queued","new_photos":str(DATA_DIR/"uploads"/str(data.batch_id)),
