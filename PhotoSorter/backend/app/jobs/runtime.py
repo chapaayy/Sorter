@@ -43,7 +43,15 @@ class Job:
         self.log('INFO','Запуск обработки')
         try:
             process(self)
-            self.info['status']='completed' if not any(x['status']=='error' for x in self.info['models'].values()) else 'completed_with_errors'
+            errors=[x.get('error','Ошибка MegaLoc') for x in self.info['models'].values()
+                    if x.get('status')=='error']
+            if errors:
+                raise RuntimeError('; '.join(errors))
+            # Optional server hook: a run is not complete before its ZIP exists.
+            finalize=getattr(self,'finalize_results',None)
+            if finalize is not None:
+                finalize()
+            self.info['status']='completed'
         except (InterruptedError,JobCancelled):
             self.info['status']='stopped';self.log('WARNING','Обработка остановлена, готовые результаты сохранены')
         except Exception as exc:

@@ -17,6 +17,13 @@ from fastapi import HTTPException
 from ..storage import paths as storage_paths
 from ..storage.paths import owned_file, owned_directory
 
+def existing(run_id:str,sam:str|None,selected:list[tuple[Path,str]])->Path|None:
+    """Only return validated complete ZIPs; never create one on download."""
+    target=_cache_path(run_id,sam,selected)
+    if target.is_file() and zipfile.is_zipfile(target):
+        return owned_file(target,output_root())
+    return None
+
 def output_root()->Path:
     return storage_paths.OUTPUTS
 
@@ -45,9 +52,10 @@ def _cache_path(run_id:str, sam:str|None, selected:list[tuple[Path,str]])->Path:
     folder.mkdir(parents=True,exist_ok=True)
     return folder/(token+"-"+digest.hexdigest()[:20]+".zip")
 
-def prepare(run_id:str,sam:str|None,selected:list[tuple[Path,str]])->Path:
+def prepare(run_id:str,sam:str|None,selected:list[tuple[Path,str]],*,progress=None,should_stop=None)->Path:
     if not selected:raise HTTPException(404,"Нет фотографий для архива")
     target=_cache_path(run_id,sam,selected)
+    total=sum(source.stat().st_size for source,_ in selected)
     lock=target.with_suffix(".lock")
     with lock.open("a+b") as handle:
         fcntl.flock(handle.fileno(),fcntl.LOCK_EX)
@@ -56,6 +64,7 @@ def prepare(run_id:str,sam:str|None,selected:list[tuple[Path,str]])->Path:
             if target.exists():
                 owned_file(target,root)
                 if zipfile.is_zipfile(target):
+                    if progress:progress(total,total)
                     return target
                 target.unlink()
             fd,tmp=tempfile.mkstemp(dir=target.parent,prefix=".archive-",suffix=".tmp")
@@ -63,10 +72,15 @@ def prepare(run_id:str,sam:str|None,selected:list[tuple[Path,str]])->Path:
                 with os.fdopen(fd,"wb") as output:
                     with zipfile.ZipFile(output,mode="w",compression=zipfile.ZIP_STORED,
                                          allowZip64=True) as archive:
+                        done=0
                         for source,name in selected:
+                            if should_stop and should_stop():
+                                raise InterruptedError("Подготовка архива остановлена")
                             owned_file(source,root)
-                            # Paths were validated before cache key computation.
+                            # JPEG already compressed: store without recompressing.
                             archive.write(source,arcname=name,compress_type=zipfile.ZIP_STORED)
+                            done+=source.stat().st_size
+                            if progress:progress(done,total)
                     output.flush()
                     os.fsync(output.fileno())
                 os.chmod(tmp,0o444)

@@ -15,7 +15,7 @@ archive_member=archives.archive_member
 @router.get("/{run_id}")
 def download_results(run_id:str,sam:str|None=None):
     with connect() as db:
-        row=db.execute("SELECT batch_id FROM jobs WHERE id=%s",(run_id,)).fetchone()
+        row=db.execute("SELECT batch_id,status,snapshot FROM jobs WHERE id=%s",(run_id,)).fetchone()
     if not row:raise HTTPException(404,"Запуск не найден")
     lease=operations.start(row["batch_id"],"download")
     try:
@@ -25,7 +25,16 @@ def download_results(run_id:str,sam:str|None=None):
             if sam and item["assigned_sam"]!=sam:continue
             source=file_allowed(Path(item["copy"]))
             selected.append((source,archive_member(item["assigned_sam"],source.name)))
-        file=archives.prepare(run_id,sam,selected)
+        # New runs publish their full ZIP before the completed state.
+        # Legacy runs retain on-demand creation for backward compatibility.
+        if sam is None and row["snapshot"].get("archive_state") is not None:
+            if row["status"] not in ("completed","completed_with_errors") or row["snapshot"].get("archive_state")!="ready":
+                raise HTTPException(409,"Архив ещё не готов")
+            file=archives.existing(run_id,sam,selected)
+            if file is None:
+                raise HTTPException(409,"Архив отсутствует. Повторите его подготовку")
+        else:
+            file=archives.prepare(run_id,sam,selected)
         return FileResponse(file,media_type="application/zip",
             filename=f"photosorter-{run_id}.zip",
             headers={"Cache-Control":"private, no-store",

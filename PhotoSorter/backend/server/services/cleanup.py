@@ -19,8 +19,7 @@ def request(batch_id, *, only_if_due=False):
         if not batch: return {"batch_id":str(batch_id),"state":"not_found"}
         if only_if_due:
             due=db.execute("""SELECT 1 FROM batches WHERE id=%s
-                AND delete_state='active' AND download_confirmed_at IS NOT NULL
-                AND delete_after_at<=now()""",(batch_id,)).fetchone()
+                AND delete_state='active' AND delete_after_at<=now()""",(batch_id,)).fetchone()
             if not due:return {"batch_id":str(batch_id),"state":"skipped"}
         if batch["delete_state"]=="deleted":
             return {"batch_id":str(batch_id),"state":"deleted"}

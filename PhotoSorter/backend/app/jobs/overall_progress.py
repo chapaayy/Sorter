@@ -21,6 +21,7 @@ STAGE_LABELS = {
     'matching': 'MegaLoc — сравнение групп с Образцами',
     'saving': 'Сохранение Готовых фоток',
     'export': 'Запись результатов',
+    'archive': 'Подготовка архива',
 }
 
 @dataclass
@@ -68,7 +69,7 @@ class OverallProgress:
         for stage,count in [('queries',fo_count),('grouping',fo_count),
                             ('grouping_merge',1),('grouping_diagnostics',fo_count),
                             ('references',ref_count),('matching',fo_count),
-                            ('saving',fo_count),('export',1)]:
+                            ('saving',fo_count),('export',1),('archive',fo_count)]:
             self.phases.append(Phase('megaloc',stage,max(1,count)))
         self.configured = True
 
@@ -104,6 +105,8 @@ class OverallProgress:
             items = rates(('grouping','grouping_merge','grouping_diagnostics','matching'),phase.model)
             if not items:
                 items = rates(('validate_references','validate_queries'))
+        elif phase.stage == 'archive':
+            items = rates(('archive',))
         elif phase.stage == 'export':
             items = rates(('saving','validate_queries','validate_references'))
         else:

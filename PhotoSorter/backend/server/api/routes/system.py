@@ -4,6 +4,7 @@ import os,resource,statistics,threading,time
 from collections import deque
 from datetime import datetime,timezone
 from fastapi import APIRouter
+from pydantic import BaseModel,Field
 from ...database import connect
 from ...services.disk_guard import stat,reserve
 from ...services import heartbeat
@@ -53,3 +54,18 @@ def clean_unused_thumbnails():
     """Manual, owner-checked cleanup only of orphaned preview cache."""
     from ..services.thumbnails import gc_unowned,gc_incomplete
     return {"removed":gc_unowned(limit=200)+gc_incomplete(limit=200)}
+
+class RetentionPreference(BaseModel):
+    enabled:bool
+    value:int=Field(ge=1,le=525600)
+    unit:str
+
+@router.get("/retention")
+def retention_settings():
+    from ...services import retention
+    return retention.settings()
+
+@router.patch("/retention")
+def update_retention(payload:RetentionPreference):
+    from ...services import retention
+    return retention.update_settings(payload.enabled,payload.value,payload.unit)

@@ -103,6 +103,9 @@ def save_snapshot(info):
           updated_at=now(),
           finished_at=CASE WHEN %s THEN now() ELSE finished_at END
           WHERE id=%s""",(terminal,state,Jsonb(info),terminal,state,terminal,info['id']))
+        if state=="completed" and info.get("archive_state")=="ready":
+            from .services import retention
+            retention.schedule(db,info["batch_id"],info["id"])
         if terminal:
             from .db.repositories import work_queue
             work_queue.finish_fo(db,info['id'],state)

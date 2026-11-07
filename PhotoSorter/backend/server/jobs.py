@@ -140,6 +140,10 @@ class ServerJob(Job):
         super().__init__(info)
         self._last_db_stop=0.0
         self._db_stopped=False
+    def finalize_results(self):
+        from .services.archive_pipeline import build_for_job
+        build_for_job(self)
+
     def save(self):
         super().save()
         save_snapshot(self.snapshot())
