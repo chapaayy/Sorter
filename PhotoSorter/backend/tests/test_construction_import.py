@@ -103,3 +103,59 @@ def test_city_code_labels_can_be_exported_from_immutable_snapshot(system,tmp_pat
                       tmp_path/"results","TLT 3245")
     assert result.is_file()
     assert archive_member("TLT 3245",result.name).startswith("TLT 3245/")
+
+
+def test_manual_standard_construction_is_visible_before_photos_and_can_be_deleted(system):
+    from server.api.routes import references as api
+    from server.db.repositories import reference_versions
+    with connect() as conn:
+        previous=reference_versions.current(conn)["id"]
+    item=construction_catalog.create("standard",city_code="SAM",number="0004",address="Гагарина 64")
+    assert item["sam"]=="SAM 0004"
+    listed=api.list_references()["sam"]
+    entry=next(row for row in listed if row["sam"]=="SAM 0004")
+    assert entry["photos"]==0
+    assert entry["display_name"]=="SAM 0004 — Гагарина 64"
+    assert construction_catalog.preview(["SAM 0004 — Гагарина 64"])["entries"][0]["existing"]
+    with pytest.raises(HTTPException) as error:
+        construction_catalog.create("standard",city_code="SAM",number="0004",address="Гагарина 64")
+    assert error.value.status_code==409
+    with connect() as conn:
+        assert reference_versions.current(conn)["id"]==previous
+    assert references.delete("SAM 0004")["photos"]==0
+    assert not any(row["sam"]=="SAM 0004" for row in api.list_references()["sam"])
+
+
+def test_custom_construction_accepts_only_explicit_staged_imports(system):
+    from server.services import reference_imports
+    from server.api.routes import references as api
+    from server.api.routes.reference_imports import ImportFile
+    name="LED у склада"
+    created=construction_catalog.create("custom",name=name)
+    assert created["sam"]==name
+    assert created["kind"]=="custom"
+    assert any(row["sam"]==name and row["photos"]==0 for row in api.list_references()["sam"])
+    session=uuid.uuid4()
+    reference_imports.create(session)
+    registered=reference_imports.register_manifest(session,[ImportFile(
+        upload_id=uuid.uuid4(),sam=name,relative_path="photo.jpg",
+        filename="photo.jpg",size=len(_jpg()))])
+    assert registered["expected"]==1
+    with pytest.raises(HTTPException) as duplicate:
+        construction_catalog.create("custom",name=name)
+    assert duplicate.value.status_code==409
+    for invalid in ("SAM-0004","Bad/Path","SAM 0004"):
+        with pytest.raises(HTTPException):
+            construction_catalog.create("custom",name=invalid)
+
+
+def test_unknown_custom_construction_does_not_bypass_manifest_catalog(system):
+    from server.services import reference_imports
+    from server.api.routes.reference_imports import ImportFile
+    session=uuid.uuid4()
+    reference_imports.create(session)
+    with pytest.raises(HTTPException) as err:
+        reference_imports.register_manifest(session,[ImportFile(
+            upload_id=uuid.uuid4(),sam="LED без регистрации",relative_path="photo.jpg",
+            filename="photo.jpg",size=len(_jpg()))])
+    assert err.value.status_code==422

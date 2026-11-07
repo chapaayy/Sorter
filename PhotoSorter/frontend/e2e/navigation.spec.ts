@@ -11,9 +11,10 @@ function respond(route:any,data:unknown){return route.fulfill({status:200,conten
 async function mock(page:Page){
   const defaults={auto_process_new_batches:false,grouping_threshold:.50,model:'megaloc'}
   const retention={enabled:true,value:2,unit:'months'}
-  const workloads={mode:'manual',fo_threads:7,reference_threads:7,max_threads:8,
-    thumbnail_cpu_quota:.35,cleanup_cpu_quota:.25,zip_mode:'single_thread_in_worker',
-    docker_limits_editable:false,applies:'next_task'}
+  const workloads={mode:'manual',fo_threads:6,reference_threads:6,max_threads:7,
+    total_cpus:8,model_cpus:6,system_cpus:2,max_model_cpus:7,
+    background_policy:'cpu_shares_no_quota',model_limit_applies:'next_task',
+    zip_mode:'single_thread_in_worker',docker_limits_editable:false,applies:'next_task'}
   await page.route(/^https?:\/\/[^/]+\/api\//,async route=>{
     const url=new URL(route.request().url()),p=url.pathname,method=route.request().method()
     if(p==='/api/auth/me')return respond(route,{username:'admin'})
@@ -146,9 +147,9 @@ test('processing overview moved to Settings, run details live under Queue',async
   await expect(page.getByRole('heading',{name:'MegaLoc',exact:true})).toBeVisible()
   await expect(page.getByText('Модель установлена')).toBeVisible()
   await page.getByRole('button',{name:/Производительность/}).click()
-  await expect(page.getByRole('heading',{name:'Вычисления MegaLoc'})).toBeVisible()
-  await expect(page.getByRole('slider',{name:/Обработка ФО/})).toBeVisible()
-  await expect(page.getByRole('slider',{name:/Подготовка образцов/})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'Производительность',exact:true})).toBeVisible()
+  await expect(page.getByRole('slider',{name:'CPU модели'})).toBeVisible()
+  await expect(page.getByRole('slider',{name:'Резерв CPU системы'})).toBeVisible()
   await page.goto('/queue/runs/'+rid)
   await expect(page.getByRole('heading',{name:'Выезд Самара 05.11'})).toBeVisible()
   await expect(page.getByRole('link',{name:'История очереди'})).toBeVisible()
