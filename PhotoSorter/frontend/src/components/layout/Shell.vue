@@ -37,7 +37,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
       </div>
       <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav class="nav-links" aria-label="Разделы">
-        <RouterLink v-for="link in links" :key="link.to" :to="link.to"
+        <RouterLink v-for="link in links.filter(item=>item.to!=='/settings')" :key="link.to" :to="link.to"
           class="nav-link" :aria-label="link.label"
           :title="sidebar.collapsed?link.label:undefined">
           <span class="nav-icon" aria-hidden="true"><UiIcon :name="link.icon"/></span>
