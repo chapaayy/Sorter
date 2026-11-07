@@ -17,6 +17,9 @@ watch(()=>[upload.visible,upload.mode] as const,async([visible,mode])=>{
     noticeError.value=''
   }catch{noticeError.value='Не удалось проверить обновления образцов'}
 },{immediate:true})
+function onState(running:boolean,percent:number,phase:string){
+  upload.report(running,percent,phase)
+}
 function key(event:KeyboardEvent){if(event.key==='Escape'&&upload.visible)upload.close()}
 function finishedFo(batchId:string){
   upload.finish()
@@ -51,11 +54,11 @@ function finishedRefs(){upload.finish()}
           :status="library" @ack="library=$event"/>
         <div v-if="noticeError&&upload.mode==='fo'" class="alert warning">{{noticeError}}</div>
         <UploadPanel v-if="upload.mode==='fo'" @finished="finishedFo"
-          @state="(running,percent,phase)=>upload.report(running,percent,phase)"/>
+          @state="onState"/>
         <ReferenceUploader v-else :selected-sam="upload.sam" :selected-label="upload.samLabel"
           :initial-mode="upload.mode"
           @finished="finishedRefs"
-          @state="(running,percent,phase)=>upload.report(running,percent,phase)"/>
+          @state="onState"/>
         <div class="row between upload-modal-footer">
           <span class="meta">{{upload.busy?'Загрузка продолжается даже после закрытия окна':''}}</span>
           <button type="button" class="btn" @click="upload.close">

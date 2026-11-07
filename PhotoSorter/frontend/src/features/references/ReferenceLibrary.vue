@@ -16,7 +16,7 @@ import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
 const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),addressDraft=ref(''),
   error=ref(''),busy=ref(false),viewer=ref<number|null>(null),
-  deletePhoto=ref<string|null>(null),deleteSam=ref(false),
+  deletePhoto=ref<string|null>(null),deleteSam=ref(false)
 
 const notice=useNoticeStore(),uploader=useUploadCenterStore()
 const groups=computed(()=>list.value.map(s=>({id:s.sam,label:s.display_name||s.sam,count:s.photos})))

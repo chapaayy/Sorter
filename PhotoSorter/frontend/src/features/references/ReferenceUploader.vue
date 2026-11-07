@@ -6,7 +6,10 @@ import ReferencePhotoUploader from './ReferencePhotoUploader.vue'
 const props=withDefaults(defineProps<{
   selectedSam:string;selectedLabel?:string;initialMode?:'library'|'single'
 }>(),{initialMode:'library',selectedLabel:''})
-const emit=defineEmits<{(e:'finished'):void}>()
+const emit=defineEmits<{
+  (e:'finished'):void
+  (e:'state',busy:boolean,percent:number,phase:string):void
+}>()
 const mode=ref<'library'|'single'>(props.initialMode)
 watch(()=>props.initialMode,value=>{mode.value=value})
 </script>
@@ -27,7 +30,8 @@ watch(()=>props.initialMode,value=>{mode.value=value})
     <button role="tab" :aria-selected="mode==='single'" :class="{active:mode==='single'}"
       @click="mode='single'">Фото в конструкцию</button>
   </div>
-  <ReferenceDirectoryImporter v-if="mode==='library'" @finished="emit('finished')"/>
+  <ReferenceDirectoryImporter v-if="mode==='library'" @finished="emit('finished')"
+    @state="(busy,percent,phase)=>emit('state',busy,percent,phase)"/>
   <ReferencePhotoUploader v-else :selected-sam="selectedSam"
      :label="selectedLabel||selectedSam" @finished="emit('finished')" @state="(busy,percent,phase)=>emit('state',busy,percent,phase)"/>
 </section>
