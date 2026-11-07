@@ -175,3 +175,15 @@
 - `PhotoSorter/frontend/src/styles/components.css` — единое актуальное оформление и адаптивная компоновка без каскадных тем-надстроек.
 - `PhotoSorter/frontend/src/styles/select.css` — стили кастомного выпадающего меню.
 - `PhotoSorter/frontend/e2e/navigation.spec.ts` — браузерная проверка выбора партии, Esc и существующей навигации.
+
+## Этап 1 очереди и версий (07.11.2026)
+
+- `PhotoSorter/backend/server/db/migrations/0011_reference_sessions.sql` — сессии, manifest и подготовка образцов.
+- `PhotoSorter/backend/server/db/migrations/0012_work_queue.sql` — пассивный общий FIFO ledger с backfill legacy queued jobs.
+- `PhotoSorter/backend/server/db/migrations/0013_reference_versions_notices.sql` — опубликованные версии, члены, events и курсоры уведомлений.
+- `PhotoSorter/backend/server/db/repositories/work_queue.py` — backfill и чтение пассивной очереди.
+- `PhotoSorter/backend/server/db/repositories/reference_imports.py` — чтение состояния импорта/подготовки.
+- `PhotoSorter/backend/server/db/repositories/reference_versions.py` — чтение версий и состава.
+- `PhotoSorter/backend/server/services/reference_versions.py` — проверка SHA-256/path и однократная публикация legacy V1.
+- `PhotoSorter/backend/tests/test_reference_queue_stage1.py` — SQL и восстановление baseline.
+- `docs/REFERENCE_QUEUE_STAGE1.md` — архитектурная граница и активация следующих этапов.

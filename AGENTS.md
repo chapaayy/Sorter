@@ -43,3 +43,7 @@
 - `PROJECT_MAP.md` — модульные зависимости и потоки.
 - `FILE_INDEX.md` — текущие обязанности значимых файлов.
 - `docs/BACKUP_RESTORE.md`, `docs/ROLLBACK.md`, `docs/OPERATIONS.md` — безопасность данных и операционные действия.
+
+## Этап 1 общей очереди (07.11.2026)
+
+Новые `work_queue`/reference-version таблицы пассивны до отдельного включения этапа 3. Не использовать их для claim вместо старой `jobs`-очереди и не разрешать параллельную загрузку образцов до staging + snapshot. Перед активацией повторно согласовать V1 с legacy uploads. См. `docs/REFERENCE_QUEUE_STAGE1.md`.

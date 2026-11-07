@@ -97,3 +97,7 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 - Незавершённые `.part` остаются в БД до финализации или явной отмены (либо старой TTL-очистки). Ни авто-восстановление, ни отмена конкретной передачи не затрагивают  ранее финализированные ФО. Сохранение полномочий на выбранные локальные файлы после перезагрузки вкладки невозможно без нового выбора пользователя.
 
 См. [Инструкция импорта образцов](docs/REFERENCE_IMPORT.md), [FILE_INDEX](FILE_INDEX.md), [AGENTS](AGENTS.md), [API](docs/API.md), [BACKUP_RESTORE](docs/BACKUP_RESTORE.md).
+
+## Reference queue — этап 1, без изменения runtime
+
+`server/db/migrations/0011..0013` → новые таблицы sessions, work_queue, reference versions/notices. `server/services/reference_versions.py` → проверяемая однократная V1 metadata в `database.initialize()`. `server/db/repositories/{reference_imports,reference_versions,work_queue}.py` → пассивные операции. Старые `jobs.py` и `worker.py` пока остаются единственным исполняемым планировщиком. Подробности: `docs/REFERENCE_QUEUE_STAGE1.md`.

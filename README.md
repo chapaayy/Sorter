@@ -89,3 +89,8 @@ PYTHONPATH=PhotoSorter/backend python -m pytest -q PhotoSorter/backend/tests
 Ручные проверки обрыва VPN, перезапуска Worker и реального VPS: [приёмка этапа 4](docs/STAGE4_ACCEPTANCE.md). Их нельзя подменять успешным CI.
 
 Подробности: [архитектура](PROJECT_MAP.md), [индекс файлов](FILE_INDEX.md), [правила разработки](AGENTS.md), [API](docs/API.md), [операции](docs/OPERATIONS.md), [бэкапы](docs/BACKUP_RESTORE.md), [тестирование](docs/TESTING.md).
+
+
+## Подготовка общей FIFO и версий образцов (этап 1, 07.11.2026)
+
+Добавлены только совместимые SQL-таблицы и проверяемая базовая версия образцов. Работающий worker и Vue пока не переключены; очередь `work_queue` — пассивный журнал. Подробности и ограничения: [docs/REFERENCE_QUEUE_STAGE1.md](docs/REFERENCE_QUEUE_STAGE1.md). Развёртывание на VPS не выполнялось.
