@@ -60,3 +60,15 @@ def test_zip_file_response_supports_http_byte_ranges(tmp_path,monkeypatch):
         assert partial.headers["content-range"]==f"bytes 10-29/{archive.stat().st_size}"
         assert len(partial.content)==20
         assert partial.content==full.content[10:30]
+
+def test_archive_reports_byte_progress_and_skips_rebuild(tmp_path,monkeypatch):
+    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
+    run="20261107T120000-abcdef123456"
+    photo=tmp_path/run/"megaloc"/"SAM 0001"/"one.jpg"
+    photo.parent.mkdir(parents=True)
+    photo.write_bytes(b"jpeg-bytes"*100)
+    updates=[]
+    archive=archives.prepare(run,None,[(photo,"SAM 0001/one.jpg")],
+        progress=lambda done,total:updates.append((done,total)))
+    assert updates[-1]==(photo.stat().st_size,photo.stat().st_size)
+    assert archives.existing(run,None,[(photo,"SAM 0001/one.jpg")])==archive

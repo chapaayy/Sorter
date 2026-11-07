@@ -45,6 +45,38 @@ def update(threads:int):
         db.execute("UPDATE processing_settings SET cpu_threads=%s,updated_at=now() WHERE id=1",(threads,))
     return read()
 
-def for_worker(db):
-    row=db.execute("SELECT cpu_threads FROM processing_settings WHERE id=1").fetchone()
-    return row["cpu_threads"] if row else 7
+def workload_settings():
+    with connect() as db:
+        row=db.execute("""SELECT cpu_mode,fo_cpu_threads,reference_cpu_threads
+            FROM processing_settings WHERE id=1""").fetchone()
+    return {
+        "mode":row["cpu_mode"],
+        "fo_threads":row["fo_cpu_threads"],
+        "reference_threads":row["reference_cpu_threads"],
+        "max_threads":max_threads(),
+        "thumbnail_cpu_quota":0.35,
+        "cleanup_cpu_quota":0.25,
+        "zip_mode":"single_thread_in_worker",
+        "docker_limits_editable":False,
+        "applies":"next_task",
+    }
+
+def update_workloads(mode:str,fo_threads:int,reference_threads:int):
+    from fastapi import HTTPException
+    if mode not in ("manual","auto") or not (1<=fo_threads<=max_threads()
+                                         and 1<=reference_threads<=max_threads()):
+        raise HTTPException(422,"Недопустимые параметры CPU")
+    with connect() as db:
+        db.execute("""UPDATE processing_settings SET cpu_mode=%s,fo_cpu_threads=%s,
+               reference_cpu_threads=%s,cpu_threads=%s,updated_at=now()
+               WHERE id=1""",(mode,fo_threads,reference_threads,fo_threads))
+    return workload_settings()
+
+def for_worker(db,kind=None):
+    row=db.execute("""SELECT cpu_mode,fo_cpu_threads,reference_cpu_threads,cpu_threads
+        FROM processing_settings WHERE id=1""").fetchone()
+    if not row:return 7
+    if row["cpu_mode"]=="auto":return max_threads()
+    if kind=="fo_processing":return min(max_threads(),row["fo_cpu_threads"])
+    if kind=="reference_preparation":return min(max_threads(),row["reference_cpu_threads"])
+    return min(max_threads(),row["cpu_threads"])

@@ -100,7 +100,7 @@ def _job(data,batch_id,status="completed"):
 def test_additive_migration_legacy_rows_survive(db):
     import psycopg
     from server.database import DB_URL,SCHEMA
-    from server.db.migration_runner import migrate
+    from server.db.migration_runner import migrate,MIGRATIONS
     schema="stage1_"+uuid.uuid4().hex[:16]
     with psycopg.connect(DB_URL) as conn:
         conn.execute(f'CREATE SCHEMA "{schema}"')
@@ -114,19 +114,7 @@ def test_additive_migration_legacy_rows_survive(db):
             assert conn.execute("SELECT display_name FROM batches WHERE id=%s",(old,)).fetchone()[0].startswith("ФО ")
             migrate(conn)
             assert {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}=={
-                "0001_batch_lifecycle.sql","0002_batch_upload_state.sql",
-                "0003_thumbnails_queue.sql","0004_megaloc_queue.sql",
-                "0005_result_pages.sql","0006_unfinished_age.sql",
-                "0007_service_heartbeat.sql","0008_reference_constructions.sql",
-                "0009_batch_upload_manifest.sql",
-                "0010_auto_processing.sql",
-                "0011_reference_sessions.sql",
-                "0012_work_queue.sql",
-                "0013_reference_versions_notices.sql",
-                "0014_reference_import_transfers.sql",
-                "0015_unified_worker.sql",
-                "0016_library_notice_delivery.sql",
-                "0018_cpu_threads.sql"}
+                file.name for file in MIGRATIONS.glob("*.sql")}
             assert conn.execute("SELECT id FROM batches WHERE id=%s",(old,)).fetchone()[0]==old
         finally:
             conn.execute("RESET search_path")

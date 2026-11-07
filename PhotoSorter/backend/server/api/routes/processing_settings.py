@@ -30,3 +30,18 @@ def cpu_settings():
 def update_cpu_settings(payload:CpuSettings):
     from ...services import compute_settings
     return compute_settings.update(payload.threads)
+
+class WorkloadSettings(BaseModel):
+    mode:str
+    fo_threads:int=Field(ge=1,le=32)
+    reference_threads:int=Field(ge=1,le=32)
+
+@router.get("/workloads")
+def workload_settings():
+    from ...services import compute_settings
+    return compute_settings.workload_settings()
+
+@router.patch("/workloads")
+def update_workloads(payload:WorkloadSettings):
+    from ...services import compute_settings
+    return compute_settings.update_workloads(payload.mode,payload.fo_threads,payload.reference_threads)

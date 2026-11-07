@@ -26,7 +26,7 @@ def _process_task(item):
     from app.system.performance import set_runtime_threads
     from .services.compute_settings import for_worker
     with connect() as db:
-        set_runtime_threads(for_worker(db))
+        set_runtime_threads(for_worker(db,item['kind']))
     if item['kind']=='fo_processing':
         info=item['info']
         try:
