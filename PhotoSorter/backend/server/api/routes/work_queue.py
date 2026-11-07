@@ -31,7 +31,7 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
                    p.error,p.stop_requested,
                    j.batch_id,j.snapshot->>'source' AS fo_source,
                    j.snapshot->'progress' AS fo_progress,
-                   b.display_name AS batch_name,
+                   b.display_name AS batch_name,b.delete_state AS batch_delete_state,
                    (SELECT count(*)::integer FROM uploads photos
                      WHERE photos.batch_id=j.batch_id AND photos.kind='fo'
                        AND photos.finalized) AS fo_photo_count,

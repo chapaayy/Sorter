@@ -18,6 +18,7 @@ export interface QueueTask {
   stop_requested:boolean|null
   batch_id:string|null
   batch_name:string|null
+  batch_delete_state?:string|null
   fo_source:string|null
   fo_progress?:RunProgress|null
   fo_photo_count?:number|null

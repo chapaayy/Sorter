@@ -5,6 +5,7 @@ import type {TaskEstimate} from '../../utils/queueEstimates'
 import {queueTime} from '../../utils/queueEstimates'
 import {STATE_RU,hasBlockingFailure,isPrep} from '../../utils/queuePresentation'
 import {date} from '../../utils/format'
+import {useDeletionStore} from '../../stores/deletion'
 import CompactTaskCard from '../../components/ui/CompactTaskCard.vue'
 
 const props=defineProps<{task:QueueTask;position?:number;estimate?:TaskEstimate;busy?:boolean}>()
@@ -12,6 +13,10 @@ const emit=defineEmits<{
  (e:'action',task:QueueTask,kind:'stop'|'retry'|'skip'):void
  (e:'details',task:QueueTask):void
 }>()
+const deletion=useDeletionStore()
+const deleting=computed(()=>props.task.batch_delete_state==='deleting'||
+  (props.task.batch_delete_state!=='delete_failed'&&props.task.batch_id!=null&&deletion.pending(props.task.batch_id)))
+const deleteFailed=computed(()=>props.task.batch_delete_state==='delete_failed')
 const preparing=computed(()=>isPrep(props.task))
 const canStop=computed(()=>props.task.state==='running'||props.task.state==='queued')
 const progress=computed<number|null>(()=>{
@@ -26,6 +31,8 @@ const progress=computed<number|null>(()=>{
   return typeof overall==='number'&&Number.isFinite(overall)?overall:null
 })
 const stage=computed(()=>{
+  if(deleting.value)return 'Удаление файлов и результатов'
+  if(deleteFailed.value)return 'Ошибка удаления · проверьте журнал'
   if(hasBlockingFailure(props.task))return 'Ожидает повторения или пропуска'
   if(props.task.state==='queued')return 'Ожидает предыдущие задачи'
   if(props.task.state==='running'){
@@ -40,6 +47,8 @@ const stage=computed(()=>{
   return props.task.error||STATE_RU[props.task.state]
 })
 const tone=computed(()=>{
+  if(deleting.value)return 'deleting'
+  if(deleteFailed.value)return 'danger'
   if(hasBlockingFailure(props.task)||props.task.state==='failed')return 'danger'
   if(props.task.state==='completed')return 'success'
   if(props.task.state==='completed_with_errors')return 'warning'
@@ -55,7 +64,7 @@ const count=computed(()=>preparing.value?props.task.total_count:props.task.fo_ph
   :title="preparing?'Подготовка образцов':task.batch_name||'Фотоотчёт'"
   :thumbnail-url="preparing?null:task.fo_thumbnail_url"
   :icon="preparing?'references':'photos'"
-  :status="task.stop_requested&&task.state==='running'?'Остановка':STATE_RU[task.state]"
+  :status="deleting?'Удаляется':deleteFailed?'Ошибка удаления':task.stop_requested&&task.state==='running'?'Остановка':STATE_RU[task.state]"
   :tone="tone" :progress="progress" :stage="stage"
   :time-label="time.label" :time-detail="time.detail"
   :active="task.state==='running'">

@@ -531,10 +531,10 @@ test('staged reference upload remains available during active FO and uses manife
     return route.fulfill({status:404,contentType:'application/json',body:'{}'})
   })
   await page.goto('/references')
-  const uploadButton=page.getByRole('button',{name:'+ Загрузить образцы'})
+  const uploadButton=page.getByRole('button',{name:'+ Добавить фото'})
   await expect(uploadButton).toBeEnabled()
   await uploadButton.click()
-  await page.getByRole('tab',{name:'Фото в конструкцию'}).click()
+  await expect(page.getByRole('tab',{name:'Фото в конструкцию'})).toHaveAttribute('aria-selected','true')
   await page.locator('.upload-drop input[type="file"]').setInputFiles({
     name:'new.jpg',mimeType:'image/jpeg',buffer:source
   })
