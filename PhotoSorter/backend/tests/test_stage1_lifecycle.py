@@ -448,7 +448,6 @@ def test_upload_state_transitions_with_real_finalization(sandbox,monkeypatch):
     own=_batch(sandbox,with_photo=False)
     monkeypatch.setattr(uploads,"UPLOADS_DIR",sandbox/"uploads")
     monkeypatch.setattr(uploads,"PART_DIR",sandbox/"incoming")
-    monkeypatch.setattr(uploads,"REFERENCES_DIR",sandbox/"references")
     assert batches.get(own)["upload_state"]=="open"
     picture=io.BytesIO()
     Image.new("RGB",(20,20),"green").save(picture,format="JPEG")

@@ -72,12 +72,15 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
         WHERE kind='fo' AND batch_id=%s AND NOT finalized""",
         (data.batch_id,)).fetchone()["n"]
     if pending:raise HTTPException(422,"Дождитесь завершения загрузки всех ФО")
-    refs=db.execute("SELECT count(*) AS n FROM uploads WHERE kind='reference' AND finalized").fetchone()["n"]
+    refs=db.execute("""
+        SELECT count(*) AS n FROM reference_version_members m
+        JOIN reference_library_state s ON s.current_version_id=m.version_id
+        WHERE s.id=1
+    """).fetchone()["n"]
     if count<1 or refs<1:raise HTTPException(422,"Загрузите ФО и Образцы перед сортировкой")
     now=datetime.now(timezone.utc)
     run_id=now.strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:12]
-    info={"id":run_id,"status":"queued","references":str(DATA_DIR/"references"),
-          "new_photos":str(DATA_DIR/"uploads"/str(data.batch_id)),
+    info={"id":run_id,"status":"queued","new_photos":str(DATA_DIR/"uploads"/str(data.batch_id)),
           "output":str(DATA_DIR/"outputs"),"batch_id":str(data.batch_id),
           "selected_models":["megaloc"],"grouping_threshold":data.grouping_threshold,
           "models":{},"progress":{},"enqueued_at":now.isoformat(),
@@ -91,7 +94,7 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
     if source=="manual" and batch["auto_process_state"]=="waiting":
         db.execute("""UPDATE batches SET auto_process_state='manual',
             auto_process_error=NULL WHERE id=%s""",(data.batch_id,))
-    position=queue.queue_position(db,run_id)
+    position=work_queue.position(db,run_id)
     return {**info,"queue_position":position}
 
 

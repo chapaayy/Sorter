@@ -29,6 +29,9 @@ def test_dashboard_scope_isolated_from_history_and_old_clients(sandbox):
                 (Jsonb({"id":run_b,"status":"queued","progress":{
                     "stage_label":"Сопоставление","current":3,"total":10,
                     "stage_percent":30.0}}),run_b))
+        with connect() as db:
+            from server.db.repositories import work_queue
+            work_queue.insert_fo(db,run_a)
         active=jobs.list_jobs(scope="active",limit=200)
         history=jobs.list_jobs(scope="history",limit=200)
         all_runs=jobs.list_jobs(limit=200)

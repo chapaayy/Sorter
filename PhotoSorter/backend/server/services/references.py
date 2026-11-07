@@ -41,9 +41,10 @@ def _edit(db,*,sam=None,reference_id=None):
     remaining=[m for m in members if m not in selected]
     current=reference_versions.current(db)
     fp=signature()
-    if current["model_signature"] and fp!=current["model_signature"]:
-        raise HTTPException(409,"Сначала подготовьте библиотеку с текущей моделью")
-    version,_=reference_publication.publish(db,remaining,fp,event_kind="reference_prepared")
+    # Removing a published entry does not compute vectors and must preserve
+    # the signature of the snapshot, regardless of locally installed weights.
+    version,_=reference_publication.publish(
+        db,remaining,current["model_signature"] or fp,event_kind="reference_prepared")
     if sam is None:
         db.execute("DELETE FROM uploads WHERE id=%s AND kind='reference'",(reference_id,))
     else:
