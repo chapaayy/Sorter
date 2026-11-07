@@ -1,5 +1,5 @@
 import {api,post,query} from './client'
-import type {Run,ModelInfo,ProcessingSettings,CpuSettings} from '../types/api'
+import type {Run,ModelInfo,ProcessingSettings,CpuSettings,WorkloadSettings} from '../types/api'
 export const runApi={
   list:(limit=100,offset=0)=>api<{runs:Run[];total:number}>('/runs'+query({limit,offset})),
   active:()=>api<{runs:Run[];total:number}>('/runs'+query({scope:'active',limit:25})),
@@ -17,5 +17,10 @@ export const runApi={
   cpuSettings:()=>api<CpuSettings>('/processing-settings/cpu'),
   saveCpuThreads:(threads:number)=>api<CpuSettings>(
     '/processing-settings/cpu',{method:'PATCH',body:JSON.stringify({threads})}),
+  workloadSettings:()=>api<WorkloadSettings>('/processing-settings/workloads'),
+  saveWorkloadSettings:(mode:'auto'|'manual',fo_threads:number,reference_threads:number)=>
+    api<WorkloadSettings>('/processing-settings/workloads',{
+      method:'PATCH',body:JSON.stringify({mode,fo_threads,reference_threads})
+    }),
   downloadModel:()=>post<unknown>('/models/megaloc/download',{})
 }

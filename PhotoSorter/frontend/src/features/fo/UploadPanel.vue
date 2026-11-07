@@ -23,6 +23,7 @@ const autoProcess=ref(false),autoThreshold=ref(.50),manifestRegistered=ref(false
 let controller:AbortController|null=null
 const total=computed(()=>entries.value.reduce((s,e)=>s+e.file.size,0))
 const uploaded=computed(()=>amounts.value.reduce((a,b)=>a+b,0))
+const resumable=computed(()=>!!entries.value.length&&!!storedId())
 const percent=computed(()=>total.value?Math.min(100,100*uploaded.value/total.value):0)
 watch([running,percent,phase],()=>emit('state',running.value,percent.value,phase.value),{immediate:true})
 const notice=useNoticeStore(),uploadSettings=useUploadSettingsStore()
@@ -162,34 +163,38 @@ function stop(){controller?.abort()}
 onUnmounted(stop)
 </script>
 <template>
-<section class="panel stack" aria-label="Загрузка папки ФО">
-  <div class="panel-header"><h2>Новая партия фотографий</h2><span class="status">Загрузка с докачкой</span></div>
+<section class="panel stack" aria-label="Загрузка фотографий">
   <label class="upload-drop">
     <input type="file" multiple webkitdirectory directory :disabled="running" @change="choose"/>
-    <span style="font-size:28px;color:var(--accent)">▤</span><br/>
-    <strong>Выбрать папку ФО</strong>
-    <p class="meta" style="margin:6px 0 0">JPEG, PNG, WebP, TIFF, BMP · до 60 МБ на файл</p>
+    <span style="font-size:27px;color:var(--muted)">▤</span><br/>
+    <strong>Выбрать папку с фотографиями</strong>
+    <p class="meta" style="margin:6px 0 0">JPEG, PNG, WebP, TIFF или BMP</p>
   </label>
   <div v-if="entries.length" class="row wrap between">
-    <div><strong>{{folder}}</strong><p class="meta" style="margin:3px 0">{{entries.length.toLocaleString('ru-RU')}} файлов · {{bytes(total)}}</p></div>
-    <div class="row"><UiButton v-if="running" kind="danger" @click="stop">Пауза</UiButton><UiButton v-else kind="primary" @click="start">{{finished===entries.length?'Проверить повторно':'Начать / продолжить'}}</UiButton></div>
+    <div>
+      <strong>{{folder}}</strong>
+      <p class="meta" style="margin:3px 0">{{entries.length.toLocaleString('ru-RU')}} фото · {{bytes(total)}}</p>
+    </div>
+    <div class="row">
+      <UiButton v-if="running" @click="stop">Приостановить</UiButton>
+      <UiButton v-else kind="primary" @click="start">
+        {{finished===entries.length?'Проверить':resumable?'Продолжить':'Загрузить'}}
+      </UiButton>
+    </div>
   </div>
-  <div v-if="entries.length" class="stack-sm" style="border-top:1px solid var(--border-subtle);padding-top:12px">
-    <label class="row wrap" style="gap:10px;align-items:center">
-      <input type="checkbox" v-model="autoProcess" :disabled="running||manifestRegistered" aria-label="Автоматически обработать MegaLoc после загрузки"/>
-      <strong>Автоматически обработать MegaLoc после загрузки</strong>
-    </label>
-    <div class="meta">После проверки всех файлов задание создаётся на сервере даже при закрытом браузере. Автозапуск можно отменить до постановки в очередь.</div>
-    <label v-if="autoProcess" class="field" style="max-width:270px">
-      Порог группировки MegaLoc: {{autoThreshold.toFixed(2)}}
-      <input type="range" v-model.number="autoThreshold" min=".50" max=".99" step=".01" :disabled="running||manifestRegistered" aria-label="Порог MegaLoc для автоматической обработки"/>
-    </label>
-    <div v-if="manifestRegistered" class="meta">Настройки этой партии уже сохранены на сервере и не меняются при повторном выборе папки.</div>
-  </div>
+  <label v-if="entries.length" class="row wrap" style="gap:10px;align-items:center">
+    <input v-model="autoProcess" type="checkbox" :disabled="running||manifestRegistered"
+      aria-label="Обработать после загрузки"/>
+    <span>Обработать после загрузки</span>
+  </label>
   <div v-if="running||uploaded" class="stack-sm">
-    <div class="row between meta"><span>Передано {{bytes(uploaded)}} / {{bytes(total)}}</span><span>{{percent.toFixed(1)}}%</span></div>
-    <div class="progress-track" role="progressbar" :aria-valuenow="percent" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill" :style="{width:percent+'%'}"/></div>
-    <div class="meta" role="status">{{phase}} · {{finished}} из {{entries.length}} файлов · до {{uploadSettings.parallelUploads}} передач одновременно</div>
+    <div class="row between meta">
+      <span>{{running?(phase.includes('Ожидание')?'Ожидание соединения':'Загрузка фотографий'):'Передано'}} · {{finished}} из {{entries.length}}</span>
+      <strong>{{percent.toFixed(1)}}%</strong>
+    </div>
+    <div class="progress-track" role="progressbar" :aria-valuenow="percent" aria-valuemin="0" aria-valuemax="100">
+      <span class="progress-fill" :style="{width:percent+'%'}"/>
+    </div>
   </div>
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
 </section>

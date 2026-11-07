@@ -9,7 +9,9 @@
   .reference-library-view .split{min-height:0;flex:1;overflow:hidden;align-items:stretch}
   .reference-library-view .split-aside{min-height:0;overflow:visible}
   .reference-library-view .split-list{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain}
-  .reference-library-view .split-main{min-height:0;overflow:hidden;padding:0;display:flex}
+  .reference-library-view .split-main{min-height:0;overflow:hidden;padding:0;display:flex;flex-direction:column}
+  .reference-library-view .reference-detail-header{flex:none;padding:16px;min-width:0}
+  .reference-library-view .reference-library-gallery-scroll{width:100%;min-width:0}
   .reference-library-gallery-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;
     padding:16px;scrollbar-gutter:stable}
 }

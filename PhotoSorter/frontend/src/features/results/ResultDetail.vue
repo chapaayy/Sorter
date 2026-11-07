@@ -19,7 +19,7 @@ const route=useRoute(),router=useRouter(),id=String(route.params.runId),notice=u
 const run=ref<Run|null>(null),batch=ref<Batch|null>(null),retention=ref<Retention|null>(null)
 const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),referenceNames=ref<Record<string,string>>({}),mode=ref<'sam'|'group'>('sam')
 const selected=ref(''),lastSam=ref(''),lastGroup=ref(''),error=ref(''),busy=ref(false)
-const viewer=ref<number|null>(null),confirmZip=ref(false),deleteWhole=ref(false)
+const viewer=ref<number|null>(null),deleteWhole=ref(false)
 const displaySam=(sam:string)=>referenceNames.value[sam]||friendlySam(sam)
 const list=computed(()=>Object.entries(mode.value==='sam'?sams.value:groups.value)
   .sort(([a],[b])=>a==='_Неопределено'?1:b==='_Неопределено'?-1:a.localeCompare(b,'ru',{numeric:true}))
@@ -53,18 +53,10 @@ function download(sam?:string){
   document.body.append(anchor)
   anchor.click();anchor.remove()
 }
-async function confirmed(){
-  if(!batch.value)return
-  busy.value=true
-  try{
-    retention.value=await batchApi.confirm(batch.value.batch_id,id)
-    confirmZip.value=false;notice.add('Сохранение ZIP подтверждено. Срок удаления установлен.','ok')
-  }catch(e){error.value=errorText(e)}finally{busy.value=false}
-}
 async function extend(){
   if(!batch.value)return
   busy.value=true
-  try{retention.value=await batchApi.extend(batch.value.batch_id);notice.add('Срок хранения продлён на 2 месяца','ok')}
+  try{retention.value=await batchApi.extend(batch.value.batch_id);notice.add('Срок хранения продлён','ok')}
   catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
 async function deleteBatch(){
@@ -82,15 +74,19 @@ async function deleteBatch(){
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
 <section v-if="batch&&run" class="panel stack" style="margin-bottom:18px">
   <div class="row between wrap">
-    <div><strong>Полный архив ZIP</strong><p class="meta" style="margin:4px 0">Скачайте файл на устройство и проверьте сохранение, только затем подтвердите это отдельно.</p></div>
-    <UiButton v-if="!retention?.download_confirmed_at" @click="confirmZip=true">Я сохранил полный архив</UiButton>
-    <span v-else class="status ok">✓ Архив подтверждён</span>
+    <div><strong>Готовый ZIP</strong>
+      <p class="meta" style="margin:4px 0">Архив подготовлен автоматически после сортировки.</p>
+    </div>
+    <span v-if="retention?.delete_after_at" class="meta">
+      Автоудаление: <strong>{{date(retention.delete_after_at)}}</strong>
+    </span>
+    <span v-else class="meta">Для этой партии автоматическое удаление не назначено.</span>
   </div>
-  <div v-if="retention?.download_confirmed_at" class="row between wrap">
-    <span class="meta">Автоудаление партии: <strong>{{date(retention.delete_after_at)}}</strong> · через 2 календарных месяца после подтверждения.</span>
-    <UiButton small :loading="busy" @click="extend">Продлить на 2 месяца</UiButton>
+  <div v-if="retention?.delete_after_at" class="row between wrap">
+    <span class="meta">При удалении партии архив и фотографии удалятся вместе.</span>
+    <UiButton small :loading="busy" @click="extend">Продлить хранение</UiButton>
   </div>
-  <div v-if="retention?.warning" class="alert warning">Осталось менее 7 дней до удаления. При необходимости продлите хранение.</div>
+  <div v-if="retention?.warning" class="alert warning">До автоматического удаления осталось менее 7 дней.</div>
 </section>
 <div class="row wrap between" style="margin-bottom:16px">
   <div class="segment" role="tablist" aria-label="Способ группировки">
@@ -114,6 +110,5 @@ async function deleteBatch(){
 </div>
 <EmptyState v-else-if="run" title="Результаты ещё не опубликованы" detail="Проверьте статус обработки и журнал запуска."/>
 <ImageViewer v-if="viewer!==null" :items="previews" :initial="viewer" @close="viewer=null"/>
-<ConfirmDialog v-if="confirmZip" title="Подтвердить сохранение архива" message="Вы уверены, что ПОЛНЫЙ ZIP успешно скачан и сохранён вне сервера? Это действие запустит двухмесячный срок хранения ВСЕЙ партии." required-text="СОХРАНЁН" confirm-label="Подтвердить сохранение ZIP" :busy="busy" @confirm="confirmed" @cancel="confirmZip=false"/>
 <ConfirmDialog v-if="deleteWhole&&batch" title="Удалить ВСЮ партию безвозвратно?" :message="'Удалятся оригинальные ФО, все запуски, готовые результаты, миниатюры, временные файлы и логи партии «'+batch.display_name+'». Общая библиотека SAM останется.'" :required-text="batch.display_name" danger confirm-label="Удалить всю партию" :busy="busy" @confirm="deleteBatch" @cancel="deleteWhole=false"/>
 </template>

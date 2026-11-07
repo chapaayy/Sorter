@@ -50,9 +50,9 @@ function finishedRefs(){upload.finish()}
         <div class="row between upload-modal-header">
           <div>
             <h2 id="upload-modal-heading" style="margin-bottom:2px">
-              {{upload.mode==='fo'?'Загрузить папку фотографий':'Загрузить образцы'}}
+              {{upload.mode==='fo'?'Загрузить фотографии':'Загрузить образцы'}}
             </h2>
-            <p class="meta" style="margin:0">Передача с возможностью продолжить после обрыва</p>
+
           </div>
           <button ref="closeButton" type="button" class="btn ghost icon" aria-label="Свернуть загрузку"
             @click="upload.close">✕</button>

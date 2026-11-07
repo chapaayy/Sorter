@@ -9,14 +9,12 @@ import UiButton from '../../components/ui/UiButton.vue'
 
 const notice=useNoticeStore()
 const autoEnabled=ref(false),threshold=ref(.50),autoBusy=ref(false),autoReady=ref(false)
-const threads=ref(7),maxThreads=ref(8),cpuBusy=ref(false),cpuReady=ref(false)
 const model=ref<ModelInfo|null>(null),modelBusy=ref(false),error=ref('')
 async function refresh(){
   try{
-    const [a,c,m]=await Promise.all([runApi.autoSettings(),runApi.cpuSettings(),runApi.models()])
+    const [a,m]=await Promise.all([runApi.autoSettings(),runApi.models()])
     if(!autoBusy.value){autoEnabled.value=a.auto_process_new_batches;threshold.value=a.grouping_threshold}
-    if(!cpuBusy.value){threads.value=c.threads;maxThreads.value=c.max_threads}
-    model.value=m;autoReady.value=true;cpuReady.value=true;error.value=''
+    model.value=m;autoReady.value=true;error.value=''
   }catch(e){error.value=errorText(e)}
 }
 onMounted(()=>void refresh())
@@ -29,15 +27,6 @@ async function saveAuto(){
     autoEnabled.value=next.auto_process_new_batches;threshold.value=next.grouping_threshold
     notice.add('Параметры автообработки сохранены','ok')
   }catch(e){error.value=errorText(e)}finally{autoBusy.value=false}
-}
-async function saveCpu(){
-  if(!cpuReady.value||cpuBusy.value)return
-  cpuBusy.value=true
-  try{
-    const next=await runApi.saveCpuThreads(threads.value)
-    threads.value=next.threads
-    notice.add('Потоки MegaLoc изменятся со следующего задания','ok')
-  }catch(e){error.value=errorText(e)}finally{cpuBusy.value=false}
 }
 async function install(){
   if(modelBusy.value)return
@@ -74,18 +63,6 @@ async function install(){
     </label>
     <p class="meta">Новые партии используют эти значения. Существующие задания не изменяются.</p>
   </section>
-  <section class="panel stack">
-    <h2>Производительность CPU</h2>
-    <div class="row between wrap">
-      <div>
-        <strong>Потоки MegaLoc: {{threads}}</strong>
-        <p class="meta" style="margin:4px 0 0">Число вычислительных потоков при загрузке следующей задачи</p>
-      </div>
-      <UiButton small :disabled="!cpuReady||cpuBusy" :loading="cpuBusy" @click="saveCpu">Применить</UiButton>
-    </div>
-    <input v-model.number="threads" type="range" min="1" :max="maxThreads" step="1"
-      :disabled="!cpuReady||cpuBusy" aria-label="Число потоков CPU для MegaLoc"/>
-    <div class="meta">Лимит Docker не изменяется. Настройка применяется перед следующей ФО или подготовкой образцов. Максимум ограничен доступными CPU Worker.</div>
-  </section>
+
 </div>
 </template>

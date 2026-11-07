@@ -31,7 +31,10 @@ const stage=computed(()=>{
   if(props.task.state==='running'){
     if(props.task.stop_requested)return 'Запрошена остановка'
     if(preparing.value)return 'MegaLoc · подготовка образцов'
-    return props.task.fo_progress?.stage_label||'MegaLoc · вычисление'
+    const p=props.task.fo_progress
+    return p?.stage==='archive'
+      ?'Подготовка архива · '+Math.round(p.stage_percent??0)+'%'
+      :p?.stage_label||'MegaLoc · вычисление'
   }
   if(props.task.state==='completed')return 'Обработка завершена'
   return props.task.error||STATE_RU[props.task.state]

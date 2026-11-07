@@ -33,7 +33,12 @@ const progress=computed(()=>{
     :null
 })
 const stage=computed(()=>{
-  if(run.value?.status==='running')return state.value.stageLabel
+  if(run.value?.status==='running'){
+    const p=run.value.progress
+    return p?.stage==='archive'
+      ?'Подготовка архива · '+Math.round(p.stage_percent??0)+'%'
+      :state.value.stageLabel
+  }
   if(run.value?.status==='queued')return 'Ожидает своей очереди'
   if(run.value?.status==='completed')return 'Обработка завершена'
   if(run.value?.status==='completed_with_errors')return 'Завершено с ошибками'
