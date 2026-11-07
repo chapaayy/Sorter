@@ -11,6 +11,7 @@ const links=[
   {to:'/fo',label:'ФО',icon:'photos'},
   {to:'/references',label:'Образцы',icon:'references'},
   {to:'/processing',label:'Обработка',icon:'processing'},
+  {to:'/queue',label:'Очередь',icon:'queue'},
   {to:'/results',label:'Результаты',icon:'results'},
   {to:'/logs',label:'Логи',icon:'logs'},
   {to:'/settings',label:'Настройки',icon:'settings'}
@@ -36,7 +37,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
       </div>
       <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav class="nav-links" aria-label="Разделы">
-        <RouterLink v-for="link in links.slice(0,5)" :key="link.to" :to="link.to"
+        <RouterLink v-for="link in links.slice(0,6)" :key="link.to" :to="link.to"
           class="nav-link" :aria-label="link.label"
           :title="sidebar.collapsed?link.label:undefined">
           <span class="nav-icon" aria-hidden="true"><UiIcon :name="link.icon"/></span>

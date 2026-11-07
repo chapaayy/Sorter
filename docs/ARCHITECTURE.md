@@ -29,3 +29,7 @@
 - Между job очередью и процессной доступностью теперь независимая сущность `service_heartbeats`. Single-process API выставляет `services` для monitoring, а фоновые процессы пишут heartbeat отдельными daemon threads. Отказ DB отражается как ошибка, не подменяется фиктивным `alive`.
 - Snapshot и restored bytes выполняют независимые операции с project/data + Models cache/models. PostgreSQL custom dump сохраняется отдельно от файлового tar, копия считается **согласованной только если оператор остановил все writers**. Manifest backup имеет SHA, tar hardlink references, БД после восстановления проверяется на отдельной staging DB.
 - Отдельные инструменты `compare_baseline.py`, `staging_probe.py` обслуживают измерения и приёмку, не влияют на inference path. Production rollback и acceptance — [ROLLOUT](ROLLOUT.md).
+
+## Общая FIFO (этап 4)
+
+Только один UI очереди (`/queue`); `/processing` — детали/история ФО. Долговременная история очереди в PostgreSQL `work_queue`; для подготовок — `reference_preparation_jobs`, для фотоотчётов — `jobs` как совместимый контракт. Reference uploads идут в staging и после CPU-подготовки атомарно публикуют версию. Первая завершённая FO-загрузка фиксирует installation cursor в `fo_library_upload_receipts` и `library_notice_cursors`; следующие изменения распознавания видны один раз до явного ack. Время публикации и история в `reference_library_versions`/`reference_library_events`. Декларация feature flags — общая для API/Worker/cleanup. См. `REFERENCE_QUEUE_STAGE4.md`.

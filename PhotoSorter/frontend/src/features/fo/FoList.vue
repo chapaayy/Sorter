@@ -7,6 +7,9 @@ import {usePolling} from '../../composables/usePolling'
 import {errorText} from '../../utils/format'
 import type {Batch} from '../../types/api'
 import {useNoticeStore} from '../../stores/notice'
+import {libraryNoticesApi} from '../../api/libraryNotices'
+import type {LibraryStatus} from '../../api/libraryNotices'
+import ReferenceUpdateNotice from './ReferenceUpdateNotice.vue'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
@@ -16,6 +19,7 @@ import FoBatchCard from './FoBatchCard.vue'
 
 const router=useRouter(),notice=useNoticeStore()
 const batches=ref<Batch[]>([]),search=ref(''),showUpload=ref(false)
+const libraryStatus=ref<LibraryStatus|null>(null),opening=ref(false)
 const loading=ref(true),loadingMore=ref(false),error=ref('')
 const total=ref(0),activeAction=ref(''),stopConfirm=ref<{id:string;name:string;queued:boolean}|null>(null)
 let refreshing=false
@@ -54,6 +58,17 @@ async function refreshVisible(){
 onMounted(()=>{void load()})
 usePolling(refreshVisible,4000)
 
+async function toggleUpload(){
+  if(showUpload.value){showUpload.value=false;return}
+  if(opening.value)return
+  opening.value=true
+  try{
+    // Reading does NOT acknowledge; acknowledgement requires an explicit click.
+    libraryStatus.value=await libraryNoticesApi.status()
+    showUpload.value=true
+  }catch(e){error.value='Не удалось проверить обновления образцов: '+errorText(e)}
+  finally{opening.value=false}
+}
 async function start(batchId:string,threshold:number){
   if(activeAction.value)return
   activeAction.value=batchId;error.value=''
@@ -96,9 +111,11 @@ async function stop(){
 <PageHeader eyebrow="БИБЛИОТЕКА ФО" title="Фотоотчёты"
   subtitle="Состояние загрузки и MegaLoc для каждой партии, управление обработкой и результаты.">
   <template #actions>
-    <UiButton kind="primary" @click="showUpload=!showUpload">{{showUpload?'Скрыть загрузку':'+ Загрузить папку'}}</UiButton>
+    <UiButton kind="primary" @click="toggleUpload" :loading="opening">{{showUpload?'Скрыть загрузку':'+ Загрузить папку'}}</UiButton>
   </template>
 </PageHeader>
+<ReferenceUpdateNotice v-if="showUpload&&libraryStatus?.notice" :status="libraryStatus"
+  style="margin-bottom:16px" @ack="libraryStatus=$event"/>
 <UploadPanel v-if="showUpload" style="margin-bottom:24px"
   @finished="id=>{showUpload=false;void router.push('/fo/'+id)}"/>
 <div class="toolbar">
@@ -117,7 +134,7 @@ async function stop(){
 </div>
 <EmptyState v-else-if="!loading" title="Пока нет фотоотчётов"
   detail="Выберите папку, чтобы загрузить фотографии первой партии." icon="▤">
-  <UiButton kind="primary" @click="showUpload=true">Загрузить папку</UiButton>
+  <UiButton kind="primary" @click="toggleUpload">Загрузить папку</UiButton>
 </EmptyState>
 <div v-else class="meta">Загружаем список партий…</div>
 <ConfirmDialog v-if="stopConfirm" :title="stopConfirm.queued?'Убрать из очереди MegaLoc?':'Остановить обработку MegaLoc?'"

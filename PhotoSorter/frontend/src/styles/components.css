@@ -262,3 +262,23 @@
  .processing-queue-row>.row{grid-column:2;justify-content:flex-start}
  .processing-queue-name{white-space:normal;overflow-wrap:anywhere}
 }
+
+/* Stage 4 shared work-queue and isolated reference-import presentation */
+.queue-task-row{display:flex;align-items:flex-start;gap:16px;padding:14px 0;border-top:1px solid var(--border-subtle);min-width:0}
+.queue-task-row:first-of-type{border-top:0}
+.queue-task-row .processing-queue-position{flex:none}
+.queue-task-main{display:grid;gap:7px;min-width:0;flex:1;overflow-wrap:anywhere}
+.queue-task-main .progress-track{max-width:480px}
+.queue-task-actions{justify-content:flex-end;flex-shrink:0;max-width:44%}
+.queue-task-error{color:var(--danger);overflow-wrap:anywhere}
+.reference-import-entry{padding:12px 0;border-top:1px solid var(--border-subtle);min-width:0}
+.reference-import-entry .progress-track{max-width:100%}
+@media(max-width:850px){
+  .queue-task-row{flex-wrap:wrap;gap:10px}
+  .queue-task-actions{max-width:none;width:100%;justify-content:flex-start;padding-left:0}
+  .queue-task-main{flex-basis:calc(100% - 70px)}
+}
+@media(max-width:550px){
+  .queue-task-row{gap:8px}
+  .queue-task-actions .btn{white-space:normal}
+}

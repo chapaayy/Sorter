@@ -210,3 +210,19 @@
 - `backend/server/api/routes/work_queue.py` — список задач и явные retry/skip.
 - `backend/tests/test_unified_queue_stage3.py` — PostgreSQL сценарии FIFO/snapshot/failure/recovery.
 - `docs/REFERENCE_QUEUE_STAGE3.md` — архитектура и правила безопасного включения.
+
+## Файлы этапа 4 (07.11.2026)
+
+- `PhotoSorter/backend/server/db/migrations/0016_library_notice_delivery.sql` — один receipt на завершённую FO-партию.
+- `PhotoSorter/backend/server/services/library_notices.py` — SQL cursor, распознавательные ревизии, ack, история.
+- `PhotoSorter/backend/server/api/routes/library_notices.py` — status/events/ack REST.
+- `PhotoSorter/frontend/src/api/{workQueue,libraryNotices}.ts` — типизированный REST.
+- `PhotoSorter/frontend/src/types/workQueue.ts` — контракты FIFO.
+- `PhotoSorter/frontend/src/utils/queuePresentation.ts` — подписи/фактические длительности.
+- `PhotoSorter/frontend/src/features/queue/{QueueView,QueueTaskRow,QueueTaskDetail}.vue` — единая UI-очередь, детали, действия.
+- `PhotoSorter/frontend/src/features/references/ReferencePreparationStatus.vue` — прогресс/публикация образцов.
+- `PhotoSorter/frontend/src/composables/useStagedReferenceTransfer.ts` — manifest/SHA/resume и staging chunks.
+- `PhotoSorter/frontend/src/features/fo/ReferenceUpdateNotice.vue` — одно уведомление о новой опубликованной версии.
+- `PhotoSorter/backend/tests/test_library_notices_stage4.py` — SQL notices, FIFO scopes, idempotent receipts.
+- `PhotoSorter/frontend/tests/{workQueue,libraryNoticesApi}.test.ts` — UI helpers и API-контракты.
+- `docs/REFERENCE_QUEUE_STAGE4.md` — договорённые сценарии и граница деплоя.

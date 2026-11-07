@@ -10,10 +10,10 @@ import {useNoticeStore} from '../../stores/notice'
 import {bytes,errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 
-const props=defineProps<{disabled:boolean}>()
+const props=defineProps<{disabled:boolean;staged?:boolean}>()
 const emit=defineEmits<{(e:'finished'):void}>()
 const uploadSettings=useUploadSettingsStore(),notice=useNoticeStore()
-const transfer=useReferenceTransfer()
+const transfer=useReferenceTransfer(!!props.staged)
 const selection=ref<ReferenceSelection|null>(null),plan=ref<ImportPlan|null>(null)
 const checking=ref(false),error=ref('')
 let revision=0
@@ -62,8 +62,10 @@ async function upload(){
   const items=selection.value.tasks
   const success=await transfer.start(items,uploadSettings.parallelUploads)
   if(success){
-    notice.add('Библиотека обновлена: обработано '+items.length+
-      ' фото, совпадений '+transfer.duplicates.value+'. Ничего не удалено.','ok')
+    notice.add(props.staged
+      ?'Файлы сохранены. Подготовка образцов поставлена в общую очередь.'
+      :'Библиотека обновлена: обработано '+items.length+
+        ' фото, совпадений '+transfer.duplicates.value+'. Ничего не удалено.','ok')
     selection.value=null;plan.value=null
     emit('finished')
   }
@@ -129,7 +131,7 @@ async function upload(){
       <div class="row">
         <UiButton v-if="transfer.busy.value" kind="danger" @click="transfer.pause()">Пауза</UiButton>
         <UiButton v-else kind="primary" :disabled="!ready" @click="upload">
-          Создать и дополнить
+          {{staged?'Загрузить и подготовить':'Создать и дополнить'}}
         </UiButton>
       </div>
     </div>
@@ -141,6 +143,7 @@ async function upload(){
       <div class="progress-track"><span class="progress-fill"
         :style="{width:selection.totalBytes?100*transfer.sentBytes.value/selection.totalBytes+'%':'0%'}"/></div>
     </div>
+    <div v-if="transfer.phase.value" class="meta" role="status">{{transfer.phase.value}}</div>
     <div v-if="transfer.error.value" class="alert error" role="alert">{{transfer.error.value}}</div>
   </div>
 </div>

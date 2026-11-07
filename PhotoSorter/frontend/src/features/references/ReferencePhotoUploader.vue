@@ -8,9 +8,9 @@ import {useNoticeStore} from '../../stores/notice'
 import {bytes} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 
-const props=defineProps<{selectedSam:string;label:string;disabled:boolean}>()
+const props=defineProps<{selectedSam:string;label:string;disabled:boolean;staged?:boolean}>()
 const emit=defineEmits<{(e:'finished'):void}>()
-const uploadSettings=useUploadSettingsStore(),notice=useNoticeStore(),transfer=useReferenceTransfer()
+const uploadSettings=useUploadSettingsStore(),notice=useNoticeStore(),transfer=useReferenceTransfer(!!props.staged)
 const files=ref<UploadEntry[]>([]),issues=ref<string[]>([]),target=ref('')
 const total=computed(()=>files.value.reduce((sum,item)=>sum+item.file.size,0))
 const ready=computed(()=>!!files.value.length&&!issues.value.length&&
@@ -33,8 +33,10 @@ async function upload(){
   if(!ready.value)return
   const current=files.value.map(entry=>({sam:target.value,entry}))
   if(await transfer.start(current,uploadSettings.parallelUploads)){
-    notice.add('Образцы дополнены: '+current.length+
-      ' файлов, совпадений '+transfer.duplicates.value+'.','ok')
+    notice.add(props.staged
+      ?'Файлы приняты. Подготовка образцов поставлена в очередь.'
+      :'Образцы дополнены: '+current.length+
+        ' файлов, совпадений '+transfer.duplicates.value+'.','ok')
     files.value=[];issues.value=[]
     emit('finished')
   }
@@ -75,6 +77,7 @@ async function upload(){
       <div class="progress-track"><span class="progress-fill"
         :style="{width:total?100*transfer.sentBytes.value/total+'%':'0%'}"/></div>
     </div>
+    <div v-if="transfer.phase.value" class="meta" role="status">{{transfer.phase.value}}</div>
     <div v-if="transfer.error.value" class="alert error" role="alert">{{transfer.error.value}}</div>
   </template>
 </div>

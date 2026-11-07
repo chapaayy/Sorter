@@ -48,6 +48,11 @@ def register(session_id:uuid.UUID,data:Manifest):
     _enabled()
     return reference_imports.register_manifest(session_id,data.files)
 
+@router.get("")
+def list_sessions(limit:int=25,offset:int=0):
+    _enabled()
+    return reference_imports.list_sessions(limit,offset)
+
 @router.get("/{session_id}")
 def get_session(session_id:uuid.UUID):
     _enabled()

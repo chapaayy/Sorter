@@ -55,3 +55,7 @@
 ## Общая FIFO — этап 3
 
 Не включать `REFERENCE_IMPORT_STAGING_ENABLED=1` без `PHOTOSORTER_UNIFIED_QUEUE=1`. Один global leader выполняет оба вида тяжёлых заданий; `work_queue.seq` — источник порядка. Snapshot published reference members фиксируется только на claim ФО; ссылки должны быть immutable. Любая неудачная подготовка запрещает молчаливый claim следующего ФО до retry или явного skip. Запрет изменений MegaLoc maths сохраняется. Прежде чем снимать старую UI-блокировку, проверить `docs/REFERENCE_QUEUE_STAGE3.md` и полный staging restore/acceptance.
+
+## Этап 4 (UI/FIFO/notices)
+
+`features/queue` — **единственная** общая очередь; `features/processing` — текущий FO-run/история, не вторая очередь. В staging режиме `useStagedReferenceTransfer` обязательна регистрация всего manifest и SHA каждой фотографии; browser localStorage содержит только идентификатор сессии, SQL остаётся источником истины. `services/library_notices` показывает предупреждение **только после прошлой завершённой ФО**, ack строго по запросу пользователя и не раньше; техническая immutable-копия и изменение адреса не повышают recognition alert. Без внешней проверенной копии VPS и отдельного разрешения не выкатывать. Подробности в `docs/REFERENCE_QUEUE_STAGE4.md`.

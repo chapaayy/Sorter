@@ -31,3 +31,7 @@ bash ./install.sh --check
 Пройти login, `/api/health`, статус services, БД, старые ФО/SAM, gallery, full ZIP, checksum, контроль настоящего MegaLoc baseline. Зафиксировать commit, snapshot SHA, время и результаты проверки.
 
 Связанные документы: [BACKUP_RESTORE](BACKUP_RESTORE.md), [DEPLOYMENT](DEPLOYMENT.md), [SINGLE_SITE_INSTALL](SINGLE_SITE_INSTALL.md).
+
+## Особое условие после активации FIFO
+
+После включения staged reference jobs **нельзя просто выключить** `PHOTOSORTER_UNIFIED_QUEUE` и запустить старый Worker: он не умеет исполнять `reference_preparation` и способен обойти зависимость. Сначала прекратить новые загрузки/claim, зафиксировать все queued/running/prep/ack статусы и пути, выполнить проверенный staging restore/согласованное операторское решение. Для обычного отката UI до активации flags достаточно прежнего pinned image; новые аддитивные таблицы сохраняются. Реальное переключение/restore только после разрешения владельца.

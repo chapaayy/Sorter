@@ -56,3 +56,7 @@ CI запускает PostgreSQL 17, compile Python, Compose config и unit/inte
 После обновления Schema 0007 и запуска Compose проверить worker, thumbnail, cleanup heartbeat **при простое и во время инференса**. Если Process не отвечает, сверить Docker ps, logs, DB network и RAM; не запускать второй worker в обход global advisory lock.
 
 Скрипт `install.sh --check` теперь проверяет допустимость cpuset на текущем хосте; обновления существующего volume требуют реального backup и отдельного ack. См. [STAGE4_ROLLOUT](ROLLOUT.md).
+
+## Операционная граница stage 4
+
+По умолчанию `PHOTOSORTER_UNIFIED_QUEUE=0` и `REFERENCE_IMPORT_STAGING_ENABLED=0` в общем Compose env. Отдельно проверьте согласованность переменных между api/worker/cleanup. На проверенном staging переключайте `PHOTOSORTER_UNIFIED_QUEUE=1` первым и `REFERENCE_IMPORT_STAGING_ENABLED=1` только после тестов. Watch: `GET /api/work-queue?scope=active` и `/api/reference-library/status`, audit `GET /api/reference-library/events`. При ошибке подготовки статус `failed` обязан блокировать следующие ФО; оператор вручную принимает retry/skip с подтверждением. Релиз на VPS требует отдельного разрешения владельца; инструкция `REFERENCE_QUEUE_STAGE4.md`.

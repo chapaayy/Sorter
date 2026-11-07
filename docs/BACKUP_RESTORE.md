@@ -23,3 +23,7 @@ Vue UI — клиент существующих серверных состоя
 Restore требует `--confirm-staging`, **новый каталог** и marker `.photosorter-staging-only` со значением `STAGING_ONLY` в его родителе. БД должна существовать, быть пустой и называться `sorter_restore_*`; при некорректном/подменённом tar никакой распаковки до `verify()`.
 
 CI `ci_restore_drill.py` действительно вызывает `pg_dump` и `pg_restore` с PostgreSQL17 на двух disposable базах и проверяет SHA файлов, запись БД и inode. **Это не снимок VPS**. Настоящая резервная копия должна быть зашифрована offsite (внутри находятся пароли `.env.generated` и фотографии). Caddy Docker volume с TLS private keys нужно отдельно копировать и восстанавливать. Без offsite restore-test не давать согласие на production rollout. Команды: [STAGE4_ROLLOUT](ROLLOUT.md).
+
+## Новые данные Stage 4
+
+Согласованная внешняя копия должна включать новые PostgreSQL таблицы `reference_library_versions`, `reference_version_members`, `reference_library_events`, `library_notice_cursors`, `fo_library_upload_receipts`, `reference_import_*`, `reference_preparation_*`, `work_queue`; из `PhotoSorter/data` сохранять `reference_staging/`, `reference_objects/`, кэш эмбеддингов, исходники и outputs. Файлы staging/immutable и курсоры должны быть восстановлены вместе с PostgreSQL, а не выборочно. Перед переносом выполнить offsite verify + restore-test на пустой отдельной DB и проверить Caddy TLS volumes. Не использовать `docker compose down -v`.

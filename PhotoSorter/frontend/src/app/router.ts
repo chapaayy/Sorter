@@ -8,6 +8,7 @@ export const router = createRouter({
     { path: '/fo', name: 'fo', component: () => import('../features/fo/FoList.vue') },
     { path: '/fo/:batchId', name: 'fo-gallery', component: () => import('../features/fo/FoGallery.vue') },
     { path: '/references', name: 'references', component: () => import('../features/references/ReferenceLibrary.vue') },
+    { path: '/queue', name: 'queue', component: () => import('../features/queue/QueueView.vue') },
     { path: '/processing', name: 'processing', component: () => import('../features/processing/ProcessingView.vue') },
     { path: '/processing/:runId', name: 'run-detail', component: () => import('../features/processing/RunDetail.vue') },
     { path: '/results', name: 'results', component: () => import('../features/results/ResultsList.vue') },

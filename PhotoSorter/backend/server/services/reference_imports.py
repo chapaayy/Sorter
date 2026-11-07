@@ -237,3 +237,24 @@ def status(session_id):
             "preparation_job_id":str(job["id"]) if job else None,
             "queue_seq":job["seq"] if job else None,
             "files":items}
+
+def list_sessions(limit=25,offset=0):
+    if not 1<=limit<=100 or offset<0:
+        raise HTTPException(422,"Неверная пагинация")
+    with connect() as db:
+        total=db.execute("SELECT count(*) AS n FROM reference_import_sessions").fetchone()["n"]
+        rows=db.execute("""
+            SELECT s.id,s.upload_state AS state,s.preparation_state,s.expected_count,
+                   s.created_at,s.completed_at,
+                   p.id AS preparation_job_id,p.total_count,p.completed_count,
+                   p.failed_count,p.error,w.seq AS queue_seq,
+                   count(f.upload_id) FILTER (WHERE f.state='finalized') AS finalized,
+                   count(f.upload_id) FILTER (WHERE f.state='duplicate') AS duplicates
+            FROM reference_import_sessions s
+            LEFT JOIN reference_import_files f ON f.session_id=s.id
+            LEFT JOIN reference_preparation_jobs p ON p.session_id=s.id
+            LEFT JOIN work_queue w ON w.reference_job_id=p.id
+            GROUP BY s.id,p.id,w.seq
+            ORDER BY s.created_at DESC,s.id DESC LIMIT %s OFFSET %s
+        """,(limit,offset)).fetchall()
+    return {"sessions":rows,"total":total}

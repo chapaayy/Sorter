@@ -31,3 +31,7 @@ CI не имитирует физический VPN и не использует
 Зафиксировать результаты каждого сценария. При потере ФО, повторном автоматическом запуске или параллельном MegaLoc выпуск запрещён. Для обновления нельзя использовать `docker compose down -v`, удалять `Models`, БД, `.env.generated` или рабочие данные.
 
 См. [BACKUP_RESTORE](BACKUP_RESTORE.md), [ROLLOUT](ROLLOUT.md), [ACCEPTANCE](ACCEPTANCE.md) и [TESTING](TESTING.md).
+
+## Расширение до очереди образцов и уведомлений
+
+К предыдущей приёмке добавить `/queue` (без дублирующей очереди в `/processing`), фактические N/M/ошибки, подтверждённые retry/stop/skip, последние import sessions и published_at в `/references`. ФО: прошлый upload V12 → публикация V13 → новый upload = одно предупреждение; ack в PostgreSQL, другой браузер без повторения; duplicate/address-only не создают ложных notice. Реальные 545+ образцов: upload параллельно активному FO, SHA+manifest, прерывание VPN, refresh и restart Worker, без частичной публикации. Провести отдельную backup/restore и 189/1315 реальных FO, прежде чем разрешать production.

@@ -125,6 +125,11 @@ def reconcile_locked(db, batch_id):
         upload_manifest_completed_at=CASE WHEN %s THEN
             COALESCE(upload_manifest_completed_at,now()) ELSE NULL END
         WHERE id=%s""", ("complete" if complete else "waiting", complete, batch_id))
+    if complete:
+        # The receipt's unique batch ID prevents duplicate notifications after
+        # repeated finish requests, a refresh, or maintenance reconciliation.
+        from .library_notices import record_completed_fo
+        record_completed_fo(db,batch_id)
     return complete
 
 

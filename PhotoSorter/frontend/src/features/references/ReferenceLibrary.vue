@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue'
 import {referenceApi} from '../../api/references'
+import {libraryNoticesApi} from '../../api/libraryNotices'
+import type {LibraryStatus} from '../../api/libraryNotices'
+import ReferencePreparationStatus from './ReferencePreparationStatus.vue'
 import {runApi} from '../../api/runs'
 import {useCursor} from '../../composables/useCursor'
 import {usePolling} from '../../composables/usePolling'
@@ -19,7 +22,8 @@ const list=ref<SamCount[]>([]),selected=ref(''),adding=ref(false),editing=ref(fa
   uploadMode=ref<'library'|'single'>('library'),
   error=ref(''),busy=ref(false),active=ref(false),viewer=ref<number|null>(null),
   deletePhoto=ref<string|null>(null),deleteSam=ref(false),
-  cache=ref<{total:number;cached:number;current_signature?:string|null}|null>(null)
+  cache=ref<{total:number;cached:number;current_signature?:string|null}|null>(null),
+  library=ref<LibraryStatus|null>(null),modeReady=ref(false)
 const notice=useNoticeStore()
 const groups=computed(()=>list.value.map(s=>({id:s.sam,label:s.display_name||s.sam,count:s.photos})))
 const selectedEntry=computed(()=>list.value.find(item=>item.sam===selected.value))
@@ -27,11 +31,15 @@ const {items,cursor,loading,error:galleryError,load,reset}=useCursor<Photo>(curs
 const preview=computed(()=>items.value.map(p=>({src:p.original_url||'',label:p.name})))
 async function refresh(){
   try{
-    const [refs,runs,cacheValue]=await Promise.all([referenceApi.list(),runApi.list(100),referenceApi.cache().catch(()=>null)])
-    list.value=refs.sam;active.value=runs.runs.some(r=>isActive(r.status));cache.value=cacheValue
+    const [refs,runs,cacheValue,lib]=await Promise.all([
+      referenceApi.list(),runApi.list(100),referenceApi.cache().catch(()=>null),
+      libraryNoticesApi.status()
+    ])
+    list.value=refs.sam;active.value=runs.runs.some(r=>isActive(r.status))
+    cache.value=cacheValue;library.value=lib;modeReady.value=true
     if(!selected.value||!list.value.some(x=>x.sam===selected.value))selected.value=list.value[0]?.sam||''
     error.value=''
-  }catch(e){error.value=errorText(e)}
+  }catch(e){error.value=errorText(e);modeReady.value=false}
 }
 watch(selected,()=>{viewer.value=null;if(selected.value)void reset();else items.value=[]})
 onMounted(()=>{void refresh()})
@@ -74,12 +82,17 @@ async function removeSam(){
 </script>
 <template>
 <PageHeader eyebrow="БИБЛИОТЕКА КОНСТРУКЦИЙ" title="Образцы" subtitle="Одна постоянная библиотека для всех фотоотчётов.">
-  <template #actions><UiButton kind="primary" :disabled="active" @click="adding?adding=false:openUpload('library')">{{adding?'Закрыть загрузку':'+ Загрузить образцы'}}</UiButton></template>
+  <template #actions><UiButton kind="primary" :disabled="!modeReady||(active&&!library?.staged_imports_enabled)" @click="adding?adding=false:openUpload('library')">{{adding?'Закрыть загрузку':'+ Загрузить образцы'}}</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
 <ReferenceUploader v-if="adding" :selected-sam="selected" :selected-label="selectedEntry?.display_name||selected"
-  :initial-mode="uploadMode" :disabled="active" style="margin-bottom:20px" @finished="onUploaded"/>
-<div v-if="active" class="alert" style="margin-bottom:18px">Образцы используются очередью MegaLoc. Изменения доступны после окончания активных и ожидающих запусков.</div>
+  :initial-mode="uploadMode" :staged="library?.staged_imports_enabled"
+  :disabled="!modeReady||(active&&!library?.staged_imports_enabled)" style="margin-bottom:20px" @finished="onUploaded"/>
+<div v-if="active&&!library?.staged_imports_enabled" class="alert" style="margin-bottom:18px">
+  Загрузка образцов доступна после завершения текущих и ожидающих обработок. Новый
+  способ независимой загрузки пока выключен.
+</div>
+<ReferencePreparationStatus :library="library" style="margin-bottom:17px"/>
 <div class="row wrap between" style="margin-bottom:17px">
   <span class="meta">Всего {{list.length}} конструкций · {{list.reduce((n,s)=>n+s.photos,0)}} эталонных фото</span>
   <span v-if="cache" class="meta">Кэш MegaLoc: {{cache.cached}} / {{cache.total}} · {{cache.current_signature?'актуальная подпись':'модель не подтверждена'}}</span>
@@ -90,7 +103,7 @@ async function removeSam(){
     <div class="panel-header reference-detail-header"><div><h2>{{selectedEntry?.display_name||selected}}</h2>
       <span class="meta">{{selectedEntry?.photos||0}} образцов</span></div>
       <div class="row wrap">
-        <UiButton small :disabled="active" @click="openUpload('single')">+ Добавить фото</UiButton>
+        <UiButton small :disabled="!modeReady||(active&&!library?.staged_imports_enabled)" @click="openUpload('single')">+ Добавить фото</UiButton>
         <UiButton v-if="selectedEntry?.address!=null" small :disabled="active"
           @click="addressDraft=selectedEntry.address||'';editing=true">Изменить адрес</UiButton>
         <UiButton kind="danger" small :disabled="active" @click="deleteSam=true">Удалить конструкцию</UiButton>

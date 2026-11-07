@@ -11,19 +11,32 @@ class PreparationAction(BaseModel):
     idempotency_key:uuid.UUID
 
 @router.get("/work-queue")
-def list_work_queue(limit:int=100,offset:int=0):
-    if not 1<=limit<=200 or offset<0:
-        raise HTTPException(422,"Неверная пагинация")
+def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
+    if not 1<=limit<=200 or offset<0 or scope not in ("active","history","all"):
+        raise HTTPException(422,"Неверная выборка очереди")
+    where={
+        "active":""" WHERE (w.state IN ('queued','running','blocked') OR
+                 (w.kind='reference_preparation' AND w.state IN ('failed','interrupted')))""",
+        "history":""" WHERE w.state IN ('completed','completed_with_errors','stopped') OR
+                 (w.kind='fo_processing' AND w.state IN ('failed','interrupted'))""",
+        "all":""
+    }[scope]
+    direction="ASC" if scope=="active" else "DESC"
     with connect() as db:
-        total=db.execute("SELECT count(*) AS n FROM work_queue").fetchone()["n"]
+        total=db.execute("SELECT count(*) AS n FROM work_queue w"+where).fetchone()["n"]
         entries=db.execute("""
             SELECT w.seq,w.kind,w.fo_run_id,w.reference_job_id,w.state,
                    w.created_at,w.started_at,w.finished_at,
-                   p.total_count,p.completed_count,p.failed_count,p.error
+                   p.session_id,p.total_count,p.completed_count,p.failed_count,
+                   p.error,p.stop_requested,
+                   j.batch_id,j.snapshot->>'source' AS fo_source,
+                   b.display_name AS batch_name
             FROM work_queue w LEFT JOIN reference_preparation_jobs p
                  ON p.id=w.reference_job_id
-            ORDER BY w.seq DESC LIMIT %s OFFSET %s
-        """,(limit,offset)).fetchall()
+            LEFT JOIN jobs j ON j.id=w.fo_run_id
+            LEFT JOIN batches b ON b.id=j.batch_id
+            """+where+" ORDER BY w.seq "+direction+" LIMIT %s OFFSET %s",
+            (limit,offset)).fetchall()
     return {"tasks":entries,"total":total}
 
 @router.get("/reference-preparations/{job_id}")

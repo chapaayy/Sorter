@@ -42,10 +42,10 @@ const workerStatus=computed(()=>!worker.value?'Нет данных':worker.value
       <RouterLink class="meta" to="/settings">Изменить настройки</RouterLink>
     </div>
     <div class="processing-overview-cell">
-      <span class="label">Очередь MegaLoc</span>
+      <span class="label">Ожидающие обработки ФО</span>
       <strong>{{system?.worker.queue.queued??'—'}} ожидают</strong>
       <span class="meta">Активных: {{system?(system.worker.queue.running??0)+(system.worker.queue.stopping??0):'—'}}</span>
-      <span class="meta">Одновременно выполняется только одно задание</span>
+      <RouterLink class="meta" to="/queue">Посмотреть общую очередь с образцами</RouterLink>
     </div>
   </div>
 </section>

@@ -50,3 +50,7 @@ npm run test:e2e
 - `PhotoSorter/tools/maintenance/snapshot.py` — согласованный backup/verify/isolated restore-test.
 
 Выполнение операций на пользовательском VPS возможно лишь с отдельно сохранённой копией и пониманием влияния на данные. См. [ACCEPTANCE](ACCEPTANCE.md), [BACKUP_RESTORE](BACKUP_RESTORE.md), [ROLLOUT](ROLLOUT.md).
+
+## Этап 4 — дополнительные тесты
+
+`backend/tests/test_library_notices_stage4.py`: реальная disposable PostgreSQL, первое ФО без ложного баннера, несколько версий до ack, старая отметка не скрывает новую, повторная reconciliation не сдвигает курсор, технические/адресные изменения не предупреждают, разделение scope очереди. `frontend/tests/workQueue.test.ts` — позиции по `seq`, блокирующие ошибки и фактическая длительность; `frontend/tests/libraryNoticesApi.test.ts` — GET не ack, POST ack. Продолжает выполняться предыдущая интеграция `test_unified_queue_stage3.py` и все четыре CI jobs. Реальные FO и VPS остаются отдельной приёмкой, не скрывать это за зелёным CI.

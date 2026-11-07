@@ -66,3 +66,7 @@ python PhotoSorter/tools/maintenance/staging_probe.py \
 ### Rollback
 
 Если несоответствие, прекратить новые операции, не запускать старый и новый inference Worker параллельно. Вернуть **code image из предыдущего SHA**, оставить аддитивные SQL таблицы и volume; DB/filesystem возвращать из полного snapshot только при доказанной несогласованности и в согласованном maintenance window. Никаких `DROP`, `rm -rf PhotoSorter/data`, `docker compose down -v`. См. `docs/ROLLBACK.md`.
+
+## Stage 4 feature rollout (требует отдельного приказа)
+
+Обе переменные `PHOTOSORTER_UNIFIED_QUEUE` и `REFERENCE_IMPORT_STAGING_ENABLED` имеют default 0 в общем Compose env. После проверенного offsite backup + isolated restore и при пустой/контролируемой очереди сначала активировать единую FIFO, проверить старые ФО/результаты и версии, затем отдельно staging import. Изменения API, Worker и cleanup активируются согласованно. При проблеме нельзя просто выключить новый Worker при ожидающих reference preparations; см. `REFERENCE_QUEUE_STAGE4.md` и `ROLLBACK.md`. Ни одна строка этого документа не разрешает самовольный VPS rollout.

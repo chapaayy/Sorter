@@ -1,4 +1,5 @@
 import {ref} from 'vue'
+import {useStagedReferenceTransfer} from './useStagedReferenceTransfer'
 import {uploadOne} from '../utils/upload'
 import {runUploadQueue} from '../utils/uploadQueue'
 import {errorText} from '../utils/format'
@@ -9,7 +10,9 @@ import type {UploadEntry} from '../utils/upload'
 export interface ReferenceTransferItem{sam:string;address?:string;entry:UploadEntry}
 
 /** One upload engine shared by bulk imports and single-construction additions. */
-export function useReferenceTransfer(){
+export function useReferenceTransfer(staged=false){
+  if(staged)return useStagedReferenceTransfer()
+  const phase=ref('')
   const busy=ref(false),error=ref(''),completed=ref(0),duplicates=ref(0),sentBytes=ref(0)
   let controller:AbortController|null=null
 
@@ -70,5 +73,5 @@ export function useReferenceTransfer(){
     }finally{busy.value=false;controller=null}
   }
   function pause(){controller?.abort()}
-  return {busy,error,completed,duplicates,sentBytes,start,pause}
+  return {busy,error,phase,completed,duplicates,sentBytes,start,pause}
 }

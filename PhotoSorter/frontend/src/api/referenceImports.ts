@@ -1,7 +1,7 @@
 /** Typed staged-reference import API. Intentionally not connected to the UI yet.
  * Enabled only when the shared FIFO worker is ready (stage 3).
  */
-import {api,post} from './client'
+import {api,post,query} from './client'
 
 export type ImportFileState='pending'|'finalized'|'duplicate'|'missing_saved'
 export type ImportUploadState='uploading'|'complete'|'cancelled'
@@ -48,7 +48,25 @@ export interface TransferOffset{
   sha256:string|null
 }
 export interface Completion{session_id:string;preparation_job_id:string;queue_seq:number;state:'queued'}
+export interface ImportSessionSummary{
+  id:string
+  state:ImportUploadState
+  preparation_state:ReferencePrepState
+  expected_count:number|null
+  created_at:string
+  completed_at:string|null
+  preparation_job_id:string|null
+  total_count:number|null
+  completed_count:number|null
+  failed_count:number|null
+  finalized:number
+  duplicates:number
+  queue_seq:number|null
+  error:string|null
+}
 export const referenceImportsApi={
+  list:(limit=25,offset=0)=>api<{sessions:ImportSessionSummary[];total:number}>(
+    '/reference-imports'+query({limit,offset})),
   create:(client_session_id:string)=>post<ReferenceImportStatus>('/reference-imports',{client_session_id}),
   register:(id:string,files:ManifestFile[])=>api<ReferenceImportStatus>(
     '/reference-imports/'+encodeURIComponent(id)+'/manifest',

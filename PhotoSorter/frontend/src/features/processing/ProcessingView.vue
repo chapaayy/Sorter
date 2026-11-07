@@ -5,7 +5,7 @@ import {runApi} from '../../api/runs'
 import {systemApi} from '../../api/system'
 import {usePolling} from '../../composables/usePolling'
 import {errorText} from '../../utils/format'
-import {activeInference,orderedQueue} from '../../utils/processingDashboard'
+import {activeInference} from '../../utils/processingDashboard'
 import type {Batch,Run,ModelInfo,ProcessingSettings,SystemStatus} from '../../types/api'
 import {useNoticeStore} from '../../stores/notice'
 import PageHeader from '../../components/ui/PageHeader.vue'
@@ -13,7 +13,6 @@ import UiButton from '../../components/ui/UiButton.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import RunProgress from './RunProgress.vue'
 import ProcessingOverview from './ProcessingOverview.vue'
-import ProcessingQueue from './ProcessingQueue.vue'
 import ProcessingHistory from './ProcessingHistory.vue'
 
 const notice=useNoticeStore()
@@ -25,10 +24,8 @@ const liveError=ref(''),infoError=ref(''),historyError=ref('')
 const stopTarget=ref<Run|null>(null)
 const PAGE=30
 
-const queue=computed(()=>orderedQueue(activeJobs.value))
 const current=computed(()=>activeInference(activeJobs.value))
 const names=computed(()=>Object.fromEntries(batches.value.map(b=>[b.batch_id,b.display_name])))
-const queueTotal=computed(()=>system.value?.worker.queue.queued??queue.value.length)
 
 async function refreshLive(){
   try{
@@ -109,7 +106,7 @@ async function install(){
 
 <template>
 <PageHeader eyebrow="НЕЙРОСЕТЕВАЯ ОБРАБОТКА" title="Обработка"
-  subtitle="Панель MegaLoc: состояние Worker, текущая обработка, очередь и история. Запуск новых партий — в «ФО».">
+  subtitle="Состояние обработки, настройки и история запусков. Общая очередь вынесена в отдельный раздел.">
   <template #actions>
     <RouterLink to="/fo" class="btn primary">Открыть фотоотчёты</RouterLink>
   </template>
@@ -150,8 +147,13 @@ async function install(){
     </section>
   </section>
 
-  <ProcessingQueue :runs="queue" :names="names" :total="queueTotal"
-    :busy-id="busyStop" @stop="stopTarget=$event"/>
+  <section class="panel row between wrap" aria-label="Ссылка на общую очередь">
+    <div class="stack-sm">
+      <h2 style="margin:0">Общая очередь</h2>
+      <p class="meta" style="margin:0">Обработки ФО и подготовка образцов показаны вместе, в порядке поступления.</p>
+    </div>
+    <RouterLink to="/queue" class="btn">Открыть очередь</RouterLink>
+  </section>
 
   <div v-if="historyError" class="alert error" role="alert">
     Не удалось обновить историю запусков: {{historyError}}

@@ -4,7 +4,7 @@ import ReferenceDirectoryImporter from './ReferenceDirectoryImporter.vue'
 import ReferencePhotoUploader from './ReferencePhotoUploader.vue'
 
 const props=withDefaults(defineProps<{
-  selectedSam:string;selectedLabel?:string;disabled:boolean;initialMode?:'library'|'single'
+  selectedSam:string;selectedLabel?:string;disabled:boolean;staged?:boolean;initialMode?:'library'|'single'
 }>(),{initialMode:'library',selectedLabel:''})
 const emit=defineEmits<{(e:'finished'):void}>()
 const mode=ref<'library'|'single'>(props.initialMode)
@@ -17,15 +17,19 @@ watch(()=>props.initialMode,value=>{mode.value=value})
     <h2>Загрузка образцов</h2>
     <span class="status">Без замены существующих фотографий</span>
   </div>
-  <div v-if="disabled" class="alert">Изменения образцов недоступны, пока MegaLoc обрабатывает или ожидает задание.</div>
+  <div v-if="disabled" class="alert">Загрузка образцов временно недоступна.</div>
+  <div v-else-if="staged" class="meta" role="status">
+    Файлы передаются отдельно от опубликованной библиотеки. После завершения всей загрузки
+    они встанут в общую очередь на подготовку, не прерывая обработку ФО.
+  </div>
   <div class="segment" role="tablist" aria-label="Способ загрузки образцов">
     <button role="tab" :aria-selected="mode==='library'" :class="{active:mode==='library'}"
       @click="mode='library'">Библиотека папкой</button>
     <button role="tab" :aria-selected="mode==='single'" :class="{active:mode==='single'}"
       @click="mode='single'">Фото в конструкцию</button>
   </div>
-  <ReferenceDirectoryImporter v-if="mode==='library'" :disabled="disabled" @finished="emit('finished')"/>
+  <ReferenceDirectoryImporter v-if="mode==='library'" :disabled="disabled" :staged="staged" @finished="emit('finished')"/>
   <ReferencePhotoUploader v-else :selected-sam="selectedSam"
-    :label="selectedLabel||selectedSam" :disabled="disabled" @finished="emit('finished')"/>
+     :label="selectedLabel||selectedSam" :disabled="disabled" :staged="staged" @finished="emit('finished')"/>
 </section>
 </template>
