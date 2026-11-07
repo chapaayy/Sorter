@@ -2,7 +2,7 @@
 from __future__ import annotations
 from server.database import connect
 from server.services import cleanup,retention
-from .test_stage1_lifecycle import sandbox,_batch
+from .test_stage1_lifecycle import sandbox,db,_batch
 
 def test_retention_disabled_blocks_existing_deadline_and_safe_reenable(sandbox):
     own=_batch(sandbox)

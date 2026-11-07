@@ -3,7 +3,7 @@ from __future__ import annotations
 from psycopg.types.json import Jsonb
 from server.database import connect
 from server.services import batches,cleanup
-from .test_stage1_lifecycle import sandbox,_batch,_job
+from .test_stage1_lifecycle import sandbox,db,_batch,_job
 
 def test_latest_batch_projection_includes_safe_megaloc_counts(sandbox):
     own=_batch(sandbox)

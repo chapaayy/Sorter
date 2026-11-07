@@ -7,12 +7,13 @@ import pytest
 from psycopg.types.json import Jsonb
 
 from server.database import connect
-from server.services import archives,archive_retries,cleanup
+from server.services import archives,archive_retries,archive_pipeline,cleanup
 from server.storage import paths
-from .test_stage1_lifecycle import sandbox,_batch,_job
+from .test_stage1_lifecycle import sandbox,db,_batch,_job
 
 
-def test_completed_zip_missing_can_be_queued_for_zip_only_repair(sandbox):
+def test_completed_zip_missing_can_be_queued_for_zip_only_repair(sandbox,monkeypatch):
+    monkeypatch.setattr(archive_pipeline,"DATA_DIR",sandbox)
     batch=_batch(sandbox)
     run=_job(sandbox,batch)
     folder=paths.run_dir(run)/"megaloc"
