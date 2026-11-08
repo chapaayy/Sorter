@@ -50,7 +50,7 @@ function photoUrl(index:number){
       <p class="meta">По одной лучшей ФО на конструкцию и макет. Остальные кадры и диагностические группы остаются в других вкладках.</p>
     </div>
     <span v-if="summary?.status==='completed'" class="meta">
-      {{folders.length}} конструкций · {{completed.length}} готовых фото
+      Конструкций: {{folders.length}} · Готовых фото: {{completed.length}}
     </span>
   </div>
   <p class="meta">В полном ZIP: <strong>Best_by_layout / Конструкция / Название макета / ФО</strong></p>
@@ -70,7 +70,7 @@ function photoUrl(index:number){
     <section class="panel stack">
       <div class="row between wrap">
         <h2>{{selected}}</h2>
-        <span class="meta">{{photos.length}} макетов · {{photos.length}} готовых фото</span>
+        <span class="meta">Макетов: {{photos.length}} · Готовых фото: {{photos.length}}</span>
       </div>
       <div class="result-final-grid">
         <article v-for="item in photos" :key="item.candidate_id" class="result-final-card">
