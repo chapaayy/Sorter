@@ -90,8 +90,11 @@ def compare(expected_text: str, observed: list[dict], *,
     if not photo:
         return {**result, "status": "unreadable",
                 "reason": "OCR не прочитал текст; макет определён визуально по DINOv2"}
-    if ratio >= MIN_MATCH_RATIO and matched:
-        return {**result, "status": "confirmed",
-                "reason": f"На ФО совпало {len(matched)} из {len(photo)} прочитанных элементов"}
-    return {**result, "status": "probable",
+    # Do not claim textual confirmation when a clearly read numeric token
+    # conflicts. It remains a regular word for scoring (no date/price rules).
+    unknown_number = any(term.isdecimal() and len(term) >= 2
+                         for term in unmatched)
+    status = ("confirmed" if ratio >= MIN_MATCH_RATIO and matched
+              and not unknown_number else "probable")
+    return {**result, "status": status,
             "reason": f"На ФО совпало {len(matched)} из {len(photo)} прочитанных элементов"}
