@@ -70,3 +70,8 @@ def detection_references(db,sam):
       WHERE s.sam=%s AND u.sam=%s AND u.kind='reference'
         AND u.finalized AND u.checksum=a.source_sha256
       ORDER BY s.created_at,a.created_at,a.id""",(sam,sam)).fetchall()
+
+def cache_annotations(db):
+    """Complete live annotation set for explicit non-destructive cache pruning."""
+    return db.execute("""SELECT id,source_sha256,version,corners,band_width_px
+        FROM reference_screen_annotations""").fetchall()
