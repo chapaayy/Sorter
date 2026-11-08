@@ -129,9 +129,33 @@ def _identify(model,ocr_engine,screen,run_id,index,embeddings,
                       if str(row["id"])==candidate_id)
         check=_ocr_check(ocr_engine,selected[0],selected[1],picture,
                          layout_text_cache,observed)
+        # A text match cannot confirm a layout if the very same readable
+        # photo also confirms another visually eligible layout. Evaluate all
+        # individual DINO candidates above the frozen threshold using the
+        # *same* OCR lines; never run another network or replace candidate_id.
+        if check["status"]=="confirmed" and observed:
+            alternatives=[]
+            visual_options={item["id"] for item in ranking["top"]
+                            if item["score"]>=matching_threshold
+                            and item["id"]!=candidate_id}
+            for row,feature,path in embeddings:
+                alt_id=str(row["id"])
+                if alt_id not in visual_options:
+                    continue
+                alt_text=row.get("ocr_text")
+                if alt_text is None:
+                    alt_text=(row.get("ocr_corrected_text") if
+                              row.get("ocr_corrected_text") is not None else
+                              row.get("expected_text") or row.get("normalized_text",""))
+                if alt_text and ocr.confirm(alt_text,observed)["status"]=="confirmed":
+                    alternatives.append(alt_id)
+            if alternatives:
+                check={**check,"status":"probable",
+                       "ambiguous_candidates":alternatives,
+                       "reason":"Прочитанный текст подходит нескольким визуально совместимым макетам"}
         result["ocr"]=check
-        # Only independently confirmed readable text can remove the review
-        # flag. Missing/control-free OCR is not evidence of correctness.
+        # An OCR confirmation is independent from the visual acceptance
+        # threshold and never changes the provisional DINO candidate.
         if check["status"]!="confirmed":
             result["review_required"]=True
     result["classification"]=(
