@@ -109,3 +109,25 @@ def test_optional_installer_failure_is_reported_and_can_be_retried(tmp_path,monk
     state=manager.status()["paddleocr"]
     assert state["status"]=="error"
     assert manager.active is False
+
+def test_reference_preparation_shared_sha_is_not_counted_early(monkeypatch,tmp_path):
+    from server.workers import reference_prepare as prep
+    monkeypatch.setattr(prep,"connect",fake_database)
+    monkeypatch.setattr(prep,"cached_feature",lambda *args:None)
+    monkeypatch.setattr(prep,"_stage",lambda *args:None)
+    monkeypatch.setattr(prep,"_should_stop",lambda *args:False)
+    samples=[{"checksum":"a"*64,"stored_path":str(tmp_path/name)}
+             for name in ("one.jpg","copy.jpg")]
+    values=[]
+    monkeypatch.setattr(prep,"_progress",lambda job_id,done,total:values.append((done,total)))
+    class Engine:
+        def __init__(self):self.fingerprint="test-signature"
+        def extract_many(self,paths,stop=None):
+            for path in paths:yield path,np.asarray([1,0],dtype="float32"),None
+        def unload(self):pass
+    monkeypatch.setattr(prep,"MegaLocEngine",lambda:object())
+    monkeypatch.setattr(prep,"ReferenceCachedMegaLoc",lambda engine:Engine())
+    prep._prepare_embeddings("pretend-id",samples,"test-signature")
+    assert values[0]==(0,2)
+    assert values[1]==(2,2)
+    assert values[-1]==(2,2)
