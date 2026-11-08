@@ -740,19 +740,21 @@ test('integrated advertising processing is explicit opt-in and persists next-cla
   await checkbox.uncheck()
   await expect(checkbox).not.toBeChecked()
 })
-test('completed integrated FO shows one best gallery including visual-only OCR',async({page})=>{
+test('completed integrated FO shows one final photo per construction and layout',async({page})=>{
   await page.route('**/api/results/'+rid,route=>respond(route,{
     ...run,ad_pipeline:{enabled:true,status:'completed',best_count:2},
     archive_state:'ready'
   }))
   await page.goto('/results/'+rid)
-  await expect(page.getByRole('heading',{name:'Лучшие кадры по рекламным макетам'})).toBeVisible()
-  await expect(page.getByText('Найдено экранов:')).toBeVisible()
+  // Final advertising deliverables belong to their own tab, not the MegaLoc gallery.
+  await expect(page.getByRole('heading',{name:'Готовые фотографии рекламы'})).toHaveCount(0)
+  await page.getByRole('tab',{name:'Готовые фото'}).click()
+  await expect(page.getByRole('heading',{name:'Готовые фотографии рекламы'})).toBeVisible()
+  await expect(page.getByText('1 конструкций · 2 готовых фото')).toBeVisible()
   await expect(page.getByText('Реклама ноября').first()).toBeVisible()
   await expect(page.getByText('Реклама декабря').first()).toBeVisible()
-  await expect(page.getByText('Выбранные лучшие фотографии')).toBeVisible()
-  await expect(page.getByText('OCR: текст не прочитан · визуальное сопоставление DINOv2')).toBeVisible()
-  await expect(page.getByText('Итог: 94.3 / 100')).toBeVisible()
+  await expect(page.getByText('OCR: текст не прочитан · выбор по DINOv2 и качеству')).toBeVisible()
+  await expect(page.getByText('Итоговый балл: 94.3 / 100')).toBeVisible()
   await expect(page.getByText('Требуется проверка')).toHaveCount(0)
 })
 
