@@ -72,7 +72,7 @@ def claim_next(db):
             raise RuntimeError("Reference preparation queue state mismatch")
         db.execute("""
             UPDATE reference_preparation_jobs SET state='running',
-                stop_requested=false,started_at=now(),updated_at=now()
+                progress_stage='validating',stop_requested=false,started_at=now(),updated_at=now()
             WHERE id=%s
         """,(prep["id"],))
         db.execute("""

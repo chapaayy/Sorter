@@ -37,7 +37,15 @@ const stage=computed(()=>{
   if(props.task.state==='queued')return 'Ожидает предыдущие задачи'
   if(props.task.state==='running'){
     if(props.task.stop_requested)return 'Запрошена остановка'
-    if(preparing.value)return 'MegaLoc · подготовка образцов'
+    if(preparing.value){
+      const phases:Record<string,string>={queued:'Ожидание',validating:'Проверка Образцов',
+        loading:'Загрузка MegaLoc на CPU',extracting:'MegaLoc · вычисление признаков',
+        publishing:'Публикация библиотеки',completed:'Подготовка завершена'}
+      const current=props.task.completed_count||0
+      const total=props.task.total_count||0
+      return (phases[props.task.progress_stage||'']||'Подготовка Образцов')+
+        (total>0?' · '+current+' из '+total:'')
+    }
     const p=props.task.fo_progress
     return p?.stage==='archive'
       ?'Подготовка архива · '+Math.round(p.stage_percent??0)+'%'

@@ -67,25 +67,32 @@ class ReferenceCachedMegaLoc:
                         continue
                     missing.append(path)
                 except Exception as exc:cached[path]=(None,exc)
-        generated={}
-        if missing:
-            for path,vector,error in self.engine.extract_many(missing,stop=stop):
-                generated[path]=(vector,error)
-                if error is not None:continue
+        # Stream each completed feature directly to the worker's progress
+        # reporter. Formerly generated{} buffered a whole CPU batch.
+        generated=iter(self.engine.extract_many(missing,stop=stop)) if missing else iter(())
+        for path in paths:
+            if path in cached:
+                vector,error=cached[path]
+                yield path,vector,error
+                continue
+            actual,vector,error=next(generated)
+            if actual!=path:
+                raise RuntimeError("MegaLoc reference extraction order changed")
+            if error is None and vector is not None:
                 digest=hashes[path]
                 cache=CACHE_DIR/f'{self.fingerprint[:16]}_{digest}.npy'
                 tmp=cache.with_name(cache.name+'.tmp-'+os.urandom(4).hex())
                 try:
-                    with tmp.open('wb') as stream:np.save(stream,np.asarray(vector,dtype='float32'),allow_pickle=False)
+                    with tmp.open('wb') as stream:
+                        np.save(stream,np.asarray(vector,dtype='float32'),allow_pickle=False)
                     tmp.replace(cache)
                     with connect() as db:
                         db.execute('INSERT INTO reference_cache(source_hash,model_signature,cache_path) '
                                    'VALUES (%s,%s,%s) ON CONFLICT(source_hash,model_signature) '
                                    'DO UPDATE SET cache_path=excluded.cache_path',
                                    (digest,self.fingerprint,str(cache)))
-                finally:tmp.unlink(missing_ok=True)
-        for path in paths:
-            vector,error=cached.get(path,generated.get(path,(None,RuntimeError('Missing feature'))))
+                finally:
+                    tmp.unlink(missing_ok=True)
             yield path,vector,error
 
     def unload(self):self.engine.unload()

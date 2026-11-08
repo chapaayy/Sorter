@@ -25,7 +25,7 @@ watch(()=>props.jobId,()=>void refresh(),{immediate:true})
   </div>
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
   <template v-if="detail">
-    <div class="meta">Задание #{{detail.queue_seq}} · {{detail.state}}
+    <div class="meta">Задание #{{detail.queue_seq}} · {{detail.state}} · этап: {{detail.progress_stage||'—'}}
       · готово {{detail.completed_count}}/{{detail.total_count}} · ошибок {{detail.failed_count}}</div>
     <p v-if="detail.error" class="alert error" role="alert">{{detail.error}}</p>
     <div v-if="detail.errors.length" class="stack-sm">

@@ -27,7 +27,7 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
         entries=db.execute("""
             SELECT w.seq,w.kind,w.fo_run_id,w.reference_job_id,w.state,
                    w.created_at,w.started_at,w.finished_at,
-                   p.session_id,p.total_count,p.completed_count,p.failed_count,
+                   p.session_id,p.total_count,p.completed_count,p.failed_count,p.progress_stage,
                    p.error,p.stop_requested,
                    j.batch_id,j.snapshot->>'source' AS fo_source,
                    j.snapshot->'progress' AS fo_progress,
@@ -90,7 +90,7 @@ def _action(job_id,idempotency_key,action):
             if prep["state"] not in ("failed","interrupted"):
                 raise HTTPException(409,"Повторить можно только неудачную подготовку")
             db.execute("""
-                UPDATE reference_preparation_jobs SET state='queued',error=NULL,
+                UPDATE reference_preparation_jobs SET state='queued',progress_stage='queued',error=NULL,
                     completed_count=0,failed_count=0,stop_requested=false,
                     started_at=NULL,finished_at=NULL,updated_at=now()
                 WHERE id=%s

@@ -14,6 +14,7 @@ export interface QueueTask {
   total_count:number|null
   completed_count:number|null
   failed_count:number|null
+  progress_stage?:'queued'|'validating'|'loading'|'extracting'|'publishing'|'completed'|null
   error:string|null
   stop_requested:boolean|null
   batch_id:string|null
@@ -36,6 +37,7 @@ export interface PreparationDetail {
   total_count:number
   completed_count:number
   failed_count:number
+  progress_stage?:string|null
   error:string|null
   queue_seq:number
   stop_requested:boolean

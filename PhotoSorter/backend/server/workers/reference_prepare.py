@@ -14,6 +14,12 @@ from ..services.reference_gallery import index_published
 
 CHUNK=24
 
+def _stage(job_id,phase):
+    with connect() as db:
+        db.execute("""UPDATE reference_preparation_jobs SET progress_stage=%s,updated_at=now()
+            WHERE id=%s AND state='running'""",(phase,job_id))
+
+
 class PreparationCancelled(InterruptedError):
     pass
 
@@ -66,12 +72,16 @@ def _prepare_embeddings(job_id,items,model_signature):
     if not missing:
         _progress(job_id,len(items),len(items))
         return
+    _stage(job_id,'loading')
     engine=None
     try:
         engine=ReferenceCachedMegaLoc(MegaLocEngine())
         if engine.fingerprint!=model_signature:
             raise RuntimeError("Сигнатура MegaLoc изменилась во время подготовки")
         processed=0
+        cached_count=len(items)-len(missing)
+        _progress(job_id,cached_count,len(items))
+        _stage(job_id,'extracting')
         for offset in range(0,len(missing),CHUNK):
             if _should_stop(job_id):
                 raise PreparationCancelled("Подготовка остановлена пользователем")
@@ -84,7 +94,7 @@ def _prepare_embeddings(job_id,items,model_signature):
                         _record_file_error(job_id,ident,error or "empty feature")
                     raise RuntimeError(f"Не удалось подготовить {path.name}: {error}")
                 processed+=1
-                _progress(job_id,min(len(items),processed),len(items))
+                _progress(job_id,min(len(items),cached_count+processed),len(items))
         _progress(job_id,len(items),len(items))
     finally:
         if engine is not None:
@@ -106,6 +116,7 @@ def run(job_id):
     fp=signature()
     if not fp:
         raise RuntimeError("Отсутствует установленная MegaLoc")
+    _stage(job_id,'validating')
     actual=[]
     for item in items:
         if _should_stop(job_id):
@@ -141,6 +152,7 @@ def run(job_id):
         _prepare_embeddings(job_id,actual,fp)
     else:
         _progress(job_id,len(items),len(items))
+    _stage(job_id,'publishing')
     # No future job can start before this transaction finishes. Publication
     # state, status and version pointer all commit together.
     with connect() as db:
@@ -193,7 +205,7 @@ def run(job_id):
                 index_published(db,item)
         db.execute("""
             UPDATE reference_preparation_jobs SET state='completed',
-                completed_count=total_count,model_signature=%s,error=NULL,
+                progress_stage='completed',completed_count=total_count,model_signature=%s,error=NULL,
                 finished_at=now(),updated_at=now() WHERE id=%s
         """,(fp,job_id))
         db.execute("""
