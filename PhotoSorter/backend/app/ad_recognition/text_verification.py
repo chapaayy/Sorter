@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from difflib import SequenceMatcher
 
+VERSION = "photo-first-text-verification-v1"
 MIN_LINE_CONFIDENCE = .70
 MIN_CONFLICT_CONFIDENCE = .85
 MIN_MATCH_RATIO = .70
@@ -107,6 +108,10 @@ def compare(expected_text: str, observed: list[dict], *,
     expected_significant = extract_significant(expected_text)
     observed_significant = extract_significant(strong_text)
     contradictions = _conflicts(expected_significant, observed_significant)
+    # Moderate-confidence conflicting dates/offers cannot prove a mismatch,
+    # but must block automatic confirmation until clearer OCR is available.
+    possible_conflicts = _conflicts(expected_significant,
+                                    extract_significant(readable_text))
 
     shared_structured = any(
         (any(_same_date(x, y) for x in expected_significant["dates"]
@@ -130,7 +135,9 @@ def compare(expected_text: str, observed: list[dict], *,
         "text_similarity": round(ratio, 3),
         "comparison_confidence": round(confidence, 3),
         "scoring_basis": "recognized_photo_text",
+        "verification_version": VERSION,
         "contradictions": contradictions,
+        "possible_contradictions": possible_conflicts,
     }
     if not reference:
         return {**result, "status": "not_configured",
@@ -141,6 +148,9 @@ def compare(expected_text: str, observed: list[dict], *,
     if contradictions:
         return {**result, "status": "mismatch",
                 "reason": "Уверенно прочитанные дата, цена или предложение противоречат макету"}
+    if possible_conflicts:
+        return {**result, "status": "probable",
+                "reason": "Возможное расхождение по дате или предложению; уверенности OCR недостаточно"}
     if sufficient and ratio >= MIN_MATCH_RATIO and confidence >= MIN_LINE_CONFIDENCE:
         return {**result, "status": "confirmed",
                 "reason": (f"Совпало {len(matched)} из {len(photo)} "
