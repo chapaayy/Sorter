@@ -12,7 +12,8 @@ def main(argv=None):
     group.add_argument("--verify",action="store_true",help="verify model files offline")
     group.add_argument("--prune-cache",action="store_true",help="prune obsolete descriptors older than 7 days")
     group.add_argument("--run-id",help="analyze a completed MegaLoc run")
-    parser.add_argument("--limit",type=int,default=None,help="max FO images to analyze")
+    parser.add_argument("--limit",type=int,default=None,help="max FO images in this segment")
+    parser.add_argument("--start-index",type=int,default=0,help="resume from MegaLoc result index")
     args=parser.parse_args(argv)
     if args.install:
         print(json.dumps(install(),ensure_ascii=False,indent=2))
@@ -34,7 +35,7 @@ def main(argv=None):
         print(json.dumps({"index":item["index"],"sam":item["assigned_sam"],
                           "status":item["status"],"reason":item["reason"],
                           "seconds":item["elapsed_seconds"]},ensure_ascii=False),flush=True)
-    print(json.dumps(analyze_run(args.run_id,limit=args.limit,progress=progress),
+    print(json.dumps(analyze_run(args.run_id,limit=args.limit,start_index=args.start_index,progress=progress),
                      ensure_ascii=False,indent=2))
     return 0
 
