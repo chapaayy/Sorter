@@ -17,6 +17,8 @@ export interface AdRecognition {
  group_match?:{status:string;reason:string;candidate_id?:string|null;best_score?:number;
   method?:string;ocr_leader_id?:string|null;visual_leader_id?:string|null;
   ocr_margin?:number|null;decision_version?:string};
+ ocr_observation?:{status:string;normalized_text:string;confidence:number;
+  raw_lines:{text:string;score:number}[];reason?:string};
  quality?:{status:string;score:number;version?:string;metrics?:{sharpness:number;exposure:number;glare:number;screen_coverage:number}};
  ocr?:{status:string;reason:string;lines?:string[];matched_terms?:number;total_terms?:number;
   matched_items?:string[];unmatched_items?:string[];text_similarity?:number;
