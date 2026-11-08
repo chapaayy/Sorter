@@ -132,7 +132,7 @@ onMounted(()=>{void moreGroups()})
               <th>Мин / Макс по группе</th><th>Результат</th></tr></thead>
             <tbody>
               <tr v-for="(item,i) in rankings" :key="item.id">
-                <td>{{i+1+(rankTotal?((rankMeta?.offset)||0):0)}}</td>
+                <td>{{i+1}}</td>
                 <td>
                   <div class="row result-rank-layout">
                     <img :src="adResultsApi.layoutImage(runId,item.id)" :alt="item.name" loading="lazy"/>
