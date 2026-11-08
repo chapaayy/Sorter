@@ -108,6 +108,13 @@ def test_fifo_claim_freezes_reference_and_layout_revisions(system,monkeypatch):
         ad_layouts.delete(layout_id)
     assert busy.value.status_code==409
     finish_fo(run)
+    with pytest.raises(HTTPException) as still_enabled:
+        ad_layouts.delete(layout_id)
+    assert still_enabled.value.status_code==409
+    with pytest.raises(HTTPException) as cannot_disable_last:
+        ad_layouts.update(layout_id,2,"Название","",False)
+    assert cannot_disable_last.value.status_code==409
+    assert not ad_pipeline_settings.update(False)["enabled"]
     assert ad_layouts.delete(layout_id)=={"deleted":True}
 
 def test_zip_selects_best_and_metadata_and_recovers_without_inference(tmp_path,monkeypatch):
