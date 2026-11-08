@@ -49,7 +49,13 @@ def border_features(features:dict,corners:list[dict],band:float,
     closest=polygon[None,:,:]+t[:,:,None]*side[None,:,:]
     distances=np.linalg.norm(points[:,None,:]-closest,axis=2)
     side_ids=np.argmin(distances,axis=1)
-    keep=np.min(distances,axis=1)<=band
+    # Even a deliberately thick search strip must not include the centre
+    # of a changing advertisement. The inward width is capped relative to
+    # the physical screen edge; the outward context may use the full band.
+    inward=min(float(band),max(2.,float(np.sqrt(lengths).min())*.12))
+    signed=np.array([cv2.pointPolygonTest(polygon,(float(x),float(y)),True)
+                     for x,y in points],dtype=np.float32)
+    keep=(np.min(distances,axis=1)<=band)&(signed<=inward)
     return {"xy":points[keep],"descriptors":features["descriptors"][keep],
             "sides":side_ids[keep].astype("uint8")}
 
