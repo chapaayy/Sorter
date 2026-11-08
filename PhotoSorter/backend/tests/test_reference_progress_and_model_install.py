@@ -15,6 +15,8 @@ from server import reference_cache
 def fake_database():
     class Database:
         def execute(self,*args,**kwargs):
+            return self
+        def fetchone(self):
             return None
     yield Database()
 
