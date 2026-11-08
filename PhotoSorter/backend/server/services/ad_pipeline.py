@@ -24,7 +24,9 @@ def _root(run_id):
 
 def digest(snapshot):
     payload={key:snapshot.get(key) for key in
-             ("enabled","annotations","layouts","xfeat_signature","dino_signature","ocr_version","ocr_signature")}
+             ("enabled","annotations","layouts","xfeat_signature","dino_signature",
+              "ocr_version","ocr_signature","grouping_threshold","matching_threshold",
+              "layout_library_revision")}
     return hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False,
                            separators=(",",":")).encode()).hexdigest()
 
@@ -110,7 +112,8 @@ def process(job):
                 if errors or len(vectors)!=len(layouts):
                     raise RuntimeError("Невозможно вычислить признаки всех закреплённых макетов")
                 analyses,recognized,review_count,failed_recognition=ad_pipeline_steps.recognize(
-                    job,model_d,engine_ocr,detections,run_id,vectors,errors)
+                    job,model_d,engine_ocr,detections,run_id,vectors,errors,
+                    snapshot.get("matching_threshold",0.81))
                 errors_count+=failed_recognition
             finally:
                 del model_d
@@ -139,6 +142,9 @@ def process(job):
                   "dino_signature":dino.SIGNATURE,"xfeat_signature":xfeat_assets.MODEL_ID,
                   "ocr_version":ocr.VERSION,"ocr_signature":snapshot["ocr_signature"],
                   "quality_version":quality.VERSION,
+                  "matching_threshold":snapshot.get("matching_threshold",0.81),
+                  "grouping_threshold":snapshot.get("grouping_threshold",0.81),
+                  "layout_library_revision":snapshot.get("layout_library_revision"),
                   "total_photos":count,"screens_found":found,
                   "recognized":recognized,"review_required":review_count,
                   "errors":errors_count,"best":best_items,
