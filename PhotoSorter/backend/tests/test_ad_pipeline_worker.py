@@ -63,6 +63,7 @@ def test_full_cpu_screen_pipeline_writes_best_before_zip(monkeypatch,tmp_path):
     monkeypatch.setattr(xfeat_assets,"load_model",lambda:object())
     monkeypatch.setattr(dino,"load",lambda:object())
     monkeypatch.setattr(ocr,"status",lambda:{"available":True})
+    monkeypatch.setattr(ocr,"signature",lambda:"synthetic-paddle-sha")
     monkeypatch.setattr(ocr,"load",lambda:object())
     monkeypatch.setattr(ad_recognition,"_layout_vectors",
                         lambda *_:([(item,np.zeros(384,dtype="float32"),Path(item["target_path"]))],[]))
