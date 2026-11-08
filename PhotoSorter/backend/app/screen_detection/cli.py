@@ -10,6 +10,7 @@ def main(argv=None):
     group=parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--install",action="store_true",help="fetch pinned model and source")
     group.add_argument("--verify",action="store_true",help="verify model files offline")
+    group.add_argument("--prune-cache",action="store_true",help="prune obsolete descriptors older than 7 days")
     group.add_argument("--run-id",help="analyze a completed MegaLoc run")
     parser.add_argument("--limit",type=int,default=None,help="max FO images to analyze")
     args=parser.parse_args(argv)
@@ -20,6 +21,10 @@ def main(argv=None):
         info=status()
         print(json.dumps(info,ensure_ascii=False,indent=2))
         return 0 if info["available"] else 2
+    if args.prune_cache:
+        from server.services.screen_search import prune_old_reference_cache
+        print(json.dumps(prune_old_reference_cache(),ensure_ascii=False))
+        return 0
     if not status()["available"]:
         print("XFeat не установлен. Запустите --install или перенесите веса и исходники.",file=sys.stderr)
         return 2
