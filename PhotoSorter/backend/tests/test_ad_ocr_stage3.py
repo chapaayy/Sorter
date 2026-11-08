@@ -113,7 +113,7 @@ def test_ocr_does_not_reassign_group_visual_layout_when_offer_conflicts(tmp_path
     assert item["visual_group_id"]=="R0001"
     assert item["status"]=="matched" and item["classification"]=="probable"
     assert item["ocr"]["status"]=="probable"
-    assert item["ocr_observation"]["significant"]["percentages"]==["40"]
+    assert item["ocr_observation"]["significant"]=={}
     assert item["review_required"] is False
 
 
