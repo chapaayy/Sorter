@@ -16,7 +16,7 @@ import numpy as np
 from fastapi import HTTPException
 
 from app.config import DATA_DIR
-from app.ad_recognition import dino, scoring, visual_grouping
+from app.ad_recognition import dino, scoring, visual_grouping, joint_matching
 from app.results.exporter import atomic_json
 from ..storage.paths import run_dir, owned_file
 from . import ad_recognition, screen_search
@@ -95,7 +95,8 @@ def collect(job, model, detections: list[tuple], run_id: str, threshold: float,
 
 
 def match(job, run_id: str, groups: list[dict], vectors: dict,
-          layouts: list[tuple], threshold: float, data_dir: Path | None = None):
+          layouts: list[tuple], threshold: float, data_dir: Path | None = None,
+          *, observations: dict | None = None):
     """Rank all prepared layouts using every member; persist each complete ranking."""
     root = _root(run_id, data_dir)
     directory = root / "matches"
@@ -116,6 +117,12 @@ def match(job, run_id: str, groups: list[dict], vectors: dict,
             members, [(row, feature) for row, feature, _path in layouts],
             minimum=threshold
         )
+        # Backwards-compatible ranking API: integrated FIFO uses OCR evidence,
+        # while manual/legacy callers without it retain the old visual-only
+        # scoring semantics. OCR is already computed once per detected screen.
+        if observations is not None:
+            ranked=joint_matching.decide(
+                ranked,members,layouts,observations,threshold)
         atomic_json(directory / (group["id"] + ".json"), {
             "group_id": group["id"], "assigned_sam": group["assigned_sam"],
             "screen_id": group["screen_id"], "member_count": len(members),
@@ -123,8 +130,15 @@ def match(job, run_id: str, groups: list[dict], vectors: dict,
         })
         summary = {key: ranked[key] for key in (
             "status", "reason", "candidate_id", "margin", "matching_threshold", "method")}
-        summary.update(group_id=group["id"], best_score=ranked.get("best_score"),
-                       candidate_count=len(ranked["rankings"]))
+        summary.update(
+            group_id=group["id"], best_score=ranked.get("best_score"),
+            candidate_count=len(ranked["rankings"]),
+            decision_version=ranked.get("decision_version"),
+            ocr_leader_id=ranked.get("ocr_leader_id"),
+            visual_leader_id=ranked.get("visual_leader_id"),
+            ocr_margin=ranked.get("ocr_margin"),
+            ocr_conflicting_members=ranked.get("ocr_conflicting_members"),
+            evidence_member_count=ranked.get("evidence_member_count"))
         summaries.append(summary)
         for member in members:
             assignments[(member["index"], member["screen_id"])] = summary
@@ -238,6 +252,11 @@ def rankings(run_id: str, group_id: str, limit: int = 50, offset: int = 0,
         "margin": document["margin"], "member_margin": member_margin,
         "matching_threshold": document["matching_threshold"],
         "method": document["method"], "selected_member": selected,
+        "decision_version": document.get("decision_version"),
+        "ocr_leader_id": document.get("ocr_leader_id"),
+        "visual_leader_id": document.get("visual_leader_id"),
+        "ocr_margin": document.get("ocr_margin"),
+        "ocr_conflicting_members": document.get("ocr_conflicting_members"),
         "total": len(items), "limit": limit, "offset": offset,
         "rankings": page
     }
