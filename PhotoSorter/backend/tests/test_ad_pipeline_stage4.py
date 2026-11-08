@@ -50,7 +50,7 @@ def test_quality_rejects_tiny_distant_screen():
     result=quality.assess(Image.new("RGB",(4,4),"red"),screen,(1920,1080))
     assert result["status"]=="insufficient"
 
-def test_best_is_per_sam_screen_and_layout_ocr_keeps_review_separate():
+def test_best_is_per_sam_screen_and_layout_and_uses_combined_scores():
     rows=[
        _entry(0,score=80,review=True),
        _entry(1,score=70,review=False),
