@@ -14,7 +14,7 @@ def by_id(db,uid,lock=False):
     sql="""SELECT l.id,l.name,l.filename,l.checksum,l.target_path,l.byte_size,l.expected_text,
         l.active,l.version,l.created_at,l.updated_at,l.ocr_corrected_text,
         l.preparation_state,l.preparation_stage,l.preparation_progress,
-        l.preparation_error,l.prepared_key,l.prepared_at,
+        l.preparation_error,l.prepared_key,l.prepared_at,l.published_snapshot,
         c.ocr_lines,c.normalized_text,c.dino_signature,c.ocr_signature
         FROM ad_layouts l LEFT JOIN ad_layout_prepared_cache c ON c.cache_key=l.prepared_key
         WHERE l.id=%s"""
