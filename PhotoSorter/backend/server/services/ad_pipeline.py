@@ -154,7 +154,9 @@ def process(job):
         best_items=[]
         for item in winners:
             original=rows[item["index"]]
-            best_items.append({**best.public(item),"copy":original["copy"]})
+            original_copy=owned_file(Path(original["copy"]),DATA_DIR/"outputs")
+            rel=original_copy.relative_to(run_dir(run_id,DATA_DIR/"outputs"))
+            best_items.append({**best.public(item),"copy":rel.as_posix()})
         manifest={"status":"completed","run_id":run_id,
                   "snapshot_digest":digest(snapshot),
                   "reference_version_id":job.info.get("reference_version_id"),
@@ -190,7 +192,7 @@ def best_archive_entries(run_id,snapshot):
     from . import archives
     result=[]
     for item in document["best"]:
-        source=owned_file(Path(item["copy"]),DATA_DIR/"outputs")
+        source=owned_file(run_dir(run_id,DATA_DIR/"outputs")/item["copy"],DATA_DIR/"outputs")
         if not source.is_file():raise FileNotFoundError("Лучшее фото отсутствует")
         def label(value):
             safe=re.sub(r"[^\w\- ]+","_",str(value),flags=re.UNICODE).strip(" ._")
