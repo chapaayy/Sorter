@@ -168,7 +168,7 @@ async function deleteBatch(){
 <AdComparisonsView v-else-if="mode==='comparisons'" :run-id="id" @inspect="showBest"/>
 <ImageViewer v-if="viewer!==null" :items="previews" :initial="viewer" :allow-detection="true"
   @detect="openDetection" @close="viewer=null"/>
-<ScreenSearchDetail v-if="detectionPhoto" :run-id="id" :index="detectionPhoto.index" :image-url="detectionPhoto.image_url"
+<ScreenSearchDetail v-if="detectionPhoto" :run-id="id" :index="detectionPhoto.index" :image-url="detectionPhoto.image_url" :pinned-layouts="pipelineEnabled"
   @close="detectionPhoto=null"/>
 <ConfirmDialog v-if="deleteWhole&&batch" title="Удалить ВСЮ партию безвозвратно?" :message="'Удалятся оригинальные ФО, все запуски, готовые результаты, миниатюры, временные файлы и логи партии «'+batch.display_name+'». Общая библиотека SAM останется.'" :required-text="batch.display_name" danger confirm-label="Удалить всю партию" :busy="busy" @confirm="deleteBatch" @cancel="deleteWhole=false"/>
 </template>
