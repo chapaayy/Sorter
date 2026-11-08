@@ -147,10 +147,10 @@ def active_files():
     if not ocr.status()["available"]:
         return []
     signature=ocr.signature()
-    return [(dict(row),_file(row)) for row in rows
-            if row["preparation_state"]=="completed"
-            and row["dino_signature"]==dino.SIGNATURE
-            and row["ocr_signature"]==signature]
+    ready=[row["published_snapshot"] for row in rows if row["published_snapshot"]
+           and row["published_snapshot"]["dino_signature"]==dino.SIGNATURE
+           and row["published_snapshot"]["ocr_signature"]==signature]
+    return [(layout,_file(layout)) for layout in ready]
 
 def replace_image(uid,version:int,data:bytes,filename:str):
     """Publish a new immutable original and enqueue its preparation atomically."""
