@@ -20,7 +20,7 @@ def _available(run_id:str)->bool:
     from .archive_pipeline import selections
     try:
         return archives.existing(run_id,None,selections(run_id)) is not None
-    except (OSError,ValueError,HTTPException):
+    except (OSError,ValueError,RuntimeError,HTTPException):
         return False
 
 def archive_status(run_id:str):
