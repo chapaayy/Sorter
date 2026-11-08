@@ -128,7 +128,10 @@ def process_pending(limit=1):
             job.started_monotonic=__import__("time").monotonic()
             job.save()
             build_for_job(job)
-            job.info["status"]="completed"
+            saved_ad=job.info.get("ad_pipeline",{})
+            completed_state=("completed_with_errors" if saved_ad.get("enabled")
+                             and saved_ad.get("errors",0)>0 else "completed")
+            job.info["status"]=completed_state
             job.info["finished_at"]=datetime.now(timezone.utc).isoformat()
             job.info["progress"]["overall_percent"]=100.0
             job.info["progress"]["estimated_remaining_seconds"]=0.0
