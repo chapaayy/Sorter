@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import re
-from difflib import SequenceMatcher
 from pathlib import Path
 import numpy as np
 from PIL import Image
@@ -156,7 +155,7 @@ def _critical(text:str)->dict:
     percent={m.group(1).replace(",",".") for m in re.finditer(
         r"(?<!\w)(\d+(?:[.,]\d+)?)\s*%",value)}
     prices={m.group(1).replace(",",".") for m in re.finditer(
-        r"(?<!\w)(\d+(?:[.,]\d+)?)\s*(?:₽|руб(?:лей|ля|\.)?|р\.)",value)}
+        r"(?<!\w)(\d+(?:[.,]\d+)?)\s*(?:₽|руб(?:лей|ля|\.)?|[рp]\.?)(?![а-яa-z])",value)}
     numbers={m.group().replace(",",".") for m in re.finditer(
         r"(?<![\w])\d+(?:[.,]\d+)?(?![\w])",value)}
     # Dates and percentages are also represented among bare numbers.
@@ -196,60 +195,8 @@ def describe(observed:list[dict])->dict:
                        for item in usable if "polygon" in item]}
 
 
-def confirm(expected_text:str,observed:list[dict])->dict:
-    """OCR only verifies or flags the DINO candidate; never selects a layout.
-
-    A readable different date, percent or price contradicts the layout even
-    when generic shared slogan words appear in both images. A missing value,
-    poor OCR or weak lexical overlap is NOT a positive contradiction.
-    """
-    data=describe(observed)
-    expected=_norm(expected_text or "")
-    actual=data["normalized_text"]
-    texts=[item["text"] for item in data["raw_lines"] if item["score"]>=.5]
-    base={**data,"lines":texts,"expected_text":expected,
-          "contradictions":[],"matched_terms":0,"total_terms":0}
-    if not expected:
-        return {**base,"status":"not_configured",
-                "reason":"Текст исходного макета отсутствует"}
-    if not actual:
-        return {**base,"status":"unreadable",
-                "reason":"Текст на экране не прочитан; это не противоречие"}
-    expected_significant=_critical(expected_text or "")
-    observed_significant=data["significant"]
-    contradictions=[]
-    for category in ("dates","prices","percentages"):
-        left=set(expected_significant[category])
-        right=set(observed_significant[category])
-        if left and right and not (left & right):
-            contradictions.append({"kind":category,
-                                   "expected":sorted(left),"observed":sorted(right)})
-    # An unsuffixed number matters when both images have readable numbers:
-    # e.g. the same 'скидка' slogan with 40 instead of 50.
-    left=set(expected_significant["numbers"])
-    right=set(observed_significant["numbers"])
-    if left and right and not left.issubset(right) and not contradictions:
-        # Avoid treating unrelated extra numbers (different OCR layouts)
-        # as definitive when they still share at least one control number.
-        if not (left & right):
-            contradictions.append({"kind":"numbers",
-                                   "expected":sorted(left),"observed":sorted(right)})
-    terms=[word for word in expected.split() if len(word)>=3 or word.isdigit()]
-    if not terms:terms=expected.split()
-    hits=sum(1 for term in terms if any(
-        SequenceMatcher(None,term,word).ratio()>=.82 for word in actual.split()))
-    ratio=hits/max(1,len(terms))
-    base.update(matched_terms=hits,total_terms=len(terms),
-                text_similarity=round(ratio,3),contradictions=contradictions)
-    if contradictions:
-        return {**base,"status":"mismatch",
-                "reason":"Читаемые числа, дата или цена противоречат макету"}
-    if ratio>=.6 and data["confidence"]>=.70 and (not left or left.issubset(right)):
-        return {**base,"status":"confirmed",
-                "reason":"Читаемый текст согласуется с макетом"}
-    if (hits==0 and len(expected.split())>=2 and len(actual.split())>=1
-            and data["confidence"]>=.85):
-        return {**base,"status":"mismatch",
-                "reason":"Высокоуверенный читаемый текст не совпадает с макетом"}
-    return {**base,"status":"probable",
-            "reason":"Недостаточно надёжных текстовых совпадений для подтверждения или опровержения"}
+def confirm(expected_text: str, observed: list[dict]) -> dict:
+    """Photo-first OCR verifier; never identifies or replaces a DINO layout."""
+    from .text_verification import compare
+    return compare(expected_text, observed, describe=describe,
+                   extract_significant=_critical)
