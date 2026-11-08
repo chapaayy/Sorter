@@ -50,3 +50,22 @@ def test_zip_failure_never_marks_run_completed(monkeypatch,tmp_path):
     assert job.info["status"]=="failed"
     assert "completed" not in trace
     assert "disk full" in job.info["error"]
+
+def test_integrated_zip_completed_with_individual_photo_errors_is_explicit(monkeypatch,tmp_path):
+    import app.jobs.worker as worker
+    monkeypatch.setattr(worker,"process",lambda job:job.info["models"].update(
+        {"megaloc":{"status":"completed"}}))
+    class Integrated(Job):
+        def __init__(self):
+            super().__init__({"id":"20261108T120000-abcdef123456","status":"queued",
+                "models":{},"progress":{},"ad_pipeline":{"enabled":True,"errors":2}})
+            self.path=tmp_path
+        def save(self):pass
+        def log(self,*args):pass
+        def finalize_results(self):
+            self.info["archive_state"]="ready"
+    job=Integrated()
+    job.run()
+    assert job.info["status"]=="completed_with_errors"
+    assert job.info["archive_state"]=="ready"
+    assert job.info["progress"]["overall_percent"]==100
