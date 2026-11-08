@@ -91,7 +91,7 @@ def process(job):
         model_x=xfeat_assets.load_model()
         try:
             detections,errors_count=ad_pipeline_steps.detect(
-                job,model_x,rows,refs,run_id)
+                job,model_x,rows,refs,run_id,DATA_DIR)
         finally:
             del model_x
             gc.collect()
