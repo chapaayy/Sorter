@@ -4,7 +4,7 @@ import json
 import resource
 import time
 import numpy as np
-from PIL import Image,ImageDraw
+from PIL import Image,ImageDraw,ImageFont
 from . import dino,ocr,scoring
 
 def main():
