@@ -67,7 +67,8 @@ function compare(group:string){
       <template v-if="detail">
         <div class="row between wrap">
           <div><h2>{{detail.id}} · {{detail.assigned_sam}}</h2>
-            <p class="meta">Физический экран {{detail.screen_id}} · {{detail.member_count}} ФО</p></div>
+            <p class="meta">Физический экран {{detail.screen_id}} · {{detail.member_count}} ФО</p>
+            <RouterLink class="meta" :to="{path:'/results/'+runId,query:{view:'sam',sam:detail.assigned_sam}}">К конструкции {{detail.assigned_sam}}</RouterLink></div>
           <UiButton small @click="compare(detail.id)">Сравнения DINOv2</UiButton>
         </div>
         <div class="result-ad-metrics">
