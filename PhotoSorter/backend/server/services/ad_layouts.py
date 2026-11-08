@@ -201,6 +201,37 @@ def replace_image(uid,version:int,data:bytes,filename:str):
         Path(temp).unlink(missing_ok=True)
 
 
+
+def requeue_stale_models():
+    """Detect changed model/preprocessing signatures and enqueue once in FIFO."""
+    from app.ad_recognition import dino,ocr
+    if not dino.verify() or not ocr.status()["available"]:
+        return 0
+    ocr_sig=ocr.signature()
+    count=0
+    with connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        stale=db.execute("""SELECT l.id,l.checksum,l.target_path FROM ad_layouts l
+            LEFT JOIN ad_layout_prepared_cache c ON c.cache_key=l.prepared_key
+            WHERE l.preparation_state='completed' AND
+            (c.cache_key IS NULL OR c.dino_signature<>%s OR c.ocr_signature<>%s)
+            ORDER BY l.created_at,l.id""",(dino.SIGNATURE,ocr_sig)).fetchall()
+        from ..db.repositories.work_queue import insert_layout
+        for item in stale:
+            db.execute("""UPDATE ad_layouts SET preparation_state='queued',
+                preparation_stage='queued',preparation_progress=0,
+                preparation_error=NULL,prepared_key=NULL,prepared_at=NULL
+                WHERE id=%s""",(item["id"],))
+            job=uuid.uuid4()
+            db.execute("""INSERT INTO ad_layout_preparation_jobs
+                (id,layout_id,checksum,target_path) VALUES (%s,%s,%s,%s)""",
+                (job,item["id"],item["checksum"],item["target_path"]))
+            insert_layout(db,job)
+            count+=1
+        if count:
+            db.execute("UPDATE ad_layout_library_state SET revision=revision+1 WHERE id=1")
+    return count
+
 def gc_retired(limit=25):
     """Do not remove an original still referenced by a retained immutable run."""
     removed=0
