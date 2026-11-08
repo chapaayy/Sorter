@@ -121,10 +121,17 @@ def read(engine,picture:Image.Image)->list[dict]:
     for item in results:
         obj=item.json
         obj=obj.get("res",obj)
-        for text,score in zip(obj.get("rec_texts",[]),obj.get("rec_scores",[])):
+        polygons=obj.get("rec_polys")
+        for index,(text,score) in enumerate(zip(obj.get("rec_texts",[]),obj.get("rec_scores",[]))):
             score=float(score)
             if isinstance(text,str) and score>=.5 and len(text.strip())>=2:
-                lines.append({"text":text.strip()[:200],"score":round(score,3)})
+                line={"text":text.strip()[:200],"score":round(score,3)}
+                if polygons is not None and index<len(polygons):
+                    coords=np.asarray(polygons[index],dtype="float64")
+                    if (coords.size>=6 and coords.size<=32 and coords.size%2==0
+                            and np.isfinite(coords).all()):
+                        line["polygon"]=coords.reshape(-1,2).round(1).tolist()
+                lines.append(line)
     return lines[:50]
 
 def _norm(text:str)->str:
