@@ -53,6 +53,30 @@ def test_old_crossed_out_price_and_correct_price_do_not_conflict():
     assert "49" in ocr._critical("49P")["prices"]
 
 
+def test_split_currency_marker_does_not_turn_correct_price_into_mismatch():
+    # Real PaddleOCR reference text can retain the old-price currency marker,
+    # but drop the new-price marker ("79 Р* ... 49"). The new price still
+    # clearly exists as a digit token in the ORIGINAL layout OCR.
+    expected = ("БИГФЕСТ Больше ВЫГОДЫ ОТ 79 Р* 49 25 октября "
+                "Наггетсы 4 шт")
+    image = lines("БИГФЕСТ", "Больше", "ВЫГОДЫ", "OT", "7gp:",
+                  "49P", "25", "октября", "Нагтетсы(4ит.)")
+    assert ocr._critical(expected)["prices"] == ["79"]
+    assert "49" in ocr._critical(expected)["numbers"]
+    assert ocr._critical("49P")["prices"] == ["49"]
+    decision = ocr.confirm(expected, image)
+    assert decision["status"] == "confirmed", decision
+    assert decision["text_similarity"] >= .70
+    assert decision["contradictions"] == []
+    assert decision["matched_terms"] >= 7
+
+    # A genuinely foreign price still contradicts the same reference.
+    wrong_price = ocr.confirm(expected, lines(
+        "БИГФЕСТ", "Больше", "ВЫГОДЫ", "39P", "25", "октября"))
+    assert wrong_price["status"] == "mismatch"
+    assert "prices" in {item["kind"] for item in wrong_price["contradictions"]}
+
+
 def test_one_word_or_weak_ocr_never_confirms():
     expected = "БИГФЕСТ Большая акция 25 октября 49 ₽"
     assert ocr.confirm(expected, lines("БИГФЕСТ"))["status"] == "probable"
