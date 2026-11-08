@@ -1,5 +1,8 @@
 """Optional PaddleOCR PP-OCRv5 East-Slavic CPU check, never a classifier."""
 from __future__ import annotations
+import hashlib
+import json
+import os
 import re
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -19,8 +22,45 @@ def _ready(path:Path):
                for f in path.iterdir()) and (
         (path/"inference.yml").is_file() or (path/"model.yml").is_file())
 
+def _digest(path:Path)->str:
+    hash=hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk:=stream.read(1024*1024):hash.update(chunk)
+    return hash.hexdigest()
+
+def _manifest():
+    files={}
+    for name in (DETECTION,RECOGNITION):
+        folder=ROOT/name
+        if not _ready(folder):raise RuntimeError("Missing PP-OCRv5 model "+name)
+        for file in sorted(folder.rglob("*")):
+            if file.is_symlink():raise RuntimeError("Unsafe OCR symlink")
+            if file.is_file():
+                files[file.relative_to(ROOT).as_posix()]=_digest(file)
+    if not files:raise RuntimeError("Empty PP-OCRv5 model files")
+    return {"version":VERSION,"files":files}
+
+def _verify():
+    if ROOT.is_symlink() or not all(_ready(ROOT/name) for name in (DETECTION,RECOGNITION)):
+        return False
+    try:
+        stored=json.loads((ROOT/"manifest.json").read_text("utf-8"))
+        if stored.get("version")!=VERSION:return False
+        files=stored.get("files")
+        if not isinstance(files,dict) or not files:return False
+        for name,digest in files.items():
+            rel=Path(name)
+            if (rel.is_absolute() or ".." in rel.parts or
+                rel.parts[0] not in (DETECTION,RECOGNITION) or
+                not (ROOT/rel).is_file() or (ROOT/rel).is_symlink() or
+                _digest(ROOT/rel)!=digest):
+                return False
+        return set(files)==set(_manifest()["files"])
+    except (ValueError,OSError,TypeError,KeyError,IndexError):
+        return False
+
 def status():
-    return {"available":_ready(ROOT/DETECTION) and _ready(ROOT/RECOGNITION),
+    return {"available":_verify(),
             "version":VERSION,"detection":DETECTION,"recognition":RECOGNITION}
 
 def _init(det_dir:Path|None,rec_dir:Path|None):
@@ -52,6 +92,13 @@ def install():
         dest.parent.mkdir(parents=True,exist_ok=True)
         if not _ready(dest):
             shutil.copytree(src,dest,dirs_exist_ok=True)
+    manifest=_manifest()
+    temp=ROOT/".manifest.tmp"
+    try:
+        temp.write_text(json.dumps(manifest,sort_keys=True),encoding="utf-8")
+        os.replace(temp,ROOT/"manifest.json")
+    finally:
+        temp.unlink(missing_ok=True)
     return status()
 
 def load():
