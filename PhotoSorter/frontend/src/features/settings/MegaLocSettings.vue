@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue'
 import {runApi} from '../../api/runs'
+import {adPipelineApi} from '../../api/adPipeline'
 import {useNoticeStore} from '../../stores/notice'
 import {usePolling} from '../../composables/usePolling'
 import {bytes,errorText} from '../../utils/format'
@@ -9,13 +10,16 @@ import UiButton from '../../components/ui/UiButton.vue'
 
 const notice=useNoticeStore()
 const autoEnabled=ref(false),threshold=ref(.50),autoBusy=ref(false),autoReady=ref(false)
+const adGrouping=ref(.81),adMatching=ref(.81),adBusy=ref(false),adReady=ref(false)
 const model=ref<ModelInfo|null>(null),modelBusy=ref<string|null>(null),error=ref('')
 const activeDownload=computed(()=>Object.values(model.value?.downloads||{}).some(
   value=>value.status==='downloading'||value.status==='verifying'))
 async function refresh(){
   try{
-    const [a,m]=await Promise.all([runApi.autoSettings(),runApi.models()])
+    const [a,m,ad]=await Promise.all([runApi.autoSettings(),runApi.models(),adPipelineApi.settings()])
     if(!autoBusy.value){autoEnabled.value=a.auto_process_new_batches;threshold.value=a.grouping_threshold}
+    if(!adBusy.value){adGrouping.value=ad.grouping_threshold;adMatching.value=ad.matching_threshold}
+    adReady.value=true
     model.value=m;autoReady.value=true;error.value=''
   }catch(e){error.value=errorText(e)}
 }
@@ -29,6 +33,15 @@ async function saveAuto(){
     autoEnabled.value=next.auto_process_new_batches;threshold.value=next.grouping_threshold
     notice.add('Параметры автообработки сохранены','ok')
   }catch(e){error.value=errorText(e)}finally{autoBusy.value=false}
+}
+async function saveAd(){
+  if(!adReady.value||adBusy.value)return
+  adBusy.value=true
+  try{
+    const next=await adPipelineApi.updateThresholds(adGrouping.value,adMatching.value)
+    adGrouping.value=next.grouping_threshold;adMatching.value=next.matching_threshold
+    notice.add('Пороги DINOv2 сохранены для следующих заданий','ok')
+  }catch(e){error.value=errorText(e)}finally{adBusy.value=false}
 }
 async function install(id:string,title:string){
   if(modelBusy.value||activeDownload.value)return
@@ -108,6 +121,25 @@ function stateLabel(id:string,available:boolean){
         :disabled="!autoReady||autoBusy" @change="saveAuto"/>
     </label>
     <p class="meta">Новые партии используют эти значения. Существующие задания не изменяются.</p>
+  </section>
+  <section class="panel stack" aria-label="Пороги распознавания рекламы">
+    <h2>Реклама · пороги DINOv2</h2>
+    <p class="meta">Значения косинусного сходства от 0.00 до 1.00, шаг 0.01.
+      Настройки сохраняются для новых заданий в общей очереди. Уже запущенные задачи не меняются.</p>
+    <div class="stack" style="max-width:460px">
+      <label class="field">Группировка рекламы между ФО
+        <input v-model.number="adGrouping" type="number" min="0" max="1" step=".01"
+          :disabled="!adReady||adBusy" @change="saveAd"/>
+        <input v-model.number="adGrouping" type="range" min="0" max="1" step=".01"
+          :disabled="!adReady||adBusy" aria-label="Сходство группировки рекламы" @change="saveAd"/>
+      </label>
+      <label class="field">Сопоставление групп с рекламными макетами
+        <input v-model.number="adMatching" type="number" min="0" max="1" step=".01"
+          :disabled="!adReady||adBusy" @change="saveAd"/>
+        <input v-model.number="adMatching" type="range" min="0" max="1" step=".01"
+          :disabled="!adReady||adBusy" aria-label="Сходство макетов рекламы" @change="saveAd"/>
+      </label>
+    </div>
   </section>
 </div>
 </template>
