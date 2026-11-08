@@ -240,5 +240,9 @@ def confirm(expected_text:str,observed:list[dict])->dict:
     if ratio>=.6 and (not left or left.issubset(right)):
         return {**base,"status":"confirmed",
                 "reason":"Читаемый текст согласуется с макетом"}
+    if (hits==0 and len(expected.split())>=2 and len(actual.split())>=1
+            and data["confidence"]>=.85):
+        return {**base,"status":"mismatch",
+                "reason":"Высокоуверенный читаемый текст не совпадает с макетом"}
     return {**base,"status":"probable",
             "reason":"Недостаточно надёжных текстовых совпадений для подтверждения или опровержения"}
