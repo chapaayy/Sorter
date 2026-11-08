@@ -141,16 +141,20 @@ def process(job):
                                    snapshot.get("matching_threshold",0.81),DATA_DIR)
             job.progress("ad_pipeline","ad_recognition",1,1,
                          "Нет геометрически подтверждённых экранов")
-        # OCR separates genuine offer/date/price variants while preserving
-        # their parent DINO visual group, then selects quality winners per
-        # verified text subgroup. The result remains an immutable run artifact.
+        # OCR only compares words and groups readable variants. Best frames are
+        # selected by equal OCR/quality score, with visual-only fallbacks.
+        # Every result remains pinned to its immutable run artifact.
         text_document=ad_text_subgroups.form(job,run_id,groups,analyses,data_root=DATA_DIR)
         review_count=sum(bool(item.get("review_required")) for item in analyses)
         job.progress("ad_pipeline","quality",count,count,
                      "Оценка фокуса, пересвета и видимости экрана")
         winners=best.select(analyses)
-        for item in winners:
-            item["best_for_layout"]=True
+        chosen={(int(item["index"]),str(item["screen_id"])) for item in winners}
+        # Persist the combined OCR/quality score for EVERY photo, so the
+        # result views can explain why a winner was chosen without re-running
+        # any model. No change to MegaLoc originals or saved annotations.
+        for item in analyses:
+            item["best_for_layout"]=(int(item["index"]),str(item["screen_id"])) in chosen
             ad_recognition._write(run_id,item["index"],item["screen_id"],item)
         # Add archive entries referencing the immutable MegaLoc copies.
         best_items=[]
