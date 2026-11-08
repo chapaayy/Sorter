@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {onMounted,ref,computed} from 'vue'
+import {usePolling} from '../../composables/usePolling'
 import {adLayoutApi} from '../../api/adLayouts'
 import {adPipelineApi} from '../../api/adPipeline'
 import type {AdLayout} from '../../api/adLayouts'
@@ -49,13 +50,13 @@ async function upload(){
   selected.value=null;name.value='';expected.value=''
   const picker=document.querySelector<HTMLInputElement>('#ad-layout-file')
   if(picker)picker.value=''
-  notice.add('Рекламный макет добавлен','ok');await refresh()
+  notice.add('Макет поставлен в общую очередь на подготовку','ok');await refresh()
  }catch(e){error.value=errorText(e)}
  finally{busy.value=false}
 }
 function edit(item:AdLayout){
  editing.value=item
- editName.value=item.name;editText.value=item.expected_text;editActive.value=item.active
+ editName.value=item.name;editText.value=item.corrected_text??item.expected_text;editActive.value=item.active
 }
 async function save(){
  if(!editing.value||busy.value)return
@@ -73,6 +74,7 @@ async function remove(item:AdLayout){
  catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
 onMounted(()=>{void refresh();void loadPipeline()})
+usePolling(refresh,4000)
 </script>
 <template>
  <PageHeader eyebrow="БИБЛИОТЕКА РЕКЛАМЫ" title="Макеты рекламы"
@@ -83,8 +85,8 @@ onMounted(()=>{void refresh();void loadPipeline()})
      <div><h2>Распознавание рекламы в общей очереди</h2>
        <p class="meta">Новые ФО: MegaLoc → XFeat → DINOv2 → OCR → качество → ZIP.
          Ранее поставленные задания не меняются.</p>
-       <p class="meta">Для включения нужны установленные XFeat, DINOv2, PP-OCRv5
-         и хотя бы один активный макет. По умолчанию выключено.</p>
+       <p class="meta">Для включения нужны XFeat, DINOv2, PP-OCRv5
+         и подготовленные активные макеты. Подготовка выполняется в общей очереди.</p>
      </div>
      <label class="row wrap" style="gap:10px">
        <input v-model="pipeline" type="checkbox" aria-label="Распознавать рекламу при обработке ФО"
@@ -104,15 +106,15 @@ onMounted(()=>{void refresh();void loadPipeline()})
     <label class="field">Название
      <input v-model="name" maxlength="120" required placeholder="Название рекламной кампании"/>
     </label>
-    <label class="field">Контрольный текст (необязательно)
+    <label class="field">Исправленный текст макета (необязательно)
      <input v-model="expected" maxlength="1000" placeholder="Например, СКИДКИ 50%">
     </label>
     <UiButton kind="primary" type="submit" :disabled="!selected||!name.trim()" :loading="busy">
       + Добавить макет
     </UiButton>
    </form>
-   <p class="meta">DINOv2 выбирает похожий макет по изображению. PP-OCRv5 проверяет текст, но не меняет выбор DINOv2.
-      Если контрольный текст пустой, OCR сравнит текст макета и ФО автоматически.</p>
+   <p class="meta">После загрузки DINOv2 и PaddleOCR подготовят макет в общей очереди.
+      При пустом исправленном тексте используется результат OCR исходного макета.</p>
  </section>
  <div class="row between wrap ad-layout-count">
   <span class="meta">Всего {{layouts.length}} макетов · {{activeCount}} активных</span>
@@ -123,8 +125,25 @@ onMounted(()=>{void refresh();void loadPipeline()})
    <img :src="item.image_url" :alt="item.name" loading="lazy"/>
    <div class="stack-sm">
     <div class="row wrap"><strong>{{item.name}}</strong>
-     <span class="status">{{item.active?'Активен':'Отключён'}}</span></div>
-    <div class="meta">Контрольный текст: {{item.expected_text||'OCR автоматически по макету'}}</div>
+     <span class="status">{{item.active?'Активен':'Отключён'}}</span>
+     <span class="status" :class="item.preparation_state==='completed'?'ok':item.preparation_state==='failed'?'danger':''">
+       {{item.preparation_state==='completed'?'Подготовлен':
+         item.preparation_state==='running'?'Подготовка':
+         item.preparation_state==='failed'?'Ошибка подготовки':'В очереди'}}
+     </span></div>
+    <div v-if="item.preparation_state==='running'" class="meta" role="status">
+      {{item.preparation_stage}} · {{item.preparation_progress}}%
+      <progress :value="item.preparation_progress" max="100" style="width:100%"/>
+    </div>
+    <div v-if="item.preparation_error" class="meta" style="color:var(--danger)">
+      {{item.preparation_error}}</div>
+    <div class="meta">Текст для сверки: {{item.corrected_text??item.expected_text||item.ocr_normalized_text||'Не распознан'}}</div>
+    <details v-if="item.ocr_raw_lines.length">
+      <summary class="meta">Распознанный текст и уверенность OCR</summary>
+      <div v-for="(line,index) in item.ocr_raw_lines" :key="index" class="meta">
+        {{line.text}} · {{line.score.toFixed(2)}}
+      </div>
+    </details>
     <div class="meta">Версия {{item.version}} · {{(item.byte_size/1048576).toFixed(2)}} МиБ</div>
     <div class="row wrap">
      <UiButton small @click="edit(item)">Изменить</UiButton>
@@ -140,7 +159,10 @@ onMounted(()=>{void refresh();void loadPipeline()})
     @submit.prevent="save">
     <h2>Изменить макет</h2>
     <label class="field">Название<input v-model="editName" maxlength="120" required/></label>
-    <label class="field">Контрольный текст<input v-model="editText" maxlength="1000"/></label>
+    <label class="field">Исправленный текст для сверки
+      <textarea v-model="editText" maxlength="1000" rows="3" placeholder="Пусто — использовать OCR автоматически"/>
+    </label>
+    <p class="meta">Распознано: {{editing.ocr_normalized_text||'Текст ещё не подготовлен'}}</p>
     <label class="row wrap"><input v-model="editActive" type="checkbox"/> Использовать для распознавания</label>
     <div class="modal-actions"><UiButton @click="editing=null">Отмена</UiButton>
      <UiButton kind="primary" type="submit" :loading="busy">Сохранить</UiButton></div>
