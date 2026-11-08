@@ -36,3 +36,11 @@ def remove(layout_id:UUID):
 @router.get("/{layout_id}/image")
 def picture(layout_id:UUID):
     return FileResponse(service.image(layout_id),headers={"Cache-Control":"no-store"})
+
+@router.put("/{layout_id}/image")
+async def replace_picture(layout_id:UUID,version:int=Form(...),file:UploadFile=File(...)):
+    from fastapi import HTTPException
+    raw=await file.read(service.MAX_BYTES+1)
+    if len(raw)>service.MAX_BYTES:
+        raise HTTPException(413,"Размер файла больше 20 МиБ")
+    return service.replace_image(layout_id,version,raw,file.filename or "layout")
