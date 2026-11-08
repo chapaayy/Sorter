@@ -200,6 +200,10 @@ onMounted(()=>{
                   <div v-if="recognition.ocr.lines?.length" class="meta">
                     Прочитано: {{recognition.ocr.lines.join(' · ')}}
                   </div>
+                  <div v-else-if="recognition.ocr_observation?.raw_lines?.length" class="meta">
+                    OCR прочитал экран независимо от выбора макета:
+                    {{recognition.ocr_observation.raw_lines.map(row=>row.text).join(' · ')}}
+                  </div>
                   <p v-if="ocrReady===false" class="meta">
                     Для OCR установите модели через
                     <code>docker compose exec api python -m app.ad_recognition.cli --install-ocr</code>.
