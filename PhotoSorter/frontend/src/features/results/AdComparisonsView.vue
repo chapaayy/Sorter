@@ -105,7 +105,10 @@ onMounted(()=>{void moreGroups()})
           <div><h2>{{detail.id}} · {{detail.assigned_sam}}</h2>
             <p class="meta">Физический экран {{detail.screen_id}} · {{detail.member_count}} участников</p>
             <RouterLink class="meta" :to="{path:'/results/'+runId,query:{view:'sam',sam:detail.assigned_sam}}">К конструкции {{detail.assigned_sam}}</RouterLink></div>
-          <span class="status" :class="rankMeta?.status==='matched'?'ok':''">{{rankMeta?.status||'Ожидание сопоставления'}}</span>
+          <span class="status" :class="(memberKey?rankMeta?.member_decision?.status:rankMeta?.status)==='matched'?'ok':''">
+            {{memberKey?rankMeta?.member_decision?.status||'Ожидание сопоставления':
+              rankMeta?.status||'Ожидание сопоставления'}}
+          </span>
         </div>
         <div class="field">
           <label class="label" for="ad-compare-member">Уровень сравнения</label>
@@ -124,10 +127,27 @@ onMounted(()=>{void moreGroups()})
           <span>Кандидатов: <strong>{{rankTotal}}</strong></span>
           <span>Метод: {{rankMeta?.method||'—'}}</span>
           <span v-if="rankMeta?.decision_version">Отрыв OCR: <strong>{{format(rankMeta?.ocr_margin)}}</strong></span>
+          <span v-if="rankMeta?.matched_member_count!=null">
+            Определено ФО: <strong>{{rankMeta.matched_member_count}} / {{detail.member_count}}</strong>
+          </span>
+          <span v-if="rankMeta?.member_layout_count!=null">
+            Разных определённых макетов: <strong>{{rankMeta.member_layout_count}}</strong>
+          </span>
         </div>
-        <p class="meta">{{rankMeta?.reason||detail.match?.reason||'Результат сравнения отсутствует'}}</p>
+        <p class="meta">{{memberKey&&rankMeta?.member_decision?
+          rankMeta.member_decision.reason:rankMeta?.reason||detail.match?.reason||
+          'Результат сравнения отсутствует'}}</p>
+        <p v-if="memberKey&&rankMeta?.member_decision" class="meta">
+          Индивидуальный выбор для ФО №{{rankMeta.member_decision.index+1}}:
+          <strong>{{rankMeta.member_decision.candidate_id?
+            rankings.find(row=>row.id===rankMeta!.member_decision!.candidate_id)?.name||
+            rankMeta.member_decision.candidate_id:'макет не определён'}}</strong>
+          · {{rankMeta.member_decision.method}}
+        </p>
         <p class="meta" v-if="rankMeta?.decision_version">
-          Решение принято по относительным результатам DINOv2 и OCR. При противоречии или нехватке доказательств макет не назначается.
+          Среднее cosine всей группы — только диагностика. Разные рекламы могут быть
+          в одной группе: каждый кадр получает своё решение DINOv2 + OCR.
+          Выбери ФО выше, чтобы посмотреть её результат.
         </p>
         <p class="meta" v-else>Исторический запуск: макет выбирался только по DINOv2.</p>
         <div v-if="rankings.length" class="result-rank-table-wrap">
@@ -155,7 +175,7 @@ onMounted(()=>{void moreGroups()})
                 </td>
                 <td v-if="rankMeta?.decision_version">{{format(item.combined_score)}}</td>
                 <td>
-                  <span v-if="item.id===rankMeta?.candidate_id" class="status ok">Выбран</span>
+                  <span v-if="item.id===(memberKey?rankMeta?.member_decision?.candidate_id:rankMeta?.candidate_id)" class="status ok">Выбран</span>
                   <span v-else-if="rankMeta?.decision_version" class="meta">Альтернатива</span>
                   <span v-else-if="item.score<(rankMeta?.matching_threshold??0)" class="meta">Ниже порога</span>
                   <span v-else class="meta">Альтернатива</span>
