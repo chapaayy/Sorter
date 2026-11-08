@@ -62,11 +62,13 @@ def test_full_cpu_screen_pipeline_writes_best_before_zip(monkeypatch,tmp_path):
     monkeypatch.setattr(ad_pipeline,"_layouts_pinned",lambda *_:[(item,Path(item["target_path"]))])
     monkeypatch.setattr(xfeat_assets,"load_model",lambda:object())
     monkeypatch.setattr(dino,"load",lambda:object())
+    monkeypatch.setattr(dino,"embed",lambda *_:np.r_[1.,np.zeros(383)].astype("float32"))
     monkeypatch.setattr(ocr,"status",lambda:{"available":True})
     monkeypatch.setattr(ocr,"signature",lambda:"synthetic-paddle-sha")
     monkeypatch.setattr(ocr,"load",lambda:object())
     monkeypatch.setattr(ad_recognition,"_layout_vectors",
-                        lambda *_:([(item,np.zeros(384,dtype="float32"),Path(item["target_path"]))],[]))
+                        lambda *_:([(item,np.r_[1.,np.zeros(383)].astype("float32"),
+                                    Path(item["target_path"]))],[]))
     corners=[{"x":20,"y":20},{"x":340,"y":20},{"x":340,"y":220},{"x":20,"y":220}]
     def fake_xfeat(_model,row,path,*_args):
         screen={"screen_id":screen_id,"screen_name":"LED",
@@ -105,6 +107,9 @@ def test_full_cpu_screen_pipeline_writes_best_before_zip(monkeypatch,tmp_path):
     assert snapshot["status"]=="completed"
     assert (root/"outputs"/run/"screen_search"/"0"/"result.json").is_file()
     assert (root/"outputs"/run/"ad_recognition"/"0"/(screen_id+".json")).is_file()
+    assert (root/"outputs"/run/"ad_pipeline"/"visual_groups.json").is_file()
+    assert (root/"outputs"/run/"ad_pipeline"/"matches"/"R0001.json").is_file()
+    assert snapshot["visual_group_count"]==1
     archive_items=ad_pipeline.best_archive_entries(run,snapshot)
     assert len(archive_items)==2
     assert archive_items[0][1].startswith("Best_by_layout/")
