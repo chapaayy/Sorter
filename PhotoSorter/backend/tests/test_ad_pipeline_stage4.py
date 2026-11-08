@@ -50,7 +50,7 @@ def test_quality_rejects_tiny_distant_screen():
     result=quality.assess(Image.new("RGB",(4,4),"red"),screen,(1920,1080))
     assert result["status"]=="insufficient"
 
-def test_best_is_per_sam_screen_and_layout_and_uses_combined_scores():
+def test_best_is_one_per_construction_and_layout_across_screens_and_text_variants():
     rows=[
        _entry(0,score=80,review=True),
        _entry(1,score=70,review=False),
@@ -60,12 +60,11 @@ def test_best_is_per_sam_screen_and_layout_and_uses_combined_scores():
        _entry(5,score=91,screen="screen2")
     ]
     picked=best.select(rows)
-    assert len(picked)==4
-    assert {(r["assigned_sam"],r["screen_id"],r["candidate_id"]) for r in picked}=={
-        ("SAM 0001","screen1","layout1"),("SAM 0001","screen1","layout2"),
-        ("SAM 0001","screen2","layout1"),("TLT 0001","screen1","layout1")}
+    assert len(picked)==3
+    assert {(r["assigned_sam"],r["candidate_id"]) for r in picked}=={
+        ("SAM 0001","layout1"),("SAM 0001","layout2"),("TLT 0001","layout1")}
     assert next(r for r in picked if r["assigned_sam"]=="SAM 0001"
-                and r["screen_id"]=="screen1" and r["candidate_id"]=="layout1")["index"]==0
+                and r["candidate_id"]=="layout1")["index"]==5
     assert rows[0]["ocr_selection_score"]==0
     assert rows[0]["selection_score"]==40
     tie=best.select([_entry(6,score=60),_entry(4,score=60)])
@@ -166,14 +165,14 @@ def test_zip_selects_best_and_metadata_and_recovers_without_inference(tmp_path,m
     monkeypatch.setattr(archives.storage_paths,"OUTPUTS",root/"outputs")
     picked=archive_pipeline.selections(run)
     assert len(picked)==3
-    assert any("Review_required/" in path for _,path in picked)
+    assert any(path.startswith("Best_by_layout/SAM 0001/Скидки _ Новый год/") for _,path in picked)
     assert any(path=="Ad_recognition/summary.json" for _,path in picked)
     archive=archives.prepare(run,None,picked)
     with zipfile.ZipFile(archive) as final:
         names=final.namelist()
         assert len(names)==3
         assert names[0]=="SAM 0001/frame.jpg"
-        assert len([name for name in names if name.startswith("Review_required/")])==1
+        assert names[1]=="Best_by_layout/SAM 0001/Скидки _ Новый год/FO1_frame.jpg"
         assert final.read("Ad_recognition/summary.json")==artifact.read_bytes()
     assert archives.existing(run,None,archive_pipeline.selections(run))==archive
     # Simulate loss of run.json after ZIP publication. PostgreSQL snapshot
