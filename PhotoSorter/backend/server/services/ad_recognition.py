@@ -114,10 +114,8 @@ def _identify(model,ocr_engine,screen,run_id,index,embeddings,
             "ocr_observation":observation,
             "review_required":decision["status"]!="matched"}
     if group_match is not None:
-        own_candidate=next((c for c in ranking["top"] if c["id"]==candidate_id),None)
-        if (ranking["status"]!="matched" or ranking["candidate_id"]!=candidate_id
-                or (own_candidate is not None and own_candidate["score"]<matching_threshold)):
-            result["review_required"]=True
+        # The group's DINO score determines its visual match. A blurry or
+        # uninformative individual frame is not a manual-review error.
         result["visual_group_id"]=group_match["group_id"]
         result["group_match"]={key:group_match[key] for key in
                                ("status","reason","candidate_id","best_score",
@@ -154,10 +152,11 @@ def _identify(model,ocr_engine,screen,run_id,index,embeddings,
                        "ambiguous_candidates":alternatives,
                        "reason":"Прочитанный текст подходит нескольким визуально совместимым макетам"}
         result["ocr"]=check
-        # An OCR confirmation is independent from the visual acceptance
-        # threshold and never changes the provisional DINO candidate.
-        if check["status"]!="confirmed":
-            result["review_required"]=True
+        # OCR is used as scoring evidence, never a mandatory gate for a
+        # DINO-matched group. Unreadable text means "visual-only", not review.
+        result["verification_basis"]=(
+            "visual_and_ocr" if check["status"]=="confirmed" else "visual_only"
+        )
     result["classification"]=(
         "unidentified" if result["status"]!="matched" or not candidate_id
         else "confirmed" if result["ocr"].get("status")=="confirmed"
