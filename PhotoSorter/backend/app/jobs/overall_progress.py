@@ -21,6 +21,10 @@ STAGE_LABELS = {
     'matching': 'MegaLoc — сравнение групп с Образцами',
     'saving': 'Сохранение Готовых фоток',
     'export': 'Запись результатов',
+    'screen_search': 'XFeat — поиск экранов на ФО',
+    'ad_recognition': 'DINOv2 и OCR — распознавание рекламы',
+    'quality': 'Качество изображения на экране',
+    'best': 'Выбор лучших кадров по рекламным макетам',
     'archive': 'Подготовка архива',
 }
 
@@ -71,6 +75,12 @@ class OverallProgress:
                             ('references',ref_count),('matching',fo_count),
                             ('saving',fo_count),('export',1),('archive',fo_count)]:
             self.phases.append(Phase('megaloc',stage,max(1,count)))
+        if 'ad_pipeline' in selected_models:
+            phases=[Phase('ad_pipeline','screen_search',max(1,fo_count)),
+                    Phase('ad_pipeline','ad_recognition',max(1,fo_count)),
+                    Phase('ad_pipeline','quality',1),
+                    Phase('ad_pipeline','best',1)]
+            self.phases[-1:-1]=phases
         self.configured = True
 
     def update(self, model: str | None, stage: str, current: int, total: int, now: float):
@@ -105,6 +115,10 @@ class OverallProgress:
             items = rates(('grouping','grouping_merge','grouping_diagnostics','matching'),phase.model)
             if not items:
                 items = rates(('validate_references','validate_queries'))
+        elif phase.stage in ('screen_search','ad_recognition'):
+            items=rates((phase.stage,),phase.model)
+        elif phase.stage in ('quality','best'):
+            items=rates(('saving','export'))
         elif phase.stage == 'archive':
             # ZIP units are bytes; image-copy units are photos. Mixing rates gives a fictitious ETA.
             items = rates(('archive',))

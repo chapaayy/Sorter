@@ -108,7 +108,10 @@ def claim_next(db):
     pinned=reference_publication.snapshot(db,current["id"])
     if not pinned:
         raise RuntimeError("Published reference library is empty")
+    from ...services.ad_pipeline_snapshot import capture as capture_ad_pipeline
+    ad_snapshot=capture_ad_pipeline(db,pinned)
     info=dict(fo["snapshot"])
+    info["ad_pipeline"]=ad_snapshot
     info.update({"status":"running",
         "actual_started_at":datetime.now(timezone.utc).isoformat(),
         "reference_version":current["version_number"],

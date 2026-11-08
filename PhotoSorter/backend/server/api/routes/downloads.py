@@ -5,7 +5,7 @@ from fastapi import APIRouter,HTTPException
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from ...database import connect
-from ...services import operations,archives
+from ...services import operations,archives,archive_pipeline
 from .results import safe_manifest
 from .images import file_allowed
 
@@ -25,6 +25,9 @@ def download_results(run_id:str,sam:str|None=None):
             if sam and item["assigned_sam"]!=sam:continue
             source=file_allowed(Path(item["copy"]))
             selected.append((source,archive_member(item["assigned_sam"],source.name)))
+        # Same immutable selection as the initial ZIP and ZIP-only repair.
+        if sam is None and row["snapshot"].get("ad_pipeline",{}).get("enabled"):
+            selected=archive_pipeline.selections(run_id)
         # New runs publish their full ZIP before the completed state.
         # Legacy runs retain on-demand creation for backward compatibility.
         if sam is None and row["snapshot"].get("archive_state") is not None:

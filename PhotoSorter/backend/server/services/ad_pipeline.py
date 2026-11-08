@@ -28,7 +28,7 @@ def digest(snapshot):
     return hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False,
                            separators=(",",":")).encode()).hexdigest()
 
-def summary(run_id):
+def summary(run_id,*,internal=False):
     root=_root(run_id)
     path=root/"summary.json"
     if path.is_symlink() or root.is_symlink():
@@ -39,7 +39,10 @@ def summary(run_id):
         data=json.loads(path.read_text("utf-8"))
         if data["run_id"]!=run_id or data["status"]!="completed":
             raise ValueError("Unpublished summary")
-        return data
+        if internal:return data
+        return {**data,"best":[
+            {key:value for key,value in item.items() if key!="copy"}
+            for item in data["best"]]}
     except (ValueError,OSError,KeyError) as exc:
         raise HTTPException(500,"Результат выбора лучших повреждён") from exc
 
@@ -180,7 +183,7 @@ def process(job):
 def best_archive_entries(run_id,snapshot):
     """Exact same saved selections for first ZIP and ZIP-only recovery."""
     if not snapshot.get("enabled"):return []
-    document=summary(run_id)
+    document=summary(run_id,internal=True)
     if (document["status"]!="completed" or
         document["snapshot_digest"]!=digest(snapshot)):
         raise RuntimeError("Результат распознавания не готов для архива")

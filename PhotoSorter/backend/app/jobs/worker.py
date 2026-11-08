@@ -18,7 +18,8 @@ def process(job):
     all_queries=images(Path(info['new_photos']))
     scan_seconds=round(time.perf_counter()-scan_started,3)
     stamps={str(path):(path.stat().st_size,path.stat().st_mtime_ns) for path in all_queries}
-    job.configure_progress(len(refs),len(all_queries),['megaloc'])
+    selected=['megaloc','ad_pipeline'] if info.get('ad_pipeline',{}).get('enabled') else ['megaloc']
+    job.configure_progress(len(refs),len(all_queries),selected)
     if not refs:raise ValueError('Нет Образцов для сопоставления')
     # Do not load reference image bytes before FO groups have been formed.
     job.progress(None,'validate_queries',0,len(all_queries),'Проверка ФО')

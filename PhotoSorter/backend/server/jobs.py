@@ -151,7 +151,10 @@ class ServerJob(Job):
         self._last_db_stop=0.0
         self._db_stopped=False
     def finalize_results(self):
+        from .services import ad_pipeline
         from .services.archive_pipeline import build_for_job
+        if self.info.get("ad_pipeline",{}).get("enabled"):
+            ad_pipeline.process(self)
         build_for_job(self)
 
     def save(self):

@@ -2,7 +2,7 @@
 from __future__ import annotations
 from pathlib import Path
 from app.config import DATA_DIR
-from app.results.repository import load_model
+from app.results.repository import load_model,load_run
 from ..storage.paths import owned_file
 from . import archives
 
@@ -17,6 +17,10 @@ def selections(run_id):
         selected.append((source,archives.archive_member(item["assigned_sam"],source.name)))
     if not selected:
         raise RuntimeError("Готовых фотографий для архива нет")
+    info=load_run(run_id)
+    if info.get("ad_pipeline",{}).get("enabled"):
+        from .ad_pipeline import best_archive_entries
+        selected.extend(best_archive_entries(run_id,info["ad_pipeline"]))
     return selected
 
 def build_for_job(job):

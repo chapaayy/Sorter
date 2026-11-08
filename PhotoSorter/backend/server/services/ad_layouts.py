@@ -111,6 +111,13 @@ def active_files():
 
 def delete(uid):
     with connect() as db:
+        # Never unlink a pinned immutable layout while its FIFO job is running.
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        busy=db.execute("""SELECT 1 FROM jobs
+            WHERE status IN ('running','stopping')
+              AND snapshot->'ad_pipeline'->>'enabled'='true' LIMIT 1""").fetchone()
+        if busy:
+            raise HTTPException(409,"Дождитесь окончания обработки рекламы перед удалением макета")
         row=records.by_id(db,uid,lock=True)
         if not row:raise HTTPException(404,"Макет не найден")
         path=_file(row)

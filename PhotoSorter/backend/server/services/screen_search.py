@@ -108,7 +108,11 @@ def _analyse_photo(model,row,path:Path,reference_groups:dict,reference_features:
         try:
             key=(str(a["id"]),int(a["version"]))
             if key not in reference_features:
-                refpath=owned_file(Path(a["target_path"]),DATA_DIR/"references"/sam)
+                if a.get("pinned"):
+                    from ..storage import reference_objects
+                    refpath=owned_file(Path(a["target_path"]),reference_objects.ROOT)
+                else:
+                    refpath=owned_file(Path(a["target_path"]),DATA_DIR/"references"/sam)
                 if not refpath.is_file():raise ValueError("Файл Образца отсутствует")
                 reference_features[key]=prepare_reference(model,a,refpath)
             prepared=reference_features[key]
