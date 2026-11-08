@@ -56,12 +56,22 @@ function changeMode(value:ResultView,updateUrl=true){
   if(mode.value==='group')lastGroup.value=selected.value
   mode.value=value
   if(value==='sam'||value==='group'){
-    selected.value=(value==='sam'?lastSam.value:lastGroup.value)||list.value[0]?.id||''
+    const linked=value==='sam'?route.query.sam:route.query.group
+    const entries=value==='sam'?sams.value:groups.value
+    const wanted=typeof linked==='string'&&linked in entries?linked:''
+    selected.value=wanted||(value==='sam'?lastSam.value:lastGroup.value)||list.value[0]?.id||''
   }
-  if(updateUrl)void router.replace({path:route.path,query:{...route.query,view:value,group:undefined}})
+  if(updateUrl)void router.replace({path:route.path,query:{
+    ...route.query,view:value,group:undefined,sam:undefined
+  }})
 }
 watch(()=>route.query.view,value=>{
   if(isResultView(value)&&value!==mode.value)changeMode(value,false)
+})
+watch(()=>[route.query.sam,route.query.group],()=>{
+  const linked=mode.value==='sam'?route.query.sam:mode.value==='group'?route.query.group:null
+  const entries=mode.value==='sam'?sams.value:groups.value
+  if(typeof linked==='string'&&linked in entries)selected.value=linked
 })
 watch(selected,(value,old)=>{if(value!==old&&value&&mainMode.value)void reset()})
 onMounted(async()=>{
@@ -74,7 +84,10 @@ onMounted(async()=>{
     }
     const [b,s,g,refs]=await Promise.all([batchApi.one(run.value.batch_id),resultApi.sam(id),resultApi.groups(id),referenceApi.list().catch(()=>null)])
     referenceNames.value=Object.fromEntries((refs?.sam||[]).map(item=>[item.sam,item.display_name||item.sam]))
-    batch.value=b;sams.value=s;groups.value=g;selected.value=list.value[0]?.id||''
+    batch.value=b;sams.value=s;groups.value=g
+    const linked=mode.value==='sam'?route.query.sam:mode.value==='group'?route.query.group:null
+    selected.value=typeof linked==='string'&&linked in (mode.value==='sam'?s:g)
+      ?linked:list.value[0]?.id||''
     retention.value=await batchApi.retention(b.batch_id)
   }catch(e){error.value=errorText(e)}
 })
