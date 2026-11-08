@@ -1,83 +1,65 @@
-"""OCR-based final text subgroups, isolated from DINOv2 visual grouping.
+"""Text variants within a DINO visual group, using plain OCR word overlap.
 
-Only screen OCR evidence determines text separation. No candidate reassignment.
-A low-confidence/unreadable photo is never silently assigned to a text variant.
+No classification of dates/prices; empty OCR joins its visual group whenever
+only one readable text variant exists. Keep pinned T identifiers and API shape.
 """
 from __future__ import annotations
 
 import re
-from difflib import SequenceMatcher
-from collections import Counter
-
+from collections import Counter, defaultdict
 from fastapi import HTTPException
-
-from app.ad_recognition import ocr
+from app.ad_recognition import ocr, text_verification
 from app.results.exporter import atomic_json
 from . import ad_recognition, ad_visual_groups
 
-VERSION = "ad-text-variants-v1"
+VERSION = "ad-text-variants-words-v2"
 MIN_READABLE_CONFIDENCE = .70
-MIN_TEXT_SIMILARITY = .72
+MIN_TEXT_OVERLAP = .70
 
 
 def _tokens(value: str) -> list[str]:
-    return re.findall(r"[a-zа-яё0-9]+", (value or "").casefold())
+    return list(dict.fromkeys(text_verification.words(value)))
+
+
+def _readable(item: dict) -> bool:
+    obs = item.get("ocr_observation", {})
+    return (obs.get("status") == "readable"
+            and obs.get("confidence", 0) >= MIN_READABLE_CONFIDENCE
+            and bool(_tokens(obs.get("normalized_text", ""))))
 
 
 def _compatible(first: dict, second: dict) -> bool:
-    """Do not join different DINO candidates or contradictory OCR variants."""
+    """Compare text variants as word sets; numbers are exact tokens."""
     if first.get("candidate_id") != second.get("candidate_id"):
         return False
-    a, b = first["ocr_observation"], second["ocr_observation"]
-    if a.get("status") != "readable" or b.get("status") != "readable":
+    if not _readable(first) or not _readable(second):
         return False
-    if a.get("confidence", 0) < MIN_READABLE_CONFIDENCE or b.get("confidence", 0) < MIN_READABLE_CONFIDENCE:
+    a = set(_tokens(first["ocr_observation"]["normalized_text"]))
+    b = set(_tokens(second["ocr_observation"]["normalized_text"]))
+    numbers_a = {word for word in a if any(ch.isdigit() for ch in word)}
+    numbers_b = {word for word in b if any(ch.isdigit() for ch in word)}
+    if numbers_a and numbers_b and numbers_a.isdisjoint(numbers_b):
         return False
-    left, right = a.get("significant", {}), b.get("significant", {})
-    for kind in ("dates", "prices", "percentages"):
-        x, y = set(left.get(kind, ())), set(right.get(kind, ()))
-        if x and y and x.isdisjoint(y):
-            return False
-    # Bare significant numbers are enough to separate the same ad slogan
-    # carrying a different promotional offer/date. Never silently fuse them.
-    x, y = set(left.get("numbers", ())), set(right.get("numbers", ()))
-    if x and y and x.isdisjoint(y):
-        return False
-    at, bt = _tokens(a.get("normalized_text", "")), _tokens(b.get("normalized_text", ""))
-    if not at or not bt:
-        return False
-    if at == bt:
-        return True
-    overlap = len(set(at) & set(bt)) / max(1, min(len(set(at)), len(set(bt))))
-    ratio = SequenceMatcher(None, " ".join(at), " ".join(bt)).ratio()
-    return ratio >= MIN_TEXT_SIMILARITY or (overlap >= .8 and ratio >= .50)
+    return len(a & b) / max(1, min(len(a), len(b))) >= MIN_TEXT_OVERLAP
 
 
 def _classification(item: dict) -> str:
-    """OCR confirms only DINO-matched layouts; it cannot identify by itself."""
-    visual = item.get("status")
-    if visual != "matched" or not item.get("candidate_id"):
+    """DINO selects layouts; unreadable OCR is not an error or review item."""
+    if item.get("status") != "matched" or not item.get("candidate_id"):
         return "unidentified"
-    evidence = item.get("ocr_observation", {})
-    if (item.get("review_required", False) or
-            evidence.get("status") != "readable" or
-            evidence.get("confidence", 0) < MIN_READABLE_CONFIDENCE):
-        return "probable"
-    if item.get("ocr", {}).get("status") == "confirmed":
-        return "confirmed"
-    return "probable"
+    return "confirmed" if item.get("ocr", {}).get("status") == "confirmed" else "probable"
 
 
 def form(job, run_id: str, groups: list[dict], analyses: list[dict],
          *, data_root=None) -> dict:
-    """Stable text variants per VISUAL group; no global text-only grouping."""
+    """Select one variant for readable matching ads, not one per blank OCR."""
     index = {(int(item["index"]), str(item["screen_id"])): item for item in analyses}
     subgroups = []
     next_id = 1
     for group in groups:
         if job.stopped():
-            raise InterruptedError("Группировка рекламы по тексту остановлена")
-        buckets: list[list[dict]] = []
+            raise InterruptedError("Группировка рекламы остановлена")
+        by_candidate = defaultdict(list)
         for member in group["members"]:
             key = (int(member["index"]), str(member["screen_id"]))
             item = index.get(key)
@@ -86,91 +68,95 @@ def form(job, run_id: str, groups: list[dict], analyses: list[dict],
                     "index": key[0], "screen_id": key[1],
                     "assigned_sam": group["assigned_sam"],
                     "candidate_id": None, "status": "error",
-                    "review_required": True,
+                    "review_required": False,
                     "ocr": {"status": "unavailable", "reason": "OCR не выполнено"},
-                    "ocr_observation": {
-                        "status": "unreadable", "raw_lines": [],
-                        "normalized_text": "", "confidence": 0.0,
-                        "significant": {"dates": [], "prices": [],
-                                        "percentages": [], "numbers": []},
-                        "regions": []},
+                    "ocr_observation": ocr.describe([]),
                 }
                 analyses.append(item)
                 index[key] = item
             item["classification"] = _classification(item)
             item["visual_group_id"] = group["id"]
-            obs = item.get("ocr_observation", {})
-            reliable = (obs.get("status") == "readable" and
-                        obs.get("confidence", 0) >= MIN_READABLE_CONFIDENCE and
-                        bool(_tokens(obs.get("normalized_text", ""))))
-            placed = False
-            if reliable:
-                for bucket in buckets:
-                    if all(_compatible(item, other) for other in bucket):
-                        bucket.append(item)
-                        placed = True
-                        break
-            if not placed:
-                buckets.append([item])
-        for bucket in buckets:
-            subgroup_id = f"T{next_id:04d}"
-            next_id += 1
-            states = Counter(item["classification"] for item in bucket)
-            if states["unidentified"]:
-                state = "unidentified" if states["unidentified"] == len(bucket) else "probable"
-            elif states["probable"]:
-                state = "probable"
-            else:
-                state = "confirmed"
-            members = []
-            for item in bucket:
-                item["text_subgroup_id"] = subgroup_id
-                item["text_subgroup_status"] = state
-                if state != "confirmed":
-                    item["review_required"] = True
-                # Rewrites the same atomic per-screen result after deterministic
-                # subgroup selection, never touches MegaLoc/XFeat originals.
-                ad_recognition._write(run_id, item["index"], item["screen_id"], item)
-                obs = item.get("ocr_observation", {})
-                members.append({
-                    "index": item["index"], "screen_id": item["screen_id"],
+            # OCR cannot send a visually identified photo to manual review.
+            if item.get("status") == "matched":
+                item["review_required"] = False
+            by_candidate[str(item.get("candidate_id") or "")].append(item)
+        for candidates in by_candidate.values():
+            readable = sorted(
+                (item for item in candidates if _readable(item)),
+                key=lambda item: (-len(_tokens(item["ocr_observation"].get(
+                    "normalized_text", ""))), int(item["index"])),
+            )
+            missing = [item for item in candidates if not _readable(item)]
+            buckets = []
+            for item in readable:
+                compatible = [bucket for bucket in buckets
+                              if all(_compatible(item, peer) for peer in bucket)]
+                # A fragment fitting several variants is ambiguous, not proof
+                # that the variants should merge into one campaign.
+                if len(compatible) == 1:
+                    compatible[0].append(item)
+                else:
+                    buckets.append([item])
+            if len(buckets) == 1:
+                buckets[0].extend(missing)
+            elif missing:
+                # Never create ten fake text variants for ten unreadable FOs.
+                buckets.append(missing)
+            for bucket in buckets:
+                subgroup_id = f"T{next_id:04d}"
+                next_id += 1
+                states = Counter(item["classification"] for item in bucket)
+                if states["unidentified"]:
+                    state = ("unidentified" if states["unidentified"] == len(bucket)
+                             else "probable")
+                elif states["probable"]:
+                    state = "probable"
+                else:
+                    state = "confirmed"
+                members = []
+                for item in bucket:
+                    item["text_subgroup_id"] = subgroup_id
+                    item["text_subgroup_status"] = state
+                    ad_recognition._write(run_id, item["index"], item["screen_id"], item)
+                    obs = item.get("ocr_observation", {})
+                    members.append({
+                        "index": item["index"], "screen_id": item["screen_id"],
+                        "visual_group_id": group["id"],
+                        "classification": item["classification"],
+                        "review_required": bool(item.get("review_required", False)),
+                        "normalized_text": obs.get("normalized_text", ""),
+                        "confidence": obs.get("confidence", 0),
+                        "significant": obs.get("significant", {}),
+                        "ocr_status": item.get("ocr", {}).get("status"),
+                    })
+                sample = next(
+                    (item["ocr_observation"] for item in bucket if _readable(item)),
+                    None,
+                )
+                subgroups.append({
+                    "id": subgroup_id,
                     "visual_group_id": group["id"],
-                    "classification": item["classification"],
-                    "review_required": bool(item["review_required"]),
-                    "normalized_text": obs.get("normalized_text", ""),
-                    "confidence": obs.get("confidence", 0),
-                    "significant": obs.get("significant", {}),
-                    "ocr_status": item.get("ocr", {}).get("status"),
+                    "assigned_sam": group["assigned_sam"],
+                    "screen_id": group["screen_id"],
+                    "candidate_id": bucket[0].get("candidate_id"),
+                    "status": state,
+                    "member_count": len(bucket),
+                    "text": sample.get("normalized_text", "") if sample else "",
+                    "significant": sample.get("significant", {}) if sample else {},
+                    "members": members,
+                    "reason": ("Сгруппировано по сходству прочитанных слов"
+                               if sample else "OCR не прочитал текст; сохранено визуальное сопоставление"),
                 })
-            reference = next(
-                (member["ocr_observation"] for member in bucket
-                 if member.get("ocr_observation", {}).get("status") == "readable"),
-                None)
-            subgroups.append({
-                "id": subgroup_id,
-                "visual_group_id": group["id"],
-                "assigned_sam": group["assigned_sam"],
-                "screen_id": group["screen_id"],
-                "candidate_id": bucket[0].get("candidate_id"),
-                "status": state,
-                "member_count": len(bucket),
-                "text": reference.get("normalized_text", "") if reference else "",
-                "significant": reference.get("significant", {}) if reference else {},
-                "members": members,
-                "reason": ("Читаемые текстовые варианты разделены по содержанию, датам и ценам"
-                           if reference else "Текст нельзя надёжно прочитать; вариант не присвоен"),
-            })
-    counts = Counter(group["status"] for group in subgroups)
+    counts = Counter(row["status"] for row in subgroups)
     document = {
         "status": "completed", "version": VERSION, "run_id": run_id,
         "visual_group_count": len(groups), "subgroup_count": len(subgroups),
         "confirmed": counts["confirmed"], "probable": counts["probable"],
-        "unidentified": counts["unidentified"],
-        "subgroups": subgroups,
+        "unidentified": counts["unidentified"], "subgroups": subgroups,
     }
     atomic_json(ad_visual_groups._root(run_id, data_root) / "text_subgroups.json", document)
     job.progress("ad_pipeline", "ad_text", len(analyses) or 1, len(analyses) or 1,
-                 f"OCR · текстовых вариантов: {len(subgroups)}")
+                 f"OCR · групп: {len(subgroups)}")
     return document
 
 
