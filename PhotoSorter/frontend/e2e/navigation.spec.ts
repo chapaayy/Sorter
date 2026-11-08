@@ -714,7 +714,7 @@ test('DINOv2 keeps visual candidate when photo has partial word coverage',async(
   await page.getByRole('button',{name:'Открыть ФО №1'}).click()
   await page.getByRole('button',{name:'Диагностика XFeat'}).click()
   const dialog=page.getByRole('dialog',{name:'Диагностика XFeat'})
-  await expect(dialog.getByText('Макет DINOv2 выбран')).toBeVisible()
+  await expect(dialog.getByText('Рекламный макет определён')).toBeVisible()
   await expect(dialog.getByText('Реклама ноября').first()).toBeVisible()
   await expect(dialog.getByText('PP-OCRv5 · Дополнительная проверка')).toBeVisible()
   await expect(dialog.getByText('1 / 2 из прочитанных слов ФО')).toBeVisible()
