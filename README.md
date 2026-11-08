@@ -197,3 +197,10 @@ DINOv2, OCR, качество и автоматическая FIFO-интегр�
 `docker compose exec worker python -m app.screen_detection.cli --prune-cache`.
 Остаются все ключи текущих разметок и любые новые файлы кэша моложе 7 дней.
 Никогда не удаляет оригиналы, ZIP или кэш MegaLoc.
+
+Для продолжения большого теста используйте нумерацию ФО с нуля:
+`docker compose exec worker python -m app.screen_detection.cli --run-id RUN_ID --start-index 100 --limit 100`.
+Это обработает ФО с индексами 100–199. Отсутствующий файл записывается как
+`error`, остальные продолжают обрабатываться. Ручной анализ удерживает
+существующую `batch_operations` read-lease, чтобы очистка не удалила файлы
+во время теста.
