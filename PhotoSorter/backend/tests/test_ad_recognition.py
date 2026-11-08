@@ -39,6 +39,8 @@ def test_ad_library_crud_duplicate_version_and_deleted_bytes(system,monkeypatch)
         ad_layouts.update(uid,1,"Устарело","",True)
     assert exc.value.status_code==409
     assert ad_layouts.delete(uid)=={"deleted":True}
+    assert file.exists()  # Historical originals remain until lifecycle GC.
+    ad_layouts.gc_retired()
     assert not file.exists()
     assert ad_layouts.list_layouts()["total"]==0
 
@@ -142,6 +144,12 @@ def test_completed_megaloc_run_reuses_xfeat_crop_without_tampering_zip(system,mo
     monkeypatch.setattr(screen_search,"DATA_DIR",root)
     monkeypatch.setattr(result_pages,"DATA_DIR",root)
     uid=uuid.UUID(ad_layouts.create(pixels(),"ad.png","Реклама","Скидки 50")["id"])
+    # Simulate the completed FIFO layout publication without loading neural weights.
+    source=ad_layouts.image(uid)
+    monkeypatch.setattr(ad_layouts,"active_files",lambda:[({
+        "id":uid,"name":"Реклама","checksum":"a"*64,"version":1,
+        "expected_text":"Скидки 50","prepared_key":"prepared-test",
+        "embedding_path":"test-vector"},source)])
     batch=uuid.uuid4()
     run="20261108T120000-"+uuid.uuid4().hex[:12]
     screen_id=uuid.uuid4()
@@ -169,7 +177,7 @@ def test_completed_megaloc_run_reuses_xfeat_crop_without_tampering_zip(system,mo
     (stage2/(str(screen_id)+".png")).write_bytes(pixels())
     monkeypatch.setattr(ad_recognition.dino,"load",lambda:object())
     monkeypatch.setattr(ad_recognition.dino,"embed",lambda *_args:unit())
-    monkeypatch.setattr(ad_recognition.embedding_cache,"vector",lambda *_args:unit())
+    monkeypatch.setattr(ad_recognition.embedding_cache,"prepared",lambda *_args:unit())
     monkeypatch.setattr(ad_recognition.ocr,"status",lambda:{"available":False})
     done=ad_recognition.analyze_run(run,limit=1)
     assert done["screens"]==1 and done["matched"]==1
