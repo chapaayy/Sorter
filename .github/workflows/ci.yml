@@ -6,6 +6,12 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+# Only the newest experimental-branch push needs the expensive CPU+OCR builds.
+# Stable main and pull requests retain their independent CI histories.
+concurrency:
+  group: photosorter-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/feature/ad-recognition' }}
+
 permissions:
   contents: read
 
