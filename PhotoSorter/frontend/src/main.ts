@@ -13,6 +13,7 @@ import './styles/screen-annotation.css'
 import './styles/screen-search.css'
 import './styles/ad-layouts.css'
 import './styles/ad-best.css'
+import './styles/ad-results.css'
 import './styles/queue.css'
 import './styles/settings-layout.css'
 createApp(App).use(createPinia()).use(router).mount('#app')
