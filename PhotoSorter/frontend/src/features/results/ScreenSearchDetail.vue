@@ -15,6 +15,11 @@ const dinoReady=ref<boolean|null>(null),ocrReady=ref<boolean|null>(null)
 const screen=computed<DetectedScreen|undefined>(()=>result.value?.screens.find(s=>s.screen_id===selected.value))
 const corners=computed(()=>screen.value?.corners?.map(p=>p.x+','+p.y).join(' ')||'')
 const matches=computed(()=>screen.value?.debug_matches||[])
+const possibleOcrIssues=computed(()=>{
+  const found=recognition.value?.ocr
+  const known=new Set((found?.contradictions||[]).map(issue=>issue.kind))
+  return (found?.possible_contradictions||[]).filter(issue=>!known.has(issue.kind))
+})
 const sideColor=(side:number)=>['#38bdf8','#34d399','#fbbf24','#c084fc'][side]||'#38bdf8'
 async function refresh(){
   try{
@@ -191,8 +196,7 @@ onMounted(()=>{
                       issue.kind==='percentages'?'процент':'число'}}):
                     в макете {{issue.expected.join(', ')}} · на ФО {{issue.observed.join(', ')}}
                   </div>
-                  <div v-for="(issue,i) in (recognition.ocr.possible_contradictions||[]).filter(
-                    issue=>!(recognition.ocr?.contradictions||[]).some(item=>item.kind===issue.kind))" :key="'weak'+i" class="meta">
+                  <div v-for="(issue,i) in possibleOcrIssues" :key="'weak'+i" class="meta">
                     Возможное расхождение ({{issue.kind==='dates'?'дата':issue.kind==='prices'?'цена':
                       issue.kind==='percentages'?'процент':'число'}}):
                     в макете {{issue.expected.join(', ')}} · на ФО {{issue.observed.join(', ')}}
