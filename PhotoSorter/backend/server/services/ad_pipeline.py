@@ -209,16 +209,28 @@ def best_archive_entries(run_id,snapshot):
         raise RuntimeError("Результат распознавания не готов для архива")
     from . import archives
     result=[]
+    def label(value):
+        safe=re.sub(r"[^\w\- ]+","_",str(value),flags=re.UNICODE).strip(" ._")
+        return safe[:55] or "Без_названия"
+    # Full archive: Best_by_layout / SAM 1683 / IMG_5796 / FO121_photo.jpg.
+    # The original MegaLoc SAM folders remain unchanged.
+    directories=set()
     for item in document["best"]:
         source=owned_file(run_dir(run_id,DATA_DIR/"outputs")/item["copy"],DATA_DIR/"outputs")
         if not source.is_file():raise FileNotFoundError("Лучшее фото отсутствует")
-        def label(value):
-            safe=re.sub(r"[^\w\- ]+","_",str(value),flags=re.UNICODE).strip(" ._")
-            return safe[:55] or "Без_названия"
-        variant="_"+label(item["text_subgroup_id"]) if item.get("text_subgroup_id") else ""
-        filename=f"{label(item.get('layout_name'))}_{str(item['screen_id'])[:8]}{variant}_FO{item['index']+1}_{source.name}"
-        section="Review_required" if item.get("review_required") else "Best_by_layout"
-        result.append((source,section+"/"+archives.archive_member(item["assigned_sam"],filename)))
+        sam=item["assigned_sam"]
+        folder=label(item.get("layout_name") or "Реклама")
+        key=(sam,folder)
+        if key in directories:
+            folder=label(folder+"_"+str(item["candidate_id"])[:8])
+            key=(sam,folder)
+        if key in directories:
+            raise RuntimeError("Дублирующаяся папка макета для конструкции")
+        directories.add(key)
+        filename=f"FO{int(item['index'])+1}_{source.name}"
+        prefix=archives.archive_member("Best_by_layout",sam)
+        layout_and_file=archives.archive_member(folder,filename)
+        result.append((source,prefix+"/"+layout_and_file))
     subgroups=_root(run_id)/"text_subgroups.json"
     if subgroups.is_file() and not subgroups.is_symlink():
         result.append((subgroups,"Ad_recognition/text_subgroups.json"))
