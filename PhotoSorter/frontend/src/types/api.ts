@@ -58,6 +58,7 @@ export interface Run {
   grouping_threshold?: number; selected_models?: string[];source?:'manual'|'automatic'
   queue_position?: number | null; models?: Record<string, { status?: string; count?: number; processed?:number; assigned?:number; uncertain?:number; groups?: number }>
   progress?: RunProgress; error?: string; archive_state?:'preparing'|'ready'|'failed'
+  ad_pipeline?:{enabled:boolean;status?:string;best_count?:number;errors?:number}
 }
 export interface ResultPhoto {
   index: number; assigned_sam?: string; group_id?: string

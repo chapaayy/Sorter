@@ -11,7 +11,7 @@ const eta=computed(()=>p.value.eta_status==='measured'&&p.value.estimated_remain
 <template>
 <section class="panel stack" aria-live="polite">
   <div class="panel-header">
-    <div><span class="eyebrow">ТЕКУЩИЙ ЗАПУСК · MEGALOC</span><h2 style="margin:8px 0 0">{{runLabels[run.status]||run.status}}</h2></div>
+    <div><span class="eyebrow">ТЕКУЩИЙ ЗАПУСК · {{run.ad_pipeline?.enabled?'MEGALOC + РЕКЛАМА':'MEGALOC'}}</span><h2 style="margin:8px 0 0">{{runLabels[run.status]||run.status}}</h2></div>
     <span v-if="run.status==='queued'" class="status">Очередь №{{run.queue_position||'—'}}</span>
     <span v-else class="status" :class="run.status==='completed'?'ok':run.status==='failed'?'danger':''">{{run.status}}</span>
   </div>
@@ -28,6 +28,11 @@ const eta=computed(()=>p.value.eta_status==='measured'&&p.value.estimated_remain
     </div>
     <div v-if="p.overall_percent!=null" class="meta">Общая оценка: {{p.overall_percent.toFixed(1)}}% · {{p.eta_status==='measured'?'на основании реальных измерений':'предварительно'}}</div>
   </template>
-  <div v-else class="meta">{{run.error||'Просмотреть результаты или журнал можно из карточки запуска.'}}</div>
+  <div v-else class="stack-sm">
+    <p v-if="run.status==='failed'&&run.ad_pipeline?.enabled&&p.stage_label" class="meta">
+      Последний этап: {{stage}}
+    </p>
+    <p class="meta">{{run.error||'Просмотреть результаты или журнал можно из карточки запуска.'}}</p>
+  </div>
 </section>
 </template>

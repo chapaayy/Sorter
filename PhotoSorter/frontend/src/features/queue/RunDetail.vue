@@ -43,7 +43,7 @@ async function stop(){
 </script>
 <template>
 <div class="row" style="margin-bottom:22px"><RouterLink to="/queue?view=history" class="meta">← История очереди</RouterLink></div>
-<PageHeader eyebrow="ОЧЕРЕДЬ / ПОДРОБНОСТИ" :title="batch?.display_name||'Запуск '+id" :subtitle="'MegaLoc · '+date(run?.started_at)+' · '+(run?runLabels[run.status]||run.status:'Загрузка…')">
+<PageHeader eyebrow="ОЧЕРЕДЬ / ПОДРОБНОСТИ" :title="batch?.display_name||'Запуск '+id" :subtitle="(run?.ad_pipeline?.enabled?'MegaLoc → XFeat → DINOv2 / OCR':'MegaLoc')+' · '+date(run?.started_at)+' · '+(run?runLabels[run.status]||run.status:'Загрузка…')">
   <template #actions>
     <UiButton v-if="(run?.archive_state==='failed'&&['failed','interrupted'].includes(run.status))||archiveHealth?.can_retry"
       :loading="busy" kind="primary" @click="retryArchive">
@@ -61,7 +61,7 @@ async function stop(){
 <RunProgress v-if="run" :run="run"/>
 <div v-if="run" class="panel stack" style="margin-top:20px">
   <h2>Параметры и действия</h2>
-  <div class="grid3"><div><span class="label">Модель</span><strong>MegaLoc</strong></div><div><span class="label">Порог группировки</span><strong>{{run.grouping_threshold?.toFixed(2)||'0.50'}}</strong></div><div><span class="label">Идентификатор запуска</span><code class="meta">{{run.id}}</code></div></div>
+  <div class="grid3"><div><span class="label">Конвейер</span><strong>{{run.ad_pipeline?.enabled?'MegaLoc → XFeat → DINOv2 / OCR':'MegaLoc'}}</strong></div><div><span class="label">Порог группировки</span><strong>{{run.grouping_threshold?.toFixed(2)||'0.50'}}</strong></div><div><span class="label">Идентификатор запуска</span><code class="meta">{{run.id}}</code></div></div>
   <div class="row wrap"><RouterLink :to="'/logs?run='+id" class="btn">Открыть журнал запуска</RouterLink><RouterLink :to="'/fo/'+run.batch_id" class="btn">Открыть партию ФО</RouterLink></div>
 </div>
 <ConfirmDialog v-if="confirmStop&&run"

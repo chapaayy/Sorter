@@ -763,3 +763,15 @@ test('Settings installs XFeat from the browser without SSH and shows download st
   await expect(item.getByText('Устанавливается')).toBeVisible()
   await expect(item.getByText('Скачивание и подготовка модели…')).toBeVisible()
 })
+
+test('failed integrated advertising run identifies its pipeline and last XFeat stage',async({page})=>{
+  await page.route('**/api/runs/'+rid,route=>respond(route,{
+    ...run,status:'failed',error:'AttributeError: ptp was removed from ndarray',
+    ad_pipeline:{enabled:true,status:'failed'},
+    progress:{stage:'screen_search',stage_label:'XFeat — поиск экранов на ФО',current:10,total:100}
+  }))
+  await page.goto('/queue/runs/'+rid)
+  await expect(page.getByText('MegaLoc → XFeat → DINOv2 / OCR').first()).toBeVisible()
+  await expect(page.getByText('Последний этап: XFeat — поиск экранов на ФО')).toBeVisible()
+  await expect(page.getByText('AttributeError: ptp was removed from ndarray')).toBeVisible()
+})
