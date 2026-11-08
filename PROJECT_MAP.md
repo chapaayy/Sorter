@@ -213,3 +213,26 @@ Vue /references -> ReferenceLibrary -> ImageViewer (Выделить экран)
 Планируемый, **пока не реализованный** путь после MegaLoc:
 разметка своей конструкции → XFeat/OpenCV → экран → DINOv2 → OCR-проверка
 → качество → отбор → единый ZIP. Вторая очередь не создаётся.
+
+
+## Этап 2 — поиск экрана поверх готового MegaLoc
+
+```text
+Существующие результаты MegaLoc (outputs/RUN_ID/megaloc/manifest.rows.jsonl)
+  -> server/services/screen_search.py (проверяет завершённую партию и исходную ФО)
+  -> db/repositories/screen_annotations.py (только назначенная конструкция)
+  -> app/screen_detection/xfeat_assets.py (официальные проверенные веса, CPU)
+  -> features.py (EXIF/RGB, XFeat, только полоса рамки на Образце)
+  -> cache.py (версия разметки + SHA оригинала + модель и параметры)
+  -> features.match (mutual nearest neighbours)
+  -> geometry.py (MAGSAC/RANSAC, ошибки, стороны, вырождение)
+  -> оригинальный bounding-box crop без перспективного выравнивания
+  -> outputs/RUN_ID/screen_search/INDEX/{result.json,SCREEN_UUID.png}
+  -> api/routes/screen_search.py (только GET)
+  -> frontend/results/ScreenSearchDetail.vue
+```
+
+Старт тестового анализа — `python -m app.screen_detection.cli --run-id RUN_ID`
+в существующем контейнере worker, **без FIFO enqueue**.
+Существующий рабочий процесс **MegaLoc → ZIP → completed не меняется**.
+DINOv2/OCR/качество/автоматическое включение в FIFO ожидают этапов 3–4.

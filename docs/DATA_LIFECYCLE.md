@@ -38,3 +38,14 @@
 `thumbnail_tasks(upload_id)` с ON DELETE CASCADE связана с финализированным upload: `queued → running → ready`, ошибка `running → queued` до 3 попыток, затем `failed`, ручной retry. Рабочие входные оригиналы не редактируются, WebP создаётся отдельно `data/cache/thumbnails/v1/<prefix>/<checksum>.webp` размером 480px long edge/q78. Превью по checksum разделяется между разными ФО партиями и общими Образцами; cache GC удаляет физический файл только после исчезновения **всех** финализированных checksum owners и 24h grace. Удаление партии каскадно удаляет её очередь preview, не global SAM cache.
 
 Временные `incoming/<upload_uuid>.part` с `finalized=false` удаляются отдельно после 30 дней без активности, без активной batch lease, jobs или recent mtime. Для уже существующих исторических uploads миграция создаёт задания preview, не двигает оригиналы. Новый run не кэширует FO embeddings.
+
+
+## Этап 2: экспериментальные XFeat-результаты
+
+Новые файлы внутри `PhotoSorter/data/outputs/RUN_ID/screen_search` удаляются
+общим batch cleanup, который уже удаляет целиком `outputs/RUN_ID`.
+Никакой отдельный ZIP или срок хранения не создан.
+`PhotoSorter/data/cache/xfeat/references/*.npz` хранит отдельные признаки
+с ключом версии и SHA исходного Образца; при изменении разметки прежние
+признаки не используются. Автоматическая очистка кэша, безопасная относительно
+зафиксированных снимков FIFO, будет финализирована на этапе 4.

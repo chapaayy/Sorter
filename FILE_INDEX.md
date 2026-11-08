@@ -286,3 +286,27 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 `frontend/src/api/references.ts`, `features/references/ReferenceLibrary.vue`,
 `components/gallery/ImageViewer.vue`, `.github/workflows/ci.yml`.
 Ни один новый ML runtime или вторая очередь не добавлены.
+
+
+## Этап 2 — XFeat (новые используемые файлы)
+
+| Путь | Назначение |
+| --- | --- |
+| `PhotoSorter/backend/app/screen_detection/xfeat_assets.py` | Закреплённые официальные XFeat-веса и Python-модули, SHA Git blobs, CPU-загрузка |
+| `PhotoSorter/backend/app/screen_detection/features.py` | EXIF-изображения, извлечение sparse-признаков, полосы рамки, MNN |
+| `PhotoSorter/backend/app/screen_detection/geometry.py` | Проверка RANSAC/MAGSAC, распределение совпадений, перенос четырёх углов |
+| `PhotoSorter/backend/app/screen_detection/cache.py` | Сохранение отдельных признаков XFeat и ключи версий |
+| `PhotoSorter/backend/app/screen_detection/cli.py` | Явная установка, проверка и тестовый запуск готового MegaLoc run |
+| `PhotoSorter/backend/app/screen_detection/cpu_smoke.py` | Реальный inference предобученной XFeat на CPU в CI |
+| `PhotoSorter/backend/server/services/screen_search.py` | Выбор своей конструкции, анализ фото, атомарное сохранение JSON и фрагментов |
+| `PhotoSorter/backend/server/api/routes/screen_search.py` | Read-only API диагностик и вырезанных фрагментов |
+| `PhotoSorter/frontend/src/api/screenSearch.ts` | Контракт типизированного read-only API |
+| `PhotoSorter/frontend/src/features/results/ScreenSearchDetail.vue` | Контур, координаты, совпавшие точки, ошибки и вырезка |
+| `PhotoSorter/frontend/src/styles/screen-search.css` | Адаптивный просмотр диагностики |
+| `PhotoSorter/backend/tests/test_screen_search.py` | Геометрия, отказ, полоса рамки, версии и вырезка |
+
+Изменены существующие `server/main.py`, `server/db/repositories/screen_annotations.py`,
+`frontend/src/components/gallery/ImageViewer.vue`, `features/results/ResultDetail.vue`,
+`frontend/e2e/navigation.spec.ts`, `frontend/src/main.ts`,
+`PhotoSorter/requirements.txt`, `.github/workflows/ci.yml`,
+`PhotoSorter/tools/maintenance/smoke_container.sh`.

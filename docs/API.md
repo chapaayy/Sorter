@@ -180,3 +180,19 @@
 | DELETE | `/api/references/{sam}/screens/{id}` | Удалить экран и все его ракурсы |
 
 POST: `{reference_id,screen_id:null,screen_name:"Экран 1",corners:[{x,y},...],band_width_px:10}` для нового экрана или `screen_id` существующего экрана без имени. PATCH: `{corners:[{x,y},...],band_width_px:10,version:1}`. Углы идут последовательно по контуру в пикселях EXIF-ориентированного оригинала. Ответ POST/PATCH: `{id,screen_id,version}`. Ошибки `404` при отсутствии фото/экрана, `409` при конфликтах версий/дублировании, `422` при недопустимой геометрии.
+
+
+## Поиск экранов — read-only API тестового этапа 2
+
+- `GET /api/screen-search/model`: готовность проверенных локальных XFeat-файлов.
+- `GET /api/screen-search/runs/{run_id}/photos/{index}`: сохранённый результат
+  со `status`, `reason`, `image_width/height` и `screens[]`. Каждый экран
+  содержит `screen_id`, имя, `annotation_version`, статус, количество
+  `matches` и `inliers`, `supported_sides`, ошибку геометрии, 4 угла и
+  до 80 пар совпавших точек. Без анализа — `not_processed`.
+- `GET /api/screen-search/runs/{run_id}/photos/{index}/screens/{screen_id}/crop`:
+  фрагмент PNG только для сохранённого подтверждённого экрана.
+
+Все маршруты под существующими session/Origin middleware. Запуск инференса
+в HTTP **отсутствует**: тестовый запуск через CLI существующего Worker-контейнера.
+Не создаётся ни второй очередь, ни новый ZIP, ни фиктивный статус обработки.

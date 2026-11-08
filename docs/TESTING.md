@@ -62,3 +62,18 @@ npm run test:e2e
 - `npm run build && npm run test && npm run test:e2e` из `PhotoSorter/frontend` — TypeScript, Vitest и Chromium/WebKit; `screen-annotations.spec.ts` проверяет сохранение после перезагрузки.
 - Параллельно прежние регрессионные проверки и Docker smoke в CI.
 - На новом VPS дополнительно вручную проверить разметку нескольких реальных Образцов в iOS Safari и реальную MegaLoc/ZIP обработку. Успешный CI не означает проверку реальных ФО.
+
+
+## Этап 2: XFeat / OpenCV на CPU
+
+- `PhotoSorter/backend/tests/test_screen_search.py`: MAGSAC на плоской
+  четырёхугольной поверхности с выбросами, отказ при 4 точках/одной стороне/
+  координатах вне кадра; маска полосы без рекламы; сохранение оригинального crop.
+- `app.screen_detection.cpu_smoke` внутри worker в одноразовом Docker CI:
+  настоящие проверенные XFeat pretrained weights, детекция sparse-признаков,
+  mutual descriptor match, измеренное время и RAM.
+- Vue build, Vitest, Chromium и WebKit desktop/mobile остаются обязательны.
+- Отдельная **обязательная полевая приёмка**: реальные LED-фото с разными
+  рекламами, расстояниями, наклоном, ночью, бликами и несколькими экранами,
+  c ручной разметкой верного экрана. Синтетические тесты и CPU smoke не
+  подтверждают реальную точность.

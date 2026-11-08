@@ -158,3 +158,37 @@ ZIP теперь создаётся **один раз** в `data/outputs/<run-id
 Координаты и толщина — в пикселях исходного изображения после EXIF-ориентации. Разметка и номер версии хранятся в PostgreSQL. Это **не** подключает XFeat, DINOv2, OCR или оценку качества к задачам ФО: на этапе 1 действующая обработка остаётся MegaLoc-only.
 
 Инструкция для чистого нового VPS: `git clone --single-branch --branch feature/ad-recognition https://github.com/chapaayy/Sorter.git`, затем `cd Sorter && cp .env.example .env`, настройте `.env` и выполните `bash ./install.sh --check` и `bash ./install.sh --deploy`. При первом `--check` отсутствие `.env.generated` ожидаемо; секреты создаёт первоначальный `--deploy`. Не выполнять сброс базы или volumes при обычном обновлении.
+
+
+## Эксперимент XFeat — этап 2 (только feature/ad-recognition)
+
+XFeat CPU ищет конкретный размеченный экран после **уже завершённой** сортировки MegaLoc.
+Запуск анализа пока ручной: он не создаёт новую FIFO, не меняет MegaLoc,
+статус партий и ZIP. Для SAM без разметки или неопределённой конструкции
+сохраняется объясняющий статус, а не вымышленный экран.
+
+Установка официального XFeat один раз (API имеет внешний доступ,
+worker — только приватную Docker-сеть):
+
+```bash
+docker compose exec api python -m app.screen_detection.cli --install
+docker compose exec worker python -m app.screen_detection.cli --verify
+docker compose exec worker python -m app.screen_detection.cli --run-id RUN_ID --limit 20
+```
+
+При невозможности скачать веса напрямую можно предварительно выполнить
+`PYTHONPATH=PhotoSorter/backend python3 -m app.screen_detection.cli --install`
+на ПК/машине с доступом, перенести в **одноимённые** каталоги VPS:
+`Models/models/xfeat/xfeat.pt` и
+`Models/cache/xfeat/official/modules/{xfeat.py,model.py,interpolator.py}`.
+`--verify` сверяет файлы с Git-хешами конкретного коммита официального XFeat;
+непроверенные веса не запускаются. После запуска открой
+«Результаты» → готовый запуск → фотографию → «Диагностика XFeat».
+Там доступны координаты, контур, точки, причина отказа и исходный вырезанный
+фрагмент без выравнивания.
+
+XFeat хранит собственный кэш признаков Образцов в
+`PhotoSorter/data/cache/xfeat/references`, а вывод —
+`PhotoSorter/data/outputs/<RUN_ID>/screen_search/`.
+Результаты удаляются вместе с существующими outputs партии.
+DINOv2, OCR, качество и автоматическая FIFO-интеграция — **не этап 2**.

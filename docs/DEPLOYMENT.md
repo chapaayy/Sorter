@@ -74,3 +74,22 @@ bash ./install.sh --deploy
 ```
 
 Первый `--check` может отметить отсутствие `.env.generated`, пока `--deploy` не создаст секреты. Проверить доступные CPU ID, RAM (лимит Worker), свободное место, `docker compose config` и логи. Не выполнять `down -v` и не чистить тома при обновлении. Дальнейшие обновления с `git pull --ff-only origin feature/ad-recognition`, не переключать эксперимент на `main` без команды владельца.
+
+
+## XFeat на CPU (ручной этап 2 после установки ветки)
+
+```bash
+docker compose exec api python -m app.screen_detection.cli --install
+docker compose exec worker python -m app.screen_detection.cli --verify
+docker compose exec worker python -m app.screen_detection.cli --run-id RUN_ID --limit 20
+```
+
+API подключён к внешней Docker-сети, а Worker — только к private, поэтому
+скачивание модели запускается в API, а inference — в Worker.
+`--install` проверяет точные Git blob контрольные суммы официальных
+исходников/весов, не перезаписывает корректные файлы. Если VPS не имеет
+доступа, перенести `Models/models/xfeat/xfeat.pt` и
+`Models/cache/xfeat/official/modules/*.py` с ПК, сохранив структуру;
+проверить `--verify` до запуска. Не добавлять бинарные веса в Git.
+ФО после MegaLoc анализируются отдельно, результат в outputs партии.
+Никаких команд `docker compose down -v` для такого обновления не требуется.
