@@ -16,6 +16,7 @@ EXTRACTOR_VERSION="exif-rgb-max1280-top4096-border-v1"
 def key(annotation:dict)->str:
     data={key:annotation[key] for key in
           ("id","source_sha256","version","corners","band_width_px")}
+    data["id"]=str(data["id"])
     data.update({"model":MODEL_ID,"preprocessing":EXTRACTOR_VERSION})
     return hashlib.sha256(json.dumps(data,sort_keys=True,separators=(",",":")).encode()).hexdigest()
 
