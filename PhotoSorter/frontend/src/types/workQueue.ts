@@ -6,9 +6,9 @@ export interface QueueTask {
   kind:QueueKind
   fo_run_id:string|null
   reference_job_id:string|null
-  layout_job_id:string|null
-  layout_id:string|null
-  layout_name:string|null
+  layout_job_id?:string|null
+  layout_id?:string|null
+  layout_name?:string|null
   session_id:string|null
   state:QueueStatus
   created_at:string
