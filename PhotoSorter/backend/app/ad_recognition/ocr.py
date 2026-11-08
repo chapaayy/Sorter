@@ -148,7 +148,7 @@ def _critical(text:str)->dict:
             dates.add(f"{int(day):02}.{int(month):02}"+(f".{year}" if year else ""))
     months=("январ","феврал","март","апрел","мая","июн","июл",
             "август","сентябр","октябр","ноябр","декабр")
-    for m in re.finditer(r"(?<!\\d)(\\d{1,2})\\s+([а-яё]+)(?:\\s+(20\\d{2}))?",value):
+    for m in re.finditer(r"(?<!\d)(\d{1,2})\s+([а-яё]+)(?:\s+(20\d{2}))?",value):
         day,word,year=m.groups()
         month=next((i+1 for i,stem in enumerate(months) if word.startswith(stem)),None)
         if month and 1<=int(day)<=31:
