@@ -69,4 +69,9 @@ id="$(printf '%s' "$created" | python3 -c 'import json,sys;print(json.load(sys.s
 curl -kfsS --max-time 8 -b "$cookie_file" "https://localhost/api/batches/$id" >/dev/null
 curl -kfsS --max-time 8 -b "$cookie_file" -X DELETE \
   -H 'Origin: https://localhost' "https://localhost/api/batches/$id" >/dev/null
+# Inference from the official pretrained checkpoint (not merely an import check).
+# API can access the network; Worker intentionally has only the private network.
+docker compose exec -T api python -m app.screen_detection.cli --install
+docker compose exec -T worker python -m app.screen_detection.cli --verify
+docker compose exec -T worker python -m app.screen_detection.cpu_smoke
 echo "[OK] Full image build and isolated runtime: TLS self-signed, API/login, root Vue SPA, 3 workers and synthetic batch lifecycle"
