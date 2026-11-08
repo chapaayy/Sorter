@@ -39,23 +39,11 @@ def capture(db,pinned:list[dict])->dict:
                 "target_path":member["path"],"pinned":True
             })
     ocr_signature=ocr.signature()
-    rows=db.execute("""SELECT l.id,l.name,l.filename,l.checksum,l.target_path,
-        l.byte_size,l.expected_text,l.ocr_corrected_text,l.version,l.active,
-        l.preparation_state,c.cache_key,c.embedding_path,c.normalized_text,
-        c.dino_signature,c.ocr_signature
-        FROM ad_layouts l LEFT JOIN ad_layout_prepared_cache c ON c.cache_key=l.prepared_key
-        WHERE l.active=true ORDER BY l.id""").fetchall()
-    if any(r["preparation_state"]!="completed" or r["dino_signature"]!=dino.SIGNATURE
-           or r["ocr_signature"]!=ocr_signature for r in rows):
-        raise RuntimeError("Активные рекламные макеты требуют подготовки в общей очереди")
-    layouts=[{"id":str(r["id"]),"name":r["name"],"filename":r["filename"],
-              "checksum":r["checksum"],"target_path":r["target_path"],
-              "byte_size":r["byte_size"],"expected_text":r["expected_text"],
-              "ocr_corrected_text":r["ocr_corrected_text"],
-              "ocr_text":r["ocr_corrected_text"] if r["ocr_corrected_text"] is not None
-                  else r["expected_text"] or r["normalized_text"],
-              "prepared_key":r["cache_key"],"embedding_path":r["embedding_path"],
-              "version":r["version"],"active":r["active"]} for r in rows]
+    published=db.execute("""SELECT published_snapshot FROM ad_layouts
+        WHERE active=true AND published_snapshot IS NOT NULL ORDER BY id""").fetchall()
+    layouts=[r["published_snapshot"] for r in published
+             if r["published_snapshot"]["dino_signature"]==dino.SIGNATURE
+             and r["published_snapshot"]["ocr_signature"]==ocr_signature]
     if not layouts:
         raise RuntimeError("Распознавание включено, но нет активных макетов")
     revision=db.execute("SELECT revision FROM ad_layout_library_state WHERE id=1").fetchone()["revision"]
