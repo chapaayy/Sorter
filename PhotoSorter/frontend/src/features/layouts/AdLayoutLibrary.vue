@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {onMounted,ref,computed} from 'vue'
 import {adLayoutApi} from '../../api/adLayouts'
+import {adPipelineApi} from '../../api/adPipeline'
 import type {AdLayout} from '../../api/adLayouts'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
@@ -13,6 +14,24 @@ const layouts=ref<AdLayout[]>([]),selected=ref<File|null>(null),name=ref(''),exp
 const busy=ref(false),error=ref(''),editing=ref<AdLayout|null>(null)
 const editName=ref(''),editText=ref(''),editActive=ref(true)
 const activeCount=computed(()=>layouts.value.filter(item=>item.active).length)
+const pipeline=ref(false),pipelineBusy=ref(false),pipelineReady=ref(false)
+async function loadPipeline(){
+  try{const status=await adPipelineApi.settings();pipeline.value=status.enabled;pipelineReady.value=true}
+  catch(e){error.value=errorText(e)}
+}
+async function changePipeline(){
+  if(pipelineBusy.value)return
+  pipelineBusy.value=true
+  try{
+    const status=await adPipelineApi.update(pipeline.value)
+    pipeline.value=status.enabled
+    notice.add(pipeline.value?'Обработка рекламы включена для новых заданий':
+      'Обработка рекламы отключена для новых заданий','ok')
+  }catch(e){
+    pipeline.value=!pipeline.value
+    error.value=errorText(e)
+  }finally{pipelineBusy.value=false}
+}
 async function refresh(){
  try{layouts.value=(await adLayoutApi.list()).layouts;error.value=''}
  catch(e){error.value=errorText(e)}
@@ -53,12 +72,27 @@ async function remove(item:AdLayout){
  try{await adLayoutApi.remove(item.id);notice.add('Макет удалён','ok');await refresh()}
  catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
-onMounted(()=>{void refresh()})
+onMounted(()=>{void refresh();void loadPipeline()})
 </script>
 <template>
  <PageHeader eyebrow="БИБЛИОТЕКА РЕКЛАМЫ" title="Макеты рекламы"
    subtitle="Эталоны рекламного изображения для DINOv2. Не смешиваются с Образцами конструкций."/>
  <div v-if="error" class="alert error" role="alert">{{error}}</div>
+ <section class="panel stack ad-layout-upload">
+   <div class="row between wrap">
+     <div><h2>Распознавание рекламы в общей очереди</h2>
+       <p class="meta">Новые ФО: MegaLoc → XFeat → DINOv2 → OCR → качество → ZIP.
+         Ранее поставленные задания не меняются.</p>
+       <p class="meta">Для включения нужны установленные XFeat, DINOv2, PP-OCRv5
+         и хотя бы один активный макет. По умолчанию выключено.</p>
+     </div>
+     <label class="row wrap" style="gap:10px">
+       <input v-model="pipeline" type="checkbox" aria-label="Распознавать рекламу при обработке ФО"
+         :disabled="!pipelineReady||pipelineBusy" @change="changePipeline"/>
+       <strong>{{pipeline?'Включено':'Выключено'}}</strong>
+     </label>
+   </div>
+ </section>
  <section class="panel stack ad-layout-upload">
    <div><h2>Добавить рекламный макет</h2>
    <p class="meta">JPG, PNG или WEBP до 20 МиБ. Оригинал сохраняется без изменения.</p></div>

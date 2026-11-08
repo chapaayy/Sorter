@@ -15,6 +15,7 @@ import GroupPicker from '../../components/split/GroupPicker.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import ScreenSearchDetail from './ScreenSearchDetail.vue'
+import AdBestPanel from './AdBestPanel.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import {useNoticeStore} from '../../stores/notice'
 import {useDeletionStore} from '../../stores/deletion'
@@ -22,7 +23,8 @@ const route=useRoute(),router=useRouter(),id=String(route.params.runId),notice=u
 const run=ref<Run|null>(null),batch=ref<Batch|null>(null),retention=ref<Retention|null>(null)
 const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),referenceNames=ref<Record<string,string>>({}),mode=ref<'sam'|'group'>('sam')
 const selected=ref(''),lastSam=ref(''),lastGroup=ref(''),error=ref(''),busy=ref(false)
-const viewer=ref<number|null>(null),detectionPhoto=ref<ResultPhoto|null>(null),deleteWhole=ref(false)
+const viewer=ref<number|null>(null),
+  detectionPhoto=ref<{index:number;image_url:string}|null>(null),deleteWhole=ref(false)
 const archiveMissing=ref(false),archiveRetryBusy=ref(false)
 const displaySam=(sam:string)=>referenceNames.value[sam]||friendlySam(sam)
 const list=computed(()=>Object.entries(mode.value==='sam'?sams.value:groups.value)
@@ -33,6 +35,11 @@ const {items,cursor,loading,error:pageError,load,reset}=useCursor<ResultPhoto>(n
 const tiles=computed(()=>items.value.map(p=>({id:String(p.index),label:'ФО №'+(p.index+1),thumbnail_url:p.thumbnail_url,original_url:p.image_url,score:p.score})))
 const previews=computed(()=>items.value.map(p=>({src:p.image_url,label:'ФО №'+(p.index+1)+' · '+displaySam(p.assigned_sam||''),score:p.score})))
 const total=computed(()=>Object.values(sams.value).reduce((x,y)=>x+y,0))
+const pipelineEnabled=computed(()=>Boolean((run.value as (Run&{ad_pipeline?:{enabled:boolean}})|null)?.ad_pipeline?.enabled))
+function showBest(index:number){
+  detectionPhoto.value={index,image_url:'/api/images/'+encodeURIComponent(id)+'/megaloc/'+index+'?kind=query'}
+  viewer.value=null
+}
 function changeMode(value:'sam'|'group'){
   if(mode.value===value)return
   if(mode.value==='sam')lastSam.value=selected.value;else lastGroup.value=selected.value
@@ -91,7 +98,7 @@ async function deleteBatch(){
 </script>
 <template>
 <div class="row" style="margin-bottom:22px"><RouterLink class="meta" to="/results">← Все результаты</RouterLink></div>
-<PageHeader eyebrow="РЕЗУЛЬТАТЫ / MEGALOC" :title="batch?.display_name||'Результат запуска'" :subtitle="total+' ФО · '+Object.keys(groups).length+' групп ФО · '+date(run?.started_at)">
+<PageHeader :eyebrow="pipelineEnabled?'РЕЗУЛЬТАТЫ / MEGALOC + РЕКЛАМА':'РЕЗУЛЬТАТЫ / MEGALOC'" :title="batch?.display_name||'Результат запуска'" :subtitle="total+' ФО · '+Object.keys(groups).length+' групп ФО · '+date(run?.started_at)">
   <template #actions><UiButton kind="primary" :disabled="!run||!isComplete(run.status)||archiveMissing" @click="download()">↓ Скачать всю сортировку ZIP</UiButton><UiButton kind="danger" :disabled="!batch" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
@@ -116,6 +123,7 @@ async function deleteBatch(){
   </div>
   <div v-if="retention?.warning" class="alert warning">До автоматического удаления осталось менее 7 дней.</div>
 </section>
+<AdBestPanel v-if="pipelineEnabled && run && isComplete(run.status)" :run-id="id" @open="showBest"/>
 <div class="row wrap between" style="margin-bottom:16px">
   <div class="segment" role="tablist" aria-label="Способ группировки">
     <button role="tab" :aria-selected="mode==='sam'" @click="changeMode('sam')">По конструкциям</button>
