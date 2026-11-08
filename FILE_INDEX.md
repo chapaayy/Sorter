@@ -274,6 +274,7 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | --- | --- |
 | `PhotoSorter/backend/server/db/migrations/0023_screen_annotations.sql` | Две таблицы идентичностей экранов и привязок к исходным фото, FK и индексы |
 | `PhotoSorter/backend/server/services/screen_geometry.py` | Проверка допустимых координат, выпуклости и толщины полосы |
+| `PhotoSorter/backend/server/db/repositories/screen_annotations.py` | SQL CRUD экранов и разметок, транзакционное хранение |
 | `PhotoSorter/backend/server/services/screen_annotations.py` | Валидация оригиналов/EXIF, версия, транзакционные CRUD и SQL |
 | `PhotoSorter/backend/server/api/routes/screen_annotations.py` | HTTP-контракты разметок под общим session/Origin middleware |
 | `PhotoSorter/frontend/src/features/references/ScreenAnnotationEditor.vue` | Редактор четырёх точек, толщины, экрана/ракурса |
