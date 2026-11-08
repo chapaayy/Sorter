@@ -19,8 +19,8 @@ def vector(model,row:dict,file:Path)->np.ndarray:
     if path.is_file() and not path.is_symlink():
         try:
             value=np.load(path,allow_pickle=False)
-            if value.shape==(dino.EMBED_DIM,) and np.isfinite(value).all() and
-               abs(float(np.linalg.norm(value))-1)<.01:
+            if (value.shape==(dino.EMBED_DIM,) and np.isfinite(value).all()
+                    and abs(float(np.linalg.norm(value))-1)<.01):
                 return value
         except (ValueError,OSError,EOFError):
             pass
