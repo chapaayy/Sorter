@@ -30,8 +30,15 @@ def main():
     if ocr.status()["available"]:
         engine=ocr.load()
         started=time.perf_counter()
-        text=ocr.read(engine,image)
-        info["ocr"]={"version":ocr.VERSION,"device":"cpu","lines":len(text),
+        russian=Image.new("RGB",(950,240),"white")
+        font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",110)
+        ImageDraw.Draw(russian).text((34,32),"СКИДКИ 50",font=font,fill="black")
+        text=ocr.read(engine,russian)
+        if not text:
+            raise RuntimeError("PP-OCRv5 ru found no text in large Cyrillic control image")
+        info["ocr"]={"version":ocr.VERSION,"device":"cpu",
+                     "recognized_text":[row["text"] for row in text][:5],
+                     "lines":len(text),
                      "seconds":round(time.perf_counter()-started,3)}
     else:
         raise RuntimeError("PP-OCRv5 weights missing in real recognition smoke test")
