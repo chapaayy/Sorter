@@ -160,3 +160,28 @@ def test_no_annotations_never_searches_other_constructions(monkeypatch,tmp_path)
                                             tmp_path/"missing.jpg",{}, {})
     assert result["status"]=="no_annotations"
     assert result["screens"]==[] and rgb is None
+
+def test_partial_scan_uses_existing_batch_lease_and_records_single_file_error(monkeypatch):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    batch=uuid.uuid4()
+    @contextmanager
+    def fake_connection():
+        yield SimpleNamespace(execute=lambda *_args,**_kwargs:
+                              SimpleNamespace(fetchone=lambda:{"batch_id":batch}))
+    events=[]
+    monkeypatch.setattr(screen_search,"connect",fake_connection)
+    monkeypatch.setattr(screen_search.operations,"start",
+                        lambda value,kind:events.append(("started",value,kind)) or "token")
+    monkeypatch.setattr(screen_search.operations,"finish",
+                        lambda token:events.append(("finished",token)))
+    monkeypatch.setattr(screen_search,"load_model",lambda:object())
+    def fake_rows(run_id,limit,start):
+        assert (limit,start)==(1,10)
+        yield ({"index":10,"assigned_sam":"SAM 0001"},None,"photo is missing")
+    monkeypatch.setattr(screen_search,"_run_rows",fake_rows)
+    monkeypatch.setattr(screen_search,"_save",
+                        lambda run,index,item,rgb:events.append(("saved",index,item["status"])))
+    done=screen_search.analyze_run("20261108T120000-123abc123abc",limit=1,start_index=10)
+    assert done["processed"]==1 and done["found"]==0
+    assert events==[("started",batch,"screen-search"),("saved",10,"error"),("finished","token")]
