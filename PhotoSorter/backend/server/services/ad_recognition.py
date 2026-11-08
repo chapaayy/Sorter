@@ -77,7 +77,7 @@ def _ocr_check(engine,layout:dict,layout_path:Path,picture:Image.Image,
 
 def _identify(model,ocr_engine,screen,run_id,index,embeddings,
               layout_text_cache,layout_errors,matching_threshold=scoring.MIN_SIMILARITY,
-              screen_feature=None,group_match=None):
+              screen_feature=None,group_match=None,ocr_entry=None):
     sid=str(screen["screen_id"])
     filename=screen_search.crop(run_id,index,uuid.UUID(sid))
     picture=_crop_screen(filename,screen)
@@ -92,7 +92,13 @@ def _identify(model,ocr_engine,screen,run_id,index,embeddings,
     # OCR evidence is captured for EVERY detected screen, regardless of
     # whether DINOv2 could assign a layout. It never changes the visual ID.
     observed=[]
-    if ocr_engine is None:
+    if ocr_entry is not None:
+        observed=ocr_entry.get("lines",[])
+        observation=ocr.describe(observed)
+        if ocr_entry.get("error"):
+            observation={**observation,"status":"error",
+                         "reason":"OCR: "+str(ocr_entry["error"])[:180]}
+    elif ocr_engine is None:
         observation={**ocr.describe([]),"status":"unavailable",
                      "reason":"PaddleOCR не установлен"}
     else:
@@ -117,9 +123,12 @@ def _identify(model,ocr_engine,screen,run_id,index,embeddings,
         # The group's DINO score determines its visual match. A blurry or
         # uninformative individual frame is not a manual-review error.
         result["visual_group_id"]=group_match["group_id"]
-        result["group_match"]={key:group_match[key] for key in
-                               ("status","reason","candidate_id","best_score",
-                                "margin","matching_threshold","candidate_count")}
+        result["group_match"]={
+            key:group_match.get(key) for key in
+            ("status","reason","candidate_id","best_score","margin",
+             "matching_threshold","candidate_count","method",
+             "decision_version","ocr_leader_id","visual_leader_id",
+             "ocr_margin","ocr_conflicting_members","evidence_member_count")}
         result["member_match"]={key:ranking.get(key) for key in
                                 ("status","reason","candidate_id","margin","thresholds")}
     if candidate_id and decision["status"] in ("matched","uncertain"):
@@ -131,7 +140,8 @@ def _identify(model,ocr_engine,screen,run_id,index,embeddings,
         # photo also confirms another visually eligible layout. Evaluate all
         # individual DINO candidates above the frozen threshold using the
         # *same* OCR lines; never run another network or replace candidate_id.
-        if check["status"]=="confirmed" and observed:
+        if (check["status"]=="confirmed" and observed
+                and not (group_match and group_match.get("decision_version"))):
             alternatives=[]
             visual_options={item["id"] for item in ranking["top"]
                             if item["score"]>=matching_threshold
