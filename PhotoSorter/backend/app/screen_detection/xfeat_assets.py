@@ -19,7 +19,7 @@ BLOBS = {
     "modules/interpolator.py": ("699c1b88ffff56ccf364480282adeca8bc732a2a", 1175),
 }
 MODEL_ID = hashlib.sha256(("official-xfeat-sparse-v1:" + REVISION +
-                           ":max1280-top4096-mask-border-v1").encode()).hexdigest()
+                           ":max1280-top4096-mask-border-v2").encode()).hexdigest()
 BASE = "https://raw.githubusercontent.com/verlab/accelerated_features/" + REVISION + "/"
 
 def destination(relative: str) -> Path:
