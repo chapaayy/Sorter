@@ -38,7 +38,10 @@ def _compatible(first: dict, second: dict) -> bool:
     b = set(_tokens(second["ocr_observation"]["normalized_text"]))
     numbers_a = {word for word in a if any(ch.isdigit() for ch in word)}
     numbers_b = {word for word in b if any(ch.isdigit() for ch in word)}
-    if numbers_a and numbers_b and numbers_a.isdisjoint(numbers_b):
+    # Generic numeric tokens (not interpreted as dates/prices) distinguish
+    # two otherwise similar ad versions when both have different values.
+    if numbers_a and numbers_b and not (
+            numbers_a.issubset(numbers_b) or numbers_b.issubset(numbers_a)):
         return False
     return len(a & b) / max(1, min(len(a), len(b))) >= MIN_TEXT_OVERLAP
 
