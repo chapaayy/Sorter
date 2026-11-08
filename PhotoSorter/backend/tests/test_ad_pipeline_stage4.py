@@ -202,3 +202,13 @@ def test_zip_ready_with_per_photo_errors_still_schedules_retention(system):
     assert state=="completed_with_errors"
     assert row["delete_after_at"] is not None
     assert row["confirmed_run_id"]==run
+
+def test_fifo_signature_changes_if_paddle_weights_manifest_changes(tmp_path,monkeypatch):
+    from app.ad_recognition import ocr
+    monkeypatch.setattr(ocr,"ROOT",tmp_path)
+    monkeypatch.setattr(ocr,"_verify",lambda:True)
+    file=tmp_path/"manifest.json"
+    file.write_text('{"version":"OCR","hash":"111"}',encoding="utf-8")
+    old=ocr.signature()
+    file.write_text('{"version":"OCR","hash":"222"}',encoding="utf-8")
+    assert ocr.signature()!=old
