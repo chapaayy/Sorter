@@ -58,7 +58,10 @@ def solve(ref_xy:np.ndarray,fo_xy:np.ndarray,sides:np.ndarray,
         np.any(result[:,1]<0) or np.any(result[:,1]>height)):
         return _fail("Контур выходит за границы ФО",n,count,median,supported)
     vectors=np.roll(result,-1,axis=0)-result
-    crosses=np.cross(vectors,np.roll(vectors,-1,axis=0))
+    next_vectors=np.roll(vectors,-1,axis=0)
+    # NumPy 2 deprecates np.cross on 2-D vectors. This is the same
+    # signed 2-D determinant, with no change to geometric validation.
+    crosses=vectors[:,0]*next_vectors[:,1]-vectors[:,1]*next_vectors[:,0]
     area=abs(float(cv2.contourArea(result)))
     if not (np.all(crosses>0) or np.all(crosses<0)) or not 0.00005<area/(width*height)<.8:
         return _fail("Нереалистичная форма или площадь экрана",n,count,median,supported)
