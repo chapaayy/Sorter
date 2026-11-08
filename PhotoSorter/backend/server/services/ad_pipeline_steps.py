@@ -37,9 +37,31 @@ def detect(job,model,rows,refs,run_id,data_root):
                      f"XFeat · ФО {index+1}/{total}")
     return detections,failures
 
+def read_ocr(job,engine,detections,run_id):
+    """Read each detected screen ONCE before comparing it to any layout.
+
+    The cached raw OCR lines are reused by all-layout ranking and per-photo
+    analysis. OCR errors remain diagnostic, never a reason to abort DINO.
+    """
+    observations={}
+    for number,(index,sam,screen,full_size) in enumerate(detections,1):
+        if job.stopped():raise InterruptedError("Обработка остановлена")
+        key=(index,str(screen["screen_id"]))
+        try:
+            source=screen_search.crop(run_id,index,screen["screen_id"])
+            picture=ad_recognition._crop_screen(source,screen)
+            from app.ad_recognition import ocr
+            observations[key]={"lines":ocr.read(engine,picture)}
+        except Exception as exc:
+            observations[key]={"lines":[],"error":str(exc)[:180]}
+        job.progress("ad_pipeline","ad_ocr",number,len(detections),
+                     f"OCR · экран {number}/{len(detections)}")
+    return observations
+
+
 def recognize(job,model,engine_ocr,detections,run_id,vectors,layout_errors,
               matching_threshold=0.81,screen_features=None,group_matches=None,
-              embedding_errors=None):
+              embedding_errors=None,ocr_observations=None):
     analyses=[]
     recognized=review_count=failures=0
     text_cache={}
@@ -60,7 +82,8 @@ def recognize(job,model,engine_ocr,detections,run_id,vectors,layout_errors,
                 raise ValueError("DINOv2: "+embedding_errors[key])
             item=ad_recognition._identify(
                 model,engine_ocr,screen,run_id,index,vectors,text_cache,layout_errors,
-                matching_threshold,screen_features.get(key),group_matches.get(key))
+                matching_threshold,screen_features.get(key),group_matches.get(key),
+                ocr_entry=(ocr_observations or {}).get(key))
             crop=screen_search.crop(run_id,index,screen["screen_id"])
             picture=ad_recognition._crop_screen(crop,screen)
             item["quality"]=quality.assess(picture,screen,full_size)
