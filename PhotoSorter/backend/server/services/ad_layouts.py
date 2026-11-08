@@ -116,6 +116,14 @@ def update(uid,version:int,name:str,expected_text:str,active:bool):
             raise HTTPException(409,"Макет изменён в другой вкладке")
         result=records.edit(db,uid,version,name,expected_text,active)
         if not result:raise HTTPException(409,"Версия макета устарела")
+        if row["preparation_state"]=="completed" and row["published_snapshot"]:
+            from psycopg.types.json import Jsonb
+            snapshot=dict(row["published_snapshot"])
+            snapshot.update(name=name,version=version+1,expected_text=expected_text,
+                ocr_corrected_text=expected_text or None,
+                ocr_text=expected_text or row["normalized_text"] or "")
+            db.execute("UPDATE ad_layouts SET published_snapshot=%s WHERE id=%s",
+                       (Jsonb(snapshot),uid))
         db.execute("UPDATE ad_layout_library_state SET revision=revision+1 WHERE id=1")
     return {"id":str(uid),"version":version+1}
 
@@ -246,6 +254,10 @@ def gc_retired(limit=25):
                     jsonb_build_array(jsonb_build_object('target_path',%s::text))
                 LIMIT 1""",(path,)).fetchone()
             if pinned:continue
+            still_published=db.execute("""SELECT 1 FROM ad_layouts
+                WHERE published_snapshot->>'target_path'=%s LIMIT 1""",
+                (path,)).fetchone()
+            if still_published:continue
             original=owned_file(Path(path),ROOT)
             original.unlink(missing_ok=True)
             db.execute("DELETE FROM ad_layout_retired_assets WHERE target_path=%s",(path,))
