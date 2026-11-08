@@ -370,3 +370,24 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 `PhotoSorter/backend/server/services/ad_pipeline_steps.py` — два последовательных
 CPU-прохода, XFeat по всем ФО и затем DINOv2/OCR по найденным экранам,
 с освобождением памяти между моделями. Он не создаёт отдельную очередь.
+
+
+## Исправление отображения подготовки и онлайн-установка моделей
+
+- `backend/server/reference_cache.py` — отдаёт рассчитанные и
+  безопасно закэшированные признаки Образцов немедленно по одному.
+- `backend/server/workers/reference_prepare.py` — достоверные
+  счётчики с учётом дубликатов SHA256 и стадии выполнения.
+- `backend/server/db/migrations/0026_reference_preparation_progress.sql`
+  — только новая стадия подготовки, обратная совместимость.
+- `backend/server/db/repositories/work_queue.py`, `api/routes/work_queue.py`
+  — переходы стадии и чтение списка очереди.
+- `frontend/src/features/queue/QueueTaskRow.vue`,
+  `QueueTaskDetail.vue` — этапы и готовые/всего.
+- `backend/app/system/downloads.py` — единый сериализованный
+  установщик CPU-моделей; MegaLoc остаётся совместимым.
+- `backend/server/api/routes/models.py` — каталог/запуск моделей.
+- `frontend/src/features/settings/MegaLocSettings.vue`,
+  `SettingsView.vue` — единые настройки четырёх моделей.
+- `backend/tests/test_reference_progress_and_model_install.py` —
+  тесты потокового прогресса и безопасного запуска установок.

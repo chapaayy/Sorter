@@ -132,3 +132,18 @@ Synthetic smoke is NOT evidence of field accuracy.
 `test_ocr_mismatch_never_changes_dino_candidate` теперь проверяет также
 `not_configured` как `review_required=true` и `confirmed` как
 `review_required=false`.
+
+
+## Regression: reference progress and Settings model installation
+
+Test `test_reference_progress_and_model_install.py` covers
+streaming one reference vector before inference finishes for subsequent
+photos; duplicated hashes counted after actual extraction; fixed
+four-model catalogue and HTTP unsupported-model rejection;
+asynchronous subprocess success/failure and verified state.
+Playwright `navigation.spec.ts` checks Settings → Модели, XFeat
+installation button and visible in-progress state.
+
+The worker still owns a single CPU FIFO; models are installed in the
+API separately. The first reference feature completion drives truthful
+percentage; during the initial model load no fake progress is displayed.

@@ -96,3 +96,34 @@ For a completed run, open «Результаты» → «Лучшие кадры
 SAM ZIP includes only its corresponding photos. On a damaged ZIP,
 request existing ZIP-only recovery — it must NOT start XFeat/DINO/OCR.
 Deleting the batch removes all its outputs/ZIP; global layouts remain.
+
+
+## Модели и прогресс подготовки Образцов
+
+**Настройки → Модели** предоставляет контролируемую установку всех
+четырёх CPU-моделей. `GET /api/models` показывает проверенное состояние
+и фоновую установку, `POST /api/models/{megaloc|xfeat|dinov2|paddleocr}/download`
+запускает одну фиксированную команду установки в API. Нельзя
+отправить произвольный путь или shell-команду через API.
+Одновременные установки отвергаются. Работающие интегрированные
+распознавания защищены от смены модели. Проверенные файлы лежат
+в `Models/models/`, служебный кэш/логи в `Models/cache/`.
+
+Если в очереди долго 0%, а Worker активно нагружает CPU,
+сначала посмотрите `progress_stage` в деталях: проверка,
+загрузка, вычисление признаков или публикация. Во время
+`extracting` счётчик `completed_count/total_count` сохраняется
+по мере получения каждого готового вектора. Фактическое завершение
+публикуется транзакционно только после полного набора.
+Не перезапускайте Worker посреди текущей подготовки: после
+обновления такого VPS понадобится повторить остановленную подготовку
+через меню очереди; исходные файлы и веса не стираются.
+
+При ручной диагностике CLI запускать из папки с `compose.yaml`:
+```bash
+cd /opt/Sorter
+docker compose --env-file .env --env-file .env.generated ps
+docker compose --env-file .env --env-file .env.generated logs --tail=100 worker api
+```
+Запуск `docker compose` из `/root` без `-f` выдаёт
+`no configuration file provided: not found` — это не ошибка модели.
