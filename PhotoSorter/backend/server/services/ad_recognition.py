@@ -60,7 +60,7 @@ def _layout_vectors(model,layouts):
     return available,errors
 
 def _ocr_check(engine,layout:dict,layout_path:Path,picture:Image.Image,
-               layout_text_cache:dict)->dict:
+               layout_text_cache:dict,observed:list[dict]|None=None)->dict:
     if engine is None:
         return {"status":"unavailable","reason":"PP-OCRv5 ещё не установлен"}
     try:
@@ -69,7 +69,7 @@ def _ocr_check(engine,layout:dict,layout_path:Path,picture:Image.Image,
             expected=(layout.get("ocr_corrected_text") if
                 layout.get("ocr_corrected_text") is not None else
                 layout["expected_text"] or layout.get("normalized_text",""))
-        lines=ocr.read(engine,picture)
+        lines=observed if observed is not None else ocr.read(engine,picture)
         return ocr.confirm(expected,lines)
     except Exception as exc:
         # Optional verifier failure NEVER erases or rewrites DINO's decision.
@@ -89,6 +89,19 @@ def _identify(model,ocr_engine,screen,run_id,index,embeddings,
     # DINO inference. The group decision remains the primary visual candidate.
     decision=group_match if group_match is not None else ranking
     candidate_id=decision["candidate_id"]
+    # OCR evidence is captured for EVERY detected screen, regardless of
+    # whether DINOv2 could assign a layout. It never changes the visual ID.
+    observed=[]
+    if ocr_engine is None:
+        observation={**ocr.describe([]),"status":"unavailable",
+                     "reason":"PaddleOCR не установлен"}
+    else:
+        try:
+            observed=ocr.read(ocr_engine,picture)
+            observation=ocr.describe(observed)
+        except Exception as exc:
+            observation={**ocr.describe([]),"status":"error",
+                         "reason":"OCR: "+str(exc)[:180]}
     result={"index":index,"screen_id":sid,"status":decision["status"],
             "reason":decision["reason"],"candidate_id":candidate_id,
             "top":ranking["top"],"margin":ranking.get("margin"),
@@ -98,6 +111,7 @@ def _identify(model,ocr_engine,screen,run_id,index,embeddings,
             "source_xfeat_signature":screen_search.saved(run_id,index).get("model_signature"),
             "dino_signature":dino.SIGNATURE,"ocr_version":ocr.VERSION,
             "ocr":{"status":"not_run","reason":"Нет кандидата DINOv2"},
+            "ocr_observation":observation,
             "review_required":decision["status"]!="matched"}
     if group_match is not None:
         own_candidate=next((c for c in ranking["top"] if c["id"]==candidate_id),None)
@@ -113,12 +127,19 @@ def _identify(model,ocr_engine,screen,run_id,index,embeddings,
     if candidate_id and decision["status"] in ("matched","uncertain"):
         selected=next((row,path) for row,feature,path in embeddings
                       if str(row["id"])==candidate_id)
-        check=_ocr_check(ocr_engine,selected[0],selected[1],picture,layout_text_cache)
+        check=_ocr_check(ocr_engine,selected[0],selected[1],picture,
+                         layout_text_cache,observed)
         result["ocr"]=check
         # Only independently confirmed readable text can remove the review
         # flag. Missing/control-free OCR is not evidence of correctness.
         if check["status"]!="confirmed":
             result["review_required"]=True
+    result["classification"]=(
+        "unidentified" if result["status"]!="matched" or not candidate_id
+        else "confirmed" if result["ocr"].get("status")=="confirmed"
+             and not result["review_required"]
+        else "probable")
+    result["ocr_independent"]=True
     return result
 
 def _write(run_id,index,screen_id,item):
