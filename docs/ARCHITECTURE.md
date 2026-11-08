@@ -145,3 +145,17 @@ It yields a 0–100 *relative heuristic*, not a confidence score.
 `best.py` groups by (`sam`,`screen_id`,`candidate_id`), prioritises
 OCR-confirmed matched ads, then relative quality, then the earlier photo.
 DINOv2 uncertain/no_match never generates a best candidate.
+
+
+### Порядок CPU-проходов в интегрированной задаче
+
+Внутри одной FIFO задачи работа идёт двумя проходами, не переключая
+XFeat/DINO на каждой отдельной фотографии: сначала все ФО проверяются
+XFeat и сохраняют контуры/исходные crops, затем модель XFeat и её
+признаки освобождаются, после чего один раз загружаются DINOv2 и
+PP-OCRv5 и анализируются подтверждённые экраны. Это уменьшает
+одновременную RAM и сохраняет понятный статус каждого этапа.
+Для отсутствующих в закреплённом снимке разметок никогда не читаются
+новые live-разметки, даже если их добавили после захвата FIFO.
+Отсутствие контрольного текста OCR также означает ручную проверку,
+а не «реклама подтверждена».

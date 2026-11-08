@@ -364,3 +364,9 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 `services/ad_layouts.py`, `server/main.py`,
 `frontend/.../AdLayoutLibrary.vue`, `ResultDetail.vue`,
 `src/main.ts`, `e2e/navigation.spec.ts`.
+
+
+Дополнительный модуль этапа 4:
+`PhotoSorter/backend/server/services/ad_pipeline_steps.py` — два последовательных
+CPU-прохода, XFeat по всем ФО и затем DINOv2/OCR по найденным экранам,
+с освобождением памяти между моделями. Он не создаёт отдельную очередь.

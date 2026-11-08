@@ -125,3 +125,10 @@ night, glare, blurred/unblurred, reflections, far shots. Validate
 screen geometry, DINO ambiguity/rejection, OCR numbers, relative
 quality ranking, false positives, time/RAM on the actual 8-CPU VPS.
 Synthetic smoke is NOT evidence of field accuracy.
+
+
+Тест `test_fifo_with_no_annotation_never_reads_later_live_screens` запрещает
+обращение к live-библиотеке при отсутствии экранов в снимке FIFO.
+`test_ocr_mismatch_never_changes_dino_candidate` теперь проверяет также
+`not_configured` как `review_required=true` и `confirmed` как
+`review_required=false`.
