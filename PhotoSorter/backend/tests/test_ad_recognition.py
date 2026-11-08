@@ -117,3 +117,54 @@ def test_versioned_dino_cache_and_atomic_results(tmp_path,monkeypatch):
     assert ad_recognition.result(run,0,sid)["candidate_id"]=="sample"
     with pytest.raises(ValueError):
         ad_recognition.result("../../etc",0,sid)
+
+def test_completed_megaloc_run_reuses_xfeat_crop_without_tampering_zip(system,monkeypatch):
+    import json
+    from server.database import connect
+    from server.services import result_pages,screen_search
+    root=system
+    monkeypatch.setattr(ad_layouts,"ROOT",root/"ad_layouts")
+    monkeypatch.setattr(ad_recognition,"DATA_DIR",root)
+    monkeypatch.setattr(screen_search,"DATA_DIR",root)
+    monkeypatch.setattr(result_pages,"DATA_DIR",root)
+    uid=uuid.UUID(ad_layouts.create(pixels(),"ad.png","Реклама","Скидки 50")["id"])
+    batch=uuid.uuid4()
+    run="20261108T120000-"+uuid.uuid4().hex[:12]
+    screen_id=uuid.uuid4()
+    with connect() as db:
+        db.execute("""INSERT INTO batches(id,display_name,upload_manifest_state)
+            VALUES (%s,'Test FO','complete')""",(batch,))
+        db.execute("""INSERT INTO jobs(id,batch_id,status,snapshot)
+            VALUES (%s,%s,'completed','{}'::jsonb)""",(run,batch))
+    output=root/"outputs"/run
+    manifest=output/"megaloc"
+    manifest.mkdir(parents=True)
+    (manifest/"manifest.rows.jsonl").write_text(json.dumps({
+        "index":0,"query":str(root/"uploads"/str(batch)/"fo.jpg"),"assigned_sam":"SAM 0001"})+"\n")
+    archive=output/"photos.zip"
+    archive.write_bytes(b"original ZIP untouched")
+    stage2=output/"screen_search"/"0"
+    stage2.mkdir(parents=True)
+    screen={"screen_id":str(screen_id),"screen_name":"LED","status":"found",
+            "annotation_id":str(uuid.uuid4()),"annotation_version":2,
+            "crop_box":{"x":0,"y":0,"width":140,"height":100},
+            "corners":[{"x":10,"y":10},{"x":130,"y":10},
+                       {"x":130,"y":90},{"x":10,"y":90}]}
+    (stage2/"result.json").write_text(json.dumps({"index":0,"status":"found",
+        "model_signature":"xfeat-test","screens":[screen]}))
+    (stage2/(str(screen_id)+".png")).write_bytes(pixels())
+    monkeypatch.setattr(ad_recognition.dino,"load",lambda:object())
+    monkeypatch.setattr(ad_recognition.dino,"embed",lambda *_args:unit())
+    monkeypatch.setattr(ad_recognition.embedding_cache,"vector",lambda *_args:unit())
+    monkeypatch.setattr(ad_recognition.ocr,"status",lambda:{"available":False})
+    done=ad_recognition.analyze_run(run,limit=1)
+    assert done["screens"]==1 and done["matched"]==1
+    saved=ad_recognition.result(run,0,screen_id)
+    assert saved["candidate_id"]==str(uid)
+    assert saved["source_xfeat_signature"]=="xfeat-test"
+    assert saved["ocr"]["status"]=="unavailable" and saved["review_required"]
+    assert archive.read_bytes()==b"original ZIP untouched"
+    with connect() as db:
+        assert db.execute("SELECT status FROM jobs WHERE id=%s",(run,)).fetchone()["status"]=="completed"
+        assert db.execute("SELECT count(*) AS n FROM batch_operations WHERE batch_id=%s",
+                          (batch,)).fetchone()["n"]==0
