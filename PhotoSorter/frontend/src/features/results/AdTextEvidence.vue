@@ -34,6 +34,20 @@ const statLabel=(status?:string)=>({
       recognition.observation.confidence.toFixed(3)}} · {{recognition.classification||'не определено'}}</span>
   </div>
   <p class="meta">{{recognition.ocr?.reason||recognition.reason||'Нет текстовых данных'}}</p>
+  <p v-if="recognition.ocr?.scoring_basis==='recognized_photo_text'" class="meta">
+    Совпало {{recognition.ocr.matched_terms??0}} из {{recognition.ocr.total_terms??0}}
+    достоверно прочитанных элементов ФО
+    <span v-if="recognition.ocr.text_similarity!=null">
+      · {{(recognition.ocr.text_similarity*100).toFixed(0)}}%
+    </span>
+  </p>
+  <p v-if="recognition.ocr?.unmatched_items?.length" class="meta">
+    Не найдены в макете: {{recognition.ocr.unmatched_items.join(' · ')}}
+  </p>
+  <p v-if="recognition.ocr?.ambiguous_candidates?.length" class="meta">
+    Текст также подходит другим визуально совместимым макетам:
+    {{recognition.ocr.ambiguous_candidates.length}}
+  </p>
   <div class="result-ocr-columns">
     <div><strong>Подготовленный текст макета</strong>
       <p v-if="prepared" class="result-ocr-words"><span v-for="(word,i) in layoutSegments" :key="i"
@@ -46,6 +60,10 @@ const statLabel=(status?:string)=>({
       <p v-else class="meta">Не удалось достоверно прочитать текст</p>
     </div>
   </div>
+  <p v-if="recognition.ocr?.possible_contradictions?.length&&!issues.length" class="meta">
+    Возможное несовпадение дат или чисел, но OCR недостаточно уверен:
+    {{recognition.ocr.possible_contradictions.map(item=>item.kind+': '+item.observed.join(', ')).join(' · ')}}
+  </p>
   <div v-for="(issue,i) in issues" :key="i" class="result-ocr-conflict">
     <strong>{{labels[issue.kind]||issue.kind}} · несоответствие</strong>
     <span>Макет: {{issue.expected.join(', ')||'—'}}</span>
