@@ -90,8 +90,8 @@ def confirm(expected_text:str,observed:list[dict])->dict:
     hits=sum(1 for term in terms if any(SequenceMatcher(None,term,word).ratio()>=.82
                                       for word in actual.split()))
     ratio=hits/max(1,len(terms))
-    numbers_expected=set(re.findall(r"\\d+",expected))
-    numbers_observed=set(re.findall(r"\\d+",actual))
+    numbers_expected=set(re.findall(r"[0-9]+",expected))
+    numbers_observed=set(re.findall(r"[0-9]+",actual))
     matched=ratio>=.6 and numbers_expected.issubset(numbers_observed)
     return {"status":"confirmed" if matched else "mismatch",
             "reason":"Контрольный текст совпадает" if matched else "Контрольный текст не совпал",
