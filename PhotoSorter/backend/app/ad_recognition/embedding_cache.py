@@ -50,3 +50,19 @@ def prune_inactive(live_keys:set[str],min_age_seconds:int=604800)->dict:
         file.unlink()
         removed+=1
     return {"removed":removed}
+
+def prepared(row:dict)->np.ndarray:
+    """Read only published preparation; never infer while serving FO."""
+    if not row.get("prepared_key") or not row.get("embedding_path"):
+        raise ValueError("Рекламный макет ещё не подготовлен")
+    path=ROOT/(key(row["checksum"])+".npy")
+    if path.is_symlink() or str(path)!=str(row["embedding_path"]) or not path.is_file():
+        raise ValueError("Кэш DINOv2 устарел или отсутствует")
+    try:
+        value=np.load(path,allow_pickle=False)
+        if (value.shape==(dino.EMBED_DIM,) and np.isfinite(value).all()
+                and abs(float(np.linalg.norm(value))-1)<.01):
+            return value
+    except (OSError,ValueError,EOFError) as exc:
+        raise ValueError("Повреждённый кэш DINOv2") from exc
+    raise ValueError("Некорректный вектор DINOv2")
