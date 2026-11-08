@@ -628,3 +628,30 @@ test('deleting has a full red card while a failure keeps a normal outline',async
   await expect(card).not.toHaveClass(/task-card-deleting/)
   await expect(card.locator('.task-card-status')).toHaveText('Ошибка удаления')
 })
+
+test('results viewer shows read-only XFeat diagnostics without changing MegaLoc',async({page})=>{
+  await page.route('**/api/screen-search/runs/**',route=>{
+    const u=new URL(route.request().url())
+    if(!u.pathname.endsWith('/photos/0'))return route.fulfill({status:404})
+    return respond(route,{index:0,status:'found',assigned_sam:'SAM-0001',
+      image_width:800,image_height:500,reason:'Геометрия подтверждена',
+      elapsed_seconds:1.8,screens:[{
+        screen_id:'34b92d83-2461-4100-839f-28b7b63c9a27',
+        screen_name:'Основной LED',reference_id:pid,annotation_id:pid,
+        annotation_version:2,status:'found',reason:'Геометрия подтверждена',
+        matches:31,inliers:25,reprojection_error_px:1.2,supported_sides:[0,1,2,3],
+        corners:[{x:100,y:50},{x:600,y:60},{x:620,y:330},{x:80,y:340}],
+        debug_matches:[{reference:[100,50],photo:[103,53],side:0}]
+      }]})
+  })
+  await page.goto('/results/'+rid)
+  await page.getByRole('button',{name:'Открыть ФО №1'}).click()
+  await page.getByRole('button',{name:'Диагностика XFeat'}).click()
+  const dialog=page.getByRole('dialog',{name:'Диагностика XFeat'})
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('Геометрия подтверждена').first()).toBeVisible()
+  await expect(dialog.getByText('Подтверждены: 25')).toBeVisible()
+  await expect(dialog.getByLabel('Найденный контур экрана').locator('polygon')).toHaveCount(1)
+  await dialog.getByLabel('Показать точки').check()
+  await expect(dialog.locator('svg circle')).toHaveCount(5)
+})
