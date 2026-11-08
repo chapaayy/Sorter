@@ -9,6 +9,7 @@ from app.screen_detection.features import border_features,match
 from app.screen_detection.geometry import solve
 from app.screen_detection.cache import key
 from server.services import screen_search
+from .test_unified_queue_stage3 import system
 
 QUAD=[{"x":80,"y":80},{"x":440,"y":80},{"x":440,"y":280},{"x":80,"y":280}]
 DST=np.array([[610,250],[1090,210],[1140,590],[650,620]],dtype=np.float32)
