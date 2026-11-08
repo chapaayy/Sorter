@@ -5,7 +5,9 @@ export interface BestPhoto {
  review_required:boolean;quality:{status:string;score:number;metrics?:Record<string,number>}
  classification?:'confirmed'|'probable'|'unidentified';visual_group_id?:string
  text_subgroup_id?:string;text_subgroup_status?:string
- ocr?:{status:string;reason:string};source_xfeat_signature?:string
+ ocr?:{status:string;reason:string;matched_terms?:number;total_terms?:number;
+  text_similarity?:number};ocr_selection_score?:number;selection_score?:number;
+ selection_basis?:string;source_xfeat_signature?:string
 }
 export interface BestSummary {
  status:'not_processed'|'completed';run_id:string;best:BestPhoto[]
