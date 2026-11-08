@@ -215,12 +215,49 @@ def rankings(run_id: str, group_id: str, limit: int = 50, offset: int = 0,
             -next(m["score"] for m in candidate["member_scores"]
                   if m["index"] == index and m["screen_id"] == sid),
             candidate["id"]))
+    page = []
+    for candidate in items[offset:offset + limit]:
+        record = {key: value for key, value in candidate.items() if key != "member_scores"}
+        if selected:
+            record["member_score"] = next(
+                score["score"] for score in candidate["member_scores"]
+                if score["index"] == selected["index"]
+                and score["screen_id"] == selected["screen_id"])
+        page.append(record)
+    member_margin = None
+    if selected and len(items) > 1:
+        def individual(candidate):
+            return next(score["score"] for score in candidate["member_scores"]
+                        if score["index"] == selected["index"]
+                        and score["screen_id"] == selected["screen_id"])
+        member_margin = round(individual(items[0]) - individual(items[1]), 6)
     return {
         "status": document["status"], "reason": document["reason"],
         "group_id": group_id, "candidate_id": document["candidate_id"],
         "best_score": document.get("best_score"),
-        "margin": document["margin"], "matching_threshold": document["matching_threshold"],
+        "margin": document["margin"], "member_margin": member_margin,
+        "matching_threshold": document["matching_threshold"],
         "method": document["method"], "selected_member": selected,
         "total": len(items), "limit": limit, "offset": offset,
-        "rankings": items[offset:offset + limit]
+        "rankings": page
+    }
+
+
+def layout_members(run_id: str, group_id: str, layout_id: str,
+                   limit: int = 50, offset: int = 0) -> dict:
+    # Require a valid group before resolving its match document.
+    detail(run_id, group_id)
+    document = _load(_root(run_id) / "matches" / (group_id + ".json"))
+    if document is None:
+        return {"status": "pending", "group_id": group_id,
+                "layout_id": layout_id, "scores": [], "total": 0}
+    candidate = next((r for r in document["rankings"] if r["id"] == layout_id), None)
+    if candidate is None:
+        raise HTTPException(404, "Рекламный макет не участвовал в сопоставлении")
+    scores = candidate["member_scores"]
+    return {
+        "status": "completed", "group_id": group_id, "layout_id": layout_id,
+        "layout_name": candidate["name"], "group_score": candidate["score"],
+        "total": len(scores), "limit": limit, "offset": offset,
+        "scores": scores[offset:offset + limit]
     }
