@@ -1,11 +1,14 @@
 import type {RunProgress} from './api'
-export type QueueKind='fo_processing'|'reference_preparation'
+export type QueueKind='fo_processing'|'reference_preparation'|'layout_preparation'
 export type QueueStatus='queued'|'running'|'blocked'|'completed'|'completed_with_errors'|'stopped'|'failed'|'interrupted'
 export interface QueueTask {
   seq:number
   kind:QueueKind
   fo_run_id:string|null
   reference_job_id:string|null
+  layout_job_id:string|null
+  layout_id:string|null
+  layout_name:string|null
   session_id:string|null
   state:QueueStatus
   created_at:string
@@ -14,7 +17,7 @@ export interface QueueTask {
   total_count:number|null
   completed_count:number|null
   failed_count:number|null
-  progress_stage?:'queued'|'validating'|'loading'|'extracting'|'publishing'|'completed'|null
+  progress_stage?:string|null
   error:string|null
   stop_requested:boolean|null
   batch_id:string|null
@@ -42,4 +45,9 @@ export interface PreparationDetail {
   queue_seq:number
   stop_requested:boolean
   errors:PreparationError[]
+}
+
+export interface LayoutPreparationDetail {
+ id:string;layout_id:string|null;layout_name:string|null;state:string
+ queue_seq:number;progress_stage:string;progress_percent:number;error:string|null
 }
