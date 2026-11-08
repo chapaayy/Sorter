@@ -1,7 +1,10 @@
 import {api,patch,del} from './client'
 export interface AdLayout {
  id:string;name:string;filename:string;checksum:string;byte_size:number;
- expected_text:string;active:boolean;version:number;image_url:string
+ expected_text:string;corrected_text:string|null;ocr_raw_lines:{text:string;score:number;polygon?:number[][]}[];
+ ocr_normalized_text:string;preparation_state:'queued'|'running'|'completed'|'failed';
+ preparation_stage:string;preparation_progress:number;preparation_error:string|null;
+ active:boolean;version:number;image_url:string
 }
 export interface LayoutMatch {id:string;name:string;score:number;version:number;checksum:string}
 export interface AdRecognition {
