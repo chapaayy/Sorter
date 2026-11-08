@@ -97,8 +97,12 @@ def layout_list(run_id: str, limit: int = 50, offset: int = 0) -> dict:
     document = _subgroups(run_id)
     layouts = snapshot.get("layouts", [])
     if document is None:
-        return {"status": "not_processed" if not snapshot.get("enabled") else "processing",
-                "layouts": [], "total": 0, "limit": limit, "offset": offset}
+        stage = snapshot.get("status")
+        state = ("not_processed" if not snapshot.get("enabled") else
+                 "processing" if stage == "running" else
+                 stage if stage in ("queued", "failed") else "not_processed")
+        return {"status": state, "layouts": [], "total": 0,
+                "limit": limit, "offset": offset}
     counts: dict[str, dict] = defaultdict(
         lambda: {"photos": 0, "subgroups": 0,
                  "confirmed": 0, "probable": 0, "unidentified": 0,
