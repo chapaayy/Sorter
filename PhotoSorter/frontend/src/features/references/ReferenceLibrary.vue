@@ -16,9 +16,10 @@ import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
 import type {CreatedConstruction} from '../../api/references'
 import CreateConstructionDialog from './CreateConstructionDialog.vue'
+import ScreenAnnotationEditor from './ScreenAnnotationEditor.vue'
 const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),addressDraft=ref(''),
   error=ref(''),busy=ref(false),viewer=ref<number|null>(null),
-  deletePhoto=ref<string|null>(null),deleteSam=ref(false),createOpen=ref(false)
+  deletePhoto=ref<string|null>(null),deleteSam=ref(false),createOpen=ref(false),annotationPhoto=ref<Photo|null>(null)
 
 const notice=useNoticeStore(),uploader=useUploadCenterStore()
 const groups=computed(()=>list.value.map(s=>({id:s.sam,label:s.display_name||s.sam,count:s.photos})))
@@ -42,6 +43,14 @@ usePolling(async()=>{
   const byId=new Map(first.photos.map(x=>[x.id,x]))
   items.value=items.value.map(p=>byId.get(p.id)||p)
 },8000)
+function annotate(index:number){
+  annotationPhoto.value=items.value[index]||null
+  viewer.value=null
+}
+function annotationSaved(){
+  annotationPhoto.value=null
+  notice.add('Разметка экрана сохранена','ok')
+}
 async function dropOne(){
   if(!deletePhoto.value)return
   busy.value=true
@@ -109,7 +118,8 @@ async function removeSam(){
   <UiButton kind="primary" @click="createOpen=true">Создать конструкцию или импортировать папку</UiButton>
 </EmptyState>
 <CreateConstructionDialog v-if="createOpen" @close="createOpen=false" @created="constructionCreated" @imported="libraryImported"/>
-<ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
+<ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" :allow-annotate="true" @annotate="annotate" @close="viewer=null"/>
+<ScreenAnnotationEditor v-if="annotationPhoto" :sam="selected" :photo="annotationPhoto" @close="annotationPhoto=null" @saved="annotationSaved"/>
 <ConfirmDialog v-if="deletePhoto" title="Удалить Образец?" message="Удаление создаст новую опубликованную версию после завершения очереди. Старые результаты ФО сохранятся." danger confirm-label="Удалить Образец" :busy="busy" @cancel="deletePhoto=null" @confirm="dropOne"/>
 <ConfirmDialog v-if="deleteSam" title="Безвозвратно удалить конструкцию?" :message="'Все эталонные фото '+selected+' будут удалены из общей библиотеки. Это не удаляет партии ФО.'" :required-text="selected" danger confirm-label="Удалить SAM" :busy="busy" @cancel="deleteSam=false" @confirm="removeSam"/>
 <div v-if="editing" class="modal-overlay" @click.self="editing=false">
