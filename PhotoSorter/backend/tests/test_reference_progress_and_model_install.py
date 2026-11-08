@@ -26,6 +26,7 @@ def test_reference_embeddings_stream_before_final_batch(tmp_path,monkeypatch):
     for index,p in enumerate(photos):p.write_bytes(bytes([index])*200)
     monkeypatch.setattr(reference_cache,"REFERENCE_ROOT",root)
     monkeypatch.setattr(reference_cache,"CACHE_DIR",tmp_path/"cache")
+    (tmp_path/"cache").mkdir()
     monkeypatch.setattr(reference_cache,"connect",fake_database)
     monkeypatch.setattr(reference_cache,"cached_feature",lambda *args:None)
     events=[]
