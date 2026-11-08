@@ -13,6 +13,7 @@ REVISION = "e92685f57f8318b18725c5c8c0bd28c7fe188d9a"
 # Official verlab/accelerated_features Git blob OIDs, including the pretrained
 # model. Checking the Git blob digest prevents silent corruption and wrong weights.
 BLOBS = {
+    "LICENSE": ("261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64", 11357),
     "weights/xfeat.pt": ("9da942e9c7406b8add3746bf98d4b1840233cd92", 6247949),
     "modules/xfeat.py": ("ce6c512d10d1e060e2264ba71725f81a3d31f0d4", 13472),
     "modules/model.py": ("57539fd35f881348b6bf9887738c7b56a6cbea4f", 4542),
