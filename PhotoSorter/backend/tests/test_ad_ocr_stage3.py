@@ -76,9 +76,9 @@ def test_text_subgroups_split_numerical_variants_keep_visual_members_and_quality
     assert [item["classification"] for item in photos]==[
         "confirmed","confirmed","probable","probable"]
     winners=best.select(photos)
-    assert {item["index"] for item in winners}=={1,2,3}
-    assert len({item["text_subgroup_id"] for item in winners})==3
-    assert winners[0]["candidate_id"]==winners[1]["candidate_id"]
+    assert [item["index"] for item in winners]==[1]
+    assert winners[0]["candidate_id"]==cid
+    assert winners[0]["selection_score"]>photos[2]["selection_score"]
     assert not photos[2]["review_required"] and not photos[3]["review_required"]
     paged=ad_text_subgroups.saved(run,limit=2,offset=1)
     assert paged["total"]==3 and len(paged["subgroups"])==2
@@ -169,6 +169,6 @@ def test_zip_contains_subgroup_artifact_and_distinct_group_names(tmp_path,monkey
     (published/"summary.json").write_text(json.dumps(summary))
     entries=ad_pipeline.best_archive_entries(run,snapshot)
     assert len(entries)==3
-    assert "T0001" in entries[0][1] and entries[0][1].startswith("Best_by_layout/")
+    assert entries[0][1]=="Best_by_layout/SAM 0001/Реклама/FO1_FO.png"
     assert {dest for _,dest in entries[1:]}=={
         "Ad_recognition/text_subgroups.json","Ad_recognition/summary.json"}
