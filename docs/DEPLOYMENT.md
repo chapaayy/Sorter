@@ -89,7 +89,7 @@ API подключён к внешней Docker-сети, а Worker — толь
 `--install` проверяет точные Git blob контрольные суммы официальных
 исходников/весов, не перезаписывает корректные файлы. Если VPS не имеет
 доступа, перенести `Models/models/xfeat/xfeat.pt` и
-`Models/cache/xfeat/official/modules/*.py` с ПК, сохранив структуру;
+`Models/cache/xfeat/official/ (включая LICENSE и modules/*.py)` с ПК, сохранив структуру;
 проверить `--verify` до запуска. Не добавлять бинарные веса в Git.
 ФО после MegaLoc анализируются отдельно, результат в outputs партии.
 Никаких команд `docker compose down -v` для такого обновления не требуется.
