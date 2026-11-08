@@ -214,8 +214,22 @@ def best_archive_entries(run_id,snapshot):
         return safe[:55] or "Без_названия"
     # Full archive: Best_by_layout / SAM 1683 / IMG_5796 / FO121_photo.jpg.
     # The original MegaLoc SAM folders remain unchanged.
-    directories=set()
+    # Old completed runs can still carry several winners for the same
+    # layout (one per OCR T subgroup). Deduplicate them in ZIP recovery too,
+    # without mutating or re-running their historical inference results.
+    curated={}
     for item in document["best"]:
+        key=(item["assigned_sam"],str(item.get("candidate_id") or item.get("layout_name")))
+        rank=(float(item.get("selection_score") or 0),
+              float(item.get("quality",{}).get("score") or 0),
+              -int(item["index"]))
+        previous=curated.get(key)
+        if previous is None or rank>previous[0]:
+            curated[key]=(rank,item)
+    directories=set()
+    for _,item in sorted(curated.values(),key=lambda pair:(
+            pair[1]["assigned_sam"],str(pair[1].get("layout_name") or ""),
+            int(pair[1]["index"]))):
         source=owned_file(run_dir(run_id,DATA_DIR/"outputs")/item["copy"],DATA_DIR/"outputs")
         if not source.is_file():raise FileNotFoundError("Лучшее фото отсутствует")
         sam=item["assigned_sam"]
