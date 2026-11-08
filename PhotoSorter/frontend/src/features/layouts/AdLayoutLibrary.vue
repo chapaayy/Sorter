@@ -1,0 +1,115 @@
+<script setup lang="ts">
+import {onMounted,ref,computed} from 'vue'
+import {adLayoutApi} from '../../api/adLayouts'
+import type {AdLayout} from '../../api/adLayouts'
+import PageHeader from '../../components/ui/PageHeader.vue'
+import UiButton from '../../components/ui/UiButton.vue'
+import EmptyState from '../../components/ui/EmptyState.vue'
+import {errorText} from '../../utils/format'
+import {useNoticeStore} from '../../stores/notice'
+
+const notice=useNoticeStore()
+const layouts=ref<AdLayout[]>([]),selected=ref<File|null>(null),name=ref(''),expected=ref('')
+const busy=ref(false),error=ref(''),editing=ref<AdLayout|null>(null)
+const editName=ref(''),editText=ref(''),editActive=ref(true)
+const activeCount=computed(()=>layouts.value.filter(item=>item.active).length)
+async function refresh(){
+ try{layouts.value=(await adLayoutApi.list()).layouts;error.value=''}
+ catch(e){error.value=errorText(e)}
+}
+function choose(event:Event){
+ const file=(event.target as HTMLInputElement).files?.[0]||null
+ selected.value=file
+ if(file)name.value=file.name.replace(/\.[^.]+$/,'').slice(0,120)
+}
+async function upload(){
+ if(!selected.value||!name.value.trim()||busy.value)return
+ busy.value=true;error.value=''
+ try{
+  await adLayoutApi.upload(selected.value,name.value.trim(),expected.value.trim())
+  selected.value=null;name.value='';expected.value=''
+  const picker=document.querySelector<HTMLInputElement>('#ad-layout-file')
+  if(picker)picker.value=''
+  notice.add('Рекламный макет добавлен','ok');await refresh()
+ }catch(e){error.value=errorText(e)}
+ finally{busy.value=false}
+}
+function edit(item:AdLayout){
+ editing.value=item
+ editName.value=item.name;editText.value=item.expected_text;editActive.value=item.active
+}
+async function save(){
+ if(!editing.value||busy.value)return
+ busy.value=true;error.value=''
+ try{
+  await adLayoutApi.edit(editing.value,editName.value.trim(),editText.value.trim(),editActive.value)
+  editing.value=null;notice.add('Параметры макета обновлены','ok');await refresh()
+ }catch(e){error.value=errorText(e)}
+ finally{busy.value=false}
+}
+async function remove(item:AdLayout){
+ if(busy.value||!window.confirm('Удалить макет «'+item.name+'»? Старые результаты анализа останутся в истории до удаления партии.'))return
+ busy.value=true;error.value=''
+ try{await adLayoutApi.remove(item.id);notice.add('Макет удалён','ok');await refresh()}
+ catch(e){error.value=errorText(e)}finally{busy.value=false}
+}
+onMounted(()=>{void refresh()})
+</script>
+<template>
+ <PageHeader eyebrow="БИБЛИОТЕКА РЕКЛАМЫ" title="Макеты рекламы"
+   subtitle="Эталоны рекламного изображения для DINOv2. Не смешиваются с Образцами конструкций."/>
+ <div v-if="error" class="alert error" role="alert">{{error}}</div>
+ <section class="panel stack ad-layout-upload">
+   <div><h2>Добавить рекламный макет</h2>
+   <p class="meta">JPG, PNG или WEBP до 20 МиБ. Оригинал сохраняется без изменения.</p></div>
+   <form class="ad-layout-upload-form" @submit.prevent="upload">
+    <label class="field">Изображение макета
+     <input id="ad-layout-file" type="file" accept="image/png,image/jpeg,image/webp"
+       aria-label="Изображение рекламного макета" @change="choose"/>
+    </label>
+    <label class="field">Название
+     <input v-model="name" maxlength="120" required placeholder="Название рекламной кампании"/>
+    </label>
+    <label class="field">Контрольный текст (необязательно)
+     <input v-model="expected" maxlength="1000" placeholder="Например, СКИДКИ 50%">
+    </label>
+    <UiButton kind="primary" type="submit" :disabled="!selected||!name.trim()" :loading="busy">
+      + Добавить макет
+    </UiButton>
+   </form>
+   <p class="meta">DINOv2 выбирает похожий макет по изображению. PP-OCRv5 проверяет текст, но не меняет выбор DINOv2.
+      Если контрольный текст пустой, OCR сравнит текст макета и ФО автоматически.</p>
+ </section>
+ <div class="row between wrap ad-layout-count">
+  <span class="meta">Всего {{layouts.length}} макетов · {{activeCount}} активных</span>
+  <RouterLink class="meta" to="/results">Перейти к результатам ФО</RouterLink>
+ </div>
+ <div v-if="layouts.length" class="ad-layout-list">
+  <article v-for="item in layouts" :key="item.id" class="panel ad-layout-item">
+   <img :src="item.image_url" :alt="item.name" loading="lazy"/>
+   <div class="stack-sm">
+    <div class="row wrap"><strong>{{item.name}}</strong>
+     <span class="status">{{item.active?'Активен':'Отключён'}}</span></div>
+    <div class="meta">Контрольный текст: {{item.expected_text||'OCR автоматически по макету'}}</div>
+    <div class="meta">Версия {{item.version}} · {{(item.byte_size/1048576).toFixed(2)}} МиБ</div>
+    <div class="row wrap">
+     <UiButton small @click="edit(item)">Изменить</UiButton>
+     <UiButton small kind="danger" :disabled="busy" @click="remove(item)">Удалить</UiButton>
+    </div>
+   </div>
+  </article>
+ </div>
+ <EmptyState v-else title="Макетов пока нет"
+   detail="Добавьте исходные рекламные изображения, которые будут сравниваться с экранами на ФО."/>
+ <div v-if="editing" class="modal-overlay" @click.self="editing=null">
+  <form class="modal stack" role="dialog" aria-modal="true" aria-label="Изменить макет"
+    @submit.prevent="save">
+    <h2>Изменить макет</h2>
+    <label class="field">Название<input v-model="editName" maxlength="120" required/></label>
+    <label class="field">Контрольный текст<input v-model="editText" maxlength="1000"/></label>
+    <label class="row wrap"><input v-model="editActive" type="checkbox"/> Использовать для распознавания</label>
+    <div class="modal-actions"><UiButton @click="editing=null">Отмена</UiButton>
+     <UiButton kind="primary" type="submit" :loading="busy">Сохранить</UiButton></div>
+  </form>
+ </div>
+</template>
