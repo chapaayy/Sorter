@@ -34,6 +34,7 @@ function focus(item:BestPhoto){emit('open',item.index)}
           <span>Найдено экранов: <strong>{{summary.screens_found??0}}</strong></span>
           <span>Распознано: <strong>{{summary.recognized??0}}</strong></span>
           <span>Лучших кадров: <strong>{{summary.best.length}}</strong></span>
+          <span v-if="summary.text_subgroup_count!=null">Вариантов текста: <strong>{{summary.text_subgroup_count}}</strong></span>
           <span v-if="summary.errors" class="meta">Ошибки ФО: {{summary.errors}}</span>
         </div>
         <p v-if="!summary.best.length" class="meta">
@@ -43,13 +44,14 @@ function focus(item:BestPhoto){emit('open',item.index)}
         <template v-if="confirmed.length">
           <strong>Подтверждённые</strong>
           <div class="ad-best-grid">
-            <article v-for="item in confirmed" :key="item.screen_id+':'+item.candidate_id"
+            <article v-for="item in confirmed" :key="item.screen_id+':'+item.candidate_id+':'+item.text_subgroup_id+':'+item.index"
               class="ad-best-item">
               <img :src="'/api/images/'+encodeURIComponent(runId)+'/megaloc/'+item.index+'?kind=query'"
                 :alt="'Лучшая ФО №'+(item.index+1)" loading="lazy"/>
               <div class="stack-sm">
                 <strong>{{item.layout_name}}</strong>
-                <span class="meta">{{item.assigned_sam}} · {{item.screen_name||'Экран'}}</span>
+                <span class="meta">{{item.assigned_sam}} · {{item.screen_name||'Экран'}}
+                  <span v-if="item.text_subgroup_id"> · {{item.text_subgroup_id}}</span></span>
                 <span class="meta">Качество: {{item.quality.score.toFixed(1)}} / 100 · ФО №{{item.index+1}}</span>
                 <UiButton small @click="focus(item)">Открыть ФО</UiButton>
               </div>
@@ -66,7 +68,8 @@ function focus(item:BestPhoto){emit('open',item.index)}
                 :alt="'ФО для проверки №'+(item.index+1)" loading="lazy"/>
               <div class="stack-sm">
                 <strong>{{item.layout_name}}</strong>
-                <span class="meta">{{item.assigned_sam}} · {{item.screen_name||'Экран'}}</span>
+                <span class="meta">{{item.assigned_sam}} · {{item.screen_name||'Экран'}}
+                  <span v-if="item.text_subgroup_id"> · {{item.text_subgroup_id}}</span></span>
                 <span class="meta">Качество: {{item.quality.score.toFixed(1)}} / 100 · ФО №{{item.index+1}}</span>
                 <span class="meta">{{item.ocr?.reason||'Необходима проверка рекламы'}}</span>
                 <UiButton small @click="focus(item)">Открыть ФО</UiButton>
