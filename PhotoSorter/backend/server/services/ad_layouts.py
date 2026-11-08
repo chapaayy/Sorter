@@ -107,8 +107,7 @@ def update(uid,version:int,name:str,expected_text:str,active:bool):
     name=_name(name,120,"Укажите название макета")
     expected_text=_text(expected_text)
     with connect() as db:
-        if not active:
-            db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
         row=records.by_id(db,uid,lock=True)
         if not row:raise HTTPException(404,"Макет не найден")
         if row["active"] and not active:
@@ -145,6 +144,84 @@ def active_files():
             and row["dino_signature"]==dino.SIGNATURE
             and row["ocr_signature"]==signature]
 
+def replace_image(uid,version:int,data:bytes,filename:str):
+    """Publish a new immutable original and enqueue its preparation atomically."""
+    suffix=_picture(data)
+    checksum=hashlib.sha256(data).hexdigest()
+    ROOT.mkdir(parents=True,exist_ok=True)
+    if ROOT.is_symlink():raise HTTPException(409,"Недоступно хранилище макетов")
+    target=ROOT/(str(uid)+"-"+str(uuid.uuid4())+suffix)
+    fd,temp=tempfile.mkstemp(prefix=".layout.",dir=ROOT)
+    published=False
+    try:
+        with os.fdopen(fd,"wb") as output:output.write(data)
+        with connect() as db:
+            db.execute("SELECT pg_advisory_xact_lock(723409133)")
+            row=records.by_id(db,uid,lock=True)
+            if not row:raise HTTPException(404,"Макет не найден")
+            if row["version"]!=version:
+                raise HTTPException(409,"Версия макета устарела")
+            if db.execute("""SELECT 1 FROM ad_layout_preparation_jobs
+                WHERE layout_id=%s AND state='running'""",(uid,)).fetchone():
+                raise HTTPException(409,"Дождитесь завершения текущей подготовки макета")
+            if checksum==row["checksum"]:
+                return {"id":str(uid),"version":version,
+                        "preparation_state":row["preparation_state"]}
+            if db.execute("SELECT 1 FROM ad_layouts WHERE checksum=%s",(checksum,)).fetchone():
+                raise HTTPException(409,"Этот макет уже добавлен")
+            old=_file(row)
+            db.execute("""UPDATE work_queue SET state='stopped',finished_at=now()
+                WHERE layout_job_id IN (SELECT id FROM ad_layout_preparation_jobs
+                    WHERE layout_id=%s) AND state IN ('queued','failed','interrupted')""",(uid,))
+            db.execute("""UPDATE ad_layout_preparation_jobs SET state='stopped',
+                finished_at=now() WHERE layout_id=%s AND state IN
+                ('queued','failed','interrupted')""",(uid,))
+            db.execute("""INSERT INTO ad_layout_retired_assets(target_path,checksum)
+                VALUES (%s,%s) ON CONFLICT(target_path) DO NOTHING""",
+                (str(old),row["checksum"]))
+            db.execute("""UPDATE ad_layouts SET checksum=%s,target_path=%s,
+                filename=%s,byte_size=%s,expected_text='',ocr_corrected_text=NULL,
+                prepared_key=NULL,preparation_state='queued',preparation_stage='queued',
+                preparation_progress=0,preparation_error=NULL,prepared_at=NULL,
+                version=version+1,updated_at=now() WHERE id=%s""",
+                (checksum,str(target),Path(filename).name[:200],len(data),uid))
+            prep=uuid.uuid4()
+            db.execute("""INSERT INTO ad_layout_preparation_jobs(id,layout_id,checksum,target_path)
+                VALUES (%s,%s,%s,%s)""",(prep,uid,checksum,str(target)))
+            from ..db.repositories.work_queue import insert_layout
+            insert_layout(db,prep)
+            db.execute("UPDATE ad_layout_library_state SET revision=revision+1 WHERE id=1")
+            os.replace(temp,target)
+            published=True
+        return {"id":str(uid),"version":version+1,"preparation_state":"queued"}
+    except Exception:
+        if published:target.unlink(missing_ok=True)
+        raise
+    finally:
+        Path(temp).unlink(missing_ok=True)
+
+
+def gc_retired(limit=25):
+    """Do not remove an original still referenced by a retained immutable run."""
+    removed=0
+    with connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        files=db.execute("""SELECT target_path FROM ad_layout_retired_assets
+            ORDER BY retired_at LIMIT %s FOR UPDATE""",(limit,)).fetchall()
+        for item in files:
+            path=item["target_path"]
+            pinned=db.execute("""SELECT 1 FROM jobs
+                WHERE snapshot->'ad_pipeline'->'layouts' @>
+                    jsonb_build_array(jsonb_build_object('target_path',%s::text))
+                LIMIT 1""",(path,)).fetchone()
+            if pinned:continue
+            original=owned_file(Path(path),ROOT)
+            original.unlink(missing_ok=True)
+            db.execute("DELETE FROM ad_layout_retired_assets WHERE target_path=%s",(path,))
+            removed+=1
+    return removed
+
+
 def delete(uid):
     with connect() as db:
         # Never unlink a pinned immutable layout while its FIFO job is running.
@@ -167,7 +244,9 @@ def delete(uid):
         if db.execute("""SELECT 1 FROM ad_layout_preparation_jobs
             WHERE layout_id=%s AND state='running'""",(uid,)).fetchone():
             raise HTTPException(409,"Подготовка макета ещё выполняется")
+        db.execute("""INSERT INTO ad_layout_retired_assets(target_path,checksum)
+            VALUES (%s,%s) ON CONFLICT(target_path) DO NOTHING""",
+            (str(path),row["checksum"]))
         records.remove(db,uid)
         db.execute("UPDATE ad_layout_library_state SET revision=revision+1 WHERE id=1")
-    path.unlink(missing_ok=True)
     return {"deleted":True}
