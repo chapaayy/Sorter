@@ -84,13 +84,16 @@ def confirm(expected_text:str,observed:list[dict])->dict:
         return {"status":"not_configured","reason":"Для макета не указан контрольный текст","lines":texts}
     if not actual:
         return {"status":"unreadable","reason":"Не удалось прочитать текст на ФО","lines":[]}
-    terms=[word for word in expected.split() if len(word)>=3]
+    terms=[word for word in expected.split() if len(word)>=3 or word.isdigit()]
     if not terms:
         terms=expected.split()
     hits=sum(1 for term in terms if any(SequenceMatcher(None,term,word).ratio()>=.82
                                       for word in actual.split()))
     ratio=hits/max(1,len(terms))
-    return {"status":"confirmed" if ratio>=.6 else "mismatch",
-            "reason":"Контрольный текст совпадает" if ratio>=.6 else "Контрольный текст не совпал",
+    numbers_expected=set(re.findall(r"\\d+",expected))
+    numbers_observed=set(re.findall(r"\\d+",actual))
+    matched=ratio>=.6 and numbers_expected.issubset(numbers_observed)
+    return {"status":"confirmed" if matched else "mismatch",
+            "reason":"Контрольный текст совпадает" if matched else "Контрольный текст не совпал",
             "matched_terms":hits,"total_terms":len(terms),
             "lines":texts}
