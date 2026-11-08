@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue'
+import {computed,onMounted,ref,watch} from 'vue'
 import {screenSearchApi} from '../../api/screenSearch'
+import {adLayoutApi} from '../../api/adLayouts'
+import type {AdRecognition} from '../../api/adLayouts'
 import type {ScreenSearchResult,DetectedScreen} from '../../api/screenSearch'
 import {errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
@@ -8,6 +10,8 @@ const props=defineProps<{runId:string;index:number;imageUrl:string}>()
 const emit=defineEmits<{(e:'close'):void}>()
 const result=ref<ScreenSearchResult|null>(null),error=ref(''),selected=ref(''),showPoints=ref(false)
 const modelReady=ref<boolean|null>(null)
+const recognition=ref<AdRecognition|null>(null),recognitionError=ref('')
+const dinoReady=ref<boolean|null>(null),ocrReady=ref<boolean|null>(null)
 const screen=computed<DetectedScreen|undefined>(()=>result.value?.screens.find(s=>s.screen_id===selected.value))
 const corners=computed(()=>screen.value?.corners?.map(p=>p.x+','+p.y).join(' ')||'')
 const matches=computed(()=>screen.value?.debug_matches||[])
@@ -20,9 +24,20 @@ async function refresh(){
     error.value=''
   }catch(e){error.value=errorText(e)}
 }
+async function loadRecognition(){
+  const sid=selected.value
+  recognition.value=null;recognitionError.value=''
+  if(!sid)return
+  try{
+    const found=await adLayoutApi.recognized(props.runId,props.index,sid)
+    if(selected.value===sid)recognition.value=found
+  }catch(e){if(selected.value===sid)recognitionError.value=errorText(e)}
+}
+watch(selected,()=>{void loadRecognition()})
 onMounted(()=>{
   void refresh()
   void screenSearchApi.model().then(info=>{modelReady.value=info.available}).catch(()=>{})
+  void adLayoutApi.models().then(info=>{dinoReady.value=info.dino.available;ocrReady.value=info.ocr.available}).catch(()=>{})
 })
 </script>
 <template>
@@ -99,6 +114,66 @@ onMounted(()=>{
           </div>
           <div v-if="screen.status==='found'&&screen.corners?.length" class="meta">
             Координаты: {{screen.corners.map(p=>Math.round(p.x)+','+Math.round(p.y)).join(' · ')}}
+          </div>
+          <div v-if="screen.status==='found'" class="ad-recognition-detail">
+            <div class="row between wrap">
+              <strong>DINOv2 · распознавание рекламы</strong>
+              <RouterLink class="meta" to="/layouts" @click="emit('close')">Библиотека макетов</RouterLink>
+            </div>
+            <div v-if="recognitionError" class="alert error">{{recognitionError}}</div>
+            <template v-if="recognition">
+              <p v-if="recognition.status==='not_processed'" class="meta">
+                Ещё не выполнено. Запустите после XFeat:
+                <code>docker compose exec worker python -m app.ad_recognition.cli --run-id {{runId}} --limit 20</code>
+                <span v-if="dinoReady===false">. Сначала установите веса DINOv2 командой
+                  <code>docker compose exec api python -m app.ad_recognition.cli --install-dino</code></span>
+              </p>
+              <template v-else>
+                <div class="row between wrap">
+                  <strong>{{recognition.status==='matched'?'Макет DINOv2 выбран':
+                    recognition.status==='uncertain'?'DINOv2: требуется проверка':
+                    recognition.status==='no_match'?'Макет не определён':'Реклама не распознана'}}</strong>
+                  <span class="meta">{{recognition.elapsed_seconds??'—'}} с</span>
+                </div>
+                <p class="meta">{{recognition.reason}}</p>
+                <div v-if="recognition.top?.length" class="ad-recognition-preview">
+                  <img :src="'/api/ad-layouts/'+recognition.top[0].id+'/image'"
+                    :alt="recognition.top[0].name"/>
+                  <div class="stack-sm">
+                    <strong>{{recognition.top[0].name}}</strong>
+                    <p class="meta">Сходство DINOv2: {{recognition.top[0].score.toFixed(3)}}
+                      · Разница с №2: {{recognition.margin==null?'—':recognition.margin.toFixed(3)}}</p>
+                    <div class="ad-recognition-top">
+                      <div v-for="(match,i) in recognition.top" :key="match.id" class="row between">
+                        <span>{{i+1}}. {{match.name}}</span><b>{{match.score.toFixed(3)}}</b>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="recognition.ocr" class="stack-sm">
+                  <strong>PP-OCRv5 · {{recognition.ocr.status==='confirmed'?'Текст подтверждён':
+                    recognition.ocr.status==='mismatch'?'Текст не совпал':
+                    recognition.ocr.status==='unreadable'?'Текст не прочитан':
+                    recognition.ocr.status==='unavailable'?'OCR не установлен':
+                    recognition.ocr.status==='not_configured'?'Контрольный текст отсутствует':'Дополнительная проверка'}}</strong>
+                  <div class="meta">{{recognition.ocr.reason}}
+                    <span v-if="recognition.ocr.matched_terms!=null">
+                      · {{recognition.ocr.matched_terms}} / {{recognition.ocr.total_terms}} слов
+                    </span>
+                  </div>
+                  <div v-if="recognition.ocr.lines?.length" class="meta">
+                    Прочитано: {{recognition.ocr.lines.join(' · ')}}
+                  </div>
+                  <p v-if="ocrReady===false" class="meta">
+                    Для OCR установите модели через
+                    <code>docker compose exec api python -m app.ad_recognition.cli --install-ocr</code>.
+                  </p>
+                </div>
+                <p v-if="recognition.review_required" class="meta">
+                  Требуется ручная проверка. OCR не менял кандидата DINOv2.
+                </p>
+              </template>
+            </template>
           </div>
           <div v-if="screen.status==='found'" class="screen-search-crop">
             <div><strong>Оригинальный вырезанный фрагмент</strong>

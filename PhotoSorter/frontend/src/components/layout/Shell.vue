@@ -11,6 +11,7 @@ watch(()=>route.path,()=>{menu.value=false})
 const links=[
   {to:'/fo',label:'Фотографии',icon:'photos'},
   {to:'/references',label:'Образцы',icon:'references'},
+  {to:'/layouts',label:'Макеты рекламы',icon:'layouts'},
   {to:'/queue',label:'Очередь',icon:'queue'},
   {to:'/results',label:'Результаты',icon:'results'},
   {to:'/logs',label:'Логи',icon:'logs'},

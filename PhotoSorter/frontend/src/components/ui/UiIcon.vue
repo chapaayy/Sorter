@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{name:'photos'|'references'|'processing'|'queue'|'results'|'logs'|'settings'|'menu'|'sidebar-collapse'|'sidebar-expand';size?:number}>()
+defineProps<{name:'photos'|'references'|'layouts'|'processing'|'queue'|'results'|'logs'|'settings'|'menu'|'sidebar-collapse'|'sidebar-expand';size?:number}>()
 </script>
 
 <template>
@@ -12,6 +12,11 @@ defineProps<{name:'photos'|'references'|'processing'|'queue'|'results'|'logs'|'s
     <template v-else-if="name==='references'">
       <rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/>
       <rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>
+    </template>
+    <template v-else-if="name==='layouts'">
+      <rect x="3" y="5" width="18" height="14" rx="2"/>
+      <circle cx="8" cy="10" r="1.3"/>
+      <path d="m5 17 5-5 3 3 3-4 3 4"/>
     </template>
     <template v-else-if="name==='processing'">
       <circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/>
