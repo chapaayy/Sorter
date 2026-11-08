@@ -3,7 +3,7 @@ const sam='SAM 0001',id='34b92d83-2461-4100-839f-28b7b63c9a27'
 const photo={id,name:'screen_001.jpg',bytes:1024,created_at:'2026-11-08T00:00:00Z',
   thumbnail_status:'pending',original_url:'/api/photos/'+id+'/original'}
 const image='<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="800" height="500" fill="#333"/><rect x="170" y="100" width="460" height="300" fill="#15803d"/></svg>'
-test('create and edit a persistent four-corner annotation in reference viewer',async({page})=>{
+test('create and edit a persistent four-corner annotation in reference viewer',async({page,isMobile})=>{
   const screens:Array<{id:string;name:string;annotations:Array<Record<string,unknown>>}>=[]
   await page.route('**/api/**',async route=>{
     const url=new URL(route.request().url()),path=decodeURIComponent(url.pathname),method=route.request().method()
@@ -43,10 +43,23 @@ test('create and edit a persistent four-corner annotation in reference viewer',a
   const dialog=page.getByRole('dialog',{name:'Разметка экрана'})
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('circle')).toHaveCount(4)
+  const first=dialog.locator('circle').first()
+  const initialX=Number(await first.getAttribute('cx'))
+  if(!isMobile){
+    const box=await first.boundingBox()
+    expect(box).not.toBeNull()
+    const x=box!.x+box!.width/2,y=box!.y+box!.height/2
+    await page.mouse.move(x,y)
+    await page.mouse.down()
+    await page.mouse.move(x+24,y+8,{steps:5})
+    await page.mouse.up()
+    expect(Number(await first.getAttribute('cx'))).not.toBe(initialX)
+  }
   await dialog.getByRole('textbox',{name:'Название экрана'}).fill('Основной LED')
   await dialog.getByRole('button',{name:'Сохранить разметку'}).click()
   await expect(dialog).not.toBeVisible()
   expect(screens).toHaveLength(1)
+  if(!isMobile)expect((screens[0].annotations[0].corners as Array<{x:number;y:number}>)[0].x).not.toBe(initialX)
   await page.reload()
   await page.getByRole('button',{name:'Открыть screen_001.jpg'}).click()
   await page.getByRole('button',{name:'Выделить экран'}).click()
