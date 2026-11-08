@@ -51,7 +51,9 @@ class Job:
             finalize=getattr(self,'finalize_results',None)
             if finalize is not None:
                 finalize()
-            self.info['status']='completed'
+            ad_result=self.info.get('ad_pipeline',{})
+            self.info['status']=('completed_with_errors' if ad_result.get('enabled')
+                and ad_result.get('errors',0)>0 else 'completed')
         except (InterruptedError,JobCancelled):
             self.info['status']='stopped';self.log('WARNING','Обработка остановлена, готовые результаты сохранены')
         except Exception as exc:
