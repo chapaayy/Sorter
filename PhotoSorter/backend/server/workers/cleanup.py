@@ -5,7 +5,7 @@ import signal
 import time
 from ..database import wait_and_initialize
 from ..services import heartbeat
-from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing,archive_retries,ad_layouts
+from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing,archive_retries,ad_layouts,ad_recognition
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
 RUN=True
@@ -33,8 +33,11 @@ def run_cycle():
         if abandoned:logging.info("Reclaimed %s abandoned upload parts",abandoned)
         stale=thumbnail_gc.collect(limit=100)
         if stale:logging.info("Cleared %s unreferenced thumbnails",stale)
+        scheduled=ad_layouts.requeue_stale_models()
+        if scheduled:logging.info("Queued %s stale advertising layouts",scheduled)
         retired=ad_layouts.gc_retired(limit=25)
         if retired:logging.info("Cleared %s retired advertising layouts",retired)
+        ad_recognition.prune_old_layout_cache()
 
 def main():
     signal.signal(signal.SIGTERM,stop)
