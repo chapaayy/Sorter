@@ -180,7 +180,7 @@ onMounted(()=>{
                     recognition.ocr.status==='not_configured'?'Контрольный текст отсутствует':'Дополнительная проверка'}}</strong>
                   <div class="meta">{{recognition.ocr.reason}}
                     <span v-if="recognition.ocr.matched_terms!=null">
-                      · {{recognition.ocr.matched_terms}} / {{recognition.ocr.total_terms}} слов
+                      · {{recognition.ocr.matched_terms}} / {{recognition.ocr.total_terms}} из прочитанных слов ФО
                     </span>
                   </div>
                   <div v-if="recognition.ocr.lines?.length" class="meta">
