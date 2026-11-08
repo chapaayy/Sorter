@@ -14,6 +14,34 @@ from . import model_store
 
 LOG_DIR = MODEL_CACHE_DIR / 'downloads'
 
+OPTIONAL_INSTALLERS={
+    'xfeat':('app.screen_detection.cli','--install'),
+    'dinov2':('app.ad_recognition.cli','--install-dino'),
+    'paddleocr':('app.ad_recognition.cli','--install-ocr'),
+}
+
+def optional_available(name):
+    if name=='xfeat':
+        from app.screen_detection import xfeat_assets
+        return xfeat_assets.status()['available']
+    if name=='dinov2':
+        from app.ad_recognition import dino
+        return dino.status()['available']
+    if name=='paddleocr':
+        from app.ad_recognition import ocr
+        return ocr.status()['available']
+    raise ValueError('Неизвестная модель')
+
+def optional_size(name):
+    if name=='xfeat':
+        return folder_size(WEIGHTS_DIR/'xfeat')+folder_size(MODEL_CACHE_DIR/'xfeat')
+    if name=='dinov2':
+        return folder_size(WEIGHTS_DIR/'dinov2')
+    if name=='paddleocr':
+        return folder_size(WEIGHTS_DIR/'paddleocr')+folder_size(MODEL_CACHE_DIR/'paddlex')
+    return 0
+
+
 def folder_size(path):
     total = 0
     for root,_,names in os.walk(path):
@@ -35,16 +63,29 @@ class Downloads:
         with self.lock:self.states['megaloc']={'status':status,'message':str(message)[-1200:],**progress}
 
     def start(self,name):
-        if name!='megaloc':raise ValueError('Доступна только MegaLoc')
+        if name!='megaloc' and name not in OPTIONAL_INSTALLERS:
+            raise ValueError('Неизвестная модель')
         with self.lock:
-            if self.active:raise RuntimeError('Загрузка MegaLoc уже выполняется')
-            if model_store.verified():
-                self._set('installed','MegaLoc уже проверена')
-                return dict(self.states['megaloc'])
+            if self.active:
+                raise RuntimeError('Дождитесь завершения установки предыдущей модели')
+            installed=(model_store.verified() if name=='megaloc' else optional_available(name))
+            if installed:
+                if name=='megaloc':
+                    self._set('installed','MegaLoc уже проверена')
+                else:
+                    self.states[name]={'status':'installed','stage':'done',
+                                       'message':'Файлы модели проверены'}
+                return dict(self.states[name])
             self.active=True
-            self._set('downloading','Подготовка загрузки…',stage='prepare')
-            threading.Thread(target=self._run,daemon=True,name='megaloc-download').start()
-            return dict(self.states['megaloc'])
+            if name=='megaloc':
+                self._set('downloading','Подготовка загрузки…',stage='prepare')
+                target=self._run
+            else:
+                self.states[name]={'status':'downloading','stage':'prepare',
+                    'message':'Подготовка скачивания…','received_bytes':0}
+                target=lambda:self._run_optional(name)
+            threading.Thread(target=target,daemon=True,name=name+'-download').start()
+            return dict(self.states[name])
 
     def _run(self):
         try:
@@ -61,6 +102,62 @@ class Downloads:
             self._set('error',f'{type(exc).__name__}: {exc}',stage='error')
         finally:
             with self.lock:self.active=False
+
+    def _set_optional(self,name,status,message,**progress):
+        with self.lock:
+            self.states[name]={'status':status,'message':str(message)[-900:],**progress}
+
+    def _run_optional(self,name):
+        """One allowed pinned CPU installer at a time, in a subprocess."""
+        import fcntl
+        command=OPTIONAL_INSTALLERS[name]
+        try:
+            LOG_DIR.mkdir(parents=True,exist_ok=True)
+            lock=LOG_DIR/'optional-installer.lock'
+            with lock.open('a+b') as handle:
+                try:
+                    fcntl.flock(handle.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+                except BlockingIOError as exc:
+                    raise RuntimeError('Другой процесс уже устанавливает модель') from exc
+                baseline=optional_size(name)
+                logfile=LOG_DIR/(name+'.log')
+                self._set_optional(name,'downloading','Скачивание и проверка файлов…',
+                                   stage='download',received_bytes=0)
+                started=time.monotonic()
+                with logfile.open('w',encoding='utf-8') as output:
+                    proc=subprocess.Popen([sys.executable,'-m',*command],
+                        stdout=output,stderr=subprocess.STDOUT)
+                    try:
+                        while proc.poll() is None:
+                            elapsed=time.monotonic()-started
+                            if elapsed>3600:
+                                proc.terminate()
+                                raise TimeoutError('Установка превысила один час')
+                            received=max(0,optional_size(name)-baseline)
+                            self._set_optional(name,'downloading',
+                                'Скачивание и подготовка модели…',
+                                stage='download',received_bytes=received,
+                                elapsed_seconds=round(elapsed))
+                            time.sleep(1)
+                        if proc.wait()!=0:
+                            raise RuntimeError('Ошибка установки: '+
+                                logfile.read_text('utf-8',errors='replace')[-800:])
+                    finally:
+                        if proc.poll() is None:
+                            proc.terminate()
+                self._set_optional(name,'verifying','Проверка контрольных сумм…',
+                                   stage='verify',
+                                   received_bytes=max(0,optional_size(name)-baseline))
+                if not optional_available(name):
+                    raise RuntimeError('Установка завершилась, но проверка модели не прошла')
+                self._set_optional(name,'installed','Модель установлена и проверена',
+                                   stage='done',received_bytes=max(0,optional_size(name)-baseline))
+                fcntl.flock(handle.fileno(),fcntl.LOCK_UN)
+        except Exception as exc:
+            self._set_optional(name,'error',f'{type(exc).__name__}: {exc}',stage='error')
+        finally:
+            with self.lock:
+                self.active=False
 
     def _download_weights(self):
         target=WEIGHTS_DIR/'megaloc'
