@@ -131,3 +131,12 @@ def test_detection_references_never_cross_constructions(system,monkeypatch):
     assert len(sam)==len(tlt)==1
     assert sam[0]["reference_id"]==id_a
     assert tlt[0]["reference_id"]==id_b
+
+def test_thick_band_still_excludes_central_advertising():
+    corners=[{"x":20,"y":10},{"x":180,"y":10},{"x":180,"y":110},{"x":20,"y":110}]
+    points=np.array([[40,14],[100,60],[100,85],[190,50]],dtype=np.float32)
+    descriptors=np.eye(4,64,dtype=np.float32)
+    selection=border_features({"xy":points,"descriptors":descriptors},
+                              corners,65,200,120)
+    assert len(selection["xy"])==2
+    assert not any(np.array_equal(p,[100,60]) for p in selection["xy"])
