@@ -750,7 +750,7 @@ test('completed integrated FO shows one final photo per construction and layout'
   await expect(page.getByRole('heading',{name:'Готовые фотографии рекламы'})).toHaveCount(0)
   await page.getByRole('tab',{name:'Готовые фото'}).click()
   await expect(page.getByRole('heading',{name:'Готовые фотографии рекламы'})).toBeVisible()
-  await expect(page.getByText('1 конструкций · 2 готовых фото')).toBeVisible()
+  await expect(page.getByText('Конструкций: 1 · Готовых фото: 2')).toBeVisible()
   await expect(page.getByText('Реклама ноября').first()).toBeVisible()
   await expect(page.getByText('Реклама декабря').first()).toBeVisible()
   await expect(page.getByText('OCR: текст не прочитан · выбор по DINOv2 и качеству')).toBeVisible()
