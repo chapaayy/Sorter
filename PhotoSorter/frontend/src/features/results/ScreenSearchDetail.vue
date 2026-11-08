@@ -191,9 +191,9 @@ onMounted(()=>{
                       issue.kind==='percentages'?'процент':'число'}}):
                     в макете {{issue.expected.join(', ')}} · на ФО {{issue.observed.join(', ')}}
                   </div>
-                  <div v-for="(issue,i) in recognition.ocr.possible_contradictions||[]" :key="'weak'+i" class="meta">
-                    {{recognition.ocr.contradictions?.some(item=>item.kind===issue.kind)?'Подтверждённое':'Возможное'}}
-                    расхождение ({{issue.kind==='dates'?'дата':issue.kind==='prices'?'цена':
+                  <div v-for="(issue,i) in (recognition.ocr.possible_contradictions||[]).filter(
+                    issue=>!(recognition.ocr?.contradictions||[]).some(item=>item.kind===issue.kind))" :key="'weak'+i" class="meta">
+                    Возможное расхождение ({{issue.kind==='dates'?'дата':issue.kind==='prices'?'цена':
                       issue.kind==='percentages'?'процент':'число'}}):
                     в макете {{issue.expected.join(', ')}} · на ФО {{issue.observed.join(', ')}}
                   </div>
