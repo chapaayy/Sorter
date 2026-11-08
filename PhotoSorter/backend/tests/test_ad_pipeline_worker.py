@@ -85,6 +85,7 @@ def test_full_cpu_screen_pipeline_writes_best_before_zip(monkeypatch,tmp_path):
         return {"index":index,"screen_id":screen_id,"status":"matched",
                 "candidate_id":layout_id,"review_required":False,
                 "ocr":{"status":"confirmed","reason":"Контрольный текст совпадает"},
+                "ocr_observation":ocr.describe([{"text":"СКИДКИ 50","score":.99}]),
                 "source_xfeat_signature":xfeat_assets.MODEL_ID,
                 "source_annotation_version":1,"dino_signature":dino.SIGNATURE}
     monkeypatch.setattr(ad_recognition,"_identify",fake_dino)
@@ -111,5 +112,6 @@ def test_full_cpu_screen_pipeline_writes_best_before_zip(monkeypatch,tmp_path):
     assert (root/"outputs"/run/"ad_pipeline"/"matches"/"R0001.json").is_file()
     assert snapshot["visual_group_count"]==1
     archive_items=ad_pipeline.best_archive_entries(run,snapshot)
-    assert len(archive_items)==2
+    assert len(archive_items)==3
     assert archive_items[0][1].startswith("Best_by_layout/")
+    assert archive_items[1][1]=="Ad_recognition/text_subgroups.json"
