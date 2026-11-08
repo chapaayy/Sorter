@@ -1,5 +1,5 @@
 <script setup lang="ts">
-export type ResultView='sam'|'group'|'screens'|'visual-groups'|'ads'|'ocr'|'comparisons'
+import type {ResultView} from '../../types/resultViews'
 const props=defineProps<{modelValue:ResultView;adEnabled:boolean}>()
 const emit=defineEmits<{(e:'update:modelValue',value:ResultView):void}>()
 const sorting: {id:ResultView;label:string}[]=[
