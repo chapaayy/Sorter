@@ -146,6 +146,13 @@ def _critical(text:str)->dict:
         day,month,year=hit.groups()
         if 1<=int(day)<=31 and 1<=int(month)<=12:
             dates.add(f"{int(day):02}.{int(month):02}"+(f".{year}" if year else ""))
+    months=("январ","феврал","март","апрел","мая","июн","июл",
+            "август","сентябр","октябр","ноябр","декабр")
+    for m in re.finditer(r"(?<!\\d)(\\d{1,2})\\s+([а-яё]+)(?:\\s+(20\\d{2}))?",value):
+        day,word,year=m.groups()
+        month=next((i+1 for i,stem in enumerate(months) if word.startswith(stem)),None)
+        if month and 1<=int(day)<=31:
+            dates.add(f"{int(day):02}.{month:02}"+(f".{year}" if year else ""))
     percent={m.group(1).replace(",",".") for m in re.finditer(
         r"(?<!\w)(\d+(?:[.,]\d+)?)\s*%",value)}
     prices={m.group(1).replace(",",".") for m in re.finditer(
@@ -237,7 +244,7 @@ def confirm(expected_text:str,observed:list[dict])->dict:
     if contradictions:
         return {**base,"status":"mismatch",
                 "reason":"Читаемые числа, дата или цена противоречат макету"}
-    if ratio>=.6 and (not left or left.issubset(right)):
+    if ratio>=.6 and data["confidence"]>=.70 and (not left or left.issubset(right)):
         return {**base,"status":"confirmed",
                 "reason":"Читаемый текст согласуется с макетом"}
     if (hits==0 and len(expected.split())>=2 and len(actual.split())>=1
