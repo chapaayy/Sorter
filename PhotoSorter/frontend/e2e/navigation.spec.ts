@@ -11,6 +11,7 @@ function respond(route:any,data:unknown){return route.fulfill({status:200,conten
 async function mock(page:Page){
   const defaults={auto_process_new_batches:false,grouping_threshold:.50,model:'megaloc'}
   const retention={enabled:true,value:2,unit:'months'}
+  const adPipeline={enabled:false,applies:'next_fifo_claim',default_safe:true}
   const workloads={mode:'manual',fo_threads:6,reference_threads:6,max_threads:7,
     total_cpus:8,model_cpus:6,system_cpus:2,max_model_cpus:7,
     background_policy:'cpu_shares_no_quota',model_limit_applies:'next_task',
@@ -37,6 +38,22 @@ async function mock(page:Page){
     if(p==='/api/work-queue')return respond(route,{tasks:[],total:0})
     if(p==='/api/references')return respond(route,{sam:[{sam:'SAM-0001',photos:1}],total:1})
     if(p==='/api/ad-layouts')return respond(route,{layouts:[],total:0})
+    if(p==='/api/ad-pipeline/settings'){
+      if(method==='PATCH')Object.assign(adPipeline,JSON.parse(route.request().postData()||'{}'))
+      return respond(route,adPipeline)
+    }
+    if(p.startsWith('/api/ad-pipeline/runs/')&&p.endsWith('/best'))
+      return respond(route,{status:'completed',run_id:rid,total_photos:2,
+        screens_found:2,recognized:2,review_required:1,errors:0,best:[
+          {index:0,assigned_sam:'SAM 0001',screen_id:pid,screen_name:'Главный LED',
+            candidate_id:pid,layout_name:'Реклама ноября',layout_version:1,
+            review_required:false,quality:{status:'measured',score:88.6},
+            ocr:{status:'confirmed',reason:'Текст совпадает'}},
+          {index:1,assigned_sam:'SAM 0001',screen_id:bid,screen_name:'Правый LED',
+            candidate_id:pid,layout_name:'Реклама декабря',layout_version:1,
+            review_required:true,quality:{status:'measured',score:74.9},
+            ocr:{status:'unreadable',reason:'Не удалось прочитать текст'}}
+        ]})
     if(p==='/api/ad-recognition/models')return respond(route,{dino:{available:true},ocr:{available:true}})
     if(p==='/api/references/cache/status')return respond(route,{total:1,cached:1,current_signature:null})
     if(p==='/api/references/SAM-0001/photos')return respond(route,{photos:[photo],next_cursor:null})
@@ -695,4 +712,29 @@ test('layout library opens a working independent upload UI',async({page})=>{
   await expect(page.getByRole('heading',{name:'Добавить рекламный макет'})).toBeVisible()
   await expect(page.getByRole('link',{name:'Перейти к результатам ФО'})).toBeVisible()
   await expect(page.getByText('Макетов пока нет')).toBeVisible()
+})
+
+test('integrated advertising processing is explicit opt-in and persists next-claim setting',async({page})=>{
+  await page.goto('/layouts')
+  const checkbox=page.getByRole('checkbox',{name:'Распознавать рекламу при обработке ФО'})
+  await expect(checkbox).not.toBeChecked()
+  await checkbox.check()
+  await expect(checkbox).toBeChecked()
+  await page.reload()
+  await expect(checkbox).toBeChecked()
+  await checkbox.uncheck()
+  await expect(checkbox).not.toBeChecked()
+})
+test('completed integrated FO displays best photos and review candidates separately',async({page})=>{
+  await page.route('**/api/results/'+rid,route=>respond(route,{
+    ...run,ad_pipeline:{enabled:true,status:'completed',best_count:2},
+    archive_state:'ready'
+  }))
+  await page.goto('/results/'+rid)
+  await expect(page.getByRole('heading',{name:'Лучшие кадры по рекламным макетам'})).toBeVisible()
+  await expect(page.getByText('Найдено экранов:')).toBeVisible()
+  await expect(page.getByText('Реклама ноября').first()).toBeVisible()
+  await expect(page.getByText('Реклама декабря').first()).toBeVisible()
+  await expect(page.getByText('Требуется проверка').first()).toBeVisible()
+  await expect(page.getByText('88.6 / 100')).toBeVisible()
 })
