@@ -45,4 +45,4 @@ def capture(db,pinned:list[dict])->dict:
     return {"enabled":True,"status":"queued",
             "annotations":annotations,"layouts":layouts,
             "xfeat_signature":MODEL_ID,"dino_signature":dino.SIGNATURE,
-            "ocr_version":ocr.VERSION}
+            "ocr_version":ocr.VERSION,"ocr_signature":ocr.signature()}
