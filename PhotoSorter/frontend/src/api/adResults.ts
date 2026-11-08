@@ -25,7 +25,9 @@ export interface VisualMember{
 export interface GroupMatch {
  group_id:string;status:string;reason:string;candidate_id:string|null
  best_score?:number|null;margin:number|null;matching_threshold:number
- candidate_count:number;method:string
+ candidate_count:number;method:string;decision_version?:string
+ ocr_leader_id?:string|null;visual_leader_id?:string|null
+ ocr_margin?:number|null;ocr_conflicting_members?:boolean
 }
 export interface VisualGroup {
  id:string;assigned_sam:string;screen_id:string;member_count:number
@@ -44,11 +46,15 @@ export interface VisualGroupsPage{
 export interface RankedLayout {
  id:string;name:string;score:number;version:number;checksum:string
  minimum_member_score?:number;maximum_member_score?:number;member_score?:number
+ ocr_matched_terms?:number;ocr_total_terms?:number;ocr_similarity?:number
+ ocr_support?:number;relative_dino?:number;combined_score?:number
 }
 export interface RankingsPage {
  status:string;group_id:string;reason?:string;candidate_id?:string|null
  best_score?:number|null;margin?:number|null;member_margin?:number|null
  matching_threshold?:number;method?:string;selected_member?:{index:number;screen_id:string}|null
+ decision_version?:string;ocr_leader_id?:string|null;visual_leader_id?:string|null
+ ocr_margin?:number|null;ocr_conflicting_members?:boolean
  total:number;limit?:number;offset?:number;rankings:RankedLayout[]
 }
 export interface TextSubgroup {
