@@ -1,4 +1,4 @@
-# FILE_INDEX.md — актуальные файлы PhotoSorter (ветка main)
+# FILE_INDEX.md — актуальные файлы PhotoSorter (main + эксперимент feature/ad-recognition)
 
 Индекс только существующих и используемых модулей. Не включает пустые `__init__.py`, `.gitkeep`, запакованные зависимости и собранный Vue `dist/`. Каждая правка структуры должна обновлять этот файл.
 
@@ -267,3 +267,21 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | `PhotoSorter/frontend/src/stores/deletion.ts` | Немедленный общий статус удаления партии |
 | `PhotoSorter/frontend/src/components/ui/CompactTaskCard.vue` | Общий компонент статусных карточек, красная заливка удаления |
 | `PhotoSorter/frontend/src/styles/task-cards.css` | Палитра обводок и красная заливка удаления |
+
+## Разметка экранов — реализованные файлы feature/ad-recognition
+
+| Файл | Ответственность |
+| --- | --- |
+| `PhotoSorter/backend/server/db/migrations/0023_screen_annotations.sql` | Две таблицы идентичностей экранов и привязок к исходным фото, FK и индексы |
+| `PhotoSorter/backend/server/services/screen_geometry.py` | Проверка допустимых координат, выпуклости и толщины полосы |
+| `PhotoSorter/backend/server/services/screen_annotations.py` | Валидация оригиналов/EXIF, версия, транзакционные CRUD и SQL |
+| `PhotoSorter/backend/server/api/routes/screen_annotations.py` | HTTP-контракты разметок под общим session/Origin middleware |
+| `PhotoSorter/frontend/src/features/references/ScreenAnnotationEditor.vue` | Редактор четырёх точек, толщины, экрана/ракурса |
+| `PhotoSorter/frontend/src/styles/screen-annotation.css` | Респонсивные стили редактора |
+| `PhotoSorter/backend/tests/test_screen_annotations.py` | Геометрия, EXIF, база, привязка к конструкции, версия и удаление |
+| `PhotoSorter/frontend/e2e/screen-annotations.spec.ts` | Сохранение и редактирование после перезагрузки страницы |
+
+Обновлены действующие `server/main.py`, `frontend/src/main.ts`,
+`frontend/src/api/references.ts`, `features/references/ReferenceLibrary.vue`,
+`components/gallery/ImageViewer.vue`, `.github/workflows/ci.yml`.
+Ни один новый ML runtime или вторая очередь не добавлены.
