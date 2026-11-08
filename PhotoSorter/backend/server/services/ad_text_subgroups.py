@@ -172,7 +172,8 @@ def form(job, run_id: str, groups: list[dict], analyses: list[dict],
     return document
 
 
-def saved(run_id: str, limit: int = 50, offset: int = 0, group_id: str | None = None) -> dict:
+def saved(run_id: str, limit: int = 50, offset: int = 0,
+          group_id: str | None = None, layout_id: str | None = None) -> dict:
     if not 1 <= limit <= 200 or offset < 0:
         raise HTTPException(422, "Некорректная страница результатов")
     path = ad_visual_groups._root(run_id) / "text_subgroups.json"
@@ -184,6 +185,16 @@ def saved(run_id: str, limit: int = 50, offset: int = 0, group_id: str | None = 
         if not re.fullmatch(r"R\d{4,8}", group_id):
             raise HTTPException(422, "Некорректная визуальная группа")
         entries = [group for group in entries if group["visual_group_id"] == group_id]
+    if layout_id is not None:
+        # The reserved identifier represents visually unassigned campaigns.
+        if layout_id != "unidentified":
+            from uuid import UUID
+            try:
+                layout_id = str(UUID(layout_id))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise HTTPException(422, "Некорректный макет") from exc
+        entries = [row for row in entries
+                   if str(row.get("candidate_id") or "unidentified") == layout_id]
     page = [{key: value for key, value in row.items() if key != "members"}
             for row in entries[offset:offset + limit]]
     return {key: value for key, value in document.items() if key != "subgroups"} | {
