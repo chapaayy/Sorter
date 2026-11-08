@@ -17,11 +17,21 @@ import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import ScreenSearchDetail from './ScreenSearchDetail.vue'
 import AdBestPanel from './AdBestPanel.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
+import {isResultView} from '../../types/resultViews'
+import type {ResultView} from '../../types/resultViews'
+import ResultViewsNav from './ResultViewsNav.vue'
+import AdScreensView from './AdScreensView.vue'
+import AdVisualGroupsView from './AdVisualGroupsView.vue'
+import AdLayoutsView from './AdLayoutsView.vue'
+import AdOcrView from './AdOcrView.vue'
+import AdComparisonsView from './AdComparisonsView.vue'
 import {useNoticeStore} from '../../stores/notice'
 import {useDeletionStore} from '../../stores/deletion'
 const route=useRoute(),router=useRouter(),id=String(route.params.runId),notice=useNoticeStore(),deletion=useDeletionStore()
 const run=ref<Run|null>(null),batch=ref<Batch|null>(null),retention=ref<Retention|null>(null)
-const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),referenceNames=ref<Record<string,string>>({}),mode=ref<'sam'|'group'>('sam')
+const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),referenceNames=ref<Record<string,string>>({})
+const mode=ref<ResultView>(isResultView(route.query.view)?route.query.view:'sam')
+const mainMode=computed(()=>mode.value==='sam'||mode.value==='group')
 const selected=ref(''),lastSam=ref(''),lastGroup=ref(''),error=ref(''),busy=ref(false)
 const viewer=ref<number|null>(null),
   detectionPhoto=ref<{index:number;image_url:string}|null>(null),deleteWhole=ref(false)
@@ -40,13 +50,20 @@ function showBest(index:number){
   detectionPhoto.value={index,image_url:'/api/images/'+encodeURIComponent(id)+'/megaloc/'+index+'?kind=query'}
   viewer.value=null
 }
-function changeMode(value:'sam'|'group'){
+function changeMode(value:ResultView,updateUrl=true){
   if(mode.value===value)return
-  if(mode.value==='sam')lastSam.value=selected.value;else lastGroup.value=selected.value
+  if(mode.value==='sam')lastSam.value=selected.value
+  if(mode.value==='group')lastGroup.value=selected.value
   mode.value=value
-  selected.value=(value==='sam'?lastSam.value:lastGroup.value)||list.value[0]?.id||''
+  if(value==='sam'||value==='group'){
+    selected.value=(value==='sam'?lastSam.value:lastGroup.value)||list.value[0]?.id||''
+  }
+  if(updateUrl)void router.replace({path:route.path,query:{...route.query,view:value,group:undefined}})
 }
-watch(selected,(value,old)=>{if(value!==old&&value)void reset()})
+watch(()=>route.query.view,value=>{
+  if(isResultView(value)&&value!==mode.value)changeMode(value,false)
+})
+watch(selected,(value,old)=>{if(value!==old&&value&&mainMode.value)void reset()})
 onMounted(async()=>{
   try{
     run.value=await resultApi.one(id)
@@ -123,13 +140,11 @@ async function deleteBatch(){
   </div>
   <div v-if="retention?.warning" class="alert warning">До автоматического удаления осталось менее 7 дней.</div>
 </section>
-<AdBestPanel v-if="pipelineEnabled && run && isComplete(run.status)" :run-id="id" @open="showBest"/>
+<ResultViewsNav :model-value="mode" :ad-enabled="pipelineEnabled" @update:model-value="changeMode"/>
+<AdBestPanel v-if="pipelineEnabled&&mainMode&&run&&isComplete(run.status)" :run-id="id" @open="showBest"/>
+<template v-if="mainMode">
 <div class="row wrap between" style="margin-bottom:16px">
-  <div class="segment" role="tablist" aria-label="Способ группировки">
-    <button role="tab" :aria-selected="mode==='sam'" @click="changeMode('sam')">По конструкциям</button>
-    <button role="tab" :aria-selected="mode==='group'" @click="changeMode('group')">По группам ФО</button>
-  </div>
-  <span class="meta">Оценки показаны только для отдельных ФО, из manifest MegaLoc.</span>
+  <span class="meta">Сохранённые результаты MegaLoc · оценки отдельных ФО из исходного manifest.</span>
 </div>
 <div v-if="list.length" class="split">
   <GroupPicker v-model="selected" :items="list" :placeholder="mode==='sam'?'Поиск номера или адреса…':'Поиск группы…'"/>
@@ -145,6 +160,12 @@ async function deleteBatch(){
   </section>
 </div>
 <EmptyState v-else-if="run" title="Результаты ещё не опубликованы" detail="Проверьте статус обработки и журнал запуска."/>
+</template>
+<AdScreensView v-else-if="mode==='screens'" :run-id="id" @inspect="showBest"/>
+<AdVisualGroupsView v-else-if="mode==='visual-groups'" :run-id="id" @inspect="showBest"/>
+<AdLayoutsView v-else-if="mode==='ads'" :run-id="id" @inspect="showBest"/>
+<AdOcrView v-else-if="mode==='ocr'" :run-id="id" @inspect="showBest"/>
+<AdComparisonsView v-else-if="mode==='comparisons'" :run-id="id" @inspect="showBest"/>
 <ImageViewer v-if="viewer!==null" :items="previews" :initial="viewer" :allow-detection="true"
   @detect="openDetection" @close="viewer=null"/>
 <ScreenSearchDetail v-if="detectionPhoto" :run-id="id" :index="detectionPhoto.index" :image-url="detectionPhoto.image_url"
