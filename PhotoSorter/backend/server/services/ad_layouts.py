@@ -79,12 +79,22 @@ def create(data:bytes,filename:str,name:str,expected_text:str=""):
     finally:
         Path(temp).unlink(missing_ok=True)
 
+def _keep_one_active(db):
+    if db.execute("SELECT ad_pipeline_enabled FROM processing_settings WHERE id=1").fetchone()["ad_pipeline_enabled"]:
+        active=db.execute("SELECT count(*) AS n FROM ad_layouts WHERE active=true").fetchone()["n"]
+        if active<=1:
+            raise HTTPException(409,"Сначала выключите распознавание рекламы: активный макет последний")
+
 def update(uid,version:int,name:str,expected_text:str,active:bool):
     name=_name(name,120,"Укажите название макета")
     expected_text=_text(expected_text)
     with connect() as db:
+        if not active:
+            db.execute("SELECT pg_advisory_xact_lock(723409133)")
         row=records.by_id(db,uid,lock=True)
         if not row:raise HTTPException(404,"Макет не найден")
+        if row["active"] and not active:
+            _keep_one_active(db)
         if row["version"]!=version:
             raise HTTPException(409,"Макет изменён в другой вкладке")
         result=records.edit(db,uid,version,name,expected_text,active)
@@ -120,6 +130,8 @@ def delete(uid):
             raise HTTPException(409,"Дождитесь окончания обработки рекламы перед удалением макета")
         row=records.by_id(db,uid,lock=True)
         if not row:raise HTTPException(404,"Макет не найден")
+        if row["active"]:
+            _keep_one_active(db)
         path=_file(row)
         records.remove(db,uid)
     path.unlink(missing_ok=True)
