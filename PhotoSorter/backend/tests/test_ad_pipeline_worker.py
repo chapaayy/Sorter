@@ -53,7 +53,8 @@ def test_full_cpu_screen_pipeline_writes_best_before_zip(monkeypatch,tmp_path):
           "expected_text":"СКИДКИ 50","byte_size":123,"target_path":str(root/"ad_layouts"/"layout.png")}
     snapshot={"enabled":True,"status":"queued","annotations":[],
               "layouts":[item],"xfeat_signature":xfeat_assets.MODEL_ID,
-              "dino_signature":dino.SIGNATURE,"ocr_version":ocr.VERSION}
+              "dino_signature":dino.SIGNATURE,"ocr_version":ocr.VERSION,
+              "ocr_signature":"synthetic-paddle-sha"}
     monkeypatch.setattr(ad_pipeline,"DATA_DIR",root)
     monkeypatch.setattr(screen_search,"DATA_DIR",root)
     monkeypatch.setattr(ad_recognition,"DATA_DIR",root)
