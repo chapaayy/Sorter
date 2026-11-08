@@ -6,6 +6,7 @@ const sorting: {id:ResultView;label:string}[]=[
   {id:'sam',label:'По конструкциям'}, {id:'group',label:'По группам ФО'}
 ]
 const advertising: {id:ResultView;label:string}[]=[
+  {id:'final',label:'Готовые фото'},
   {id:'screens',label:'По экранам'},
   {id:'visual-groups',label:'По рекламе (группы)'},
   {id:'ads',label:'По рекламе'},
