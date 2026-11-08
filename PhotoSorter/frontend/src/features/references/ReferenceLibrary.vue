@@ -14,7 +14,7 @@ import GroupPicker from '../../components/split/GroupPicker.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
-import type {CreatedConstruction} from '../../api/references'
+import type {CreatedConstruction,ScreenDefinition} from '../../api/references'
 import CreateConstructionDialog from './CreateConstructionDialog.vue'
 import ScreenAnnotationEditor from './ScreenAnnotationEditor.vue'
 const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),addressDraft=ref(''),
@@ -22,6 +22,12 @@ const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),addressDraft=
   deletePhoto=ref<string|null>(null),deleteSam=ref(false),createOpen=ref(false),annotationPhoto=ref<Photo|null>(null)
 
 const notice=useNoticeStore(),uploader=useUploadCenterStore()
+const savedScreens=ref<ScreenDefinition[]>([])
+async function loadScreens(){
+  if(!selected.value){savedScreens.value=[];return}
+  try{savedScreens.value=(await referenceApi.screens(selected.value)).screens}
+  catch(e){error.value=errorText(e)}
+}
 const groups=computed(()=>list.value.map(s=>({id:s.sam,label:s.display_name||s.sam,count:s.photos})))
 const selectedEntry=computed(()=>list.value.find(item=>item.sam===selected.value))
 const {items,cursor,loading,error:galleryError,load,reset}=useCursor<Photo>(cursor=>referenceApi.gallery(selected.value,cursor))
@@ -34,7 +40,7 @@ async function refresh(){
     error.value=''
   }catch(e){error.value=errorText(e)}
 }
-watch(selected,()=>{viewer.value=null;if(selected.value)void reset();else items.value=[]})
+watch(selected,()=>{viewer.value=null;annotationPhoto.value=null;if(selected.value){void reset();void loadScreens()}else{items.value=[];savedScreens.value=[]}})
 onMounted(()=>{void refresh()})
 usePolling(async()=>{
   await refresh()
@@ -49,7 +55,8 @@ function annotate(index:number){
 }
 function annotationSaved(){
   annotationPhoto.value=null
-  notice.add('Разметка экрана сохранена','ok')
+  notice.add('Изменения разметки сохранены','ok')
+  void loadScreens()
 }
 async function dropOne(){
   if(!deletePhoto.value)return
@@ -107,6 +114,16 @@ async function removeSam(){
       </div>
     </div>
     <div class="reference-library-gallery-scroll">
+    <div v-if="savedScreens.length" class="screen-summary">
+      <div class="row between wrap"><strong>Размеченные экраны</strong>
+        <span class="meta">{{savedScreens.length}} экранов на конструкции</span></div>
+      <div class="row wrap">
+        <span v-for="screen in savedScreens" :key="screen.id" class="status">
+          {{screen.name}} · {{screen.annotations.length}} ракурсов
+        </span>
+      </div>
+      <p class="meta">Для добавления ракурса откройте Образец и нажмите «Выделить экран».</p>
+    </div>
     <div v-if="galleryError" class="alert error">{{galleryError}}</div>
     <VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_status:p.thumbnail_status,thumbnail_url:p.thumbnail_url,original_url:p.original_url}))" :can-delete="true" @open="i=>viewer=i" @remove="id=>deletePhoto=id"/>
     <EmptyState v-else-if="!loading" title="В этой SAM пока нет фотографий" detail="Добавьте эталонные фото для сопоставления."/>
