@@ -65,7 +65,9 @@ def test_best_is_per_sam_screen_and_layout_and_uses_combined_scores():
         ("SAM 0001","screen1","layout1"),("SAM 0001","screen1","layout2"),
         ("SAM 0001","screen2","layout1"),("TLT 0001","screen1","layout1")}
     assert next(r for r in picked if r["assigned_sam"]=="SAM 0001"
-                and r["screen_id"]=="screen1" and r["candidate_id"]=="layout1")["index"]==1
+                and r["screen_id"]=="screen1" and r["candidate_id"]=="layout1")["index"]==0
+    assert rows[0]["ocr_selection_score"]==0
+    assert rows[0]["selection_score"]==40
     tie=best.select([_entry(6,score=60),_entry(4,score=60)])
     assert tie[0]["index"]==4
 
