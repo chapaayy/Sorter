@@ -44,6 +44,8 @@ function compare(group?:string){
   <section v-for="(photo,photoIndex) in photos" :key="photo.index" class="panel stack result-ocr-card">
     <div class="row between wrap">
       <strong>ФО №{{photo.index+1}} · {{photo.assigned_sam||'Конструкция не определена'}}</strong>
+      <RouterLink v-if="photo.assigned_sam" class="meta"
+        :to="{path:'/results/'+runId,query:{view:'sam',sam:photo.assigned_sam}}">К конструкции</RouterLink>
       <span class="status" :class="photo.status==='found'?'ok':''">XFeat: {{photo.status}}</span>
       <div class="row wrap">
         <UiButton small @click="viewer=photoIndex">Оригинал ФО</UiButton>
