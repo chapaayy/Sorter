@@ -12,6 +12,12 @@ async function mock(page:Page){
   const defaults={auto_process_new_batches:false,grouping_threshold:.50,model:'megaloc'}
   const retention={enabled:true,value:2,unit:'months'}
   const adPipeline={enabled:false,applies:'next_fifo_claim',default_safe:true}
+  const mockModels={models:[
+    {id:'megaloc',title:'MegaLoc',available:true,downloadable:true,description:'Группировка ФО'},
+    {id:'xfeat',title:'XFeat',available:false,downloadable:true,description:'Поиск экрана'},
+    {id:'dinov2',title:'DINOv2',available:false,downloadable:true,description:'Поиск макета'},
+    {id:'paddleocr',title:'PaddleOCR PP-OCRv5',available:false,downloadable:true,description:'Проверка текста'}
+  ],device:'cpu',downloads:{} as Record<string,{status:string;message:string}>}
   const workloads={mode:'manual',fo_threads:6,reference_threads:6,max_threads:7,
     total_cpus:8,model_cpus:6,system_cpus:2,max_model_cpus:7,
     background_policy:'cpu_shares_no_quota',model_limit_applies:'next_task',
@@ -82,7 +88,12 @@ async function mock(page:Page){
       if(method==='PATCH')Object.assign(defaults,JSON.parse(route.request().postData()||'{}'))
       return respond(route,defaults)
     }
-    if(p==='/api/models')return respond(route,{models:[{id:'megaloc',title:'MegaLoc',available:true,downloadable:true}],device:'cpu'})
+    if(p==='/api/models')return respond(route,mockModels)
+    if(p.startsWith('/api/models/')&&p.endsWith('/download')&&method==='POST'){
+      const id=p.split('/')[3]
+      mockModels.downloads[id]={status:'downloading',message:'Скачивание и подготовка модели…'}
+      return respond(route,mockModels.downloads[id])
+    }
     if(p==='/api/results/'+rid)return respond(route,run)
     if(p==='/api/results/'+rid+'/sam')return respond(route,{'SAM-0001':1,'_Неопределено':1})
     if(p==='/api/results/'+rid+'/groups')return respond(route,{'G0001':2})
@@ -124,13 +135,13 @@ test('full ZIP is ready for direct download without extra confirmation',async({p
 })
 test('auto-processing preference defaults off and saves on the server',async({page})=>{
   await page.goto('/settings')
-  await page.getByRole('button',{name:/MegaLoc/}).click()
+  await page.getByRole('button',{name:/Модели/}).click()
   const enabled=page.getByRole('checkbox',{name:'Автоматически обрабатывать загруженные ФО'})
   await expect(enabled).not.toBeChecked()
   await enabled.check()
   await expect(enabled).toBeChecked()
   await page.reload()
-  await page.getByRole('button',{name:/MegaLoc/}).click()
+  await page.getByRole('button',{name:/Модели/}).click()
   await expect(enabled).toBeChecked()
 })
 test('storage settings persist minute-level automatic deletion',async({page})=>{
@@ -164,9 +175,9 @@ test('mobile drawer allows navigation',async({page,isMobile})=>{
 
 test('processing overview moved to Settings, run details live under Queue',async({page})=>{
   await page.goto('/settings')
-  await page.getByRole('button',{name:/MegaLoc/}).click()
-  await expect(page.getByRole('heading',{name:'MegaLoc',exact:true})).toBeVisible()
-  await expect(page.getByText('Модель установлена')).toBeVisible()
+  await page.getByRole('button',{name:/Модели/}).click()
+  await expect(page.getByRole('heading',{name:'Нейросетевые модели'})).toBeVisible()
+  await expect(page.getByText('Готова к работе').first()).toBeVisible()
   await page.getByRole('button',{name:/Производительность/}).click()
   await expect(page.getByRole('heading',{name:'Производительность',exact:true})).toBeVisible()
   await expect(page.getByRole('slider',{name:'CPU модели'})).toBeVisible()
@@ -738,4 +749,17 @@ test('completed integrated FO displays best photos and review candidates separat
   await expect(page.getByText('Реклама декабря').first()).toBeVisible()
   await expect(page.getByText('Требуется проверка').first()).toBeVisible()
   await expect(page.getByText('88.6 / 100')).toBeVisible()
+})
+
+test('Settings installs XFeat from the browser without SSH and shows download status',async({page})=>{
+  await page.goto('/settings')
+  await page.getByRole('button',{name:/Модели/}).click()
+  const catalog=page.getByRole('region',{name:'Установка нейросетей'})
+  await expect(catalog.getByText('XFeat')).toBeVisible()
+  await expect(catalog.getByText('DINOv2')).toBeVisible()
+  await expect(catalog.getByText('PaddleOCR PP-OCRv5')).toBeVisible()
+  const item=catalog.locator('.model-installer-row').filter({hasText:'XFeat'})
+  await item.getByRole('button',{name:'Установить'}).click()
+  await expect(item.getByText('Устанавливается')).toBeVisible()
+  await expect(item.getByText('Скачивание и подготовка модели…')).toBeVisible()
 })
