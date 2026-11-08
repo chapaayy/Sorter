@@ -338,3 +338,29 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 `frontend/src/components/ui/UiIcon.vue`,
 `frontend/src/features/results/ScreenSearchDetail.vue`,
 `frontend/e2e/navigation.spec.ts`, Dockerfile, runtime smoke и requirements.
+
+
+## Этап 4 — новые используемые модули
+
+| Путь | Единственная ответственность |
+| --- | --- |
+| `backend/server/db/migrations/0025_ad_pipeline_settings.sql` | Безопасный default-off флаг рекламы |
+| `backend/server/services/ad_pipeline_settings.py` | Серверная проверка включения/выключения |
+| `backend/server/services/ad_pipeline_snapshot.py` | Захват immutable экранов/макетов в FIFO claim |
+| `backend/server/services/ad_pipeline.py` | Последовательный CPU-конвейер до ZIP, summary, архивные selections |
+| `backend/server/api/routes/ad_pipeline.py` | Флаг нового FIFO и результаты best |
+| `backend/app/ad_recognition/quality.py` | Относительная оценка ROI экрана |
+| `backend/app/ad_recognition/best.py` | Детерминированные победители SAM+экран+макет |
+| `backend/tests/test_ad_pipeline_stage4.py` | Замороженный claim, качество, ZIP и изоляция |
+| `frontend/src/api/adPipeline.ts` | Контракт API настроек и best |
+| `frontend/src/features/results/AdBestPanel.vue` | Карточки лучших/сомнительных ФО |
+| `frontend/src/styles/ad-best.css` | Адаптивный интерфейс лучших ФО |
+
+Изменены существующие `work_queue.py`, `jobs.py`,
+`app/jobs/worker.py`, `app/jobs/overall_progress.py`,
+`archive_pipeline.py`, `api/routes/downloads.py`,
+`api/routes/screen_search.py`, `api/routes/ad_recognition.py`,
+`screen_search.py`, `ad_recognition.py`,
+`services/ad_layouts.py`, `server/main.py`,
+`frontend/.../AdLayoutLibrary.vue`, `ResultDetail.vue`,
+`src/main.ts`, `e2e/navigation.spec.ts`.

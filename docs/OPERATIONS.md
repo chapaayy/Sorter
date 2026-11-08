@@ -78,3 +78,21 @@ CI запускает PostgreSQL 17, compile Python, Compose config и unit/inte
 Безопасное явное удаление неиспользуемых кэшей старше недели:
 `docker compose exec worker python -m app.screen_detection.cli --prune-cache`.
 Эти команды не изменяют PostgreSQL очередь, MegaLoc, ZIP или volumes.
+
+
+## Opt-in ad recognition: one CPU task until ZIP
+
+In «Макеты рекламы» enable after explicit verified model installation.
+The new flag is read only at a FO's FIFO claim; MegaLoc and archived
+historical tasks remain unchanged. The worker logs stages XFeat,
+DINOv2/OCR, quality/best, and full ZIP. ZIP is not available
+before the full set finishes. Any systemic model failure stops the run
+without publishing a deceptive completed archive; error details remain
+in run logs/diagnostics.
+
+For a completed run, open «Результаты» → «Лучшие кадры по рекламным
+макетам». The downloaded full ZIP includes originals plus
+`Best_by_layout` and separate `Review_required`. A filtered
+SAM ZIP includes only its corresponding photos. On a damaged ZIP,
+request existing ZIP-only recovery — it must NOT start XFeat/DINO/OCR.
+Deleting the batch removes all its outputs/ZIP; global layouts remain.

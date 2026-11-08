@@ -263,3 +263,38 @@ DINOv2/OCR/качество/автоматическое включение в F
 MegaLoc, XFeat, DINOv2, OCR — отдельные модули. Одного нового
 worker/FIFO/ZIP для этого этапа не создаётся. Вся интеграция единой очереди
 и качество/лучшее фото отложены до этапа 4.
+
+
+## Этап 4: полная обработка в одной задаче FIFO
+
+```text
+processing_settings.ad_pipeline_enabled (default FALSE)
+       |
+work_queue.claim_next
+       | current reference_version and immutable member paths
+       | ad_pipeline_snapshot.capture (annotations, layouts, SHA, versions)
+       v
+ServerJob → app/jobs/worker.py → MegaLoc matching + published copies
+       |
+       v
+server/services/ad_pipeline.py → for each FO:
+   screen_search._analyse_photo() [pinned SAM only]
+   screen_search._save()         [quad + original crop]
+   ad_recognition._identify()    [DINOv2 + PP-OCRv5 check]
+   ad_recognition._write()       [diagnostics]
+   app/ad_recognition/quality.py [blur/focus/glare/exposure/coverage]
+       |
+   app/ad_recognition/best.py → best (SAM,screen,layout)
+       |
+       v
+outputs/RUN_ID/ad_pipeline/summary.json  (immutable run result)
+       |
+archive_pipeline.selections → original MegaLoc copies + best/review + summary
+       |
+archives.prepare (atomic ZIP + CRC) → jobs.status=completed
+       |
+GET /api/ad-pipeline/runs/RUN_ID/best → frontend/AdBestPanel.vue
+
+ZIP-only recovery uses SAME stored summary and copies; does not run inference.
+Cleanup removes whole per-run outputs, not the global ad_layouts library.
+```

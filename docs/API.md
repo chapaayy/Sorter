@@ -216,3 +216,27 @@ POST: `{reference_id,screen_id:null,screen_name:"Экран 1",corners:[{x,y},..
 `review_required`, source/model signatures, elapsed_seconds.
 OCR не может переназначить `candidate_id`. Запуск вычисления **не** через HTTP
 (чтобы не блокировать API), а через явную CLI команду Worker.
+
+
+## Stage 4 — integration settings / best photos
+
+`GET /api/ad-pipeline/settings` -> `{enabled,applies:"next_fifo_claim"}`.
+`PATCH /api/ad-pipeline/settings` JSON `{enabled:bool}`:
+enabling checks verified XFeat, DINOv2, PP-OCRv5 and active layouts,
+returns HTTP 409 when unavailable. Existing/queued jobs never change;
+the worker freezes settings on its FIFO claim.
+
+`GET /api/ad-pipeline/runs/{run_id}/best` returns `status`,
+`total_photos`, `screens_found`, `recognized`, `errors`,
+`review_required`, `reference_version`, immutable model signatures,
+and `best[]` with `index`, `assigned_sam`, `screen_id`,
+`candidate_id`, `layout_name/version`, `quality`, `ocr` and
+`review_required`. The public API redacts internal image copy paths.
+Old, disabled and incomplete runs return `not_processed`.
+The source image remains accessible through existing
+`/api/images/{run_id}/megaloc/{index}?kind=query`.
+
+`GET /api/download/{run_id}` full ZIP: original photos + curated
+best/review + saved summary when integrated. A `?sam=...` ZIP
+includes the requested SAM and its curated best/review entries only.
+All downloads continue to require the existing session and file lease.

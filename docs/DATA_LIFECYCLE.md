@@ -73,3 +73,21 @@
 Команда явная и сохраняет кэш всех текущих макетов (включая неактивные),
 а также новые файлы моложе недели. Оригиналы макетов, модели, MegaLoc,
 XFeat и ZIP не затрагиваются.
+
+
+## Stage 4: single archive/retention lifecycle
+
+When opt-in is enabled, only outputs inside the ordinary
+`PhotoSorter/data/outputs/RUN_ID` are added:
+`screen_search/` (crop + geometry), `ad_recognition/` (ad OCR and scores),
+`ad_pipeline/summary.json` (best frames + pinned version digest) and
+`.archives/*.zip` (original photos and curated selections).
+Deletion of the FO batch removes its run output tree and ZIP via
+existing `cleanup._files`, while the layout library
+`PhotoSorter/data/ad_layouts`, model weights in `Models/models` and
+feature caches stay separate. Files captured in a running integrated
+snapshot cannot be unlinked by deleting a layout.
+
+Archive-only retries use `archive_pipeline.selections` and saved
+`summary.json`; they do not rerun expensive models. No new TTL,
+queue, duplicate ZIP cache or shadow data root.

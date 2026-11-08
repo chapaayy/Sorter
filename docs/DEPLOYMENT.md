@@ -119,3 +119,37 @@ DINOv2 загружается только из проверенного safeten
 timm встречается ограничение CC-BY-NC-4.0; официальная карточка
 DINOv2 указывает Apache 2.0. Пока использовать модель только
 в тестовой ветке и для проверки технологии.
+
+
+## Stage 4 opt-in acceptance on a NEW test VPS
+
+Checkout exactly `feature/ad-recognition`. Keep existing two root
+folders `Models/` and `PhotoSorter/`; do not create /v3.
+`bash ./install.sh --check`, then `bash ./install.sh --deploy`
+on a clean test VPS, or the documented existing update workflow.
+Do **not** use `docker compose down -v` on a server with data.
+
+Provision models explicitly (download only in API with external network):
+
+```bash
+docker compose exec api python -m app.screen_detection.cli --install
+docker compose exec api python -m app.ad_recognition.cli --install-dino
+docker compose exec api python -m app.ad_recognition.cli --install-ocr
+docker compose exec worker python -m app.screen_detection.cli --verify
+docker compose exec worker python -m app.ad_recognition.cli --verify
+```
+
+Upload layouts and mark physical LED screens in «Образцы».
+Then open «Макеты рекламы» and enable integrated processing.
+Only the NEXT FIFO claims use XFeat/DINO/OCR/quality.
+Complete a small real FO: observe stage statuses,
+`Best_by_layout`, `Review_required`, `Ad_recognition/summary.json`
+inside the fully prepared ZIP. Verify manual download and deleted batch
+remove all outputs, while global layouts remain.
+Test an archive-only retry without model inference.
+
+The feature is initially **off** on every installation to preserve
+previous MegaLoc-only behavior. Field accuracy of ad identification and
+photo-quality ranking needs human acceptance on genuine LED images.
+Also verify the exact pretrained DINOv2 weight licence before any
+commercial use.

@@ -111,3 +111,37 @@ PP-OCRv5 распознаёт восточнославянский текст в
 использует существующую `batch_operations` lease для защиты от удаления.
 Автоматическая очередь, версионирование снимков на момент claim, качество
 и ZIP-интеграция — задачи этапа 4.
+
+
+## Stage 4 — opt-in single FIFO (supersedes earlier «stage 4 pending» notes)
+
+`processing_settings.ad_pipeline_enabled` false by default. Current
+Mono-Worker/FIFO claim is extended to capture immutable annotations and
+layout metadata **after** MegaLoc pins its reference version, in the
+same SQL transaction. The reference source path is taken from that
+version's immutable member, not the mutable reference gallery.
+Layout deletions are blocked while an integrated run is active;
+metadata edits do not retroactively change its snapshot.
+
+`ServerJob.finalize_results` executes `ad_pipeline.process` and only
+then `archive_pipeline.build_for_job`. Filesystem stages remain
+subdirectories of `outputs/RUN_ID`; each has a version signature.
+Stages run on the existing CPU thread budget; no separate scheduler,
+worker or background task is introduced. A systemic model error prevents
+ZIP and completion. Per-photo failures yield explicit diagnostics, not
+fabricated recognised ads.
+
+Full ZIP is immutable for the run: all MegaLoc originals remain;
+`Best_by_layout` and `Review_required` contain best originals
+by screen/layout; `Ad_recognition/summary.json` includes version
+and quality metadata. `archives.prepare` still performs atomic
+publish and CRC verification. `archive_pipeline.selections` reads
+the saved Stage 4 result on first build AND ZIP-only recovery. There
+is never inference on download or archive retry.
+
+`quality.py` uses only masked ROI: Laplacian sharpness, clipped black/
+white values, specular-glare fraction, and pixel coverage of the screen.
+It yields a 0–100 *relative heuristic*, not a confidence score.
+`best.py` groups by (`sam`,`screen_id`,`candidate_id`), prioritises
+OCR-confirmed matched ads, then relative quality, then the earlier photo.
+DINOv2 uncertain/no_match never generates a best candidate.

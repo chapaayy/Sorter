@@ -101,3 +101,27 @@ OCR переназначать макет.
 несколько экранов в кадре; ложное совпадение должно уйти в `uncertain`
 или `no_match`, если данных недостаточно. Пороги — тестовые и не
 гарантируют установленной достоверности.
+
+
+## Stage 4 regression and acceptance
+
+`backend/tests/test_ad_pipeline_stage4.py` exercises:
+ROI focus/glare/exposure, rejection of tiny distant screens,
+selection of one best per independent SAM/screen/layout,
+OCR-confirmed-vs-review and tie-breaking; default-off legacy
+queue; disposable PostgreSQL FIFO claim that freezes versions despite
+live edits; refusal to delete layout during active run; ZIP with
+MegaLoc originals+best+review+summary; archive-only retry using the
+same saved inputs; public results do not disclose internal paths.
+
+Existing MegaLoc, references, archive retry, retention/cleanup,
+PostgreSQL restore, Vue build, Vitest and Chromium/WebKit e2e must still
+pass. Docker CI checks official pretrained XFeat, DINOv2 ViT-S/14,
+PP-OCRv5 Cyrillic on CPU.
+
+Field acceptance not yet done: 20+ real FOs per several constructions,
+multiple ads within one physical LED, one LED among many screens,
+night, glare, blurred/unblurred, reflections, far shots. Validate
+screen geometry, DINO ambiguity/rejection, OCR numbers, relative
+quality ranking, false positives, time/RAM on the actual 8-CPU VPS.
+Synthetic smoke is NOT evidence of field accuracy.
