@@ -5,6 +5,7 @@ export interface MatchPair{reference:[number,number];photo:[number,number];side:
 export interface DetectedScreen{
  screen_id:string;screen_name:string;reference_id:string;annotation_id:string
  annotation_version:number;status:'found'|'not_found';reason:string
+ reference_width?:number;reference_height?:number
  matches?:number;inliers?:number;reprojection_error_px?:number|null
  supported_sides?:number[];corners?:ScreenPoint[];debug_matches?:MatchPair[]
  crop_box?:{x:number;y:number;width:number;height:number};area_px?:number

@@ -101,7 +101,9 @@ def _analyse_photo(model,row,path:Path,reference_groups:dict,reference_features:
         sid=str(a["screen_id"])
         candidate={"screen_id":sid,"screen_name":a["screen_name"],
                    "annotation_id":str(a["id"]),"reference_id":str(a["reference_id"]),
-                   "annotation_version":a["version"],"status":"not_found",
+                   "annotation_version":a["version"],
+                   "reference_width":a["image_width"],"reference_height":a["image_height"],
+                   "status":"not_found",
                    "reason":"Не проверено"}
         try:
             key=(str(a["id"]),int(a["version"]))

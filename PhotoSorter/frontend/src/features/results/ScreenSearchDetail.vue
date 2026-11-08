@@ -11,6 +11,7 @@ const modelReady=ref<boolean|null>(null)
 const screen=computed<DetectedScreen|undefined>(()=>result.value?.screens.find(s=>s.screen_id===selected.value))
 const corners=computed(()=>screen.value?.corners?.map(p=>p.x+','+p.y).join(' ')||'')
 const matches=computed(()=>screen.value?.debug_matches||[])
+const sideColor=(side:number)=>['#38bdf8','#34d399','#fbbf24','#c084fc'][side]||'#38bdf8'
 async function refresh(){
   try{
     result.value=await screenSearchApi.result(props.runId,props.index)
@@ -62,7 +63,7 @@ onMounted(()=>{
               fill="#fff" stroke="#047857" :stroke-width="3"/>
             <circle v-if="showPoints" v-for="(pair,i) in matches" :key="'m'+i"
               :cx="pair.photo[0]" :cy="pair.photo[1]"
-              :r="Math.max(2,result.image_width*.002)" fill="#38bdf8"/>
+              :r="Math.max(2,result.image_width*.002)"  :fill="sideColor(pair.side)"/>
           </svg>
         </div>
         <div v-if="screen" class="stack-sm">
@@ -77,6 +78,24 @@ onMounted(()=>{
             <span>Стороны: {{screen.supported_sides?.length??0}}/4</span>
             <span>Ошибка: {{screen.reprojection_error_px??'—'}} px</span>
             <label v-if="matches.length" class="row"><input v-model="showPoints" type="checkbox"/> Показать точки</label>
+          </div>
+          <div v-if="showPoints&&matches.length&&screen.reference_width&&screen.reference_height"
+            class="screen-search-reference">
+            <div class="row between wrap">
+              <strong>Совпавшие признаки на Образце</strong>
+              <span class="meta">Те же цвета сторон, что и на ФО · {{matches.length}} подтверждённых точек</span>
+            </div>
+            <div class="screen-search-ref-picture">
+              <img :src="'/api/photos/'+encodeURIComponent(screen.reference_id)+'/original'"
+                alt="Образец с исходными точками XFeat"/>
+              <svg :viewBox="'0 0 '+screen.reference_width+' '+screen.reference_height"
+                preserveAspectRatio="xMidYMid meet" aria-label="Опорные точки Образца">
+                <circle v-for="(pair,i) in matches" :key="i"
+                  :cx="pair.reference[0]" :cy="pair.reference[1]"
+                  :r="Math.max(2,screen.reference_width*.002)"
+                  :fill="sideColor(pair.side)"/>
+              </svg>
+            </div>
           </div>
           <div v-if="screen.status==='found'&&screen.corners?.length" class="meta">
             Координаты: {{screen.corners.map(p=>Math.round(p.x)+','+Math.round(p.y)).join(' · ')}}

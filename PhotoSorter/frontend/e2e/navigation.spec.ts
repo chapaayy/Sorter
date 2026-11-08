@@ -638,7 +638,8 @@ test('results viewer shows read-only XFeat diagnostics without changing MegaLoc'
       elapsed_seconds:1.8,screens:[{
         screen_id:'34b92d83-2461-4100-839f-28b7b63c9a27',
         screen_name:'Основной LED',reference_id:pid,annotation_id:pid,
-        annotation_version:2,status:'found',reason:'Геометрия подтверждена',
+        annotation_version:2,reference_width:800,reference_height:500,
+        status:'found',reason:'Геометрия подтверждена',
         matches:31,inliers:25,reprojection_error_px:1.2,supported_sides:[0,1,2,3],
         corners:[{x:100,y:50},{x:600,y:60},{x:620,y:330},{x:80,y:340}],
         debug_matches:[{reference:[100,50],photo:[103,53],side:0}]
@@ -653,5 +654,6 @@ test('results viewer shows read-only XFeat diagnostics without changing MegaLoc'
   await expect(dialog.getByText('Подтверждены: 25')).toBeVisible()
   await expect(dialog.getByLabel('Найденный контур экрана').locator('polygon')).toHaveCount(1)
   await dialog.getByLabel('Показать точки').check()
-  await expect(dialog.locator('svg circle')).toHaveCount(5)
+  await expect(dialog.locator('.screen-search-stage svg circle')).toHaveCount(5)
+  await expect(dialog.getByLabel('Опорные точки Образца').locator('circle')).toHaveCount(1)
 })
