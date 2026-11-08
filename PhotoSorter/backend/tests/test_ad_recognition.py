@@ -62,6 +62,7 @@ def test_russian_ocr_text_verification_and_no_text():
     assert ocr.confirm("Скидки 50",[{"text":"СКИДКИ","score":.95},
                                   {"text":"50","score":.95}])["status"]=="confirmed"
     assert ocr.confirm("Скидки 50",[{"text":"Новинки","score":.95}])["status"]=="mismatch"
+    assert ocr.confirm("Скидки 50",[{"text":"Скидки 40","score":.95}])["status"]=="mismatch"
     assert ocr.confirm("Скидки",[])["status"]=="unreadable"
     assert ocr.confirm("",[])["status"]=="not_configured"
 
