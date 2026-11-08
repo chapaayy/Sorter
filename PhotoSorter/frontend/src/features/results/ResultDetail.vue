@@ -154,7 +154,7 @@ async function deleteBatch(){
   <div v-if="retention?.warning" class="alert warning">До автоматического удаления осталось менее 7 дней.</div>
 </section>
 <ResultViewsNav :model-value="mode" :ad-enabled="pipelineEnabled" @update:model-value="changeMode"/>
-<AdBestPanel v-if="pipelineEnabled&&mainMode&&run&&isComplete(run.status)" :run-id="id" @open="showBest"/>
+
 <template v-if="mainMode">
 <div class="row wrap between" style="margin-bottom:16px">
   <span class="meta">Сохранённые результаты MegaLoc · оценки отдельных ФО из исходного manifest.</span>
@@ -174,6 +174,7 @@ async function deleteBatch(){
 </div>
 <EmptyState v-else-if="run" title="Результаты ещё не опубликованы" detail="Проверьте статус обработки и журнал запуска."/>
 </template>
+<AdBestPanel v-else-if="mode==='final'" :run-id="id" @open="showBest"/>
 <AdScreensView v-else-if="mode==='screens'" :run-id="id" @inspect="showBest"/>
 <AdVisualGroupsView v-else-if="mode==='visual-groups'" :run-id="id" @inspect="showBest"/>
 <AdLayoutsView v-else-if="mode==='ads'" :run-id="id" @inspect="showBest"/>
