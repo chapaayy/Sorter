@@ -5,7 +5,7 @@ const photo={id,name:'screen_001.jpg',bytes:1024,created_at:'2026-11-08T00:00:00
 const image='<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="800" height="500" fill="#333"/><rect x="170" y="100" width="460" height="300" fill="#15803d"/></svg>'
 test('create and edit a persistent four-corner annotation in reference viewer',async({page,isMobile})=>{
   const screens:Array<{id:string;name:string;annotations:Array<Record<string,unknown>>}>=[]
-  await page.route('**/api/**',async route=>{
+  await page.route(/^https?:\/\/[^/]+\/api\//,async route=>{
     const url=new URL(route.request().url()),path=decodeURIComponent(url.pathname),method=route.request().method()
     const json=(obj:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(obj)})
     if(path==='/api/auth/me')return json({username:'admin'})
