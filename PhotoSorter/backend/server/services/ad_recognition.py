@@ -120,6 +120,8 @@ def analyze_run(run_id:str,*,limit:int|None=None,start_index:int=0,
             JOIN batches b ON b.id=j.batch_id WHERE j.id=%s""",(run_id,)).fetchone()
     if not job or job["status"] not in ("completed","completed_with_errors") or job["delete_state"]!="active":
         raise ValueError("Нужен завершённый MegaLoc run активной партии")
+    if (job["snapshot"] or {}).get("ad_pipeline",{}).get("enabled"):
+        raise ValueError("Этот запуск уже ведёт единый конвейер. Повторный DINO через CLI запрещён")
     token=operations.start(job["batch_id"],"ad-recognition")
     try:
         layouts=ad_layouts.active_files()
