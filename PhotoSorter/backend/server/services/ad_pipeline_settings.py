@@ -32,7 +32,7 @@ def update(enabled=None,grouping_threshold=None,matching_threshold=None):
         row=db.execute("""SELECT ad_pipeline_enabled,ad_grouping_threshold,
             ad_matching_threshold FROM processing_settings WHERE id=1 FOR UPDATE""").fetchone()
         active=row["ad_pipeline_enabled"] if enabled is None else enabled
-        if active:
+        if enabled is True and not row["ad_pipeline_enabled"]:
             missing=[name for name,ready in (
                 ("XFeat",xfeat_assets.status()["available"]),
                 ("DINOv2",dino.status()["available"]),
@@ -40,14 +40,13 @@ def update(enabled=None,grouping_threshold=None,matching_threshold=None):
             if missing:
                 raise HTTPException(409,"Не установлены проверенные модели: "+", ".join(missing))
             signature=ocr.signature()
-            counts=db.execute("""SELECT count(*) AS total,
-                count(*) FILTER (WHERE l.preparation_state='completed'
-                    AND c.dino_signature=%s AND c.ocr_signature=%s) AS ready
-                FROM ad_layouts l LEFT JOIN ad_layout_prepared_cache c
-                    ON c.cache_key=l.prepared_key WHERE l.active=true""",
+            counts=db.execute("""SELECT count(*) FILTER
+                (WHERE published_snapshot->>'dino_signature'=%s
+                    AND published_snapshot->>'ocr_signature'=%s) AS ready
+                FROM ad_layouts WHERE active=true""",
                 (dino.SIGNATURE,signature)).fetchone()
-            if not counts["total"] or counts["ready"]!=counts["total"]:
-                raise HTTPException(409,"Дождитесь подготовки всех активных макетов рекламы")
+            if not counts["ready"]:
+                raise HTTPException(409,"Дождитесь подготовки хотя бы одного активного макета рекламы")
         db.execute("""UPDATE processing_settings SET
             ad_pipeline_enabled=%s,
             ad_grouping_threshold=%s,ad_matching_threshold=%s,updated_at=now()
