@@ -13,6 +13,8 @@ const modelReady=ref<boolean|null>(null)
 const recognition=ref<AdRecognition|null>(null),recognitionError=ref('')
 const dinoReady=ref<boolean|null>(null),ocrReady=ref<boolean|null>(null)
 const screen=computed<DetectedScreen|undefined>(()=>result.value?.screens.find(s=>s.screen_id===selected.value))
+const displayedLayout=computed(()=>recognition.value?.top?.find(
+  row=>row.id===recognition.value?.candidate_id)||recognition.value?.top?.[0])
 const corners=computed(()=>screen.value?.corners?.map(p=>p.x+','+p.y).join(' ')||'')
 const matches=computed(()=>screen.value?.debug_matches||[])
 const sideColor=(side:number)=>['#38bdf8','#34d399','#fbbf24','#c084fc'][side]||'#38bdf8'
@@ -117,7 +119,7 @@ onMounted(()=>{
           </div>
           <div v-if="screen.status==='found'" class="ad-recognition-detail">
             <div class="row between wrap">
-              <strong>DINOv2 · распознавание рекламы</strong>
+              <strong>DINOv2 + OCR · распознавание рекламы</strong>
               <RouterLink class="meta" to="/layouts" @click="emit('close')">Библиотека макетов</RouterLink>
             </div>
             <div v-if="recognitionError" class="alert error">{{recognitionError}}</div>
@@ -130,12 +132,19 @@ onMounted(()=>{
               </p>
               <template v-else>
                 <div class="row between wrap">
-                  <strong>{{recognition.status==='matched'?'Макет DINOv2 выбран':
-                    recognition.status==='uncertain'?'DINOv2: требуется проверка':
+                  <strong>{{recognition.status==='matched'?'Рекламный макет определён':
+                    recognition.status==='uncertain'?'Недостаточно однозначных доказательств':
                     recognition.status==='no_match'?'Макет не определён':'Реклама не распознана'}}</strong>
                   <span class="meta">{{recognition.elapsed_seconds??'—'}} с</span>
                 </div>
                 <p class="meta">{{recognition.reason}}</p>
+                <p v-if="recognition.group_match?.decision_version" class="meta">
+                  Совместный метод: {{recognition.group_match.method}}
+                  · лучший DINOv2: {{recognition.group_match.visual_leader_id||'—'}}
+                  · лучший OCR: {{recognition.group_match.ocr_leader_id||'—'}}
+                  · OCR-отрыв: {{recognition.group_match.ocr_margin==null?'—':
+                     recognition.group_match.ocr_margin.toFixed(3)}}
+                </p>
                 <div v-if="recognition.quality" class="stack-sm">
                   <div class="row between wrap">
                     <strong>Качество видимости рекламы</strong>
@@ -160,11 +169,11 @@ onMounted(()=>{
                   <p class="meta">Оценка относительная, не вероятность распознавания.</p>
                 </div>
                 <div v-if="recognition.top?.length" class="ad-recognition-preview">
-                  <img :src="pinnedLayouts?'/api/ad-results/runs/'+encodeURIComponent(runId)+'/layouts/'+recognition.top[0].id+'/image':
-                    '/api/ad-layouts/'+recognition.top[0].id+'/image'"
-                    :alt="recognition.top[0].name"/>
+                  <img :src="pinnedLayouts?'/api/ad-results/runs/'+encodeURIComponent(runId)+'/layouts/'+displayedLayout!.id+'/image':
+                    '/api/ad-layouts/'+displayedLayout!.id+'/image'"
+                    :alt="displayedLayout?.name"/>
                   <div class="stack-sm">
-                    <strong>{{recognition.top[0].name}}</strong>
+                    <strong>{{displayedLayout?.name}} {{recognition.candidate_id?'· выбран':'· лидер DINOv2, не подтверждён'}}</strong>
                     <p class="meta">Сходство DINOv2: {{recognition.top[0].score.toFixed(3)}}
                       · Разница с №2: {{recognition.margin==null?'—':recognition.margin.toFixed(3)}}</p>
                     <div class="ad-recognition-top">
