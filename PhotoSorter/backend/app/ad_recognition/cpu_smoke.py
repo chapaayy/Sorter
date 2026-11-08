@@ -34,8 +34,8 @@ def main():
         font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",110)
         ImageDraw.Draw(russian).text((34,32),"СКИДКИ 50",font=font,fill="black")
         text=ocr.read(engine,russian)
-        if not text:
-            raise RuntimeError("PP-OCRv5 ru found no text in large Cyrillic control image")
+        if not text or ocr.confirm("СКИДКИ 50",text)["status"]!="confirmed":
+            raise RuntimeError("PP-OCRv5 ru failed to confirm Cyrillic text and exact price")
         info["ocr"]={"version":ocr.VERSION,"device":"cpu",
                      "recognized_text":[row["text"] for row in text][:5],
                      "lines":len(text),
