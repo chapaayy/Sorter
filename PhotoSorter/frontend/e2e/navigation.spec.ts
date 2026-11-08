@@ -50,15 +50,17 @@ async function mock(page:Page){
     }
     if(p.startsWith('/api/ad-pipeline/runs/')&&p.endsWith('/best'))
       return respond(route,{status:'completed',run_id:rid,total_photos:2,
-        screens_found:2,recognized:2,review_required:1,errors:0,best:[
+        screens_found:2,recognized:2,review_required:0,errors:0,best:[
           {index:0,assigned_sam:'SAM 0001',screen_id:pid,screen_name:'Главный LED',
             candidate_id:pid,layout_name:'Реклама ноября',layout_version:1,
             review_required:false,quality:{status:'measured',score:88.6},
-            ocr:{status:'confirmed',reason:'Текст совпадает'}},
+            ocr_selection_score:100,selection_score:94.3,
+            ocr:{status:'confirmed',reason:'На ФО совпало 2 из 2 прочитанных элементов',matched_terms:2,total_terms:2}},
           {index:1,assigned_sam:'SAM 0001',screen_id:bid,screen_name:'Правый LED',
             candidate_id:pid,layout_name:'Реклама декабря',layout_version:1,
-            review_required:true,quality:{status:'measured',score:74.9},
-            ocr:{status:'unreadable',reason:'Не удалось прочитать текст'}}
+            review_required:false,quality:{status:'measured',score:74.9},
+            ocr_selection_score:0,selection_score:37.45,
+            ocr:{status:'unreadable',reason:'OCR не прочитал текст; макет определён визуально по DINOv2',matched_terms:0,total_terms:0}}
         ]})
     if(p==='/api/ad-recognition/models')return respond(route,{dino:{available:true},ocr:{available:true}})
     if(p==='/api/references/cache/status')return respond(route,{total:1,cached:1,current_signature:null})
@@ -689,7 +691,7 @@ test('results viewer shows read-only XFeat diagnostics without changing MegaLoc'
   await expect(dialog.getByLabel('Опорные точки Образца').locator('circle')).toHaveCount(1)
 })
 
-test('DINOv2 decides candidate, OCR mismatch only warns in XFeat viewer',async({page})=>{
+test('DINOv2 keeps visual candidate when photo has partial word coverage',async({page})=>{
   await page.route('**/api/screen-search/runs/**',route=>{
     if(!new URL(route.request().url()).pathname.endsWith('/photos/0'))
       return route.fulfill({status:404})
@@ -704,9 +706,9 @@ test('DINOv2 decides candidate, OCR mismatch only warns in XFeat viewer',async({
   })
   await page.route('**/api/ad-recognition/runs/**',route=>respond(route,{
     index:0,screen_id:pid,status:'matched',reason:'DINOv2: выбран наиболее близкий макет',
-    candidate_id:pid,margin:.16,review_required:true,elapsed_seconds:1.5,
+    candidate_id:pid,margin:.16,review_required:false,elapsed_seconds:1.5,
     top:[{id:pid,name:'Реклама ноября',score:.91,version:1,checksum:'a'.repeat(64)}],
-    ocr:{status:'mismatch',reason:'Контрольный текст не совпал',lines:['Реклама октября']}
+    ocr:{status:'probable',reason:'На ФО совпало 1 из 2 прочитанных элементов',matched_terms:1,total_terms:2,lines:['Реклама октября']}
   }))
   await page.goto('/results/'+rid)
   await page.getByRole('button',{name:'Открыть ФО №1'}).click()
@@ -714,8 +716,9 @@ test('DINOv2 decides candidate, OCR mismatch only warns in XFeat viewer',async({
   const dialog=page.getByRole('dialog',{name:'Диагностика XFeat'})
   await expect(dialog.getByText('Макет DINOv2 выбран')).toBeVisible()
   await expect(dialog.getByText('Реклама ноября').first()).toBeVisible()
-  await expect(dialog.getByText('Текст не совпал').first()).toBeVisible()
-  await expect(dialog.getByText('OCR не менял кандидата DINOv2.')).toBeVisible()
+  await expect(dialog.getByText('PP-OCRv5 · Дополнительная проверка')).toBeVisible()
+  await expect(dialog.getByText('1 / 2 из прочитанных слов ФО')).toBeVisible()
+  await expect(dialog.getByText('Требуется ручная проверка.')).toHaveCount(0)
 })
 
 test('layout library opens a working independent upload UI',async({page})=>{
@@ -737,7 +740,7 @@ test('integrated advertising processing is explicit opt-in and persists next-cla
   await checkbox.uncheck()
   await expect(checkbox).not.toBeChecked()
 })
-test('completed integrated FO displays best photos and review candidates separately',async({page})=>{
+test('completed integrated FO shows one best gallery including visual-only OCR',async({page})=>{
   await page.route('**/api/results/'+rid,route=>respond(route,{
     ...run,ad_pipeline:{enabled:true,status:'completed',best_count:2},
     archive_state:'ready'
@@ -747,8 +750,10 @@ test('completed integrated FO displays best photos and review candidates separat
   await expect(page.getByText('Найдено экранов:')).toBeVisible()
   await expect(page.getByText('Реклама ноября').first()).toBeVisible()
   await expect(page.getByText('Реклама декабря').first()).toBeVisible()
-  await expect(page.getByText('Требуется проверка').first()).toBeVisible()
-  await expect(page.getByText('88.6 / 100')).toBeVisible()
+  await expect(page.getByText('Выбранные лучшие фотографии')).toBeVisible()
+  await expect(page.getByText('OCR: текст не прочитан · визуальное сопоставление DINOv2')).toBeVisible()
+  await expect(page.getByText('Итог: 94.3 / 100')).toBeVisible()
+  await expect(page.getByText('Требуется проверка')).toHaveCount(0)
 })
 
 test('Settings installs XFeat from the browser without SSH and shows download status',async({page})=>{
