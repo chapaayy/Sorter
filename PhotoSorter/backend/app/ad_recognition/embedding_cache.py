@@ -34,3 +34,19 @@ def vector(model,row:dict,file:Path)->np.ndarray:
         os.replace(temp,path)
     finally:Path(temp).unlink(missing_ok=True)
     return value
+
+def prune_inactive(live_keys:set[str],min_age_seconds:int=604800)->dict:
+    """Manual clean-up of obsolete embeddings, never touches model weights or layouts."""
+    import re
+    import time
+    if ROOT.is_symlink() or not ROOT.is_dir():return {"removed":0}
+    now=time.time()
+    removed=0
+    for file in ROOT.iterdir():
+        if (file.is_symlink() or not file.is_file() or
+            not re.fullmatch(r"[a-f0-9]{64}\\.npy",file.name) or
+            file.stem in live_keys or now-file.stat().st_mtime<min_age_seconds):
+            continue
+        file.unlink()
+        removed+=1
+    return {"removed":removed}

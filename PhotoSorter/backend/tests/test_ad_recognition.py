@@ -168,3 +168,21 @@ def test_completed_megaloc_run_reuses_xfeat_crop_without_tampering_zip(system,mo
         assert db.execute("SELECT status FROM jobs WHERE id=%s",(run,)).fetchone()["status"]=="completed"
         assert db.execute("SELECT count(*) AS n FROM batch_operations WHERE batch_id=%s",
                           (batch,)).fetchone()["n"]==0
+
+def test_manual_layout_cache_cleanup_preserves_active_and_recent(tmp_path,monkeypatch):
+    import os
+    import time
+    monkeypatch.setattr(embedding_cache,"ROOT",tmp_path)
+    old="a"*64
+    kept="b"*64
+    recent="c"*64
+    for name in (old,kept,recent):
+        (tmp_path/(name+".npy")).write_bytes(b"not touched")
+    age=time.time()-9*86400
+    os.utime(tmp_path/(old+".npy"),(age,age))
+    os.utime(tmp_path/(kept+".npy"),(age,age))
+    (tmp_path/"not-a-key.txt").write_text("unrelated")
+    assert embedding_cache.prune_inactive({kept})=={"removed":1}
+    assert (tmp_path/(kept+".npy")).is_file()
+    assert (tmp_path/(recent+".npy")).is_file()
+    assert (tmp_path/"not-a-key.txt").is_file()

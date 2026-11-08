@@ -11,6 +11,7 @@ def main(argv=None):
     group.add_argument("--install-dino",action="store_true")
     group.add_argument("--install-ocr",action="store_true")
     group.add_argument("--verify",action="store_true")
+    group.add_argument("--prune-cache",action="store_true",help="remove obsolete layout embeddings older than a week")
     group.add_argument("--run-id")
     parser.add_argument("--start-index",type=int,default=0)
     parser.add_argument("--limit",type=int,default=None)
@@ -23,6 +24,10 @@ def main(argv=None):
         info={"dino":dino.status(),"ocr":ocr.status()}
         print(json.dumps(info,ensure_ascii=False,indent=2))
         return 0 if info["dino"]["available"] else 2
+    if args.prune_cache:
+        from server.services.ad_recognition import prune_old_layout_cache
+        print(json.dumps(prune_old_layout_cache(),ensure_ascii=False))
+        return 0
     from server.services.ad_recognition import analyze_run
     def progress(item):
         print(json.dumps({"index":item["index"],"screen_id":item["screen_id"],

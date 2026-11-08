@@ -168,3 +168,11 @@ def analyze_run(run_id:str,*,limit:int|None=None,start_index:int=0,
                 "review_required":review,"photos_without_confirmed_screen":skipped,
                 "dino_signature":dino.SIGNATURE,"ocr_available":ocr_engine is not None}
     finally:operations.finish(token)
+
+def prune_old_layout_cache()->dict:
+    """Explicit cleanup only: retain current and disabled layout embeddings."""
+    from ..db.repositories import ad_layouts as registry
+    with connect() as db:
+        rows=registry.all_rows(db,False)
+    return embedding_cache.prune_inactive({embedding_cache.key(row["checksum"])
+                                           for row in rows})
