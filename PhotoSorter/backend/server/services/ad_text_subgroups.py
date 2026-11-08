@@ -25,7 +25,9 @@ def _tokens(value: str) -> list[str]:
 
 
 def _compatible(first: dict, second: dict) -> bool:
-    """Never unite confidently contradictory dates, percentages or prices."""
+    """Do not join different DINO candidates or contradictory OCR variants."""
+    if first.get("candidate_id") != second.get("candidate_id"):
+        return False
     a, b = first["ocr_observation"], second["ocr_observation"]
     if a.get("status") != "readable" or b.get("status") != "readable":
         return False
