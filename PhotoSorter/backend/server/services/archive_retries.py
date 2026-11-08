@@ -138,8 +138,9 @@ def process_pending(limit=1):
             job.info["progress"]["eta_status"]="completed"
             job.save()
             with connect() as db:
-                db.execute("""UPDATE work_queue SET state='completed',finished_at=now()
-                    WHERE fo_run_id=%s AND state IN ('failed','interrupted')""",(run_id,))
+                db.execute("""UPDATE work_queue SET state=%s,finished_at=now()
+                    WHERE fo_run_id=%s AND state IN ('failed','interrupted')""",
+                    (completed_state,run_id))
             _finish(run_id,"completed")
             done.append((run_id,"completed"))
         except Exception as exc:
