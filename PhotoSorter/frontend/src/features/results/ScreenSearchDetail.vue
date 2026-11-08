@@ -179,13 +179,13 @@ onMounted(()=>{
                 </div>
                 <div v-if="recognition.ocr" class="stack-sm">
                   <strong>PP-OCRv5 · {{recognition.ocr.status==='confirmed'?'Текст подтверждён':
-                    recognition.ocr.status==='mismatch'?'Текст не совпал':
-                    recognition.ocr.status==='unreadable'?'Текст не прочитан':
+                    recognition.ocr.status==='mismatch'?'Совпадений OCR недостаточно':
+                    recognition.ocr.status==='unreadable'?'Текст не прочитан · визуальный результат DINOv2':
                     recognition.ocr.status==='unavailable'?'OCR не установлен':
                     recognition.ocr.status==='not_configured'?'Контрольный текст отсутствует':'Дополнительная проверка'}}</strong>
                   <div class="meta">{{recognition.ocr.reason}}
-                    <span v-if="recognition.ocr.matched_terms!=null">
-                      · {{recognition.ocr.matched_terms}} / {{recognition.ocr.total_terms}} из прочитанных слов ФО
+                    <span v-if="recognition.ocr.total_terms">
+                      · {{recognition.ocr.matched_terms??0}} / {{recognition.ocr.total_terms}} из прочитанных слов ФО
                     </span>
                   </div>
                   <div v-if="recognition.ocr.lines?.length" class="meta">
@@ -206,9 +206,7 @@ onMounted(()=>{
                     <code>docker compose exec api python -m app.ad_recognition.cli --install-ocr</code>.
                   </p>
                 </div>
-                <p v-if="recognition.review_required" class="meta">
-                  Требуется ручная проверка. OCR не менял кандидата DINOv2.
-                </p>
+
               </template>
             </template>
           </div>
