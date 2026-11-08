@@ -186,6 +186,17 @@ onMounted(()=>{
                   <div v-if="recognition.ocr.lines?.length" class="meta">
                     Прочитано: {{recognition.ocr.lines.join(' · ')}}
                   </div>
+                  <div v-for="(issue,i) in recognition.ocr.contradictions||[]" :key="'hard'+i" class="meta">
+                    Расхождение ({{issue.kind==='dates'?'дата':issue.kind==='prices'?'цена':
+                      issue.kind==='percentages'?'процент':'число'}}):
+                    в макете {{issue.expected.join(', ')}} · на ФО {{issue.observed.join(', ')}}
+                  </div>
+                  <div v-for="(issue,i) in recognition.ocr.possible_contradictions||[]" :key="'weak'+i" class="meta">
+                    {{recognition.ocr.contradictions?.some(item=>item.kind===issue.kind)?'Подтверждённое':'Возможное'}}
+                    расхождение ({{issue.kind==='dates'?'дата':issue.kind==='prices'?'цена':
+                      issue.kind==='percentages'?'процент':'число'}}):
+                    в макете {{issue.expected.join(', ')}} · на ФО {{issue.observed.join(', ')}}
+                  </div>
                   <p v-if="ocrReady===false" class="meta">
                     Для OCR установите модели через
                     <code>docker compose exec api python -m app.ad_recognition.cli --install-ocr</code>.
