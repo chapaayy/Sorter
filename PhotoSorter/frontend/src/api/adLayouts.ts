@@ -27,6 +27,12 @@ export const adLayoutApi={
    patch<{id:string;version:number}>('/ad-layouts/'+encodeURIComponent(item.id),{
      name,expected_text:expectedText,active,version:item.version
    }),
+ replaceImage:(item:AdLayout,file:File)=>{
+   const data=new FormData()
+   data.append('file',file);data.append('version',String(item.version))
+   return api<{id:string;version:number;preparation_state:string}>(
+     '/ad-layouts/'+encodeURIComponent(item.id)+'/image',{method:'PUT',body:data})
+ },
  remove:(id:string)=>del<{deleted:boolean}>('/ad-layouts/'+encodeURIComponent(id)),
  recognized:(runId:string,index:number,screenId:string)=>
    api<AdRecognition>('/ad-recognition/runs/'+encodeURIComponent(runId)+'/photos/'+index+
