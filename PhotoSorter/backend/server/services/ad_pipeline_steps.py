@@ -38,10 +38,14 @@ def detect(job,model,rows,refs,run_id,data_root):
     return detections,failures
 
 def recognize(job,model,engine_ocr,detections,run_id,vectors,layout_errors,
-              matching_threshold=0.81):
+              matching_threshold=0.81,screen_features=None,group_matches=None,
+              embedding_errors=None):
     analyses=[]
     recognized=review_count=failures=0
     text_cache={}
+    screen_features=screen_features or {}
+    group_matches=group_matches or {}
+    embedding_errors=embedding_errors or {}
     total=len(detections)
     if total==0:
         job.progress("ad_pipeline","ad_recognition",1,1,
@@ -51,9 +55,12 @@ def recognize(job,model,engine_ocr,detections,run_id,vectors,layout_errors,
         if job.stopped():raise InterruptedError("Обработка остановлена")
         started=time.monotonic()
         try:
+            key=(index,str(screen["screen_id"]))
+            if key in embedding_errors:
+                raise ValueError("DINOv2: "+embedding_errors[key])
             item=ad_recognition._identify(
                 model,engine_ocr,screen,run_id,index,vectors,text_cache,layout_errors,
-                matching_threshold)
+                matching_threshold,screen_features.get(key),group_matches.get(key))
             crop=screen_search.crop(run_id,index,screen["screen_id"])
             picture=ad_recognition._crop_screen(crop,screen)
             item["quality"]=quality.assess(picture,screen,full_size)
