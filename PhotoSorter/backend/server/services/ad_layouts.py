@@ -46,8 +46,16 @@ def _picture(data:bytes)->str:
 def _public(row):
     return {"id":str(row["id"]),"name":row["name"],"filename":row["filename"],
             "checksum":row["checksum"],"byte_size":row["byte_size"],
-            "expected_text":row["expected_text"],"active":row["active"],
-            "version":row["version"],"image_url":"/api/ad-layouts/"+str(row["id"])+"/image"}
+            "expected_text":row["expected_text"],"corrected_text":row["ocr_corrected_text"],
+            "ocr_raw_lines":row["ocr_lines"] or [],
+            "ocr_normalized_text":row["normalized_text"] or "",
+            "preparation_state":row["preparation_state"],
+            "preparation_stage":row["preparation_stage"],
+            "preparation_progress":row["preparation_progress"],
+            "preparation_error":row["preparation_error"],
+            "prepared_at":row["prepared_at"],
+            "active":row["active"],"version":row["version"],
+            "image_url":"/api/ad-layouts/"+str(row["id"])+"/image"}
 
 def list_layouts(active_only=False):
     with connect() as db: rows=records.all_rows(db,active_only)
@@ -67,12 +75,22 @@ def create(data:bytes,filename:str,name:str,expected_text:str=""):
     try:
         with os.fdopen(fd,"wb") as out:out.write(data)
         with connect() as db:
+            db.execute("SELECT pg_advisory_xact_lock(723409133)")
             saved=records.insert(db,uid,name,Path(filename).name[:200],digest,target,
                                  len(data),expected_text)
             if not saved:raise HTTPException(409,"Этот макет уже добавлен")
+            if expected_text:
+                db.execute("UPDATE ad_layouts SET ocr_corrected_text=%s WHERE id=%s",
+                           (expected_text,uid))
+            prep_id=uuid.uuid4()
+            db.execute("""INSERT INTO ad_layout_preparation_jobs
+                (id,layout_id,checksum,target_path) VALUES (%s,%s,%s,%s)""",
+                (prep_id,uid,digest,str(target)))
+            from ..db.repositories.work_queue import insert_layout
+            insert_layout(db,prep_id)
             os.replace(temp,target)
             published=True
-        return {"id":str(uid),"name":name,"version":1}
+        return {"id":str(uid),"name":name,"version":1,"preparation_state":"queued"}
     except Exception:
         if published:target.unlink(missing_ok=True)
         raise
@@ -99,6 +117,7 @@ def update(uid,version:int,name:str,expected_text:str,active:bool):
             raise HTTPException(409,"Макет изменён в другой вкладке")
         result=records.edit(db,uid,version,name,expected_text,active)
         if not result:raise HTTPException(409,"Версия макета устарела")
+        db.execute("UPDATE ad_layout_library_state SET revision=revision+1 WHERE id=1")
     return {"id":str(uid),"version":version+1}
 
 def _file(row):
@@ -117,7 +136,14 @@ def image(uid):
 
 def active_files():
     with connect() as db:rows=records.all_rows(db,True)
-    return [(dict(row),_file(row)) for row in rows]
+    from app.ad_recognition import dino,ocr
+    if not ocr.status()["available"]:
+        return []
+    signature=ocr.signature()
+    return [(dict(row),_file(row)) for row in rows
+            if row["preparation_state"]=="completed"
+            and row["dino_signature"]==dino.SIGNATURE
+            and row["ocr_signature"]==signature]
 
 def delete(uid):
     with connect() as db:
@@ -133,6 +159,15 @@ def delete(uid):
         if row["active"]:
             _keep_one_active(db)
         path=_file(row)
+        db.execute("""UPDATE work_queue SET state='stopped',finished_at=now()
+            WHERE layout_job_id IN (SELECT id FROM ad_layout_preparation_jobs
+                WHERE layout_id=%s) AND state IN ('queued','failed','interrupted')""",(uid,))
+        db.execute("""UPDATE ad_layout_preparation_jobs SET state='stopped',finished_at=now()
+            WHERE layout_id=%s AND state IN ('queued','failed','interrupted')""",(uid,))
+        if db.execute("""SELECT 1 FROM ad_layout_preparation_jobs
+            WHERE layout_id=%s AND state='running'""",(uid,)).fetchone():
+            raise HTTPException(409,"Подготовка макета ещё выполняется")
         records.remove(db,uid)
+        db.execute("UPDATE ad_layout_library_state SET revision=revision+1 WHERE id=1")
     path.unlink(missing_ok=True)
     return {"deleted":True}
