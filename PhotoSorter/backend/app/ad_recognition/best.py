@@ -1,4 +1,4 @@
-"""Deterministic best photo per physical screen / DINO layout / text variant.
+"""Deterministic ONE best photo per construction and advertised layout.
 
 Within a group, OCR measures how many words of the prepared layout are read
 on each FO. Quality and OCR receive equal weight; absent OCR scores zero,
@@ -9,9 +9,12 @@ from collections import defaultdict
 
 
 def _key(item: dict) -> tuple:
-    return (item["assigned_sam"], item["screen_id"],
-            item["candidate_id"], item.get("visual_group_id"),
-            item.get("text_subgroup_id"))
+    """Output unit: one final file for each (construction, pinned layout).
+
+    Screens, DINO visual groups and OCR T variants stay in diagnostics only.
+    They must NOT cause duplicate final photos for the same advertisement.
+    """
+    return (item["assigned_sam"], str(item["candidate_id"]))
 
 
 def select(items: list[dict]) -> list[dict]:
@@ -44,8 +47,8 @@ def select(items: list[dict]) -> list[dict]:
         winners.append(chosen)
 
     return sorted(winners, key=lambda row: (
-        row["assigned_sam"], row.get("layout_name", ""), row["screen_id"],
-        row.get("text_subgroup_id") or "", row["index"]))
+        row["assigned_sam"], row.get("layout_name", ""),
+        str(row["candidate_id"]), row["index"]))
 
 
 def public(item: dict) -> dict:
