@@ -17,7 +17,7 @@ from app.results.repository import load_model
 from app.ad_recognition import dino,ocr,quality,best
 from app.screen_detection import xfeat_assets
 from ..storage.paths import owned_file,run_dir
-from . import ad_recognition,ad_layouts,ad_pipeline_steps,ad_visual_groups
+from . import ad_recognition,ad_layouts,ad_pipeline_steps,ad_visual_groups,ad_text_subgroups
 
 def _root(run_id):
     return run_dir(run_id,DATA_DIR/"outputs")/"ad_pipeline"
@@ -103,6 +103,7 @@ def process(job):
         analyses=[]
         recognized=review_count=0
         group_count=0
+        groups=[]
         if found:
             model_d=dino.load()
             try:
@@ -140,6 +141,10 @@ def process(job):
                                    snapshot.get("matching_threshold",0.81),DATA_DIR)
             job.progress("ad_pipeline","ad_recognition",1,1,
                          "Нет геометрически подтверждённых экранов")
+        # OCR separates genuine offer/date/price variants while preserving
+        # their parent DINO visual group, then selects quality winners per
+        # verified text subgroup. The result remains an immutable run artifact.
+        text_document=ad_text_subgroups.form(job,run_id,groups,analyses,data_root=DATA_DIR)
         job.progress("ad_pipeline","quality",count,count,
                      "Оценка фокуса, пересвета и видимости экрана")
         winners=best.select(analyses)
@@ -165,17 +170,23 @@ def process(job):
                   "layout_library_revision":snapshot.get("layout_library_revision"),
                   "total_photos":count,"screens_found":found,
                   "visual_group_count":group_count,
+                  "text_subgroup_count":text_document["subgroup_count"],
+                  "text_confirmed":text_document["confirmed"],
+                  "text_probable":text_document["probable"],
+                  "text_unidentified":text_document["unidentified"],
                   "recognized":recognized,"review_required":review_count,
                   "errors":errors_count,"best":best_items,
                   "seconds":round(time.monotonic()-started,2)}
         atomic_json(_root(run_id)/"summary.json",manifest)
         snapshot.update(status="completed",screens_found=found,visual_group_count=group_count,
+                        text_subgroup_count=text_document["subgroup_count"],
                         recognized=recognized,
                         review_required=review_count,best_count=len(best_items),
                         errors=errors_count,snapshot_digest=manifest["snapshot_digest"])
         job.info.setdefault("models",{})["ad_pipeline"]={
             "status":"completed","screens_found":found,"recognized":recognized,
-            "best_count":len(best_items),"review_required":review_count}
+            "best_count":len(best_items),"review_required":review_count,
+            "text_subgroup_count":text_document["subgroup_count"]}
         job.progress("ad_pipeline","best",1,1,
                      f"Выбрано лучших ФО: {len(best_items)}")
         job.save()
@@ -199,9 +210,13 @@ def best_archive_entries(run_id,snapshot):
         def label(value):
             safe=re.sub(r"[^\w\- ]+","_",str(value),flags=re.UNICODE).strip(" ._")
             return safe[:55] or "Без_названия"
-        filename=f"{label(item.get('layout_name'))}_{str(item['screen_id'])[:8]}_FO{item['index']+1}_{source.name}"
+        variant="_"+label(item["text_subgroup_id"]) if item.get("text_subgroup_id") else ""
+        filename=f"{label(item.get('layout_name'))}_{str(item['screen_id'])[:8]}{variant}_FO{item['index']+1}_{source.name}"
         section="Review_required" if item.get("review_required") else "Best_by_layout"
         result.append((source,section+"/"+archives.archive_member(item["assigned_sam"],filename)))
+    subgroups=_root(run_id)/"text_subgroups.json"
+    if subgroups.is_file() and not subgroups.is_symlink():
+        result.append((subgroups,"Ad_recognition/text_subgroups.json"))
     report=_root(run_id)/"summary.json"
     result.append((report,"Ad_recognition/summary.json"))
     return result
