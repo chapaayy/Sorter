@@ -56,6 +56,7 @@ def test_dino_margin_and_no_match():
     assert result["status"]=="uncertain"
     assert result["candidate_id"]==str(a["id"])
     assert scoring.rank(unit(),[(a,unit(1))])["status"]=="no_match"
+    assert scoring.rank(unit(),[(a,unit(1))])["candidate_id"] is None
     assert scoring.rank(unit(),[])["status"]=="no_layouts"
 
 def test_russian_ocr_text_verification_and_no_text():
