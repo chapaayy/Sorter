@@ -67,7 +67,7 @@ def solve(ref_xy:np.ndarray,fo_xy:np.ndarray,sides:np.ndarray,
         return _fail("Слишком искажённая геометрия",n,count,median,supported)
     # Screen-frame features must be supported spatially on multiple sides.
     ref_center=quad.mean(axis=0)
-    if np.linalg.norm(p.mean(axis=0)-ref_center)>max(quad.ptp(axis=0))*1.5:
+    if np.linalg.norm(p.mean(axis=0)-ref_center)>float(np.ptp(quad,axis=0).max())*1.5:
         return _fail("Совпадения не относятся к экрану",n,count,median,supported)
     inds=np.flatnonzero(inliers)
     samples=[{"reference":[round(float(ref_xy[i,0]),2),round(float(ref_xy[i,1]),2)],
