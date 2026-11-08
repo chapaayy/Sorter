@@ -136,33 +136,6 @@ def read(engine,picture:Image.Image)->list[dict]:
 def _norm(text:str)->str:
     return " ".join(re.findall(r"[a-zа-яё0-9]+",text.casefold()))
 
-def _critical(text:str)->dict:
-    """OCR-visible numeric/date/price tokens; no language-model guessing."""
-    # Keep punctuation until numeric structures have been extracted.
-    value=text.casefold().replace("ё","е")
-    dates=set()
-    for hit in re.finditer(r"(?<!\d)(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?!\d)",value):
-        day,month,year=hit.groups()
-        if 1<=int(day)<=31 and 1<=int(month)<=12:
-            dates.add(f"{int(day):02}.{int(month):02}"+(f".{year}" if year else ""))
-    months=("январ","феврал","март","апрел","мая","июн","июл",
-            "август","сентябр","октябр","ноябр","декабр")
-    for m in re.finditer(r"(?<!\d)(\d{1,2})\s+([а-яё]+)(?:\s+(20\d{2}))?",value):
-        day,word,year=m.groups()
-        month=next((i+1 for i,stem in enumerate(months) if word.startswith(stem)),None)
-        if month and 1<=int(day)<=31:
-            dates.add(f"{int(day):02}.{month:02}"+(f".{year}" if year else ""))
-    percent={m.group(1).replace(",",".") for m in re.finditer(
-        r"(?<!\w)(\d+(?:[.,]\d+)?)\s*%",value)}
-    prices={m.group(1).replace(",",".") for m in re.finditer(
-        r"(?<!\w)(\d+(?:[.,]\d+)?)\s*(?:₽|руб(?:лей|ля|\.)?|[рp]\.?)(?![а-яa-z])",value)}
-    numbers={m.group().replace(",",".") for m in re.finditer(
-        r"(?<![\w])\d+(?:[.,]\d+)?(?![\w])",value)}
-    # Dates and percentages are also represented among bare numbers.
-    return {"dates":sorted(dates),"percentages":sorted(percent),
-            "prices":sorted(prices),"numbers":sorted(numbers)}
-
-
 def describe(observed:list[dict])->dict:
     """Preserve OCR evidence independently from any DINO candidate/layout."""
     lines=[]
@@ -189,7 +162,7 @@ def describe(observed:list[dict])->dict:
         weights=[max(1,len(line["text"])) for line in usable])),3) if usable else 0.
     return {"status":"readable" if usable else "unreadable",
             "raw_lines":lines,"normalized_text":_norm(content),
-            "confidence":confidence,"significant":_critical(content),
+            "confidence":confidence,"significant":{},
             "regions":[{"text":item["text"],"score":item["score"],
                         "polygon":item["polygon"]}
                        for item in usable if "polygon" in item]}
@@ -198,5 +171,4 @@ def describe(observed:list[dict])->dict:
 def confirm(expected_text: str, observed: list[dict]) -> dict:
     """Photo-first OCR verifier; never identifies or replaces a DINO layout."""
     from .text_verification import compare
-    return compare(expected_text, observed, describe=describe,
-                   extract_significant=_critical)
+    return compare(expected_text, observed, describe=describe)
