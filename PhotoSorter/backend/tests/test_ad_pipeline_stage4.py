@@ -183,3 +183,21 @@ def test_public_best_summary_redacts_internal_paths(tmp_path,monkeypatch):
     public=ad_pipeline.summary(run)
     assert "copy" not in public["best"][0]
     assert "copy" in ad_pipeline.summary(run,internal=True)["best"][0]
+
+def test_zip_ready_with_per_photo_errors_still_schedules_retention(system):
+    from server import database
+    add_published_reference(system)
+    run=add_fo()
+    with connect() as db:
+        batch=db.execute("SELECT batch_id FROM jobs WHERE id=%s",(run,)).fetchone()["batch_id"]
+    database.save_snapshot({"id":run,"batch_id":str(batch),
+        "status":"completed_with_errors","archive_state":"ready",
+        "ad_pipeline":{"enabled":True,"status":"completed","errors":2},
+        "models":{"megaloc":{"status":"completed"}}})
+    with connect() as db:
+        row=db.execute("SELECT delete_after_at,confirmed_run_id FROM batches WHERE id=%s",
+                       (batch,)).fetchone()
+        state=db.execute("SELECT status FROM jobs WHERE id=%s",(run,)).fetchone()["status"]
+    assert state=="completed_with_errors"
+    assert row["delete_after_at"] is not None
+    assert row["confirmed_run_id"]==run
