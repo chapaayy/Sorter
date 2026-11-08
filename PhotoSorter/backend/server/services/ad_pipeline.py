@@ -11,7 +11,6 @@ import re
 import time
 from pathlib import Path
 from fastapi import HTTPException
-from PIL import Image
 from app.config import DATA_DIR
 from app.results.exporter import atomic_json
 from app.results.repository import load_model
