@@ -61,9 +61,12 @@ def _source_files(db,job_id):
 
 def _prepare_embeddings(job_id,items,model_signature):
     """Reuse (SHA-256,signature) cache and instantiate MegaLoc only if missing."""
+    from collections import Counter
+    counts=Counter(item["checksum"] for item in items)
     unique={}
     for item in items:
         unique.setdefault(item["checksum"],Path(item["stored_path"]))
+    weights={path:counts[digest] for digest,path in unique.items()}
     with connect() as db:
         missing=[]
         for digest,path in unique.items():
@@ -79,7 +82,9 @@ def _prepare_embeddings(job_id,items,model_signature):
         if engine.fingerprint!=model_signature:
             raise RuntimeError("Сигнатура MegaLoc изменилась во время подготовки")
         processed=0
-        cached_count=len(items)-len(missing)
+        # The same image hash may occur in multiple constructions. Do not
+        # count its copies as completed until the ONE missing vector exists.
+        cached_count=len(items)-sum(weights[path] for path in missing)
         _progress(job_id,cached_count,len(items))
         _stage(job_id,'extracting')
         for offset in range(0,len(missing),CHUNK):
@@ -93,7 +98,7 @@ def _prepare_embeddings(job_id,items,model_signature):
                     if ident is not None:
                         _record_file_error(job_id,ident,error or "empty feature")
                     raise RuntimeError(f"Не удалось подготовить {path.name}: {error}")
-                processed+=1
+                processed+=weights[path]
                 _progress(job_id,min(len(items),cached_count+processed),len(items))
         _progress(job_id,len(items),len(items))
     finally:
