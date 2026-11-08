@@ -17,7 +17,12 @@ def selections(run_id):
         selected.append((source,archives.archive_member(item["assigned_sam"],source.name)))
     if not selected:
         raise RuntimeError("Готовых фотографий для архива нет")
-    info=load_run(run_id)
+    try:
+        info=load_run(run_id)
+    except (FileNotFoundError,ValueError):
+        # Older jobs (and ZIP-only recovery) may have only a database snapshot.
+        # They have never published integrated advertising results.
+        info={}
     if info.get("ad_pipeline",{}).get("enabled"):
         from .ad_pipeline import best_archive_entries
         selected.extend(best_archive_entries(run_id,info["ad_pipeline"]))
