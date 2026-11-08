@@ -41,6 +41,8 @@ function status(value:string){
   <div v-for="photo in photos" :key="photo.index" class="panel result-screen-card">
     <div class="row between wrap">
       <strong>ФО №{{photo.index+1}} · {{photo.assigned_sam||'Без конструкции'}}</strong>
+      <RouterLink v-if="photo.assigned_sam" class="meta"
+        :to="{path:'/results/'+runId,query:{view:'sam',sam:photo.assigned_sam}}">К фотографиям конструкции</RouterLink>
       <span class="status" :class="photo.status==='found'?'ok':photo.status==='error'?'danger':''">{{status(photo.status)}}</span>
     </div>
     <div class="result-screen-body">
