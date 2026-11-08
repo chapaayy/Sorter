@@ -4,6 +4,7 @@ Runs after MegaLoc publishes its immutable manifest and before ZIP publishes.
 Run metadata was frozen at FIFO CLAIM, never read from the live libraries here.
 """
 from __future__ import annotations
+import gc
 import hashlib
 import json
 import re
@@ -17,7 +18,7 @@ from app.results.repository import load_model
 from app.ad_recognition import dino,ocr,quality,best
 from app.screen_detection import xfeat_assets
 from ..storage.paths import owned_file,run_dir
-from . import screen_search,ad_recognition,ad_layouts
+from . import screen_search,ad_recognition,ad_layouts,ad_pipeline_steps
 
 def _root(run_id):
     return run_dir(run_id,DATA_DIR/"outputs")/"ad_pipeline"
@@ -85,66 +86,38 @@ def process(job):
         layouts=_layouts_pinned(snapshot)
         rows=load_model(run_id,"megaloc")
         if job.stopped():raise InterruptedError("Обработка остановлена")
-        # Models initialize ONCE per run inside the existing CPU-limited worker.
+        # Process every photo with XFeat, then release its network and
+        # reference descriptors before loading DINOv2 and PP-OCRv5.
         model_x=xfeat_assets.load_model()
-        model_d=dino.load()
-        if not ocr.status()["available"]:
-            raise RuntimeError("Проверенные OCR-веса отсутствуют")
-        engine_ocr=ocr.load()
-        vectors,errors=ad_recognition._layout_vectors(model_d,layouts)
-        if errors or len(vectors)!=len(layouts):
-            raise RuntimeError("Невозможно вычислить признаки всех закреплённых макетов")
-        reference_features={}
-        text_cache={}
-        analyses=[]
-        found=recognized=review_count=errors_count=0
+        try:
+            detections,errors_count=ad_pipeline_steps.detect(
+                job,model_x,rows,refs,run_id)
+        finally:
+            del model_x
+            gc.collect()
+        found=len(detections)
         count=len(rows)
-        for index,row in enumerate(rows):
-            if job.stopped():raise InterruptedError("Обработка остановлена")
-            sam=row.get("assigned_sam")
-            started_photo=time.monotonic()
+        analyses=[]
+        recognized=review_count=0
+        if found:
+            model_d=dino.load()
+            if not ocr.status()["available"]:
+                raise RuntimeError("Проверенные OCR-веса отсутствуют")
+            engine_ocr=ocr.load()
             try:
-                source=owned_file(Path(row["query"]),DATA_DIR/"uploads"/job.info["batch_id"])
-                screen_result,rgb=screen_search._analyse_photo(
-                    model_x,{"index":index,"assigned_sam":sam},source,refs,reference_features)
-                screen_search._save(run_id,index,screen_result,rgb)
-            except (OSError,ValueError,HTTPException) as exc:
-                screen_result={"index":index,"assigned_sam":sam,"status":"error",
-                    "reason":str(exc)[:300],"screens":[]}
-                screen_search._save(run_id,index,screen_result,None)
-                errors_count+=1
-            job.progress("ad_pipeline","screen_search",index+1,count,
-                         f"XFeat · ФО {index+1}/{count}")
-            for screen in screen_result.get("screens",[]):
-                if screen.get("status")!="found":continue
-                found+=1
-                try:
-                    item=ad_recognition._identify(
-                        model_d,engine_ocr,screen,run_id,index,vectors,text_cache,errors)
-                    crop=screen_search.crop(run_id,index,screen["screen_id"])
-                    picture=ad_recognition._crop_screen(crop,screen)
-                    full_size=(screen_result["image_width"],screen_result["image_height"])
-                    item["quality"]=quality.assess(picture,screen,full_size)
-                    item["assigned_sam"]=sam
-                    item["screen_name"]=screen.get("screen_name","Экран")
-                    chosen=next((r for r,_,_ in vectors
-                                 if str(r["id"])==item.get("candidate_id")),None)
-                    if chosen:
-                        item["layout_name"]=chosen["name"]
-                        item["layout_version"]=chosen["version"]
-                        item["layout_checksum"]=chosen["checksum"]
-                    item["elapsed_seconds"]=round(time.monotonic()-started_photo,2)
-                    recognized+=int(item["status"]=="matched")
-                    review_count+=int(item["review_required"])
-                    analyses.append(item)
-                except (OSError,ValueError,HTTPException) as exc:
-                    item={"index":index,"screen_id":screen["screen_id"],
-                          "status":"error","reason":str(exc)[:300],
-                          "candidate_id":None,"review_required":True}
-                    errors_count+=1
-                ad_recognition._write(run_id,index,screen["screen_id"],item)
-            job.progress("ad_pipeline","ad_recognition",index+1,count,
-                         f"DINOv2 / OCR · ФО {index+1}/{count}")
+                vectors,errors=ad_recognition._layout_vectors(model_d,layouts)
+                if errors or len(vectors)!=len(layouts):
+                    raise RuntimeError("Невозможно вычислить признаки всех закреплённых макетов")
+                analyses,recognized,review_count,failed_recognition=ad_pipeline_steps.recognize(
+                    job,model_d,engine_ocr,detections,run_id,vectors,errors)
+                errors_count+=failed_recognition
+            finally:
+                del model_d
+                del engine_ocr
+                gc.collect()
+        else:
+            job.progress("ad_pipeline","ad_recognition",1,1,
+                         "Нет геометрически подтверждённых экранов")
         job.progress("ad_pipeline","quality",count,count,
                      "Оценка фокуса, пересвета и видимости экрана")
         winners=best.select(analyses)
