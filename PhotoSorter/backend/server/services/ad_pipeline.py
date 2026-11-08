@@ -145,6 +145,7 @@ def process(job):
         # their parent DINO visual group, then selects quality winners per
         # verified text subgroup. The result remains an immutable run artifact.
         text_document=ad_text_subgroups.form(job,run_id,groups,analyses,data_root=DATA_DIR)
+        review_count=sum(bool(item.get("review_required")) for item in analyses)
         job.progress("ad_pipeline","quality",count,count,
                      "Оценка фокуса, пересвета и видимости экрана")
         winners=best.select(analyses)
