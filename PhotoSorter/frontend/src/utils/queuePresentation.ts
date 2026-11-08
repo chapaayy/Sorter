@@ -10,7 +10,7 @@ export const STATE_RU:Record<QueueStatus,string>={
   failed:'Ошибка',
   interrupted:'Прервано'
 }
-export const isPrep=(item:QueueTask)=>item.kind==='reference_preparation'
+export const isPrep=(item:QueueTask)=>item.kind!=='fo_processing'
 export const hasBlockingFailure=(item:QueueTask)=>isPrep(item)&&
   ['failed','interrupted','blocked'].includes(item.state)
 export function queuePosition(tasks:readonly QueueTask[],seq:number):number{
