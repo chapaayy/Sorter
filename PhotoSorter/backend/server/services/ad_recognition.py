@@ -176,8 +176,10 @@ def prune_old_layout_cache()->dict:
     from ..db.repositories import ad_layouts as registry
     with connect() as db:
         rows=registry.all_rows(db,False)
+        prepared=db.execute("SELECT checksum FROM ad_layout_prepared_cache").fetchall()
     checksums={row["checksum"] for row in rows}
     checksums.update(row["published_snapshot"]["checksum"] for row in rows
                      if row["published_snapshot"])
+    checksums.update(entry["checksum"] for entry in prepared)
     return embedding_cache.prune_inactive({embedding_cache.key(checksum)
                                            for checksum in checksums})
