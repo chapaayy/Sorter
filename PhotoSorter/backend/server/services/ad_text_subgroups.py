@@ -56,7 +56,10 @@ def _classification(item: dict) -> str:
     visual = item.get("status")
     if visual != "matched" or not item.get("candidate_id"):
         return "unidentified"
-    if item.get("review_required", False):
+    evidence = item.get("ocr_observation", {})
+    if (item.get("review_required", False) or
+            evidence.get("status") != "readable" or
+            evidence.get("confidence", 0) < MIN_READABLE_CONFIDENCE):
         return "probable"
     if item.get("ocr", {}).get("status") == "confirmed":
         return "confirmed"
