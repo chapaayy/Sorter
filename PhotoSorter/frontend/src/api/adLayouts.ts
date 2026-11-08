@@ -8,7 +8,8 @@ export interface AdRecognition {
  index:number;screen_id:string;
  status:'not_processed'|'no_layouts'|'no_match'|'uncertain'|'matched'|'error'
  reason?:string;candidate_id?:string|null;top?:LayoutMatch[];
- margin?:number|null;review_required?:boolean;elapsed_seconds?:number;
+ margin?:number|null;review_required?:boolean;best_for_layout?:boolean;elapsed_seconds?:number;
+ quality?:{status:string;score:number;version?:string;metrics?:{sharpness:number;exposure:number;glare:number;screen_coverage:number}};
  ocr?:{status:string;reason:string;lines?:string[];matched_terms?:number;total_terms?:number};
  thresholds?:{min_similarity:number;min_margin:number}
 }
