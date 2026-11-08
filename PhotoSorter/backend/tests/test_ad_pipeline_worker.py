@@ -81,7 +81,7 @@ def test_full_cpu_screen_pipeline_writes_best_before_zip(monkeypatch,tmp_path):
                 "model_signature":xfeat_assets.MODEL_ID,
                 "status":"found","screens":[screen]},rgb
     monkeypatch.setattr(screen_search,"_analyse_photo",fake_xfeat)
-    def fake_dino(_model,_ocr,screen,_run,index,*_args):
+    def fake_dino(_model,_ocr,screen,_run,index,*_args,**_kwargs):
         return {"index":index,"screen_id":screen_id,"status":"matched",
                 "candidate_id":layout_id,"review_required":False,
                 "ocr":{"status":"confirmed","reason":"Контрольный текст совпадает"},
