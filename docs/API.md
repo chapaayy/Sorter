@@ -165,3 +165,18 @@
 - `GET /api/download/{id}` — готовый ZIP с Range/206; для старых запусков сохранён совместимый fallback.
 
 `POST /api/batches/{id}/downloads/confirm` оставлен как legacy API. В новом UI подтверждение скачивания больше не требуется.
+
+## Разметка экрана (этап 1, feature/ad-recognition)
+
+Все новые маршруты защищены теми же session-cookie и Origin, что остальные `/api/*`.
+
+| Метод | Путь | Назначение |
+| --- | --- | --- |
+| GET | `/api/references/{sam}/screens` | Экраны конструкции и их сохранённые разметки |
+| GET | `/api/references/{sam}/photos/{reference_id}/screen-metadata` | Размеры оригинала после EXIF, SHA-256 |
+| POST | `/api/references/{sam}/screen-annotations` | Создать экран или его разметку на ещё одном Образце |
+| PATCH | `/api/references/{sam}/screen-annotations/{id}` | Изменить геометрию с проверкой `version` |
+| DELETE | `/api/references/{sam}/screen-annotations/{id}` | Удалить одну разметку |
+| DELETE | `/api/references/{sam}/screens/{id}` | Удалить экран и все его ракурсы |
+
+POST: `{reference_id,screen_id:null,screen_name:"Экран 1",corners:[{x,y},...],band_width_px:10}` для нового экрана или `screen_id` существующего экрана без имени. PATCH: `{corners:[{x,y},...],band_width_px:10,version:1}`. Углы идут последовательно по контуру в пикселях EXIF-ориентированного оригинала. Ответ POST/PATCH: `{id,screen_id,version}`. Ошибки `404` при отсутствии фото/экрана, `409` при конфликтах версий/дублировании, `422` при недопустимой геометрии.
