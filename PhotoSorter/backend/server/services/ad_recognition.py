@@ -8,7 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from fastapi import HTTPException
-from PIL import Image
+from PIL import Image,ImageOps
 from app.config import DATA_DIR
 from app.results.exporter import atomic_json
 from app.ad_recognition import dino,embedding_cache,scoring,ocr
