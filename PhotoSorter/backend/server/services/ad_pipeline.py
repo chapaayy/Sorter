@@ -74,7 +74,8 @@ def process(job):
     run_id=job.info["id"]
     if (snapshot["xfeat_signature"]!=xfeat_assets.MODEL_ID or
         snapshot["dino_signature"]!=dino.SIGNATURE or
-        snapshot["ocr_version"]!=ocr.VERSION):
+        snapshot["ocr_version"]!=ocr.VERSION or
+        snapshot["ocr_signature"]!=ocr.signature()):
         raise RuntimeError("Версия модели изменилась после фиксации задания")
     started=time.monotonic()
     snapshot["status"]="running"
