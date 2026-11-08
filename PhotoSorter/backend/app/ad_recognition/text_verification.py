@@ -119,9 +119,16 @@ def compare(expected_text: str, observed: list[dict], *,
          bool(set(expected_significant[kind]) & set(observed_significant[kind])))
         for kind in ("dates", "prices", "percentages")
     )
+    # A short but precise offer such as "Скидки 50" still carries
+    # sufficient evidence if the number was recognized confidently.
+    shared_numeric = any(
+        token.isdecimal() and len(token) >= 2 and token in matched
+        for token in photo
+    ) and bool(strong)
     sufficient = (
         len(matched) >= 3 and len(photo) >= 3 or
-        len(matched) >= 2 and len(photo) >= 2 and shared_structured
+        len(matched) >= 2 and len(photo) >= 2
+        and (shared_structured or shared_numeric)
     )
     result = {
         **observation,
@@ -151,6 +158,10 @@ def compare(expected_text: str, observed: list[dict], *,
     if possible_conflicts:
         return {**result, "status": "probable",
                 "reason": "Возможное расхождение по дате или предложению; уверенности OCR недостаточно"}
+    if (not matched and photo and confidence >= MIN_CONFLICT_CONFIDENCE
+            and len(set(reference)) >= 2):
+        return {**result, "status": "mismatch",
+                "reason": "Уверенно прочитанный текст отсутствует в макете"}
     if sufficient and ratio >= MIN_MATCH_RATIO and confidence >= MIN_LINE_CONFIDENCE:
         return {**result, "status": "confirmed",
                 "reason": (f"Совпало {len(matched)} из {len(photo)} "
