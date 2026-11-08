@@ -77,5 +77,7 @@ docker compose exec -T worker python -m app.screen_detection.cpu_smoke
 # DINOv2 384D embedding check from a pinned, hash-verified checkpoint.
 docker compose exec -T api python -m app.ad_recognition.cli --install-dino
 docker compose exec -T worker python -m app.ad_recognition.cli --verify
+# Explicit PaddleOCR provisioning happens only in disposable CI/API.
+docker compose exec -T api python -m app.ad_recognition.cli --install-ocr
 docker compose exec -T worker python -m app.ad_recognition.cpu_smoke
 echo "[OK] Full image build and isolated runtime: TLS self-signed, API/login, root Vue SPA, 3 workers and synthetic batch lifecycle"
