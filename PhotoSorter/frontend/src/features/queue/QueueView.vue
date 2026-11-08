@@ -20,10 +20,16 @@ const tasks=ref<QueueTask[]>([]),history=ref<QueueTask[]>([]),historyTotal=ref(0
 const activeTotal=ref(0),busy=ref(''),error=ref('')
 const historyMode=ref(route.query.view==='history'),search=ref('')
 const detail=ref<string|null>(null)
+const detailKind=ref<'reference_preparation'|'layout_preparation'>('reference_preparation')
+function showDetail(t:QueueTask){
+  detail.value=t.layout_job_id||t.reference_job_id
+  detailKind.value=t.kind==='layout_preparation'?'layout_preparation':'reference_preparation'
+}
 const confirm=ref<{task:QueueTask;action:'stop'|'retry'|'skip'}|null>(null)
 const active=computed(()=>[...tasks.value].sort((a,b)=>a.seq-b.seq))
 const filteredHistory=computed(()=>history.value.filter(item=>(
-  (item.batch_name||'')+' '+item.seq+' '+(item.kind==='reference_preparation'?'образцы':'фотографии')
+  (item.batch_name||'')+' '+item.seq+' '+(item.kind==='reference_preparation'?'образцы':
+    item.kind==='layout_preparation'?'реклама':'фотографии')
 ).toLowerCase().includes(search.value.toLowerCase())))
 const blocking=computed(()=>active.value.find(hasBlockingFailure))
 const clock=ref(Date.now()),loadingMore=ref(false)
@@ -54,12 +60,18 @@ async function moreHistory(){
 async function submit(){
   const target=confirm.value
   if(!target||busy.value)return
-  const key=target.task.reference_job_id||target.task.fo_run_id||''
+  const key=target.task.layout_job_id||target.task.reference_job_id||target.task.fo_run_id||''
   busy.value=key
   try{
     if(target.task.kind==='fo_processing'){
       if(target.action!=='stop'||!target.task.fo_run_id)throw new Error('Неверное действие для ФО')
       await runApi.stop(target.task.fo_run_id)
+    }else if(target.task.kind==='layout_preparation'){
+      const jobId=target.task.layout_job_id
+      if(!jobId)throw new Error('Подготовка макета не найдена')
+      if(target.action==='retry')await workQueueApi.retryLayout(jobId)
+      else if(target.action==='skip')await workQueueApi.skipLayout(jobId)
+      else throw new Error('Подготовка макета не поддерживает остановку после запуска')
     }else{
       const jobId=target.task.reference_job_id
       if(!jobId)throw new Error('Подготовка не найдена')
@@ -68,7 +80,7 @@ async function submit(){
       else await workQueueApi.stop(jobId)
     }
     notice.add(target.action==='retry'?'Подготовка возвращена в очередь':
-      target.action==='skip'?'Обновление образцов явно пропущено':'Запрошена остановка','ok')
+      target.action==='skip'?'Подготовка явно пропущена':'Запрошена остановка','ok')
     confirm.value=null
     await refresh()
   }catch(e){error.value=errorText(e)}
@@ -76,6 +88,10 @@ async function submit(){
 }
 function message(){
   if(!confirm.value)return ''
+  if(confirm.value.task.kind==='layout_preparation')
+    return confirm.value.action==='retry'?
+      'Повторная подготовка макета сохранит его место в общей очереди.':
+      'Неподготовленный макет не будет доступен для распознавания рекламы.'
   return confirm.value.action==='retry'
     ?'Повторная подготовка сохранит исходное место в очереди. Следующие ФО дождутся результата.'
     :confirm.value.action==='skip'
@@ -85,7 +101,7 @@ function message(){
 </script>
 <template>
 <PageHeader eyebrow="ЗАДАНИЯ" title="Очередь"
-  subtitle="Фотографии и подготовка образцов обрабатываются по порядку поступления.">
+  subtitle="Фотографии, образцы и рекламные макеты обрабатываются в общей очереди.">
   <template #actions>
     <UiButton small @click="historyMode=!historyMode">{{historyMode?'Активные задачи':'История · '+historyTotal}}</UiButton>
     <UiButton small @click="refresh">Обновить</UiButton>
@@ -93,7 +109,7 @@ function message(){
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:15px">{{error}}</div>
 <div v-if="blocking" class="alert error" role="alert" style="margin-bottom:16px">
-  <strong>Требуется исправить подготовку образцов.</strong>
+  <strong>Требуется исправить подготовку.</strong>
   Следующие ФО ждут повторения или явного пропуска обновления.
 </div>
 <template v-if="!historyMode">
@@ -102,7 +118,7 @@ function message(){
       :task="task" :position="index+1" :estimate="estimates.get(task.seq)"
       :busy="busy===task.reference_job_id||busy===task.fo_run_id"
       @action="(t,action)=>confirm={task:t,action}"
-      @details="t=>detail=t.reference_job_id"/>
+      @details="showDetail"/>
     <div v-if="activeTotal>active.length" class="meta">
       Показаны первые {{active.length}} из {{activeTotal}} задач.
     </div>
@@ -120,7 +136,7 @@ function message(){
   </div>
   <div v-if="filteredHistory.length" class="stack">
     <QueueTaskRow v-for="(task,index) in filteredHistory" :key="task.seq" :task="task"
-      :position="index+1" @details="t=>detail=t.reference_job_id"/>
+      :position="index+1" @details="showDetail"/>
   </div>
   <div v-else class="queue-empty">
     <h2>{{history.length?'Ничего не найдено':'История пока пуста'}}</h2>
@@ -129,7 +145,7 @@ function message(){
     <UiButton small :loading="loadingMore" @click="moreHistory">Показать ещё</UiButton>
   </div>
 </template>
-<QueueTaskDetail v-if="detail" :job-id="detail" @close="detail=null"/>
+<QueueTaskDetail v-if="detail" :job-id="detail" :kind="detailKind" @close="detail=null"/>
 <ConfirmDialog v-if="confirm" :busy="!!busy"
   :title="confirm.action==='retry'?'Повторить подготовку?':confirm.action==='skip'?'Пропустить обновление образцов?':'Остановить задачу?'"
   :message="message()" :danger="confirm.action!=='retry'"
