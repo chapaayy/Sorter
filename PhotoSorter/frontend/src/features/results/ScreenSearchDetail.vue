@@ -41,7 +41,7 @@ onMounted(()=>{void refresh()})
         </div>
         <div v-if="result.screens.length>1" class="row wrap">
           <UiButton v-for="item in result.screens" :key="item.screen_id" small
-            :kind="selected===item.screen_id?'primary':'default'"
+            :kind="selected===item.screen_id?'primary':'secondary'"
             @click="selected=item.screen_id">{{item.screen_name}}</UiButton>
         </div>
         <div v-if="result.status!=='not_processed'" class="screen-search-stage">

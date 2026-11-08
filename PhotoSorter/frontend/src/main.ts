@@ -10,6 +10,7 @@ import './styles/task-cards.css'
 import './styles/upload-dialog.css'
 import './styles/reference-layout.css'
 import './styles/screen-annotation.css'
+import './styles/screen-search.css'
 import './styles/queue.css'
 import './styles/settings-layout.css'
 createApp(App).use(createPinia()).use(router).mount('#app')

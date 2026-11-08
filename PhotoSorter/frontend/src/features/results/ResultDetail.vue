@@ -14,6 +14,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import GroupPicker from '../../components/split/GroupPicker.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
+import ScreenSearchDetail from './ScreenSearchDetail.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import {useNoticeStore} from '../../stores/notice'
 import {useDeletionStore} from '../../stores/deletion'
@@ -21,7 +22,7 @@ const route=useRoute(),router=useRouter(),id=String(route.params.runId),notice=u
 const run=ref<Run|null>(null),batch=ref<Batch|null>(null),retention=ref<Retention|null>(null)
 const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),referenceNames=ref<Record<string,string>>({}),mode=ref<'sam'|'group'>('sam')
 const selected=ref(''),lastSam=ref(''),lastGroup=ref(''),error=ref(''),busy=ref(false)
-const viewer=ref<number|null>(null),deleteWhole=ref(false)
+const viewer=ref<number|null>(null),detectionPhoto=ref<ResultPhoto|null>(null),deleteWhole=ref(false)
 const archiveMissing=ref(false),archiveRetryBusy=ref(false)
 const displaySam=(sam:string)=>referenceNames.value[sam]||friendlySam(sam)
 const list=computed(()=>Object.entries(mode.value==='sam'?sams.value:groups.value)
@@ -53,6 +54,10 @@ onMounted(async()=>{
     retention.value=await batchApi.retention(b.batch_id)
   }catch(e){error.value=errorText(e)}
 })
+function openDetection(index:number){
+  detectionPhoto.value=items.value[index]||null
+  viewer.value=null
+}
 function download(sam?:string){
   const anchor=document.createElement('a')
   anchor.href=resultApi.download(id,sam)
@@ -132,6 +137,9 @@ async function deleteBatch(){
   </section>
 </div>
 <EmptyState v-else-if="run" title="Результаты ещё не опубликованы" detail="Проверьте статус обработки и журнал запуска."/>
-<ImageViewer v-if="viewer!==null" :items="previews" :initial="viewer" @close="viewer=null"/>
+<ImageViewer v-if="viewer!==null" :items="previews" :initial="viewer" :allow-detection="true"
+  @detect="openDetection" @close="viewer=null"/>
+<ScreenSearchDetail v-if="detectionPhoto" :run-id="id" :index="detectionPhoto.index" :image-url="detectionPhoto.image_url"
+  @close="detectionPhoto=null"/>
 <ConfirmDialog v-if="deleteWhole&&batch" title="Удалить ВСЮ партию безвозвратно?" :message="'Удалятся оригинальные ФО, все запуски, готовые результаты, миниатюры, временные файлы и логи партии «'+batch.display_name+'». Общая библиотека SAM останется.'" :required-text="batch.display_name" danger confirm-label="Удалить всю партию" :busy="busy" @confirm="deleteBatch" @cancel="deleteWhole=false"/>
 </template>

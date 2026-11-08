@@ -34,7 +34,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - name: Install regression dependencies
-        run: pip install pytest httpx numpy==1.26.4 Pillow==11.0.0 fastapi "pydantic>=2,<3" "psycopg[binary]>=3.2,<4" "zipstream-ng>=1.8,<2"
+        run: pip install pytest httpx numpy==1.26.4 Pillow==11.0.0 fastapi "pydantic>=2,<3" "psycopg[binary]>=3.2,<4" "zipstream-ng>=1.8,<2" opencv-python-headless==4.10.0.84
       - name: Compile all Python, shell syntax and Docker compose
         run: |
           python -m compileall -q PhotoSorter/backend PhotoSorter/tools
