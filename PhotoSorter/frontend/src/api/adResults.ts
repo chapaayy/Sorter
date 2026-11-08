@@ -126,6 +126,8 @@ export const adResultsApi={
   api<TextSubgroupsPage>(recognition(run)+'/text-subgroups'+query(options)),
  textGroup:(run:string,subgroup:string)=>
   api<TextSubgroup>(recognition(run)+'/text-subgroups/'+encodeURIComponent(subgroup)),
+ recognition:(run:string,index:number,screenId:string)=>
+  api<OcrRecognition>(recognition(run)+'/photos/'+index+'/screens/'+encodeURIComponent(screenId)),
  layouts:(run:string,limit=50,offset=0)=>
   api<AdvertisingLayoutsPage>(base(run)+'/layouts'+query({limit,offset})),
  layoutImage:(run:string,layout:string)=>
