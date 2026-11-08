@@ -179,3 +179,10 @@ def analyze_run(run_id:str,*,limit:int|None=None,progress=None)->dict:
         if progress:progress(item)
     return {"run_id":run_id,"processed":processed,"found":found,
             "model_signature":MODEL_ID}
+
+def prune_old_reference_cache()->dict:
+    """Explicit maintenance, retaining all live annotation versions."""
+    from app.screen_detection.cache import key,prune_inactive
+    with connect() as db:
+        live=records.cache_annotations(db)
+    return prune_inactive({key(dict(item)) for item in live})
