@@ -18,7 +18,9 @@ const deleting=computed(()=>props.task.batch_delete_state==='deleting'||
   (props.task.batch_delete_state!=='delete_failed'&&props.task.batch_id!=null&&deletion.pending(props.task.batch_id)))
 const deleteFailed=computed(()=>props.task.batch_delete_state==='delete_failed')
 const preparing=computed(()=>isPrep(props.task))
-const canStop=computed(()=>props.task.state==='running'||props.task.state==='queued')
+const layoutPrep=computed(()=>props.task.kind==='layout_preparation')
+const canStop=computed(()=>props.task.state==='queued'||
+  (props.task.state==='running'&&!layoutPrep.value))
 const progress=computed<number|null>(()=>{
   const task=props.task
   if(task.state==='completed')return 100
@@ -37,6 +39,13 @@ const stage=computed(()=>{
   if(props.task.state==='queued')return 'Ожидает предыдущие задачи'
   if(props.task.state==='running'){
     if(props.task.stop_requested)return 'Запрошена остановка'
+    if(layoutPrep.value){
+      const phases:Record<string,string>={queued:'Ожидание',
+        validating:'Проверка макета',dino:'DINOv2 · признаки',
+        ocr:'PaddleOCR · текст',publishing:'Публикация макета',
+        completed:'Подготовлен'}
+      return phases[props.task.progress_stage||'']||'Подготовка макета'
+    }
     if(preparing.value){
       const phases:Record<string,string>={queued:'Ожидание',validating:'Проверка Образцов',
         loading:'Загрузка MegaLoc на CPU',extracting:'MegaLoc · вычисление признаков',
@@ -65,19 +74,22 @@ const tone=computed(()=>{
   return 'neutral'
 })
 const time=computed(()=>queueTime(props.task,props.estimate))
-const count=computed(()=>preparing.value?props.task.total_count:props.task.fo_photo_count)
+const count=computed(()=>layoutPrep.value?null:
+  preparing.value?props.task.total_count:props.task.fo_photo_count)
 </script>
 <template>
 <CompactTaskCard :number="position??task.seq" class="queue-task-row"
-  :title="preparing?'Подготовка образцов':task.batch_name||'Фотоотчёт'"
-  :thumbnail-url="preparing?null:task.fo_thumbnail_url"
+  :title="layoutPrep?'Подготовка рекламы · '+(task.layout_name||'Макет'):
+    preparing?'Подготовка образцов':task.batch_name||'Фотоотчёт'"
+  :thumbnail-url="layoutPrep&&task.layout_id?'/api/ad-layouts/'+task.layout_id+'/image':
+    preparing?null:task.fo_thumbnail_url"
   :icon="preparing?'references':'photos'"
   :status="deleting?'Удаляется':deleteFailed?'Ошибка удаления':task.stop_requested&&task.state==='running'?'Остановка':STATE_RU[task.state]"
   :tone="tone" :progress="progress" :stage="stage"
   :time-label="time.label" :time-detail="time.detail"
   :active="task.state==='running'">
   <template #meta>
-    <span>{{preparing?'Образцы':'ФО'}}</span>
+    <span>{{layoutPrep?'Реклама':preparing?'Образцы':'ФО'}}</span>
     <span v-if="count!=null">{{count}} фото</span>
     <span v-if="preparing&&task.failed_count">Ошибок: {{task.failed_count}}</span>
     <span v-if="task.state!=='queued'&&task.state!=='running'">{{date(task.created_at)}}</span>
