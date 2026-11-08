@@ -7,7 +7,6 @@ from __future__ import annotations
 import time
 from pathlib import Path
 from fastapi import HTTPException
-from app.config import DATA_DIR
 from app.ad_recognition import quality
 from ..storage.paths import owned_file
 from . import screen_search,ad_recognition
