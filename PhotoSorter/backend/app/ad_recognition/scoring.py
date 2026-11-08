@@ -32,5 +32,6 @@ def rank(query:np.ndarray,layouts:list[tuple[dict,np.ndarray]],*,minimum=MIN_SIM
     else:
         state,reason="matched","DINOv2: выбран наиболее близкий макет"
     return {"status":state,"reason":reason,
-            "candidate_id":best["id"],"top":candidates[:5],
+            "candidate_id":best["id"] if state!="no_match" else None,
+            "top":candidates[:5],
             "margin":gap,"thresholds":{"min_similarity":minimum,"min_margin":margin}}
