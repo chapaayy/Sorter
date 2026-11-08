@@ -1,6 +1,6 @@
 # Тестирование PhotoSorter (beta)
 
-В репозитории **одна актуальная CI-система**: `.github/workflows/ci.yml`, запускается на push/PR в `main`. Проверки изолированы от VPS и пользовательских данных.
+В репозитории **одна актуальная CI-система**: `.github/workflows/ci.yml`, запускается при push в `main` и `feature/ad-recognition`, а также PR в `main`. Проверки изолированы от VPS и пользовательских данных.
 
 ## Что запускается автоматически
 
@@ -55,3 +55,10 @@ npm run test:e2e
 ## Единый beta pipeline
 
 Очередь ФО и подготовок образцов — только `work_queue.seq`; загрузка образцов всегда доступна через `/api/reference-imports` и сохраняет файлы в `reference_staging`. После полной подготовки публикуется неизменяемая версия библиотеки. Обе версии планировщика и условные флаги переключения удалены. Приёмка — тесты на пустой базе, докачку, FIFO, публикацию и браузеры Chromium/WebKit. Текущая архитектура: [REFERENCE_PIPELINE](REFERENCE_PIPELINE.md).
+
+## Проверки этапа 1: разметка экранов
+
+- `pytest PhotoSorter/backend/tests/test_screen_annotations.py` — геометрия, EXIF, PostgreSQL CRUD, FK, конструкция, версия.
+- `npm run build && npm run test && npm run test:e2e` из `PhotoSorter/frontend` — TypeScript, Vitest и Chromium/WebKit; `screen-annotations.spec.ts` проверяет сохранение после перезагрузки.
+- Параллельно прежние регрессионные проверки и Docker smoke в CI.
+- На новом VPS дополнительно вручную проверить разметку нескольких реальных Образцов в iOS Safari и реальную MegaLoc/ZIP обработку. Успешный CI не означает проверку реальных ФО.
