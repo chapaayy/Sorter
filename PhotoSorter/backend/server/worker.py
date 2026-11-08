@@ -86,6 +86,8 @@ def main():
                     continue
                 with connect() as db:
                     work_queue.mark_interrupted(db)
+                from .services import ad_layouts
+                ad_layouts.requeue_stale_models()
                 watch_stop=threading.Event()
                 watcher=threading.Thread(target=_leader_watch,args=(leader,watch_stop),daemon=True)
                 watcher.start()
