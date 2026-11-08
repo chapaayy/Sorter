@@ -37,7 +37,8 @@ def detect(job,model,rows,refs,run_id,data_root):
                      f"XFeat · ФО {index+1}/{total}")
     return detections,failures
 
-def recognize(job,model,engine_ocr,detections,run_id,vectors,layout_errors):
+def recognize(job,model,engine_ocr,detections,run_id,vectors,layout_errors,
+              matching_threshold=0.81):
     analyses=[]
     recognized=review_count=failures=0
     text_cache={}
@@ -51,7 +52,8 @@ def recognize(job,model,engine_ocr,detections,run_id,vectors,layout_errors):
         started=time.monotonic()
         try:
             item=ad_recognition._identify(
-                model,engine_ocr,screen,run_id,index,vectors,text_cache,layout_errors)
+                model,engine_ocr,screen,run_id,index,vectors,text_cache,layout_errors,
+                matching_threshold)
             crop=screen_search.crop(run_id,index,screen["screen_id"])
             picture=ad_recognition._crop_screen(crop,screen)
             item["quality"]=quality.assess(picture,screen,full_size)
