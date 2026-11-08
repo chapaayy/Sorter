@@ -137,24 +137,108 @@ def read(engine,picture:Image.Image)->list[dict]:
 def _norm(text:str)->str:
     return " ".join(re.findall(r"[a-zа-яё0-9]+",text.casefold()))
 
+def _critical(text:str)->dict:
+    """OCR-visible numeric/date/price tokens; no language-model guessing."""
+    # Keep punctuation until numeric structures have been extracted.
+    value=text.casefold().replace("ё","е")
+    dates=set()
+    for hit in re.finditer(r"(?<!\d)(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?!\d)",value):
+        day,month,year=hit.groups()
+        if 1<=int(day)<=31 and 1<=int(month)<=12:
+            dates.add(f"{int(day):02}.{int(month):02}"+(f".{year}" if year else ""))
+    percent={m.group(1).replace(",",".") for m in re.finditer(
+        r"(?<!\w)(\d+(?:[.,]\d+)?)\s*%",value)}
+    prices={m.group(1).replace(",",".") for m in re.finditer(
+        r"(?<!\w)(\d+(?:[.,]\d+)?)\s*(?:₽|руб(?:лей|ля|\.)?|р\.)",value)}
+    numbers={m.group().replace(",",".") for m in re.finditer(
+        r"(?<![\w])\d+(?:[.,]\d+)?(?![\w])",value)}
+    # Dates and percentages are also represented among bare numbers.
+    return {"dates":sorted(dates),"percentages":sorted(percent),
+            "prices":sorted(prices),"numbers":sorted(numbers)}
+
+
+def describe(observed:list[dict])->dict:
+    """Preserve OCR evidence independently from any DINO candidate/layout."""
+    lines=[]
+    for item in observed[:50]:
+        text=item.get("text")
+        try:score=float(item.get("score",0))
+        except (ValueError,TypeError):continue
+        if not isinstance(text,str) or not text.strip() or not np.isfinite(score):
+            continue
+        line={"text":text.strip()[:200],"score":round(min(1.,max(0.,score)),3)}
+        polygon=item.get("polygon")
+        if isinstance(polygon,list) and 3<=len(polygon)<=16:
+            try:
+                coords=np.asarray(polygon,dtype="float64")
+                if coords.shape==(len(polygon),2) and np.isfinite(coords).all():
+                    line["polygon"]=coords.round(1).tolist()
+            except (TypeError,ValueError):
+                pass
+        lines.append(line)
+    usable=[item for item in lines if item["score"]>=.5]
+    content=" ".join(item["text"] for item in usable)
+    confidence=round(float(np.average(
+        [line["score"] for line in usable],
+        weights=[max(1,len(line["text"])) for line in usable])),3) if usable else 0.
+    return {"status":"readable" if usable else "unreadable",
+            "raw_lines":lines,"normalized_text":_norm(content),
+            "confidence":confidence,"significant":_critical(content),
+            "regions":[{"text":item["text"],"score":item["score"],
+                        "polygon":item["polygon"]}
+                       for item in usable if "polygon" in item]}
+
+
 def confirm(expected_text:str,observed:list[dict])->dict:
-    expected=_norm(expected_text)
-    texts=[item["text"] for item in observed if item.get("score",0)>=.5]
-    actual=_norm(" ".join(texts))
+    """OCR only verifies or flags the DINO candidate; never selects a layout.
+
+    A readable different date, percent or price contradicts the layout even
+    when generic shared slogan words appear in both images. A missing value,
+    poor OCR or weak lexical overlap is NOT a positive contradiction.
+    """
+    data=describe(observed)
+    expected=_norm(expected_text or "")
+    actual=data["normalized_text"]
+    texts=[item["text"] for item in data["raw_lines"] if item["score"]>=.5]
+    base={**data,"lines":texts,"expected_text":expected,
+          "contradictions":[],"matched_terms":0,"total_terms":0}
     if not expected:
-        return {"status":"not_configured","reason":"Для макета не указан контрольный текст","lines":texts}
+        return {**base,"status":"not_configured",
+                "reason":"Текст исходного макета отсутствует"}
     if not actual:
-        return {"status":"unreadable","reason":"Не удалось прочитать текст на ФО","lines":[]}
+        return {**base,"status":"unreadable",
+                "reason":"Текст на экране не прочитан; это не противоречие"}
+    expected_significant=_critical(expected_text or "")
+    observed_significant=data["significant"]
+    contradictions=[]
+    for category in ("dates","prices","percentages"):
+        left=set(expected_significant[category])
+        right=set(observed_significant[category])
+        if left and right and not (left & right):
+            contradictions.append({"kind":category,
+                                   "expected":sorted(left),"observed":sorted(right)})
+    # An unsuffixed number matters when both images have readable numbers:
+    # e.g. the same 'скидка' slogan with 40 instead of 50.
+    left=set(expected_significant["numbers"])
+    right=set(observed_significant["numbers"])
+    if left and right and not left.issubset(right) and not contradictions:
+        # Avoid treating unrelated extra numbers (different OCR layouts)
+        # as definitive when they still share at least one control number.
+        if not (left & right):
+            contradictions.append({"kind":"numbers",
+                                   "expected":sorted(left),"observed":sorted(right)})
     terms=[word for word in expected.split() if len(word)>=3 or word.isdigit()]
-    if not terms:
-        terms=expected.split()
-    hits=sum(1 for term in terms if any(SequenceMatcher(None,term,word).ratio()>=.82
-                                      for word in actual.split()))
+    if not terms:terms=expected.split()
+    hits=sum(1 for term in terms if any(
+        SequenceMatcher(None,term,word).ratio()>=.82 for word in actual.split()))
     ratio=hits/max(1,len(terms))
-    numbers_expected=set(re.findall(r"[0-9]+",expected))
-    numbers_observed=set(re.findall(r"[0-9]+",actual))
-    matched=ratio>=.6 and numbers_expected.issubset(numbers_observed)
-    return {"status":"confirmed" if matched else "mismatch",
-            "reason":"Контрольный текст совпадает" if matched else "Контрольный текст не совпал",
-            "matched_terms":hits,"total_terms":len(terms),
-            "lines":texts}
+    base.update(matched_terms=hits,total_terms=len(terms),
+                text_similarity=round(ratio,3),contradictions=contradictions)
+    if contradictions:
+        return {**base,"status":"mismatch",
+                "reason":"Читаемые числа, дата или цена противоречат макету"}
+    if ratio>=.6 and (not left or left.issubset(right)):
+        return {**base,"status":"confirmed",
+                "reason":"Читаемый текст согласуется с макетом"}
+    return {**base,"status":"probable",
+            "reason":"Недостаточно надёжных текстовых совпадений для подтверждения или опровержения"}
