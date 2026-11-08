@@ -262,6 +262,15 @@ def gc_retired(limit=25):
             original.unlink(missing_ok=True)
             db.execute("DELETE FROM ad_layout_retired_assets WHERE target_path=%s",(path,))
             removed+=1
+        db.execute("""DELETE FROM ad_layout_prepared_cache c
+            WHERE c.prepared_at<now()-interval '7 days'
+              AND NOT EXISTS (SELECT 1 FROM ad_layouts l
+                WHERE l.prepared_key=c.cache_key
+                  OR l.published_snapshot->>'prepared_key'=c.cache_key)
+              AND NOT EXISTS (SELECT 1 FROM jobs j
+                WHERE j.snapshot->'ad_pipeline'->'layouts' @>
+                  jsonb_build_array(jsonb_build_object('prepared_key',c.cache_key)))
+        """)
     return removed
 
 
