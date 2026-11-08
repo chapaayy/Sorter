@@ -76,15 +76,21 @@ def _ocr_check(engine,layout:dict,layout_path:Path,picture:Image.Image,
         return {"status":"error","reason":"Ошибка OCR: "+str(exc)[:180]}
 
 def _identify(model,ocr_engine,screen,run_id,index,embeddings,
-              layout_text_cache,layout_errors,matching_threshold=scoring.MIN_SIMILARITY):
+              layout_text_cache,layout_errors,matching_threshold=scoring.MIN_SIMILARITY,
+              screen_feature=None,group_match=None):
     sid=str(screen["screen_id"])
     filename=screen_search.crop(run_id,index,uuid.UUID(sid))
     picture=_crop_screen(filename,screen)
-    query=dino.embed(model,picture)
+    query=screen_feature if screen_feature is not None else dino.embed(model,picture)
     ranking=scoring.rank(query,[(row,feature) for row,feature,_ in embeddings],
                          minimum=matching_threshold)
-    result={"index":index,"screen_id":sid,"status":ranking["status"],
-            "reason":ranking["reason"],"candidate_id":ranking["candidate_id"],
+    # Group matching is provisional. Preserve the full individual ranking to
+    # expose weak members or a different per-screen favorite without a second
+    # DINO inference. The group decision remains the primary visual candidate.
+    decision=group_match if group_match is not None else ranking
+    candidate_id=decision["candidate_id"]
+    result={"index":index,"screen_id":sid,"status":decision["status"],
+            "reason":decision["reason"],"candidate_id":candidate_id,
             "top":ranking["top"],"margin":ranking.get("margin"),
             "thresholds":ranking.get("thresholds"),"layout_errors":layout_errors,
             "source_annotation_id":screen.get("annotation_id"),
@@ -92,10 +98,21 @@ def _identify(model,ocr_engine,screen,run_id,index,embeddings,
             "source_xfeat_signature":screen_search.saved(run_id,index).get("model_signature"),
             "dino_signature":dino.SIGNATURE,"ocr_version":ocr.VERSION,
             "ocr":{"status":"not_run","reason":"Нет кандидата DINOv2"},
-            "review_required":ranking["status"]!="matched"}
-    if ranking["candidate_id"] and ranking["status"] in ("matched","uncertain"):
+            "review_required":decision["status"]!="matched"}
+    if group_match is not None:
+        own_candidate=next((c for c in ranking["top"] if c["id"]==candidate_id),None)
+        if (ranking["status"]!="matched" or ranking["candidate_id"]!=candidate_id
+                or (own_candidate is not None and own_candidate["score"]<matching_threshold)):
+            result["review_required"]=True
+        result["visual_group_id"]=group_match["group_id"]
+        result["group_match"]={key:group_match[key] for key in
+                               ("status","reason","candidate_id","best_score",
+                                "margin","matching_threshold","candidate_count")}
+        result["member_match"]={key:ranking.get(key) for key in
+                                ("status","reason","candidate_id","margin","thresholds")}
+    if candidate_id and decision["status"] in ("matched","uncertain"):
         selected=next((row,path) for row,feature,path in embeddings
-                      if str(row["id"])==ranking["candidate_id"])
+                      if str(row["id"])==candidate_id)
         check=_ocr_check(ocr_engine,selected[0],selected[1],picture,layout_text_cache)
         result["ocr"]=check
         # Only independently confirmed readable text can remove the review
