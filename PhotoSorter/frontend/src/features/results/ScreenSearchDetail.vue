@@ -6,7 +6,7 @@ import type {AdRecognition} from '../../api/adLayouts'
 import type {ScreenSearchResult,DetectedScreen} from '../../api/screenSearch'
 import {errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
-const props=defineProps<{runId:string;index:number;imageUrl:string}>()
+const props=withDefaults(defineProps<{runId:string;index:number;imageUrl:string;pinnedLayouts?:boolean}>(),{pinnedLayouts:false})
 const emit=defineEmits<{(e:'close'):void}>()
 const result=ref<ScreenSearchResult|null>(null),error=ref(''),selected=ref(''),showPoints=ref(false)
 const modelReady=ref<boolean|null>(null)
@@ -155,17 +155,21 @@ onMounted(()=>{
                   <p class="meta">Оценка относительная, не вероятность распознавания.</p>
                 </div>
                 <div v-if="recognition.top?.length" class="ad-recognition-preview">
-                  <img :src="'/api/ad-layouts/'+recognition.top[0].id+'/image'"
+                  <img :src="pinnedLayouts?'/api/ad-results/runs/'+encodeURIComponent(runId)+'/layouts/'+recognition.top[0].id+'/image':
+                    '/api/ad-layouts/'+recognition.top[0].id+'/image'"
                     :alt="recognition.top[0].name"/>
                   <div class="stack-sm">
                     <strong>{{recognition.top[0].name}}</strong>
                     <p class="meta">Сходство DINOv2: {{recognition.top[0].score.toFixed(3)}}
                       · Разница с №2: {{recognition.margin==null?'—':recognition.margin.toFixed(3)}}</p>
                     <div class="ad-recognition-top">
-                      <div v-for="(match,i) in recognition.top" :key="match.id" class="row between">
+                      <div v-for="(match,i) in recognition.top.slice(0,5)" :key="match.id" class="row between">
                         <span>{{i+1}}. {{match.name}}</span><b>{{match.score.toFixed(3)}}</b>
                       </div>
                     </div>
+                    <RouterLink v-if="recognition.visual_group_id" class="meta"
+                      :to="{path:'/results/'+runId,query:{view:'comparisons',group:recognition.visual_group_id}}"
+                      @click="emit('close')">Все {{recognition.top.length}} сравнений и полные оценки DINOv2</RouterLink>
                   </div>
                 </div>
                 <div v-if="recognition.ocr" class="stack-sm">
