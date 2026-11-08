@@ -180,7 +180,7 @@ docker compose exec worker python -m app.screen_detection.cli --run-id RUN_ID --
 `PYTHONPATH=PhotoSorter/backend python3 -m app.screen_detection.cli --install`
 на ПК/машине с доступом, перенести в **одноимённые** каталоги VPS:
 `Models/models/xfeat/xfeat.pt` и
-`Models/cache/xfeat/official/modules/{xfeat.py,model.py,interpolator.py}`.
+`Models/cache/xfeat/official/ (включая LICENSE и modules/{xfeat.py,model.py,interpolator.py})`.
 `--verify` сверяет файлы с Git-хешами конкретного коммита официального XFeat;
 непроверенные веса не запускаются. После запуска открой
 «Результаты» → готовый запуск → фотографию → «Диагностика XFeat».
