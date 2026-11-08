@@ -6,7 +6,7 @@ const recognition=(run:string)=>'/ad-recognition/runs/'+encodeURIComponent(run)
 
 export type AdResultStatus='completed'|'not_processed'|'processing'|'queued'|'failed'|'pending'
 export type AdClassification='confirmed'|'probable'|'unidentified'
-export interface ResultScreen extends Partial<DetectedScreen> {
+export type ResultScreen=Omit<Partial<DetectedScreen>,'status'>&{
  screen_id:string;screen_name?:string;status:string;reason?:string;crop_url?:string
 }
 export interface XfeatPhoto {
