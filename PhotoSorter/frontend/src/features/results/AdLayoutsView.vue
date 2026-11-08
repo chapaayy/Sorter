@@ -155,6 +155,14 @@ function color(value:string){
               </div>
               <span class="meta">{{photo.assigned_sam}} · {{photo.text_subgroup_id}} · {{photo.visual_group_id}}</span>
               <span class="meta">Качество: {{photo.quality?.status==='measured'?photo.quality.score.toFixed(2)+' / 100':'не измерено'}}</span>
+              <span v-if="photo.selection_score!=null" class="meta">
+                Итог: {{photo.selection_score.toFixed(1)}} / 100
+                · OCR-балл: {{(photo.ocr_selection_score??0).toFixed(1)}}
+                · Качество: {{photo.quality?.score.toFixed(1)??'—'}}
+              </span>
+              <span class="meta">Совпадения OCR:
+                {{photo.ocr_matched_terms??0}} / {{photo.ocr_total_terms??0}} прочитанных элементов
+              </span>
               <span v-if="photo.quality?.metrics" class="meta">
                 Фокус {{photo.quality.metrics.sharpness?.toFixed(3)??'—'}}
                 · Блики {{photo.quality.metrics.glare?.toFixed(3)??'—'}}
