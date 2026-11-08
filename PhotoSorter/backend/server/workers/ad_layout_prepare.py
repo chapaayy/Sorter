@@ -97,7 +97,9 @@ def run(job_id):
     from psycopg.types.json import Jsonb
     with connect() as db:
         db.execute("SELECT pg_advisory_xact_lock(%s)",(LOCK,))
-        current=db.execute("""SELECT p.state,p.layout_id,p.checksum,l.checksum AS current_checksum
+        current=db.execute("""SELECT p.state,p.layout_id,p.checksum,l.checksum AS current_checksum,
+            l.name,l.filename,l.target_path,l.byte_size,l.expected_text,
+            l.ocr_corrected_text,l.version
             FROM ad_layout_preparation_jobs p JOIN ad_layouts l ON l.id=p.layout_id
             WHERE p.id=%s FOR UPDATE OF p,l""",(job_id,)).fetchone()
         if not current or current["state"]!="running" or current["checksum"]!=current["current_checksum"]:
@@ -106,9 +108,20 @@ def run(job_id):
             (cache_key,checksum,dino_signature,ocr_signature,embedding_path,ocr_lines,normalized_text)
             VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(cache_key) DO NOTHING""",
             (cache_key,job["checksum"],dino_sig,ocr_sig,str(vector_path),Jsonb(lines),normalized))
+        publication={"id":str(current["layout_id"]),
+            "name":current["name"],"filename":current["filename"],
+            "checksum":current["checksum"],"target_path":current["target_path"],
+            "byte_size":current["byte_size"],"version":current["version"],
+            "expected_text":current["expected_text"],
+            "ocr_corrected_text":current["ocr_corrected_text"],
+            "ocr_text":current["ocr_corrected_text"] if current["ocr_corrected_text"] is not None
+                else current["expected_text"] or normalized,
+            "prepared_key":cache_key,"embedding_path":str(vector_path),
+            "dino_signature":dino_sig,"ocr_signature":ocr_sig}
         db.execute("""UPDATE ad_layouts SET prepared_key=%s,preparation_state='completed',
             preparation_stage='completed',preparation_progress=100,preparation_error=NULL,
-            prepared_at=now() WHERE id=%s""",(cache_key,current["layout_id"]))
+            prepared_at=now(),published_snapshot=%s WHERE id=%s""",
+            (cache_key,Jsonb(publication),current["layout_id"]))
         db.execute("""UPDATE ad_layout_preparation_jobs SET state='completed',
             progress_stage='completed',progress_percent=100,finished_at=now(),
             error=NULL WHERE id=%s""",(job_id,))
