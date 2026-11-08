@@ -103,7 +103,8 @@ onMounted(()=>{void moreGroups()})
       <template v-if="detail">
         <div class="row between wrap">
           <div><h2>{{detail.id}} · {{detail.assigned_sam}}</h2>
-            <p class="meta">Физический экран {{detail.screen_id}} · {{detail.member_count}} участников</p></div>
+            <p class="meta">Физический экран {{detail.screen_id}} · {{detail.member_count}} участников</p>
+            <RouterLink class="meta" :to="{path:'/results/'+runId,query:{view:'sam',sam:detail.assigned_sam}}">К конструкции {{detail.assigned_sam}}</RouterLink></div>
           <span class="status" :class="rankMeta?.status==='matched'?'ok':''">{{rankMeta?.status||'Ожидание сопоставления'}}</span>
         </div>
         <div class="field">
