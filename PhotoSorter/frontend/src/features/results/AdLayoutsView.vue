@@ -178,7 +178,11 @@ function color(value:string){
     </section>
   </div>
   <EmptyState v-else-if="!loading" title="Распознанной рекламы нет"
-    :detail="state==='not_processed'||state==='processing'?'Конвейер рекламы не выполнялся или ещё обрабатывается.':'В сохранённых результатах отсутствуют рекламные макеты и сопоставления.'"/>
+    :detail="state==='queued'?'Распознавание рекламы ожидает своей очереди.':
+      state==='processing'?'Рекламные результаты ещё обрабатываются.':
+      state==='failed'?'Рекламная обработка завершилась ошибкой. Откройте историю запуска.':
+      state==='not_processed'?'Распознавание рекламы не выполнялось в этом запуске.':
+      'В сохранённых результатах отсутствуют рекламные макеты и сопоставления.'"/>
   <ImageViewer v-if="viewer!==null" :items="photos.map(p=>({src:photoUrl(p.index),label:'ФО №'+(p.index+1)}))"
     :initial="viewer" :allow-detection="true" @close="viewer=null"
     @detect="i=>{viewer=null;emit('inspect',photos[i].index)}"/>
