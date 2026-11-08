@@ -63,6 +63,26 @@
 .result-rank-layout .stack-sm{gap:2px}
 .result-compare-evidence{border-top:1px solid var(--border);padding-top:15px}
 .result-compare-evidence>img{display:block;max-width:420px;width:100%;max-height:280px;object-fit:contain;background:var(--panel-alt);border:1px solid var(--border);border-radius:9px}
+/* Final deliverables: construction folder -> layout folder -> one photo. */
+.result-final-layout{display:grid;grid-template-columns:minmax(210px,260px) minmax(0,1fr);gap:14px;align-items:start}
+.result-final-layout>section,.result-final-layout>aside{min-width:0}
+.result-final-folders{gap:8px}
+.result-final-folders>strong{margin-bottom:7px}
+.result-final-folder{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:11px 12px;min-height:43px;text-align:left;font-size:12px;
+  border:1px solid var(--border-subtle);border-radius:9px;color:var(--text);
+  background:var(--panel-alt);overflow-wrap:anywhere}
+.result-final-folder:hover,.result-final-folder.active{
+  background:var(--accent-bg);border-color:var(--muted-2)}
+.result-final-folder.active{font-weight:700}
+.result-final-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:14px}
+.result-final-card{display:grid;gap:13px;padding:12px;min-width:0;
+  border:1px solid var(--border-subtle);border-radius:10px;background:var(--panel-alt)}
+.result-final-card>img{width:100%;height:190px;object-fit:contain;border-radius:8px;
+  background:var(--panel);border:1px solid var(--border-subtle)}
+.result-final-card .stack-sm{align-content:start}
+.result-final-card .meta{overflow-wrap:anywhere}
+.result-final-score{font-size:13px}
 @media(max-width:1030px){
  .result-views-row{grid-template-columns:1fr;gap:6px}
  .result-views-row>.eyebrow{padding-top:0}
@@ -83,4 +103,13 @@
  .result-ad-member-grid{grid-template-columns:1fr}
  .result-layout-header{grid-template-columns:1fr}
  .result-layout-header>img{width:100%;max-height:180px}
+}
+
+@media(max-width:700px){
+ .result-final-layout{grid-template-columns:1fr}
+ .result-final-folders{display:flex;flex-wrap:wrap;gap:7px}
+ .result-final-folders>strong{width:100%}
+ .result-final-folder{flex:1 1 170px}
+ .result-final-grid{grid-template-columns:repeat(auto-fill,minmax(175px,1fr))}
+ .result-final-card>img{height:155px}
 }
