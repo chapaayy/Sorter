@@ -27,7 +27,7 @@ def position(db,run_id):
     return db.execute("""
         SELECT count(*) AS n FROM work_queue
         WHERE seq<=%s AND (state='queued' OR
-          (kind='reference_preparation' AND state IN ('failed','interrupted','blocked')))
+          (kind IN ('reference_preparation','layout_preparation') AND state IN ('failed','interrupted','blocked')))
     """,(entry["seq"],)).fetchone()["n"]
 
 def insert_fo(db,run_id):
@@ -41,9 +41,16 @@ def insert_fo(db,run_id):
         raise RuntimeError("Failed to place FO into the common FIFO")
     return result["seq"]
 
+def insert_layout(db, job_id):
+    """Caller holds the same FIFO advisory lock as every other producer."""
+    return db.execute("""
+        INSERT INTO work_queue(kind,layout_job_id,state)
+        VALUES ('layout_preparation',%s,'queued') RETURNING seq
+    """,(job_id,)).fetchone()["seq"]
+
 def entries(db):
     return db.execute("""
-        SELECT seq,kind,fo_run_id,reference_job_id,state,created_at,
+        SELECT seq,kind,fo_run_id,reference_job_id,layout_job_id,state,created_at,
                started_at,finished_at FROM work_queue ORDER BY seq
     """).fetchall()
 
@@ -56,9 +63,9 @@ def claim_next(db):
     """).fetchone():
         return None
     row=db.execute("""
-        SELECT seq,kind,fo_run_id,reference_job_id,state FROM work_queue
+        SELECT seq,kind,fo_run_id,reference_job_id,layout_job_id,state FROM work_queue
         WHERE state='queued' OR
-          (kind='reference_preparation' AND state IN ('failed','interrupted','blocked'))
+          (kind IN ('reference_preparation','layout_preparation') AND state IN ('failed','interrupted','blocked'))
         ORDER BY seq FOR UPDATE LIMIT 1
     """).fetchone()
     if row is None or row["state"]!="queued":
@@ -85,6 +92,23 @@ def claim_next(db):
         """,(row["seq"],))
         return {"kind":"reference_preparation","id":prep["id"],
                 "session_id":prep["session_id"],"seq":row["seq"]}
+
+    if row["kind"]=="layout_preparation":
+        prep=db.execute("""
+            SELECT id,layout_id,state FROM ad_layout_preparation_jobs
+            WHERE id=%s FOR UPDATE
+        """,(row["layout_job_id"],)).fetchone()
+        if not prep or prep["state"]!="queued":
+            raise RuntimeError("Layout preparation queue state mismatch")
+        db.execute("""UPDATE ad_layout_preparation_jobs SET state='running',
+            progress_stage='validating',progress_percent=0,error=NULL,started_at=now(),
+            finished_at=NULL WHERE id=%s""",(prep["id"],))
+        db.execute("""UPDATE ad_layouts SET preparation_state='running',
+            preparation_stage='validating',preparation_progress=0,preparation_error=NULL
+            WHERE id=%s""",(prep["layout_id"],))
+        db.execute("""UPDATE work_queue SET state='running',started_at=now()
+            WHERE seq=%s""",(row["seq"],))
+        return {"kind":"layout_preparation","id":prep["id"],"seq":row["seq"]}
 
     fo=db.execute("""
         SELECT j.id,j.status,j.snapshot,b.delete_state
@@ -155,6 +179,16 @@ def finish_preparation(db,job_id,status,error=None):
         WHERE reference_job_id=%s AND state='running'
     """,(status,job_id))
 
+def fail_layout(db,job_id,status,error):
+    prep=db.execute("""UPDATE ad_layout_preparation_jobs SET state=%s,error=%s,
+        finished_at=now() WHERE id=%s RETURNING layout_id""",(status,error,job_id)).fetchone()
+    if prep and prep["layout_id"]:
+        db.execute("""UPDATE ad_layouts SET preparation_state='failed',
+            preparation_stage=%s,preparation_error=%s WHERE id=%s""",
+            (status,error,prep["layout_id"]))
+    db.execute("""UPDATE work_queue SET state=%s,finished_at=now()
+        WHERE layout_job_id=%s AND state='running'""",(status,job_id))
+
 def mark_interrupted(db):
     """Leader recovery; failed preparations remain FIFO barriers."""
     db.execute("SELECT pg_advisory_xact_lock(%s)",(LOCK,))
@@ -178,6 +212,16 @@ def mark_interrupted(db):
             error='Worker stopped during preparation'
         FROM reference_preparation_jobs p WHERE p.session_id=s.id
           AND p.state='interrupted' AND s.preparation_state='running'
+    """)
+    db.execute("""
+        UPDATE ad_layouts l SET preparation_state='failed',
+            preparation_stage='interrupted',preparation_error='Worker stopped during preparation'
+        WHERE l.id IN (SELECT p.layout_id FROM ad_layout_preparation_jobs p WHERE p.state='running')
+    """)
+    db.execute("""
+        UPDATE ad_layout_preparation_jobs SET state='interrupted',
+            error='Worker stopped during preparation',finished_at=now()
+        WHERE state='running'
     """)
     db.execute("""
         UPDATE work_queue SET state='interrupted',finished_at=now()
