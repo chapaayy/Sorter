@@ -17,7 +17,7 @@ from app.results.repository import load_model
 from app.ad_recognition import dino,ocr,quality,best
 from app.screen_detection import xfeat_assets
 from ..storage.paths import owned_file,run_dir
-from . import ad_recognition,ad_layouts,ad_pipeline_steps
+from . import ad_recognition,ad_layouts,ad_pipeline_steps,ad_visual_groups
 
 def _root(run_id):
     return run_dir(run_id,DATA_DIR/"outputs")/"ad_pipeline"
@@ -102,24 +102,42 @@ def process(job):
         count=len(rows)
         analyses=[]
         recognized=review_count=0
+        group_count=0
         if found:
             model_d=dino.load()
-            if not ocr.status()["available"]:
-                raise RuntimeError("Проверенные OCR-веса отсутствуют")
-            engine_ocr=ocr.load()
             try:
+                # The independent visual grouping is written BEFORE opening
+                # the prepared advertising-layout library.
+                groups,features,feature_errors=ad_visual_groups.collect(
+                    job,model_d,detections,run_id,
+                    snapshot.get("grouping_threshold",0.81),DATA_DIR)
+                group_count=len(groups)
                 vectors,errors=ad_recognition._layout_vectors(model_d,layouts)
                 if errors or len(vectors)!=len(layouts):
-                    raise RuntimeError("Невозможно вычислить признаки всех закреплённых макетов")
-                analyses,recognized,review_count,failed_recognition=ad_pipeline_steps.recognize(
-                    job,model_d,engine_ocr,detections,run_id,vectors,errors,
-                    snapshot.get("matching_threshold",0.81))
-                errors_count+=failed_recognition
+                    raise RuntimeError("Невозможно прочитать признаки закреплённых макетов")
+                group_matches=ad_visual_groups.match(
+                    job,run_id,groups,features,vectors,
+                    snapshot.get("matching_threshold",0.81),DATA_DIR)
+                if not ocr.status()["available"]:
+                    raise RuntimeError("Проверенные OCR-веса отсутствуют")
+                engine_ocr=ocr.load()
+                try:
+                    analyses,recognized,review_count,failed_recognition=ad_pipeline_steps.recognize(
+                        job,model_d,engine_ocr,detections,run_id,vectors,errors,
+                        snapshot.get("matching_threshold",0.81),
+                        features,group_matches,feature_errors)
+                    errors_count+=failed_recognition
+                finally:
+                    del engine_ocr
+                    gc.collect()
             finally:
                 del model_d
-                del engine_ocr
                 gc.collect()
         else:
+            ad_visual_groups.collect(job,None,[],run_id,
+                                     snapshot.get("grouping_threshold",0.81),DATA_DIR)
+            ad_visual_groups.match(job,run_id,[],{},[],
+                                   snapshot.get("matching_threshold",0.81),DATA_DIR)
             job.progress("ad_pipeline","ad_recognition",1,1,
                          "Нет геометрически подтверждённых экранов")
         job.progress("ad_pipeline","quality",count,count,
@@ -146,11 +164,13 @@ def process(job):
                   "grouping_threshold":snapshot.get("grouping_threshold",0.81),
                   "layout_library_revision":snapshot.get("layout_library_revision"),
                   "total_photos":count,"screens_found":found,
+                  "visual_group_count":group_count,
                   "recognized":recognized,"review_required":review_count,
                   "errors":errors_count,"best":best_items,
                   "seconds":round(time.monotonic()-started,2)}
         atomic_json(_root(run_id)/"summary.json",manifest)
-        snapshot.update(status="completed",screens_found=found,recognized=recognized,
+        snapshot.update(status="completed",screens_found=found,visual_group_count=group_count,
+                        recognized=recognized,
                         review_required=review_count,best_count=len(best_items),
                         errors=errors_count,snapshot_digest=manifest["snapshot_digest"])
         job.info.setdefault("models",{})["ad_pipeline"]={
