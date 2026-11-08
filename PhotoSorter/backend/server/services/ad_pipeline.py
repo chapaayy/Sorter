@@ -116,17 +116,21 @@ def process(job):
                 vectors,errors=ad_recognition._layout_vectors(model_d,layouts)
                 if errors or len(vectors)!=len(layouts):
                     raise RuntimeError("Невозможно прочитать признаки закреплённых макетов")
-                group_matches=ad_visual_groups.match(
-                    job,run_id,groups,features,vectors,
-                    snapshot.get("matching_threshold",0.81),DATA_DIR)
                 if not ocr.status()["available"]:
                     raise RuntimeError("Проверенные OCR-веса отсутствуют")
                 engine_ocr=ocr.load()
                 try:
+                    observations=ad_pipeline_steps.read_ocr(
+                        job,engine_ocr,detections,run_id)
+                    group_matches=ad_visual_groups.match(
+                        job,run_id,groups,features,vectors,
+                        snapshot.get("matching_threshold",0.81),DATA_DIR,
+                        observations=observations)
                     analyses,recognized,review_count,failed_recognition=ad_pipeline_steps.recognize(
                         job,model_d,engine_ocr,detections,run_id,vectors,errors,
                         snapshot.get("matching_threshold",0.81),
-                        features,group_matches,feature_errors)
+                        features,group_matches,feature_errors,
+                        ocr_observations=observations)
                     errors_count+=failed_recognition
                 finally:
                     del engine_ocr
