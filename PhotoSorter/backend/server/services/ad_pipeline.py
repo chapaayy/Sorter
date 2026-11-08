@@ -17,7 +17,7 @@ from app.results.repository import load_model
 from app.ad_recognition import dino,ocr,quality,best
 from app.screen_detection import xfeat_assets
 from ..storage.paths import owned_file,run_dir
-from . import screen_search,ad_recognition,ad_layouts,ad_pipeline_steps
+from . import ad_recognition,ad_layouts,ad_pipeline_steps
 
 def _root(run_id):
     return run_dir(run_id,DATA_DIR/"outputs")/"ad_pipeline"
