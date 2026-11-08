@@ -6,7 +6,7 @@ from psycopg.rows import dict_row
 from .database import connect,wait_and_initialize,DB_URL
 from .services import heartbeat
 from .db.repositories import work_queue
-from .workers import reference_prepare
+from .workers import reference_prepare,ad_layout_prepare
 from .jobs import ServerJob
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
@@ -39,6 +39,18 @@ def _process_task(item):
             with connect() as db:
                 work_queue.fail_fo(db,item['id'])
             raise
+        return
+    if item['kind']=='layout_preparation':
+        try:
+            ad_layout_prepare.run(item['id'])
+        except BaseException as exc:
+            reason=f'{type(exc).__name__}: {exc}'[:1000]
+            logging.exception('Layout preparation %s failed',item['id'])
+            with connect() as db:
+                work_queue.fail_layout(db,item['id'],'interrupted'
+                    if isinstance(exc,(KeyboardInterrupt,SystemExit)) else 'failed',reason)
+            if isinstance(exc,(KeyboardInterrupt,SystemExit)):
+                raise
         return
     try:
         result=reference_prepare.run(item['id'])
