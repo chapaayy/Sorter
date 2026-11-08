@@ -49,9 +49,13 @@ async function load(){
 }
 function onImageLoad(event:Event){
   const image=event.target as HTMLImageElement
-  if(image.naturalWidth!==meta.value?.width||image.naturalHeight!==meta.value?.height){
+  const expected=(meta.value?.width||1)/(meta.value?.height||1)
+  const actual=image.naturalWidth/image.naturalHeight
+  // Safari/Chromium may decode a huge image at reduced resolution.
+  // Matching aspect ratios preserve the source-pixel SVG mapping.
+  if(!Number.isFinite(actual)||Math.abs(actual/expected-1)>.005){
     loaded.value=false
-    imageError.value='Размер изображения в браузере отличается от EXIF-ориентированного оригинала.'
+    imageError.value='Ориентация изображения в браузере не совпадает с исходной.'
   }else{loaded.value=true;imageError.value=''}
 }
 function start(index:number,event:PointerEvent){
