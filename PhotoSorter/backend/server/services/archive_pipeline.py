@@ -20,9 +20,13 @@ def selections(run_id):
     try:
         info=load_run(run_id)
     except (FileNotFoundError,ValueError):
-        # Older jobs (and ZIP-only recovery) may have only a database snapshot.
-        # They have never published integrated advertising results.
-        info={}
+        # Do not silently strip a modern run's advertising results if run.json
+        # was lost during a storage incident. PostgreSQL is authoritative.
+        from ..database import connect
+        with connect() as db:
+            found=db.execute("SELECT snapshot FROM jobs WHERE id=%s",(run_id,)).fetchone()
+        if not found:raise FileNotFoundError("Снимок запуска отсутствует")
+        info=dict(found["snapshot"] or {})
     if info.get("ad_pipeline",{}).get("enabled"):
         from .ad_pipeline import best_archive_entries
         selected.extend(best_archive_entries(run_id,info["ad_pipeline"]))
