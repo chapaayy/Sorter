@@ -19,6 +19,7 @@ from ..database import connect
 from ..db.repositories import screen_annotations as records
 from ..storage.paths import owned_file,run_dir
 from .result_pages import iter_rows
+from . import operations
 
 def _output(run_id):
     folder=run_dir(run_id,DATA_DIR/"outputs")/"screen_search"
@@ -55,7 +56,7 @@ def crop(run_id:str,index:int,screen_id:uuid.UUID)->Path:
         raise HTTPException(404,"Фрагмент не найден")
     return path
 
-def _run_rows(run_id,limit=None):
+def _run_rows(run_id,limit=None,start_index=0):
     with connect() as db:
         row=db.execute("""SELECT j.batch_id,j.status,b.delete_state FROM jobs j
             JOIN batches b ON b.id=j.batch_id WHERE j.id=%s""",(run_id,)).fetchone()
@@ -63,12 +64,16 @@ def _run_rows(run_id,limit=None):
         raise ValueError("Нужен завершённый MegaLoc run активной партии")
     root=DATA_DIR/"uploads"/str(row["batch_id"])
     for result in iter_rows(run_id):
-        if limit is not None and result["index"]>=limit:break
-        filename=Path(result["query"])
-        path=owned_file(filename,root)
-        if not path.is_file() or path.is_symlink():
-            raise ValueError("Исходная ФО отсутствует или недоступна")
-        yield result,path
+        index=result["index"]
+        if index<start_index:continue
+        if limit is not None and index>=start_index+limit:break
+        try:
+            path=owned_file(Path(result["query"]),root)
+            if not path.is_file() or path.is_symlink():
+                raise ValueError("Исходная ФО отсутствует или недоступна")
+            yield result,path,None
+        except (OSError,ValueError,TypeError,KeyError) as exc:
+            yield result,None,str(exc)
 
 def _screen_data(sam):
     with connect() as db:
@@ -149,36 +154,56 @@ def _save(run_id:str,index:int,result:dict,rgb):
     finally:
         if work.exists():shutil.rmtree(work)
 
-def analyze_run(run_id:str,*,limit:int|None=None,progress=None)->dict:
-    """Manual test command only. Current reference state is recorded in diagnostics.
+def analyze_run(run_id:str,*,limit:int|None=None,start_index:int=0,progress=None)->dict:
+    """Manual stage-2 test. Existing batch IO leases prevent cleanup races.
 
-    Stage 4 will pin annotation/model versions at actual FIFO claim; stage 2
-    deliberately does not alter the active FIFO or ZIP lifecycle.
+    Stage 4 will pin model/annotation versions at FIFO claim. No queue or ZIP
+    state is changed by this manual analysis.
     """
     if limit is not None and not 1<=limit<=100000:
         raise ValueError("limit вне допустимого диапазона")
-    # Refuse invalid runs before attempting expensive model initialization.
-    rows=_run_rows(run_id,limit)
-    try:first=next(rows)
-    except StopIteration:return {"run_id":run_id,"processed":0,"found":0}
-    model=load_model()
-    grouped={};cached={}
-    processed=found=0
-    from itertools import chain
-    for row,path in chain((first,),rows):
-        started=time.perf_counter()
-        try:
-            item,rgb=_analyse_photo(model,row,path,grouped,cached)
-        except (OSError,ValueError) as exc:
-            item={"index":row["index"],"assigned_sam":row.get("assigned_sam"),
-                  "status":"error","reason":str(exc),"screens":[],"model_signature":MODEL_ID}
-            rgb=None
-        item["elapsed_seconds"]=round(time.perf_counter()-started,2)
-        _save(run_id,row["index"],item,rgb)
-        processed+=1;found+=int(item["status"]=="found")
-        if progress:progress(item)
-    return {"run_id":run_id,"processed":processed,"found":found,
-            "model_signature":MODEL_ID}
+    if not 0<=start_index<=10000000:
+        raise ValueError("start-index вне допустимого диапазона")
+    with connect() as db:
+        batch=db.execute("SELECT batch_id FROM jobs WHERE id=%s",(run_id,)).fetchone()
+    if not batch:
+        raise ValueError("Неизвестный запуск")
+    token=operations.start(batch["batch_id"],"screen-search")
+    try:
+        rows=_run_rows(run_id,limit,start_index)
+        try:first=next(rows)
+        except StopIteration:return {"run_id":run_id,"processed":0,"found":0}
+        model=load_model()
+        grouped={};cached={}
+        processed=found=0
+        last_heartbeat=time.monotonic()
+        from itertools import chain
+        for row,path,file_error in chain((first,),rows):
+            started=time.perf_counter()
+            if file_error:
+                item={"index":row["index"],"assigned_sam":row.get("assigned_sam"),
+                      "status":"error","reason":file_error,"screens":[],
+                      "model_signature":MODEL_ID}
+                rgb=None
+            else:
+                try:
+                    item,rgb=_analyse_photo(model,row,path,grouped,cached)
+                except (OSError,ValueError) as exc:
+                    item={"index":row["index"],"assigned_sam":row.get("assigned_sam"),
+                          "status":"error","reason":str(exc),"screens":[],
+                          "model_signature":MODEL_ID}
+                    rgb=None
+            item["elapsed_seconds"]=round(time.perf_counter()-started,2)
+            _save(run_id,row["index"],item,rgb)
+            processed+=1;found+=int(item["status"]=="found")
+            if progress:progress(item)
+            if time.monotonic()-last_heartbeat>25:
+                operations.heartbeat(token)
+                last_heartbeat=time.monotonic()
+        return {"run_id":run_id,"processed":processed,"found":found,
+                "model_signature":MODEL_ID}
+    finally:
+        operations.finish(token)
 
 def prune_old_reference_cache()->dict:
     """Explicit maintenance, retaining all live annotation versions."""
