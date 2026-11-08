@@ -57,7 +57,7 @@ async function mock(page:Page){
             ocr_selection_score:100,selection_score:94.3,
             ocr:{status:'confirmed',reason:'На ФО совпало 2 из 2 прочитанных элементов',matched_terms:2,total_terms:2}},
           {index:1,assigned_sam:'SAM 0001',screen_id:bid,screen_name:'Правый LED',
-            candidate_id:pid,layout_name:'Реклама декабря',layout_version:1,
+            candidate_id:bid,layout_name:'Реклама декабря',layout_version:1,
             review_required:false,quality:{status:'measured',score:74.9},
             ocr_selection_score:0,selection_score:37.45,
             ocr:{status:'unreadable',reason:'OCR не прочитал текст; макет определён визуально по DINOv2',matched_terms:0,total_terms:0}}
