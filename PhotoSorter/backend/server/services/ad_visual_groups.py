@@ -120,13 +120,54 @@ def match(job, run_id: str, groups: list[dict], vectors: dict,
         # Backwards-compatible ranking API: integrated FIFO uses OCR evidence,
         # while manual/legacy callers without it retain the old visual-only
         # scoring semantics. OCR is already computed once per detected screen.
+        individual_decisions=[]
         if observations is not None:
+            # DINO visual groups can contain different ads on the SAME screen.
+            # Group-wide mean or one strong OCR frame must never label all
+            # members: make independent DINO+OCR decisions for each photo.
             ranked=joint_matching.decide(
                 ranked,members,layouts,observations,threshold)
+            for member in members:
+                individual_rank=scoring.rank_group(
+                    [member],[(row,feature) for row,feature,_ in layouts],
+                    minimum=threshold)
+                individual=joint_matching.decide(
+                    individual_rank,[member],layouts,observations,threshold)
+                individual_decisions.append({
+                    "index":member["index"],"screen_id":member["screen_id"],
+                    **{key:individual.get(key) for key in (
+                        "status","reason","candidate_id","best_score","margin",
+                        "matching_threshold","method","decision_version",
+                        "ocr_leader_id","visual_leader_id","ocr_margin",
+                        "ocr_conflicting_members","evidence_member_count")}
+                })
+            matched=[item for item in individual_decisions
+                     if item["status"]=="matched" and item["candidate_id"]]
+            distinct={item["candidate_id"] for item in matched}
+            # The group label is purely diagnostic; only individual decisions
+            # are permitted to assign layouts to photos.
+            if matched and len(matched)==len(members) and len(distinct)==1:
+                ranked.update(status="matched",candidate_id=next(iter(distinct)),
+                              method="all_members_individually_matched",
+                              reason="Каждая ФО независимо подтверждает один макет")
+            elif matched:
+                ranked.update(status="partial",candidate_id=None,
+                              method="per_photo_joint_matching",
+                              reason=(f"Определено {len(matched)} из {len(members)} ФО; "
+                                      "разные рекламные варианты не смешиваются"))
+            else:
+                ranked.update(status="uncertain" if ranked["status"]=="matched"
+                              else ranked["status"],candidate_id=None,
+                              method="per_photo_joint_matching",
+                              reason="Ни одна ФО не дала достаточных совместных доказательств")
+            ranked["matched_member_count"]=len(matched)
+            ranked["unmatched_member_count"]=len(members)-len(matched)
+            ranked["member_layout_count"]=len(distinct)
         atomic_json(directory / (group["id"] + ".json"), {
             "group_id": group["id"], "assigned_sam": group["assigned_sam"],
             "screen_id": group["screen_id"], "member_count": len(members),
-            "dino_signature": dino.SIGNATURE, **ranked
+            "dino_signature": dino.SIGNATURE, **ranked,
+            "member_decisions": individual_decisions,
         })
         summary = {key: ranked[key] for key in (
             "status", "reason", "candidate_id", "margin", "matching_threshold", "method")}
@@ -138,10 +179,21 @@ def match(job, run_id: str, groups: list[dict], vectors: dict,
             visual_leader_id=ranked.get("visual_leader_id"),
             ocr_margin=ranked.get("ocr_margin"),
             ocr_conflicting_members=ranked.get("ocr_conflicting_members"),
-            evidence_member_count=ranked.get("evidence_member_count"))
+            evidence_member_count=ranked.get("evidence_member_count"),
+            matched_member_count=ranked.get("matched_member_count"),
+            unmatched_member_count=ranked.get("unmatched_member_count"),
+            member_layout_count=ranked.get("member_layout_count"))
         summaries.append(summary)
-        for member in members:
-            assignments[(member["index"], member["screen_id"])] = summary
+        if observations is None:
+            for member in members:
+                assignments[(member["index"],member["screen_id"])] = summary
+        else:
+            for individual in individual_decisions:
+                assignments[(individual["index"],individual["screen_id"])] = {
+                    **individual,"group_id":group["id"],
+                    "candidate_count":len(ranked["rankings"]),
+                    "matched_member_count":ranked["matched_member_count"],
+                    "member_layout_count":ranked["member_layout_count"]}
         job.progress("ad_pipeline", "ad_layout_matching", number, len(groups),
                      f"DINOv2 · сопоставлено {number}/{len(groups)} групп")
     atomic_json(root / "group_matches.json", {
@@ -257,6 +309,13 @@ def rankings(run_id: str, group_id: str, limit: int = 50, offset: int = 0,
         "visual_leader_id": document.get("visual_leader_id"),
         "ocr_margin": document.get("ocr_margin"),
         "ocr_conflicting_members": document.get("ocr_conflicting_members"),
+        "matched_member_count": document.get("matched_member_count"),
+        "unmatched_member_count": document.get("unmatched_member_count"),
+        "member_layout_count": document.get("member_layout_count"),
+        "member_decision": next((
+            item for item in document.get("member_decisions",[])
+            if selected and item["index"]==selected["index"]
+            and item["screen_id"]==selected["screen_id"]), None),
         "total": len(items), "limit": limit, "offset": offset,
         "rankings": page
     }
