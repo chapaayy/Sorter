@@ -6,7 +6,7 @@ const image='<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><r
 test('create and edit a persistent four-corner annotation in reference viewer',async({page})=>{
   const screens:Array<{id:string;name:string;annotations:Array<Record<string,unknown>>}>=[]
   await page.route('**/api/**',async route=>{
-    const url=new URL(route.request().url()),path=url.pathname,method=route.request().method()
+    const url=new URL(route.request().url()),path=decodeURIComponent(url.pathname),method=route.request().method()
     const json=(obj:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(obj)})
     if(path==='/api/auth/me')return json({username:'admin'})
     if(path==='/api/references')return json({sam:[{sam,photos:1,display_name:'SAM 0001 — Гагарина 64'}],total:1})
