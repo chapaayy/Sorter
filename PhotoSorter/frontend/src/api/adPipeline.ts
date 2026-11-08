@@ -11,10 +11,13 @@ export interface BestSummary {
  review_required?:number;errors?:number;reference_version?:number
 }
 export interface AdPipelineSettings {
- enabled:boolean;applies:string;default_safe:boolean
+ enabled:boolean;grouping_threshold:number;matching_threshold:number;
+ applies:string;default_safe:boolean
 }
 export const adPipelineApi={
  settings:()=>api<AdPipelineSettings>('/ad-pipeline/settings'),
  update:(enabled:boolean)=>patch<AdPipelineSettings>('/ad-pipeline/settings',{enabled}),
+ updateThresholds:(grouping_threshold:number,matching_threshold:number)=>
+   patch<AdPipelineSettings>('/ad-pipeline/settings',{grouping_threshold,matching_threshold}),
  best:(id:string)=>api<BestSummary>('/ad-pipeline/runs/'+encodeURIComponent(id)+'/best')
 }
