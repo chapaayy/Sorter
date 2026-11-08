@@ -97,7 +97,7 @@ export interface OcrObservation {
 export interface OcrEvidence {
  status:string;reason?:string;matched_terms?:number;total_terms?:number
  text_similarity?:number;matched_items?:string[];unmatched_items?:string[]
- comparison_confidence?:number;scoring_basis?:string;matched_terms?:number;total_terms?:number
+ comparison_confidence?:number;scoring_basis?:string
  ambiguous_candidates?:string[];possible_contradictions?:{kind:string;expected:string[];observed:string[]}[]
  contradictions?:{kind:string;expected:string[];observed:string[]}[]
  expected_text?:string;lines?:string[]
