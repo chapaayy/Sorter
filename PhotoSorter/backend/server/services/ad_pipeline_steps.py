@@ -12,7 +12,7 @@ from app.ad_recognition import quality
 from ..storage.paths import owned_file
 from . import screen_search,ad_recognition
 
-def detect(job,model,rows,refs,run_id):
+def detect(job,model,rows,refs,run_id,data_root):
     features={}
     detections=[]
     failures=0
