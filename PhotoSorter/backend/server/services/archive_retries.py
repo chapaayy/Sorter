@@ -142,7 +142,7 @@ def process_pending(limit=1):
                     WHERE fo_run_id=%s AND state IN ('failed','interrupted')""",
                     (completed_state,run_id))
             _finish(run_id,"completed")
-            done.append((run_id,"completed"))
+            done.append((run_id,completed_state))
         except Exception as exc:
             log.exception("ZIP-only retry failed for %s",run_id)
             reason=f"{type(exc).__name__}: {exc}"[:800]
