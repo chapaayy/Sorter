@@ -14,7 +14,7 @@ from .api.routes.reference_imports import router as reference_imports_router
 from .api.routes.work_queue import router as work_queue_router
 from .api.routes.library_notices import router as library_notices_router
 from .jobs import router as jobs_router
-from .api.routes import auth,batches,downloads,images,logs,models,results,site,storage,thumbnails,references,originals,system,processing_settings,screen_annotations,screen_search,ad_layouts,ad_recognition,ad_pipeline
+from .api.routes import auth,batches,downloads,images,logs,models,results,site,storage,thumbnails,references,originals,system,processing_settings,screen_annotations,screen_search,ad_layouts,ad_recognition,ad_pipeline,ad_result_views
 
 @asynccontextmanager
 async def lifespan(app):
@@ -47,5 +47,5 @@ def health():return {"status":"ok","version":"0.1.0-beta.1"}
 
 for router in (auth.router,batches.router,uploads_router,reference_imports_router,work_queue_router,library_notices_router,jobs_router,
                models.router,results.router,images.router,downloads.router,
-               logs.router,storage.router,thumbnails.router,references.router,screen_annotations.router,screen_search.router,ad_layouts.router,ad_recognition.router,ad_pipeline.router,originals.router,system.router,processing_settings.router,site.router):
+               logs.router,storage.router,thumbnails.router,references.router,screen_annotations.router,screen_search.router,ad_layouts.router,ad_recognition.router,ad_pipeline.router,ad_result_views.router,originals.router,system.router,processing_settings.router,site.router):
     app.include_router(router)
