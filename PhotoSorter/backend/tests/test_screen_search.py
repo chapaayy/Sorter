@@ -140,3 +140,22 @@ def test_thick_band_still_excludes_central_advertising():
                               corners,65,200,120)
     assert len(selection["xy"])==2
     assert not any(np.array_equal(p,[100,60]) for p in selection["xy"])
+
+def test_unknown_construction_never_runs_xfeat(monkeypatch,tmp_path):
+    def forbidden(*_args,**_kwargs):
+        raise AssertionError("Нельзя искать экран без назначения MegaLoc")
+    monkeypatch.setattr(screen_search,"oriented_image",forbidden)
+    result,rgb=screen_search._analyse_photo(None,{"index":0,"assigned_sam":"_Неопределено"},
+                                            tmp_path/"missing.jpg",{}, {})
+    assert result["status"]=="unknown_construction"
+    assert result["screens"]==[] and rgb is None
+
+def test_no_annotations_never_searches_other_constructions(monkeypatch,tmp_path):
+    def forbidden(*_args,**_kwargs):
+        raise AssertionError("Нельзя вызывать XFeat без разметки своей конструкции")
+    monkeypatch.setattr(screen_search,"oriented_image",forbidden)
+    monkeypatch.setattr(screen_search,"_screen_data",lambda sam:[])
+    result,rgb=screen_search._analyse_photo(None,{"index":0,"assigned_sam":"SAM 0001"},
+                                            tmp_path/"missing.jpg",{}, {})
+    assert result["status"]=="no_annotations"
+    assert result["screens"]==[] and rgb is None
