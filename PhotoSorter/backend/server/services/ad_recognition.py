@@ -52,8 +52,8 @@ def _layout_vectors(model,layouts):
     available=[];errors=[]
     for row,path in layouts:
         try:
-            # Every vector is keyed by the original SHA and the exact DINO model.
-            feature=embedding_cache.vector(model,row,path)
+            # Prepared by FIFO ahead of the FO run, never inferred on demand.
+            feature=embedding_cache.prepared(row)
             available.append((row,feature,path))
         except (ValueError,OSError,HTTPException) as exc:
             errors.append({"layout_id":str(row["id"]),"reason":str(exc)})
@@ -64,14 +64,11 @@ def _ocr_check(engine,layout:dict,layout_path:Path,picture:Image.Image,
     if engine is None:
         return {"status":"unavailable","reason":"PP-OCRv5 ещё не установлен"}
     try:
-        expected=layout["expected_text"].strip()
-        if not expected:
-            key=layout["checksum"]
-            if key not in layout_text_cache:
-                with Image.open(layout_path) as image:
-                    lines=ocr.read(engine,ImageOps.exif_transpose(image))
-                layout_text_cache[key]=" ".join(part["text"] for part in lines)
-            expected=layout_text_cache[key]
+        expected=layout.get("ocr_text")
+        if expected is None:
+            expected=(layout.get("ocr_corrected_text") if
+                layout.get("ocr_corrected_text") is not None else
+                layout["expected_text"] or layout.get("normalized_text",""))
         lines=ocr.read(engine,picture)
         return ocr.confirm(expected,lines)
     except Exception as exc:
@@ -79,12 +76,13 @@ def _ocr_check(engine,layout:dict,layout_path:Path,picture:Image.Image,
         return {"status":"error","reason":"Ошибка OCR: "+str(exc)[:180]}
 
 def _identify(model,ocr_engine,screen,run_id,index,embeddings,
-              layout_text_cache,layout_errors):
+              layout_text_cache,layout_errors,matching_threshold=scoring.MIN_SIMILARITY):
     sid=str(screen["screen_id"])
     filename=screen_search.crop(run_id,index,uuid.UUID(sid))
     picture=_crop_screen(filename,screen)
     query=dino.embed(model,picture)
-    ranking=scoring.rank(query,[(row,feature) for row,feature,_ in embeddings])
+    ranking=scoring.rank(query,[(row,feature) for row,feature,_ in embeddings],
+                         minimum=matching_threshold)
     result={"index":index,"screen_id":sid,"status":ranking["status"],
             "reason":ranking["reason"],"candidate_id":ranking["candidate_id"],
             "top":ranking["top"],"margin":ranking.get("margin"),
