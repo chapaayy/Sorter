@@ -64,6 +64,7 @@ async function mock(page:Page){
       return respond(route,{runs:[run],total:1})
     }
     if(p==='/api/runs/'+rid)return respond(route,run)
+    if(p==='/api/runs/'+rid+'/archive/status')return respond(route,{state:'ready',can_retry:false})
     if(p==='/api/system/retention'){
       if(method==='PATCH')Object.assign(retention,JSON.parse(route.request().postData()||'{}'))
       return respond(route,retention)
