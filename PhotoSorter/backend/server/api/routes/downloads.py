@@ -26,8 +26,18 @@ def download_results(run_id:str,sam:str|None=None):
             source=file_allowed(Path(item["copy"]))
             selected.append((source,archive_member(item["assigned_sam"],source.name)))
         # Same immutable selection as the initial ZIP and ZIP-only repair.
-        if sam is None and row["snapshot"].get("ad_pipeline",{}).get("enabled"):
-            selected=archive_pipeline.selections(run_id)
+        if row["snapshot"].get("ad_pipeline",{}).get("enabled"):
+            integrated=archive_pipeline.selections(run_id)
+            if sam is None:
+                selected=integrated
+            else:
+                # A per-construction archive includes its confirmed/review best
+                # photos, but excludes other SAMs and global metadata.
+                prefix=archive_member(sam,"photo.jpg").rsplit("/",1)[0]+"/"
+                selected=[(source,name) for source,name in integrated
+                          if name.startswith(prefix) or
+                             name.startswith("Best_by_layout/"+prefix) or
+                             name.startswith("Review_required/"+prefix)]
         # New runs publish their full ZIP before the completed state.
         # Legacy runs retain on-demand creation for backward compatibility.
         if sam is None and row["snapshot"].get("archive_state") is not None:
