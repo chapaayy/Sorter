@@ -76,6 +76,7 @@ def _init(det_dir:Path|None,rec_dir:Path|None):
 
 def install():
     """Explicit API command downloads both model folders, then pins local copies."""
+    if status()["available"]:return status()
     import shutil
     import os
     os.environ["PADDLE_PDX_CACHE_HOME"]=str(CACHE)
