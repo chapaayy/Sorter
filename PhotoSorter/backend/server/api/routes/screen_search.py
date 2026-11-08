@@ -1,7 +1,7 @@
 """Authenticated read-only stage-2 XFeat diagnostics (analysis via existing worker container CLI)."""
 from __future__ import annotations
 from uuid import UUID
-from fastapi import APIRouter,HTTPException
+from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from ...services import screen_search
 

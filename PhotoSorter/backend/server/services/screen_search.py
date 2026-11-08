@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from PIL import Image
 from app.config import DATA_DIR
 from app.results.exporter import atomic_json
-from app.screen_detection.xfeat_assets import load_model,MODEL_ID,status as model_status
+from app.screen_detection.xfeat_assets import load_model,MODEL_ID
 from app.screen_detection.features import oriented_image,extract,match
 from app.screen_detection.cache import prepare_reference
 from app.screen_detection.geometry import solve

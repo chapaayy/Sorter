@@ -22,7 +22,7 @@ def prepare(rgb:np.ndarray)->tuple[np.ndarray,float]:
     if scale<1:
         rgb=cv2.resize(rgb,(max(32,round(width*scale)),max(32,round(height*scale))),
                        interpolation=cv2.INTER_AREA)
-    return rgb,float(rgb.shape[1])/width
+    return rgb,(float(width)/rgb.shape[1],float(height)/rgb.shape[0])
 
 def extract(model,rgb:np.ndarray)->dict:
     import torch
@@ -31,7 +31,7 @@ def extract(model,rgb:np.ndarray)->dict:
     input_tensor=input_tensor.unsqueeze(0).float().div_(255)
     with torch.inference_mode():
         result=model.detectAndCompute(input_tensor,top_k=TOP_K)[0]
-    points=result["keypoints"].cpu().numpy().astype("float32")/scale
+    points=result["keypoints"].cpu().numpy().astype("float32")*np.array(scale,dtype="float32")
     vectors=result["descriptors"].cpu().numpy().astype("float32")
     return {"xy":points,"descriptors":vectors}
 

@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+import zipfile
 import numpy as np
 from app.config import DATA_DIR
 from .xfeat_assets import MODEL_ID
@@ -32,7 +33,7 @@ def prepare_reference(model,annotation:dict,path:Path)->dict:
                 sides.shape==(len(points),) and
                 np.isfinite(points).all() and np.isfinite(descriptors).all()):
                 return {"xy":points,"descriptors":descriptors,"sides":sides}
-        except (ValueError,OSError,KeyError):
+        except (ValueError,OSError,KeyError,zipfile.BadZipFile,EOFError):
             pass
     rgb=oriented_image(path)
     if rgb.shape[1]!=annotation["image_width"] or rgb.shape[0]!=annotation["image_height"]:
