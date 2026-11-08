@@ -11,7 +11,7 @@ from .xfeat_assets import MODEL_ID
 from .features import oriented_image,extract,border_features
 
 CACHE_ROOT=DATA_DIR/"cache"/"xfeat"/"references"
-EXTRACTOR_VERSION="exif-rgb-max1280-top4096-border-v1"
+EXTRACTOR_VERSION="exif-rgb-max1280-top4096-border-v2"
 
 def key(annotation:dict)->str:
     data={key:annotation[key] for key in
