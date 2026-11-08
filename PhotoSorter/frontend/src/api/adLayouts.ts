@@ -14,7 +14,9 @@ export interface AdRecognition {
  margin?:number|null;review_required?:boolean;best_for_layout?:boolean;elapsed_seconds?:number;
  visual_group_id?:string;text_subgroup_id?:string;classification?:'confirmed'|'probable'|'unidentified';
  quality?:{status:string;score:number;version?:string;metrics?:{sharpness:number;exposure:number;glare:number;screen_coverage:number}};
- ocr?:{status:string;reason:string;lines?:string[];matched_terms?:number;total_terms?:number};
+ ocr?:{status:string;reason:string;lines?:string[];matched_terms?:number;total_terms?:number;
+  matched_items?:string[];unmatched_items?:string[];text_similarity?:number;
+  comparison_confidence?:number;scoring_basis?:string;ambiguous_candidates?:string[]};
  thresholds?:{min_similarity:number;min_margin:number}
 }
 export const adLayoutApi={
