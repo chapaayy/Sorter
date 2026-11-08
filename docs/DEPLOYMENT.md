@@ -1,6 +1,6 @@
 # Развёртывание и обновление PhotoSorter (beta)
 
-Основная ветка — **`main`**. Сайт обслуживает **один** Vue SPA на `/`; прежних `/v3/` и `frontend/static` больше нет. Backend, Vue, Caddy и Docker Compose живут в одном репозитории.
+Стабильная основа — **`main`**. Для экспериментальной установки поиска экранов использовать **`feature/ad-recognition`** только на новом VPS. Сайт обслуживает **один** Vue SPA на `/`; прежних `/v3/` и `frontend/static` больше нет. Backend, Vue, Caddy и Docker Compose живут в одном репозитории.
 
 ## Требования
 
@@ -61,3 +61,16 @@ df -h /
 ```
 
 Единый GitHub CI — [`.github/workflows/ci.yml`](../.github/workflows/ci.yml); результаты CI не заменяют реальный приемочный набор ФО.
+
+## Чистый экспериментальный VPS (feature/ad-recognition)
+
+```bash
+git clone --single-branch --branch feature/ad-recognition https://github.com/chapaayy/Sorter.git
+cd Sorter
+cp .env.example .env
+nano .env
+bash ./install.sh --check
+bash ./install.sh --deploy
+```
+
+Первый `--check` может отметить отсутствие `.env.generated`, пока `--deploy` не создаст секреты. Проверить доступные CPU ID, RAM (лимит Worker), свободное место, `docker compose config` и логи. Не выполнять `down -v` и не чистить тома при обновлении. Дальнейшие обновления с `git pull --ff-only origin feature/ad-recognition`, не переключать эксперимент на `main` без команды владельца.
