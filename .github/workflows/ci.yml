@@ -48,6 +48,11 @@ jobs:
           docker compose config --quiet
       - name: Backend regression tests
         run: python -m pytest -q PhotoSorter/backend/tests
+      - name: NumPy 2.x XFeat homography regression
+        run: |
+          python -m pip install --force-reinstall "numpy==2.2.6"
+          python -c 'import numpy; assert numpy.__version__.startswith("2."); print("NumPy",numpy.__version__)'
+          python -m pytest -q PhotoSorter/backend/tests/test_screen_search.py -k test_planar_geometry_projects_all_four_corners
       - name: Validate Caddy syntax without real TLS or deployment
         run: docker run --rm -e DOMAIN=stage4.example.test -v "$PWD/PhotoSorter/docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
 
