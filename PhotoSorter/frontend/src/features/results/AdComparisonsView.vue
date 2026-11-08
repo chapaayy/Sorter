@@ -87,8 +87,8 @@ onMounted(()=>{void moreGroups()})
 <template>
 <section class="stack result-ad-view">
   <div class="row between wrap">
-    <div><h2>Сравнения · DINOv2</h2>
-      <p class="meta">Все закреплённые макеты, реальные cosine, вклад каждой ФО, пороги и независимая проверка OCR.</p></div>
+    <div><h2>Сравнения · DINOv2 + OCR</h2>
+      <p class="meta">Все закреплённые макеты: визуальное сходство, отрыв от конкурентов и совпадения прочитанных слов без правил для дат и цен.</p></div>
     <span class="meta">{{totalGroups}} визуальных групп</span>
   </div>
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
@@ -118,19 +118,26 @@ onMounted(()=>{void moreGroups()})
           </select>
         </div>
         <div class="result-ad-metrics">
-          <span>Порог принятия: <strong>{{format(rankMeta?.matching_threshold)}}</strong></span>
+          <span>Прежний порог (визуальный запасной вариант): <strong>{{format(rankMeta?.matching_threshold)}}</strong></span>
           <span>1-й vs 2-й: <strong>{{format(memberKey?rankMeta?.member_margin:rankMeta?.margin)}}</strong></span>
           <span>Лучший групповой cosine: <strong>{{format(rankMeta?.best_score)}}</strong></span>
           <span>Кандидатов: <strong>{{rankTotal}}</strong></span>
           <span>Метод: {{rankMeta?.method||'—'}}</span>
+          <span v-if="rankMeta?.decision_version">Отрыв OCR: <strong>{{format(rankMeta?.ocr_margin)}}</strong></span>
         </div>
         <p class="meta">{{rankMeta?.reason||detail.match?.reason||'Результат сравнения отсутствует'}}</p>
-        <p class="meta">Макет выбирается только по DINOv2. OCR не изменяет выбор кандидата.</p>
+        <p class="meta" v-if="rankMeta?.decision_version">
+          Решение принято по относительным результатам DINOv2 и OCR. При противоречии или нехватке доказательств макет не назначается.
+        </p>
+        <p class="meta" v-else>Исторический запуск: макет выбирался только по DINOv2.</p>
         <div v-if="rankings.length" class="result-rank-table-wrap">
           <table class="result-rank-table">
             <thead><tr><th>№</th><th>Рекламный макет</th><th>Группа · cosine</th>
               <th v-if="memberKey">Выбранная ФО · cosine</th>
-              <th>Мин / Макс по группе</th><th>Результат</th></tr></thead>
+              <th>Мин / Макс по группе</th>
+              <th v-if="rankMeta?.decision_version">OCR · лучший кадр</th>
+              <th v-if="rankMeta?.decision_version">Совместная оценка</th>
+              <th>Результат</th></tr></thead>
             <tbody>
               <tr v-for="(item,i) in rankings" :key="item.id">
                 <td>{{i+1}}</td>
@@ -143,8 +150,13 @@ onMounted(()=>{void moreGroups()})
                 <td><strong>{{format(item.score)}}</strong></td>
                 <td v-if="memberKey">{{format(item.member_score)}}</td>
                 <td>{{format(item.minimum_member_score)}} / {{format(item.maximum_member_score)}}</td>
+                <td v-if="rankMeta?.decision_version">
+                  {{item.ocr_matched_terms??0}} / {{item.ocr_total_terms??0}} · {{format(item.ocr_support)}}
+                </td>
+                <td v-if="rankMeta?.decision_version">{{format(item.combined_score)}}</td>
                 <td>
                   <span v-if="item.id===rankMeta?.candidate_id" class="status ok">Выбран</span>
+                  <span v-else-if="rankMeta?.decision_version" class="meta">Альтернатива</span>
                   <span v-else-if="item.score<(rankMeta?.matching_threshold??0)" class="meta">Ниже порога</span>
                   <span v-else class="meta">Альтернатива</span>
                 </td>
