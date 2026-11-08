@@ -212,3 +212,17 @@ def test_fifo_signature_changes_if_paddle_weights_manifest_changes(tmp_path,monk
     old=ocr.signature()
     file.write_text('{"version":"OCR","hash":"222"}',encoding="utf-8")
     assert ocr.signature()!=old
+
+def test_fifo_with_no_annotation_never_reads_later_live_screens(monkeypatch,tmp_path):
+    from server.services import screen_search
+    def prohibited(*args):
+        raise AssertionError("Stage 4 must use frozen FIFO annotations ONLY")
+    monkeypatch.setattr(screen_search,"_screen_data",prohibited)
+    rows=[{"assigned_sam":"SAM 0001","query":"unused"}]
+    frozen=ad_pipeline._references({"annotations":[]},rows)
+    assert frozen=={"SAM 0001":[]}
+    result,image=screen_search._analyse_photo(
+        object(),{"index":0,"assigned_sam":"SAM 0001"},
+        tmp_path/"file-never-accessed.jpg",frozen,{})
+    assert result["status"]=="no_annotations"
+    assert image is None
