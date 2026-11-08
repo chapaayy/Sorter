@@ -89,6 +89,7 @@ def test_fifo_claim_freezes_reference_and_layout_revisions(system,monkeypatch):
     monkeypatch.setattr(xfeat_assets,"status",lambda:{"available":True})
     monkeypatch.setattr(dino,"status",lambda:{"available":True})
     monkeypatch.setattr(ocr,"status",lambda:{"available":True})
+    monkeypatch.setattr(ocr,"signature",lambda:"test-paddle-sha")
     assert ad_pipeline_settings.update(True)["enabled"]
     run=add_fo()
     with connect() as db:
