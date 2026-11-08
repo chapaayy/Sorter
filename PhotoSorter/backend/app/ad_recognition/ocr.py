@@ -63,6 +63,12 @@ def status():
     return {"available":_verify(),
             "version":VERSION,"detection":DETECTION,"recognition":RECOGNITION}
 
+def signature()->str:
+    """A run pins exact downloaded Paddle checkpoint hashes, not only model names."""
+    if not _verify():
+        raise RuntimeError("Не установлены проверенные PP-OCRv5 модели")
+    return hashlib.sha256((ROOT/"manifest.json").read_bytes()).hexdigest()
+
 def _init(det_dir:Path|None,rec_dir:Path|None):
     from paddleocr import PaddleOCR
     return PaddleOCR(
