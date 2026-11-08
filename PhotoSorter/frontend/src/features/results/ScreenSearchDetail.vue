@@ -136,6 +136,24 @@ onMounted(()=>{
                   <span class="meta">{{recognition.elapsed_seconds??'—'}} с</span>
                 </div>
                 <p class="meta">{{recognition.reason}}</p>
+                <div v-if="recognition.quality" class="stack-sm">
+                  <div class="row between wrap">
+                    <strong>Качество видимости рекламы</strong>
+                    <strong v-if="recognition.quality.status==='measured'">
+                      {{recognition.quality.score.toFixed(1)}} / 100
+                    </strong>
+                  </div>
+                  <div v-if="recognition.quality.metrics" class="row wrap screen-search-metrics">
+                    <span>Резкость: {{Math.round(recognition.quality.metrics.sharpness*100)}}%</span>
+                    <span>Экспозиция: {{Math.round(recognition.quality.metrics.exposure*100)}}%</span>
+                    <span>Без бликов: {{Math.round(recognition.quality.metrics.glare*100)}}%</span>
+                    <span>Видимость экрана: {{Math.round(recognition.quality.metrics.screen_coverage*100)}}%</span>
+                  </div>
+                  <p v-if="recognition.best_for_layout" class="meta">
+                    Выбрана лучшей ФО для этого макета и физического экрана.
+                  </p>
+                  <p class="meta">Оценка относительная, не вероятность распознавания.</p>
+                </div>
                 <div v-if="recognition.top?.length" class="ad-recognition-preview">
                   <img :src="'/api/ad-layouts/'+recognition.top[0].id+'/image'"
                     :alt="recognition.top[0].name"/>
