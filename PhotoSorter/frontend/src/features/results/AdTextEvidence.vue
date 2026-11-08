@@ -17,11 +17,9 @@ const actual=computed(()=>props.recognition.observation?.normalized_text||
   props.recognition.ocr?.lines?.join(' ')||'')
 const layoutSegments=computed(()=>segments(prepared.value,actual.value))
 const observedSegments=computed(()=>segments(actual.value,prepared.value))
-const issues=computed(()=>props.recognition.ocr?.contradictions||[])
-const labels:Record<string,string>={dates:'Даты',prices:'Цены',percentages:'Проценты',numbers:'Числа'}
 const statLabel=(status?:string)=>({
-  confirmed:'Подтверждено',mismatch:'Противоречие',
-  probable:'Недостаточно данных',unreadable:'Не прочитано',
+  confirmed:'Текст совпал',mismatch:'Недостаточно совпадений',
+  probable:'Частичное совпадение',unreadable:'Не прочитано · визуально',
   not_configured:'Текст макета не задан',unavailable:'OCR недоступен',
   error:'Ошибка OCR',not_run:'Не проверено',not_processed:'Нет результата'
 } as Record<string,string>)[status||'']||status||'Нет результата'
@@ -34,7 +32,7 @@ const statLabel=(status?:string)=>({
       recognition.observation.confidence.toFixed(3)}} · {{recognition.classification||'не определено'}}</span>
   </div>
   <p class="meta">{{recognition.ocr?.reason||recognition.reason||'Нет текстовых данных'}}</p>
-  <p v-if="recognition.ocr?.scoring_basis==='recognized_photo_text'" class="meta">
+  <p v-if="recognition.ocr?.scoring_basis==='recognized_photo_text'&&recognition.ocr.total_terms" class="meta">
     Совпало {{recognition.ocr.matched_terms??0}} из {{recognition.ocr.total_terms??0}}
     достоверно прочитанных элементов ФО
     <span v-if="recognition.ocr.text_similarity!=null">
@@ -59,15 +57,6 @@ const statLabel=(status?:string)=>({
         :class="'result-ocr-'+word.kind">{{word.text}}</span></p>
       <p v-else class="meta">Не удалось достоверно прочитать текст</p>
     </div>
-  </div>
-  <p v-if="recognition.ocr?.possible_contradictions?.length&&!issues.length" class="meta">
-    Возможное несовпадение дат или чисел, но OCR недостаточно уверен:
-    {{recognition.ocr.possible_contradictions.map(item=>item.kind+': '+item.observed.join(', ')).join(' · ')}}
-  </p>
-  <div v-for="(issue,i) in issues" :key="i" class="result-ocr-conflict">
-    <strong>{{labels[issue.kind]||issue.kind}} · несоответствие</strong>
-    <span>Макет: {{issue.expected.join(', ')||'—'}}</span>
-    <span>На экране: {{issue.observed.join(', ')||'—'}}</span>
   </div>
   <div v-if="recognition.observation?.raw_lines?.length" class="result-ocr-lines">
     <div v-for="(line,i) in recognition.observation.raw_lines" :key="i" class="row between">
