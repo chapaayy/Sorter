@@ -58,3 +58,15 @@ def delete_annotation(db,annotation_id,sam):
 def delete_screen(db,screen_id,sam):
     return db.execute("DELETE FROM reference_screens WHERE id=%s AND sam=%s RETURNING id",
                       (screen_id,sam)).fetchone()
+
+def detection_references(db,sam):
+    """Current published annotations for precisely one MegaLoc construction."""
+    return db.execute("""SELECT a.id,a.screen_id,a.reference_id,a.corners,
+        a.band_width_px,a.source_sha256,a.image_width,a.image_height,a.version,
+        s.name AS screen_name,u.target_path,u.checksum
+      FROM reference_screen_annotations a
+      JOIN reference_screens s ON s.id=a.screen_id
+      JOIN uploads u ON u.id=a.reference_id
+      WHERE s.sam=%s AND u.sam=%s AND u.kind='reference'
+        AND u.finalized AND u.checksum=a.source_sha256
+      ORDER BY s.created_at,a.created_at,a.id""",(sam,sam)).fetchall()
