@@ -100,7 +100,9 @@ def _identify(model,ocr_engine,screen,run_id,index,embeddings,
                       if str(row["id"])==ranking["candidate_id"])
         check=_ocr_check(ocr_engine,selected[0],selected[1],picture,layout_text_cache)
         result["ocr"]=check
-        if check["status"] in ("mismatch","unreadable","error","unavailable"):
+        # Only independently confirmed readable text can remove the review
+        # flag. Missing/control-free OCR is not evidence of correctness.
+        if check["status"]!="confirmed":
             result["review_required"]=True
     return result
 
