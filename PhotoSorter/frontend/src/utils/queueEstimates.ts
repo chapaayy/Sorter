@@ -30,7 +30,8 @@ export function actualDuration(start?:string|null,end?:string|null):string{
   return seconds===null?'—':duration(seconds)
 }
 function countOf(task:QueueTask):number|null{
-  const n=task.kind==='fo_processing'?task.fo_photo_count:task.total_count
+  const n=task.kind==='fo_processing'?task.fo_photo_count:
+    task.kind==='reference_preparation'?task.total_count:null
   return valid(n)&&n>0?n:null
 }
 function median(values:number[]):number|null{
@@ -40,7 +41,7 @@ function median(values:number[]):number|null{
 }
 /** Historical per-photo throughput; FO and reference CPU tasks never share rates. */
 export function historicalRates(history:readonly QueueTask[]):Record<QueueKind,number|null>{
-  const rates:Record<QueueKind,number[]>={fo_processing:[],reference_preparation:[]}
+  const rates:Record<QueueKind,number[]>={fo_processing:[],reference_preparation:[],layout_preparation:[]}
   for(const job of history){
     if(job.state!=='completed')continue
     const count=countOf(job),elapsed=elapsedSeconds(job.started_at,job.finished_at)
@@ -50,7 +51,8 @@ export function historicalRates(history:readonly QueueTask[]):Record<QueueKind,n
     }
   }
   return {fo_processing:median(rates.fo_processing.slice(0,30)),
-    reference_preparation:median(rates.reference_preparation.slice(0,30))}
+    reference_preparation:median(rates.reference_preparation.slice(0,30)),
+    layout_preparation:null}
 }
 function durationFromHistory(task:QueueTask,rates:Record<QueueKind,number|null>):number|null{
   const count=countOf(task),rate=rates[task.kind]
