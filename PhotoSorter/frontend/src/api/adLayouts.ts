@@ -14,6 +14,9 @@ export interface AdRecognition {
  margin?:number|null;review_required?:boolean;best_for_layout?:boolean;elapsed_seconds?:number;
  selection_score?:number;ocr_selection_score?:number;selection_basis?:string;
  visual_group_id?:string;text_subgroup_id?:string;classification?:'confirmed'|'probable'|'unidentified';
+ group_match?:{status:string;reason:string;candidate_id?:string|null;best_score?:number;
+  method?:string;ocr_leader_id?:string|null;visual_leader_id?:string|null;
+  ocr_margin?:number|null;decision_version?:string};
  quality?:{status:string;score:number;version?:string;metrics?:{sharpness:number;exposure:number;glare:number;screen_coverage:number}};
  ocr?:{status:string;reason:string;lines?:string[];matched_terms?:number;total_terms?:number;
   matched_items?:string[];unmatched_items?:string[];text_similarity?:number;
