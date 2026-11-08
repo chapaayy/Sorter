@@ -38,6 +38,7 @@ async function mock(page:Page){
     if(p==='/api/references')return respond(route,{sam:[{sam:'SAM-0001',photos:1}],total:1})
     if(p==='/api/references/cache/status')return respond(route,{total:1,cached:1,current_signature:null})
     if(p==='/api/references/SAM-0001/photos')return respond(route,{photos:[photo],next_cursor:null})
+    if(p==='/api/references/SAM-0001/screens')return respond(route,{screens:[]})
     if(p==='/api/runs'){
       const scope=url.searchParams.get('scope')
       if(scope==='active')return respond(route,{runs:[],total:0})
