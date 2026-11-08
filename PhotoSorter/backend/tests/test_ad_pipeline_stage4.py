@@ -188,6 +188,35 @@ def test_zip_selects_best_and_metadata_and_recovers_without_inference(tmp_path,m
     (root/"runs"/run/"run.json").unlink()
     assert archive_pipeline.selections(run)==picked
 
+def test_final_archive_recovers_one_photo_per_sam_and_layout_from_old_text_variants(tmp_path,monkeypatch):
+    run="20261108T120000-123abc123abc"
+    monkeypatch.setattr(ad_pipeline,"DATA_DIR",tmp_path)
+    root=tmp_path/"outputs"/run
+    original=root/"megaloc"/"SAM 1683"/"IMG.jpg"
+    original.parent.mkdir(parents=True)
+    original.write_bytes(b"sample")
+    snapshot={"enabled":True}
+    cid=str(uuid.uuid4())
+    base={"assigned_sam":"SAM 1683","candidate_id":cid,
+          "layout_name":"IMG_5796","screen_id":str(uuid.uuid4()),
+          "copy":"megaloc/SAM 1683/IMG.jpg",
+          "quality":{"status":"measured","score":85}}
+    payload={"status":"completed","run_id":run,
+             "snapshot_digest":ad_pipeline.digest(snapshot),
+             "best":[
+                 {**base,"index":90,"text_subgroup_id":"T0015","selection_score":86.1},
+                 {**base,"index":95,"text_subgroup_id":"T0016","selection_score":77.6},
+                 {**base,"index":112,"text_subgroup_id":"T0017","selection_score":87.3},
+                 {**base,"index":120,"text_subgroup_id":"T0018","selection_score":41.9},
+             ]}
+    folder=root/"ad_pipeline"
+    folder.mkdir()
+    (folder/"summary.json").write_text(json.dumps(payload),encoding="utf-8")
+    entries=ad_pipeline.best_archive_entries(run,snapshot)
+    final=[dest for _,dest in entries if dest.startswith("Best_by_layout/")]
+    assert final==["Best_by_layout/SAM 1683/IMG_5796/FO113_IMG.jpg"]
+
+
 def test_public_best_summary_redacts_internal_paths(tmp_path,monkeypatch):
     run="20261108T120000-123abc123abc"
     monkeypatch.setattr(ad_pipeline,"DATA_DIR",tmp_path)
