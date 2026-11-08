@@ -1,7 +1,7 @@
 name: PhotoSorter CI
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "feature/ad-recognition"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
