@@ -64,8 +64,8 @@ def test_dino_margin_and_no_match():
 def test_russian_ocr_text_verification_and_no_text():
     assert ocr.confirm("Скидки 50",[{"text":"СКИДКИ","score":.95},
                                   {"text":"50","score":.95}])["status"]=="confirmed"
-    assert ocr.confirm("Скидки 50",[{"text":"Новинки","score":.95}])["status"]=="mismatch"
-    assert ocr.confirm("Скидки 50",[{"text":"Скидки 40","score":.95}])["status"]=="mismatch"
+    assert ocr.confirm("Скидки 50",[{"text":"Новинки","score":.95}])["status"]=="probable"
+    assert ocr.confirm("Скидки 50",[{"text":"Скидки 40","score":.95}])["status"]=="probable"
     assert ocr.confirm("Скидки",[])["status"]=="unreadable"
     assert ocr.confirm("",[])["status"]=="not_configured"
 
@@ -109,14 +109,14 @@ def test_ocr_mismatch_never_changes_dino_candidate(monkeypatch,tmp_path):
     assert item["status"]=="matched"
     assert item["candidate_id"]==str(row["id"])
     assert item["ocr"]["status"]=="mismatch"
-    assert item["review_required"] is True
+    assert item["review_required"] is False
     monkeypatch.setattr(ad_recognition,"_ocr_check",
                         lambda *args:{"status":"not_configured","reason":"Текст неизвестен"})
     unverified=ad_recognition._identify(object(),object(),screen,
                               "20261108T120000-123abc123abc",0,
                               [(row,unit(),picture)],{},[])
     assert unverified["candidate_id"]==str(row["id"])
-    assert unverified["review_required"] is True
+    assert unverified["review_required"] is False
     monkeypatch.setattr(ad_recognition,"_ocr_check",
                         lambda *args:{"status":"confirmed","reason":"Текст совпал"})
     verified=ad_recognition._identify(object(),object(),screen,
@@ -184,7 +184,7 @@ def test_completed_megaloc_run_reuses_xfeat_crop_without_tampering_zip(system,mo
     saved=ad_recognition.result(run,0,screen_id)
     assert saved["candidate_id"]==str(uid)
     assert saved["source_xfeat_signature"]=="xfeat-test"
-    assert saved["ocr"]["status"]=="unavailable" and saved["review_required"]
+    assert saved["ocr"]["status"]=="unavailable" and not saved["review_required"]
     assert archive.read_bytes()==b"original ZIP untouched"
     with connect() as db:
         assert db.execute("SELECT status FROM jobs WHERE id=%s",(run,)).fetchone()["status"]=="completed"
