@@ -27,23 +27,22 @@ def _screen(index, text, *, candidate, expected="Акция 10.11.2026 Скид�
             "quality":{"status":"measured","score":score}}
 
 
-def test_independent_ocr_critical_dates_prices_and_unreadable():
+def test_generic_ocr_words_preserve_diagnostics_without_semantic_decisions():
     expected="Акция 10 ноября 2026! Скидка 50% Цена 1000 ₽"
     actual=_line("Акция 11 ноября 2026! Скидка 40% Цена 2000 ₽")
     observed=ocr.describe(actual)
     assert observed["status"]=="readable"
     assert observed["confidence"]==.97
     assert observed["regions"][0]["polygon"]==[[0.,0.],[20.,0.],[20.,10.],[0.,10.]]
+    # Legacy diagnostic fields stay available but are no longer used to rank.
     assert observed["significant"]["dates"]==["11.11.2026"]
-    assert observed["significant"]["prices"]==["2000"]
-    assert observed["significant"]["percentages"]==["40"]
-    conflict=ocr.confirm(expected,actual)
-    assert conflict["status"]=="mismatch"
-    assert {"dates","prices","percentages"} <= {c["kind"] for c in conflict["contradictions"]}
+    score=ocr.confirm(expected,actual)
+    assert score["status"]=="probable"
+    assert score["matched_terms"]>=3
+    assert not score["contradictions"]
     assert ocr.confirm(expected,[])["status"]=="unreadable"
-    assert not ocr.confirm(expected,[])["contradictions"]
-    assert ocr.confirm("Акция 50%",_line("Акция",.94))["status"]=="probable"
-    assert ocr.confirm("Акция 50%",_line("Акция 50%",.55))["status"]=="probable"
+    assert ocr.confirm("Акция 50%",_line("Акция",.94))["status"]=="confirmed"
+    assert ocr.confirm("Акция 50%",_line("Акция 50%",.55))["status"]=="unreadable"
     assert ocr.confirm("Акция 50%",_line("Акция 50%",.98))["status"]=="confirmed"
 
 
@@ -80,7 +79,7 @@ def test_text_subgroups_split_numerical_variants_keep_visual_members_and_quality
     assert {item["index"] for item in winners}=={1,2,3}
     assert len({item["text_subgroup_id"] for item in winners})==3
     assert winners[0]["candidate_id"]==winners[1]["candidate_id"]
-    assert photos[2]["review_required"] and photos[3]["review_required"]
+    assert not photos[2]["review_required"] and not photos[3]["review_required"]
     paged=ad_text_subgroups.saved(run,limit=2,offset=1)
     assert paged["total"]==3 and len(paged["subgroups"])==2
     assert all("members" not in row for row in paged["subgroups"])
@@ -113,9 +112,9 @@ def test_ocr_does_not_reassign_group_visual_layout_when_offer_conflicts(tmp_path
     assert item["candidate_id"]==cid
     assert item["visual_group_id"]=="R0001"
     assert item["status"]=="matched" and item["classification"]=="probable"
-    assert item["ocr"]["status"]=="mismatch"
+    assert item["ocr"]["status"]=="probable"
     assert item["ocr_observation"]["significant"]["percentages"]==["40"]
-    assert item["review_required"] is True
+    assert item["review_required"] is False
 
 
 def test_zip_contains_subgroup_artifact_and_distinct_group_names(tmp_path,monkeypatch):
