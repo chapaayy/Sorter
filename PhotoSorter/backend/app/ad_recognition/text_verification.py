@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from difflib import SequenceMatcher
 
-VERSION = "photo-first-text-verification-v1"
+VERSION = "photo-first-text-verification-v2"
 MIN_LINE_CONFIDENCE = .70
 MIN_CONFLICT_CONFIDENCE = .85
 MIN_MATCH_RATIO = .70
@@ -65,6 +65,16 @@ def _conflicts(expected: dict, observed: dict) -> list[dict]:
             _same_date(a, b) if kind == "dates" else a == b
             for a in left for b in right
         )
+        if kind == "prices" and not compatible:
+            # Prepared layout OCR often reads a ruble sign as a separate
+            # fragment: "79 Р* ... 49". Its structured price detector then
+            # sees only 79 even though 49 is plainly present in the layout.
+            # An observed price that occurs as a number anywhere in the
+            # pinned layout must NOT become a false hard contradiction.
+            # This is conservative: currency role cannot be inferred from
+            # flattened OCR text alone.
+            reference_numbers = set(expected.get("numbers", ()))
+            compatible = any(price in reference_numbers for price in right)
         if not compatible:
             result.append({"kind": kind, "expected": left, "observed": right})
     # Unsuffixed numbers can express an offer (e.g. "40" vs "50"), but
