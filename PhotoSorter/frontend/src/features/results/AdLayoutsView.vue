@@ -114,7 +114,13 @@ function color(value:string){
               <span>Вероятно: <strong>{{layout.probable}}</strong></span>
             </div>
             <p v-if="layout.prepared_text" class="meta">Контрольный текст: {{layout.prepared_text}}</p>
-            <p class="meta">Конструкции: {{layout.constructions.join(', ')||'Не определены'}}</p>
+            <p class="meta">Конструкции:
+              <RouterLink v-for="(sam,i) in layout.constructions" :key="sam"
+                :to="{path:'/results/'+runId,query:{view:'sam',sam}}">
+                {{sam}}{{i<layout.constructions.length-1?', ':''}}
+              </RouterLink>
+              <span v-if="!layout.constructions.length">Не определены</span>
+            </p>
           </div>
         </div>
         <div class="row between wrap">
