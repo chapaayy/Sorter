@@ -172,7 +172,7 @@ def analyze_run(run_id:str,*,limit:int|None=None,start_index:int=0,progress=None
         raise ValueError("start-index вне допустимого диапазона")
     with connect() as db:
         batch=db.execute("SELECT batch_id,snapshot FROM jobs WHERE id=%s",(run_id,)).fetchone()
-    if batch and (batch["snapshot"] or {}).get("ad_pipeline",{}).get("enabled"):
+    if batch and (batch.get("snapshot") or {}).get("ad_pipeline",{}).get("enabled"):
         raise ValueError("Этот запуск уже ведёт единый конвейер. Повторный XFeat через CLI запрещён")
     if not batch:
         raise ValueError("Неизвестный запуск")
