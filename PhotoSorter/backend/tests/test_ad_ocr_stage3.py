@@ -87,6 +87,36 @@ def test_text_subgroups_split_numerical_variants_keep_visual_members_and_quality
     assert ad_text_subgroups.saved(run,group_id="R0001")["total"]==3
 
 
+def test_ten_same_ad_photos_with_unreadable_ocr_share_one_visual_variant(tmp_path,monkeypatch):
+    monkeypatch.setattr(ad_visual_groups,"DATA_DIR",tmp_path)
+    monkeypatch.setattr(ad_text_subgroups.ad_recognition,"_write",lambda *_:None)
+    sid=str(uuid.UUID(int=1))
+    candidate=str(uuid.UUID(int=10))
+    photos=[
+        _screen(i,("БИГФЕСТ Больше выгоды 49" if i<2 else ""),
+                expected="БИГФЕСТ Больше выгоды 49",candidate=candidate,
+                score=70+i*2)
+        for i in range(10)
+    ]
+    # No blank OCR should create its own mandatory-review text variant.
+    group={"id":"R0001","assigned_sam":"SAM 0001","screen_id":sid,
+           "members":[{"index":i,"screen_id":sid} for i in range(10)]}
+    class Job:
+        def stopped(self):return False
+        def progress(self,*args):pass
+    run="20261108T120000-123abc123abc"
+    doc=ad_text_subgroups.form(Job(),run,[group],photos,data_root=tmp_path)
+    assert doc["subgroup_count"]==1
+    assert doc["subgroups"][0]["member_count"]==10
+    assert all(not item["review_required"] for item in photos)
+    assert best.select(photos)[0]["index"]==1  # OCR best with higher quality
+    blank=[_screen(i,"",expected="БИГФЕСТ",candidate=candidate,score=75+i)
+           for i in range(10)]
+    second=ad_text_subgroups.form(Job(),run,[group],blank,data_root=tmp_path)
+    assert second["subgroup_count"]==1
+    assert best.select(blank)[0]["index"]==9  # Entire group falls back to quality
+
+
 def test_ocr_does_not_reassign_group_visual_layout_when_offer_conflicts(tmp_path,monkeypatch):
     picture=tmp_path/"crop.png"
     Image.new("RGB",(80,80),"red").save(picture)
