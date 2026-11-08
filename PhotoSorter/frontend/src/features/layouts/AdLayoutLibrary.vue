@@ -67,6 +67,18 @@ async function save(){
  }catch(e){error.value=errorText(e)}
  finally{busy.value=false}
 }
+async function replaceImage(item:AdLayout,event:Event){
+ const input=event.target as HTMLInputElement
+ const file=input.files?.[0]
+ if(!file||busy.value)return
+ busy.value=true;error.value=''
+ try{
+   await adLayoutApi.replaceImage(item,file)
+   notice.add('Новая версия изображения поставлена в очередь','ok')
+   await refresh()
+ }catch(e){error.value=errorText(e)}
+ finally{busy.value=false;input.value=''}
+}
 async function remove(item:AdLayout){
  if(busy.value||!window.confirm('Удалить макет «'+item.name+'»? Старые результаты анализа останутся в истории до удаления партии.'))return
  busy.value=true;error.value=''
@@ -149,6 +161,10 @@ usePolling(refresh,4000)
      <UiButton small @click="edit(item)">Изменить</UiButton>
      <UiButton small kind="danger" :disabled="busy" @click="remove(item)">Удалить</UiButton>
     </div>
+    <label class="field meta">Заменить изображение макета
+      <input type="file" accept="image/png,image/jpeg,image/webp" :disabled="busy"
+        :aria-label="'Заменить изображение '+item.name" @change="replaceImage(item,$event)"/>
+    </label>
    </div>
   </article>
  </div>
