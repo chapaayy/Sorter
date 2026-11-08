@@ -51,9 +51,9 @@ def layout_member_scores(run_id: str, group_id: str, layout_id: UUID,
 
 @router.get("/runs/{run_id}/text-subgroups")
 def text_subgroups(run_id: str, limit: int = 50, offset: int = 0,
-                   visual_group_id: str | None = None):
+                   visual_group_id: str | None = None, layout_id: str | None = None):
     _page(limit, offset)
-    return ad_text_subgroups.saved(run_id, limit, offset, visual_group_id)
+    return ad_text_subgroups.saved(run_id, limit, offset, visual_group_id, layout_id)
 
 
 @router.get("/runs/{run_id}/text-subgroups/{subgroup_id}")
