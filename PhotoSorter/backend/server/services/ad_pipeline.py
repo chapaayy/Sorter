@@ -61,8 +61,10 @@ def _layouts_pinned(snapshot):
         selected.append((row,path))
     return selected
 
-def _references(snapshot):
-    grouped={}
+def _references(snapshot,rows):
+    # Pre-populate even SAMs WITHOUT a screen annotation at FIFO claim.
+    # Otherwise stage-2 helper would query today's mutable live library.
+    grouped={row["assigned_sam"]:[] for row in rows if row.get("assigned_sam")}
     for item in snapshot["annotations"]:
         a=dict(item)
         # Keep full member origin as captured at FIFO claim. No live library scans.
@@ -82,9 +84,9 @@ def process(job):
     snapshot["status"]="running"
     job.save()
     try:
-        refs=_references(snapshot)
-        layouts=_layouts_pinned(snapshot)
         rows=load_model(run_id,"megaloc")
+        refs=_references(snapshot,rows)
+        layouts=_layouts_pinned(snapshot)
         if job.stopped():raise InterruptedError("Обработка остановлена")
         # Process every photo with XFeat, then release its network and
         # reference descriptors before loading DINOv2 and PP-OCRv5.
