@@ -48,3 +48,26 @@ def prepare_reference(model,annotation:dict,path:Path)->dict:
     finally:
         Path(name).unlink(missing_ok=True)
     return features
+
+def prune_inactive(active_keys:set[str],min_age_seconds:int=604800)->dict:
+    """Explicit safe maintenance; no deletion of current or recently used keys.
+
+    Only known 64-hex cache filenames are touched; symlinks and arbitrary
+    files are deliberately ignored. Current snapshots must be inspected first.
+    """
+    import re
+    import time
+    removed=0
+    now=time.time()
+    if not CACHE_ROOT.exists() or CACHE_ROOT.is_symlink():
+        return {"removed":0}
+    for path in CACHE_ROOT.iterdir():
+        if not re.fullmatch(r"[a-f0-9]{64}\.npz",path.name):
+            continue
+        if path.is_symlink() or not path.is_file() or path.stem in active_keys:
+            continue
+        if now-path.stat().st_mtime<min_age_seconds:
+            continue
+        path.unlink()
+        removed+=1
+    return {"removed":removed}
