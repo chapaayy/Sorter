@@ -108,6 +108,19 @@ def test_ocr_mismatch_never_changes_dino_candidate(monkeypatch,tmp_path):
     assert item["candidate_id"]==str(row["id"])
     assert item["ocr"]["status"]=="mismatch"
     assert item["review_required"] is True
+    monkeypatch.setattr(ad_recognition,"_ocr_check",
+                        lambda *args:{"status":"not_configured","reason":"Текст неизвестен"})
+    unverified=ad_recognition._identify(object(),object(),screen,
+                              "20261108T120000-123abc123abc",0,
+                              [(row,unit(),picture)],{},[])
+    assert unverified["candidate_id"]==str(row["id"])
+    assert unverified["review_required"] is True
+    monkeypatch.setattr(ad_recognition,"_ocr_check",
+                        lambda *args:{"status":"confirmed","reason":"Текст совпал"})
+    verified=ad_recognition._identify(object(),object(),screen,
+                          "20261108T120000-123abc123abc",0,
+                          [(row,unit(),picture)],{},[])
+    assert verified["review_required"] is False
 
 def test_versioned_dino_cache_and_atomic_results(tmp_path,monkeypatch):
     assert embedding_cache.key("a"*64)!=embedding_cache.key("b"*64)
