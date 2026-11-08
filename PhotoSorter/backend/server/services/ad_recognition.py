@@ -69,7 +69,7 @@ def _ocr_check(engine,layout:dict,layout_path:Path,picture:Image.Image,
             key=layout["checksum"]
             if key not in layout_text_cache:
                 with Image.open(layout_path) as image:
-                    lines=ocr.read(engine,image)
+                    lines=ocr.read(engine,ImageOps.exif_transpose(image))
                 layout_text_cache[key]=" ".join(part["text"] for part in lines)
             expected=layout_text_cache[key]
         lines=ocr.read(engine,picture)
