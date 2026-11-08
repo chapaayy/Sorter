@@ -137,7 +137,7 @@ usePolling(refresh,4000)
     </div>
     <div v-if="item.preparation_error" class="meta" style="color:var(--danger)">
       {{item.preparation_error}}</div>
-    <div class="meta">Текст для сверки: {{item.corrected_text??item.expected_text||item.ocr_normalized_text||'Не распознан'}}</div>
+    <div class="meta">Текст для сверки: {{(item.corrected_text??item.expected_text)||item.ocr_normalized_text||'Не распознан'}}</div>
     <details v-if="item.ocr_raw_lines.length">
       <summary class="meta">Распознанный текст и уверенность OCR</summary>
       <div v-for="(line,index) in item.ocr_raw_lines" :key="index" class="meta">
