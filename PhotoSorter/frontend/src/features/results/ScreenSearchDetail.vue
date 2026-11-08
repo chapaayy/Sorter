@@ -7,6 +7,7 @@ import UiButton from '../../components/ui/UiButton.vue'
 const props=defineProps<{runId:string;index:number;imageUrl:string}>()
 const emit=defineEmits<{(e:'close'):void}>()
 const result=ref<ScreenSearchResult|null>(null),error=ref(''),selected=ref(''),showPoints=ref(false)
+const modelReady=ref<boolean|null>(null)
 const screen=computed<DetectedScreen|undefined>(()=>result.value?.screens.find(s=>s.screen_id===selected.value))
 const corners=computed(()=>screen.value?.corners?.map(p=>p.x+','+p.y).join(' ')||'')
 const matches=computed(()=>screen.value?.debug_matches||[])
@@ -18,7 +19,10 @@ async function refresh(){
     error.value=''
   }catch(e){error.value=errorText(e)}
 }
-onMounted(()=>{void refresh()})
+onMounted(()=>{
+  void refresh()
+  void screenSearchApi.model().then(info=>{modelReady.value=info.available}).catch(()=>{})
+})
 </script>
 <template>
 <Teleport to="body">
@@ -31,6 +35,8 @@ onMounted(()=>{void refresh()})
       <div v-if="error" class="alert error" role="alert">{{error}}</div>
       <template v-if="result">
         <div v-if="result.status==='not_processed'" class="alert">
+          <p v-if="modelReady===false" class="meta">XFeat не установлена или контрольная сумма файлов не совпала.
+            Сначала установите проверенные веса через <code>docker compose exec api python -m app.screen_detection.cli --install</code>.</p>
           Анализ этой ФО ещё не запущен. На новом VPS выполните команду
           <code>docker compose exec worker python -m app.screen_detection.cli --run-id {{runId}}</code>.
           ZIP и результаты MegaLoc при этом не изменяются.

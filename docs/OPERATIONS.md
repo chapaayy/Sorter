@@ -67,3 +67,14 @@ CI запускает PostgreSQL 17, compile Python, Compose config и unit/inte
 Полный ZIP атомарно формируется до состояния `completed`. Ошибка ZIP не уничтожает готовые результаты MegaLoc: запрос повторной подготовки сохраняется в `archive_retries` и исполняется cleanup worker, без инференса. При удалении партии удаляется и `.archives/`.
 
 Настройка срока от минуты до месяцев действует только на новые успешные обработки, чтобы смена параметра не удалила существующие партии внезапно. Активные скачивания защищены `batch_operations`.
+
+## XFeat (ветка feature/ad-recognition, тестовый ручной режим)
+
+После завершения MegaLoc и ZIP: установить проверенные веса в API через
+`docker compose exec api python -m app.screen_detection.cli --install`,
+проверить на Worker командой `docker compose exec worker python -m app.screen_detection.cli --verify`,
+затем `--run-id RUN_ID --limit 20`. Результаты и ошибки поиска находятся
+в исходной галерее «Результаты» → «Диагностика XFeat».
+Безопасное явное удаление неиспользуемых кэшей старше недели:
+`docker compose exec worker python -m app.screen_detection.cli --prune-cache`.
+Эти команды не изменяют PostgreSQL очередь, MegaLoc, ZIP или volumes.

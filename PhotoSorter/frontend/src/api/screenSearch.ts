@@ -17,6 +17,7 @@ export interface ScreenSearchResult{
 const base=(runId:string,index:number)=>
   '/screen-search/runs/'+encodeURIComponent(runId)+'/photos/'+index
 export const screenSearchApi={
+  model:()=>api<{available:boolean;revision:string;files:Record<string,boolean>}>('/screen-search/model'),
   result:(runId:string,index:number)=>api<ScreenSearchResult>(base(runId,index)),
   crop:(runId:string,index:number,screenId:string)=>
     '/api'+base(runId,index)+'/screens/'+encodeURIComponent(screenId)+'/crop'
