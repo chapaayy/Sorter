@@ -94,3 +94,40 @@ def test_unwarped_crop_preserves_source(tmp_path,monkeypatch):
 def test_invalid_run_identifier_rejected():
     with pytest.raises(ValueError):
         screen_search.saved("../../etc",0)
+
+def test_prune_keeps_live_and_recent_cache(tmp_path,monkeypatch):
+    import os
+    import time
+    from app.screen_detection import cache
+    monkeypatch.setattr(cache,"CACHE_ROOT",tmp_path)
+    active="a"*64
+    old="b"*64
+    recent="c"*64
+    for sha in (active,old,recent):
+        (tmp_path/(sha+".npz")).write_bytes(b"demo")
+    stale=time.time()-9*86400
+    os.utime(tmp_path/(active+".npz"),(stale,stale))
+    os.utime(tmp_path/(old+".npz"),(stale,stale))
+    (tmp_path/"not-a-cache.txt").write_text("must stay")
+    assert cache.prune_inactive({active})=={"removed":1}
+    assert (tmp_path/(active+".npz")).exists()
+    assert (tmp_path/(recent+".npz")).exists()
+    assert (tmp_path/"not-a-cache.txt").exists()
+
+def test_detection_references_never_cross_constructions(system,monkeypatch):
+    from server.services import screen_annotations as annotations
+    from server.db.repositories import screen_annotations as records
+    from server.database import connect
+    from .test_unified_queue_stage3 import add_published_reference
+    monkeypatch.setattr(annotations,"DATA_DIR",system)
+    id_a,_=add_published_reference(system,sam="SAM 0001",address="Победы 12")
+    id_b,_=add_published_reference(system,sam="TLT 0001",address="Центральная 1")
+    corners=[{"x":10,"y":5},{"x":70,"y":5},{"x":70,"y":35},{"x":10,"y":35}]
+    annotations.create("SAM 0001",id_a,None,"SAM экран",corners,2)
+    annotations.create("TLT 0001",id_b,None,"TLT экран",corners,2)
+    with connect() as db:
+        sam=records.detection_references(db,"SAM 0001")
+        tlt=records.detection_references(db,"TLT 0001")
+    assert len(sam)==len(tlt)==1
+    assert sam[0]["reference_id"]==id_a
+    assert tlt[0]["reference_id"]==id_b
