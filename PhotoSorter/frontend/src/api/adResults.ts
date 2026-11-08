@@ -83,6 +83,8 @@ export interface AdPhoto {
  assigned_sam:string;visual_group_id:string;text_subgroup_id:string
  text_subgroup_status:string;classification:string;quality?:PhotoQuality
  review_required:boolean;best:boolean;ocr_status?:string;ocr_reason?:string
+ ocr_matched_terms?:number;ocr_total_terms?:number
+ ocr_selection_score?:number;selection_score?:number
 }
 export interface AdPhotosPage {
  status:AdResultStatus;total:number;limit?:number;offset?:number
