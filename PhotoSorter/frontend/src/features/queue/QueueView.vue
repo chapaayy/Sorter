@@ -116,7 +116,7 @@ function message(){
   <div v-if="active.length" class="stack" aria-label="Текущие задания">
     <QueueTaskRow v-for="(task,index) in active" :key="task.seq"
       :task="task" :position="index+1" :estimate="estimates.get(task.seq)"
-      :busy="busy===task.reference_job_id||busy===task.fo_run_id"
+      :busy="busy===task.layout_job_id||busy===task.reference_job_id||busy===task.fo_run_id"
       @action="(t,action)=>confirm={task:t,action}"
       @details="showDetail"/>
     <div v-if="activeTotal>active.length" class="meta">
@@ -126,7 +126,7 @@ function message(){
   <div v-else class="queue-empty" aria-label="Очередь пуста">
     <span class="queue-empty-mark" aria-hidden="true">✓</span>
     <h2>Очередь пуста</h2>
-    <p class="meta">Все задания завершены. Новые фотографии и образцы появятся здесь автоматически.</p>
+    <p class="meta">Все задания завершены. Новые фотографии, образцы и рекламные макеты появятся здесь автоматически.</p>
   </div>
 </template>
 <template v-else>
@@ -147,7 +147,7 @@ function message(){
 </template>
 <QueueTaskDetail v-if="detail" :job-id="detail" :kind="detailKind" @close="detail=null"/>
 <ConfirmDialog v-if="confirm" :busy="!!busy"
-  :title="confirm.action==='retry'?'Повторить подготовку?':confirm.action==='skip'?'Пропустить обновление образцов?':'Остановить задачу?'"
+  :title="confirm.action==='retry'?'Повторить подготовку?':confirm.action==='skip'?'Пропустить подготовку?':'Остановить задачу?'"
   :message="message()" :danger="confirm.action!=='retry'"
   :confirm-label="confirm.action==='retry'?'Повторить':confirm.action==='skip'?'Пропустить обновление':'Остановить'"
   @cancel="confirm=null" @confirm="submit"/>
