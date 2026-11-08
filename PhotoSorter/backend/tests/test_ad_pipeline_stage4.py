@@ -153,6 +153,18 @@ def test_zip_selects_best_and_metadata_and_recovers_without_inference(tmp_path,m
         assert len([name for name in names if name.startswith("Review_required/")])==1
         assert final.read("Ad_recognition/summary.json")==artifact.read_bytes()
     assert archives.existing(run,None,archive_pipeline.selections(run))==archive
+    # Simulate loss of run.json after ZIP publication. PostgreSQL snapshot
+    # must keep the curated best entries during ZIP-only recovery.
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    from server import database
+    @contextmanager
+    def from_database():
+        yield SimpleNamespace(execute=lambda *_a,**_kw:
+                              SimpleNamespace(fetchone=lambda:{"snapshot":{"ad_pipeline":snapshot}}))
+    monkeypatch.setattr(database,"connect",from_database)
+    (root/"runs"/run/"run.json").unlink()
+    assert archive_pipeline.selections(run)==picked
 
 def test_public_best_summary_redacts_internal_paths(tmp_path,monkeypatch):
     run="20261108T120000-123abc123abc"
