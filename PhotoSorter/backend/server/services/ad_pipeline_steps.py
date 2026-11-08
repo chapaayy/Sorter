@@ -21,7 +21,7 @@ def detect(job,model,rows,refs,run_id,data_root):
         if job.stopped():raise InterruptedError("Обработка остановлена")
         sam=row.get("assigned_sam")
         try:
-            source=owned_file(Path(row["query"]),DATA_DIR/"uploads"/job.info["batch_id"])
+            source=owned_file(Path(row["query"]),data_root/"uploads"/job.info["batch_id"])
             record,rgb=screen_search._analyse_photo(
                 model,{"index":index,"assigned_sam":sam},source,refs,features)
             screen_search._save(run_id,index,record,rgb)
