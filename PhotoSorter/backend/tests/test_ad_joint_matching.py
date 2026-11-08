@@ -171,3 +171,92 @@ def test_pre_read_ocr_is_reused_by_individual_analysis_without_second_inference(
     assert item["status"]=="matched"
     assert item["ocr_observation"]["raw_lines"][0]["text"]=="БИГФЕСТ"
     assert calls==["ocr"]
+
+
+def test_mixed_49_photo_visual_group_recognizes_only_individual_matching_ads(tmp_path):
+    """One readable Bigfest in R0002 must not classify 48 unrelated screens."""
+    import json
+    from server.services import ad_visual_groups
+    run="20261108T120000-123abc123abc"
+    root=ad_visual_groups._root(run,tmp_path)
+    root.mkdir(parents=True,exist_ok=True)
+    fa=np.zeros(384,dtype=np.float32);fa[0]=1.
+    fb=np.zeros(384,dtype=np.float32);fb[1]=1.
+    prepared=[
+        ({"id":A,"name":"IMG_5796","version":2,"checksum":"a"*64,
+          "ocr_text":"БИГФЕСТ Больше выгоды 49 25 октября"},fa,None),
+        ({"id":B,"name":"IMG_5795","version":1,"checksum":"b"*64,
+          "ocr_text":"Скорость нового поколения 5G"},fb,None),
+    ]
+    def feature(a,b):
+        v=np.zeros(384,dtype=np.float32)
+        v[:3]=(a,b,(1-a*a-b*b)**.5)
+        return v
+    vectors={(index,SCREEN):feature(.307,.02) if index==0
+             else feature(.03,.70) if index==1
+             else feature(.06,.03) for index in range(49)}
+    group={"id":"R0002","assigned_sam":"SAM 1193",
+           "screen_id":SCREEN,"members":[
+               {"index":i,"screen_id":SCREEN} for i in range(49)]}
+    observations={
+        (0,SCREEN):recognized("БИГФЕСТ","Больше","выгоды",
+                              "49Р","25","октября"),
+        (1,SCREEN):recognized("Скорость","нового","поколения","5G"),
+    }
+    class Job:
+        def stopped(self):return False
+        def progress(self,*_):pass
+
+    assigned=ad_visual_groups.match(
+        Job(),run,[group],vectors,prepared,.50,tmp_path,
+        observations=observations)
+    first=assigned[(0,SCREEN)]
+    second=assigned[(1,SCREEN)]
+    assert first["status"]=="matched" and first["candidate_id"]==A
+    assert second["status"]=="matched" and second["candidate_id"]==B
+    assert first["method"]=="visual_ocr_agreement"
+    assert all(assigned[(i,SCREEN)]["candidate_id"] is None
+               for i in range(2,49))
+    assert all(assigned[(i,SCREEN)]["status"]!="matched"
+               for i in range(2,49))
+    saved=json.loads((root/"matches"/"R0002.json").read_text())
+    assert saved["status"]=="partial"
+    assert saved["candidate_id"] is None
+    assert saved["matched_member_count"]==2
+    assert saved["member_layout_count"]==2
+    assert len(saved["member_decisions"])==49
+    assert saved["rankings"][0]["score"]<.18
+    assert saved["rankings"][0]["maximum_member_score"]>=.307
+
+
+def test_mixed_group_with_single_bigfest_and_48_unknown_still_yields_one_candidate(tmp_path):
+    """No need to identify the whole R group before a saved layout can win."""
+    from server.services import ad_visual_groups
+    run="20261108T120000-123abc123abc"
+    ad_visual_groups._root(run,tmp_path).mkdir(parents=True,exist_ok=True)
+    fa=np.zeros(384,dtype=np.float32);fa[0]=1.
+    fb=np.zeros(384,dtype=np.float32);fb[1]=1.
+    def v(x,y):
+        z=np.zeros(384,dtype=np.float32)
+        z[:3]=(x,y,(1-x*x-y*y)**.5)
+        return z
+    mapping={(index,SCREEN):v(.307,.02) if index==3 else v(.06,.03)
+             for index in range(49)}
+    prepared=[
+        ({"id":A,"name":"БИГФЕСТ","version":1,"checksum":"a"*64,
+          "ocr_text":"БИГФЕСТ Больше выгоды 49 25 октября"},fa,None),
+        ({"id":B,"name":"Другая реклама","version":1,"checksum":"b"*64,
+          "ocr_text":"Скорость нового поколения"},fb,None),
+    ]
+    group={"id":"R0002","assigned_sam":"SAM 1193","screen_id":SCREEN,
+           "members":[{"index":i,"screen_id":SCREEN} for i in range(49)]}
+    class Job:
+        def stopped(self):return False
+        def progress(self,*_):pass
+    assigned=ad_visual_groups.match(
+        Job(),run,[group],mapping,prepared,.50,tmp_path,
+        observations={(3,SCREEN):recognized("БИГФЕСТ","Больше",
+                                           "выгоды","49Р","25","октября")})
+    assert assigned[(3,SCREEN)]["candidate_id"]==A
+    assert sum(1 for a in assigned.values() if a["candidate_id"]==A)==1
+    assert len(assigned)==49
