@@ -55,3 +55,15 @@
 соответствуют ни одной действующей разметке и старше 7 суток.
 Очистка не выполняется автоматически при обновлении, создании ZIP и
 изменении Образца.
+
+
+## Этап 3: данные макетов
+
+Глобальные рекламные оригиналы: `PhotoSorter/data/ad_layouts/<UUID>.<ext>`;
+записи — PostgreSQL `ad_layouts`; признаки макетов — отдельные
+`PhotoSorter/data/cache/dinov2/layouts/<key>.npy`.
+Веса только `Models/models/dinov2` и `Models/models/paddleocr`;
+модельные загрузки под `Models/cache`. Результаты этапа 3:
+`PhotoSorter/data/outputs/RUN_ID/ad_recognition/INDEX/SCREEN_UUID.json`.
+Общий механизм удаления партии удаляет её outputs, включая этап 3.
+Глобальная библиотека рекламы независимо от удаления любой партии.

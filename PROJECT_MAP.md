@@ -236,3 +236,30 @@ Vue /references -> ReferenceLibrary -> ImageViewer (Выделить экран)
 в существующем контейнере worker, **без FIFO enqueue**.
 Существующий рабочий процесс **MegaLoc → ZIP → completed не меняется**.
 DINOv2/OCR/качество/автоматическое включение в FIFO ожидают этапов 3–4.
+
+
+## Этап 3: макеты и OCR
+
+```text
+Макет из интерфейса (/layouts)
+ -> api/routes/ad_layouts.py -> services/ad_layouts.py
+ -> db/repositories/ad_layouts.py -> ad_layouts (PostgreSQL migration 0024)
+ -> PhotoSorter/data/ad_layouts/<UUID>.jpg/png/webp
+
+Готовый MegaLoc run -> результаты XFeat (outputs/RUN_ID/screen_search)
+ -> только status=found, единственный экран по UUID
+ -> crop без перспективной деформации + маска вне quad
+ -> app/ad_recognition/dino.py (384D CPU ViT-S/14)
+ -> app/ad_recognition/embedding_cache.py (вектора оригинальных макетов)
+ -> app/ad_recognition/scoring.py (только DINO назначает кандидата)
+ -> app/ad_recognition/ocr.py (PP-OCRv5 ru: контрольный текст,
+    без переназначения и без обязательного текста)
+ -> server/services/ad_recognition.py (batch read-lease, ручной CLI)
+ -> outputs/RUN_ID/ad_recognition/INDEX/SCREEN_UUID.json
+ -> api/routes/ad_recognition.py (только GET)
+ -> frontend/results/ScreenSearchDetail.vue (сходство, OCR, сомнение)
+```
+
+MegaLoc, XFeat, DINOv2, OCR — отдельные модули. Одного нового
+worker/FIFO/ZIP для этого этапа не создаётся. Вся интеграция единой очереди
+и качество/лучшее фото отложены до этапа 4.

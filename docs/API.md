@@ -196,3 +196,23 @@ POST: `{reference_id,screen_id:null,screen_name:"Экран 1",corners:[{x,y},..
 Все маршруты под существующими session/Origin middleware. Запуск инференса
 в HTTP **отсутствует**: тестовый запуск через CLI существующего Worker-контейнера.
 Не создаётся ни второй очередь, ни новый ZIP, ни фиктивный статус обработки.
+
+
+## Этап 3 — макеты рекламы
+
+`GET /api/ad-layouts` — список метаданных макетов без файловых путей.
+`POST /api/ad-layouts` — multipart `file`, `name`, `expected_text`
+(максимум 20 МиБ, JPEG/PNG/WEBP). При дублировании SHA ответ 409.
+`PATCH /api/ad-layouts/{uuid}` — `name`, `expected_text`, `active`,
+`version` (оптимистическая блокировка, конфликт 409).
+`DELETE /api/ad-layouts/{uuid}` — удаление оригинала и записи.
+`GET /api/ad-layouts/{uuid}/image` — изображение только под
+выделенным корнем, с существующей сессионной аутентификацией.
+
+`GET /api/ad-recognition/models` — наличие DINOv2 и локальных PP-OCRv5.
+`GET /api/ad-recognition/runs/{run_id}/photos/{index}/screens/{screen_uuid}`
+— сохранённый результат этапа 3, или `not_processed`. Поля `status`,
+`candidate_id`, `top[]`, `margin`, `thresholds`, `ocr.status/reason/lines`,
+`review_required`, source/model signatures, elapsed_seconds.
+OCR не может переназначить `candidate_id`. Запуск вычисления **не** через HTTP
+(чтобы не блокировать API), а через явную CLI команду Worker.

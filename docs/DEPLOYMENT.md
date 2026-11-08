@@ -93,3 +93,29 @@ API подключён к внешней Docker-сети, а Worker — толь
 проверить `--verify` до запуска. Не добавлять бинарные веса в Git.
 ФО после MegaLoc анализируются отдельно, результат в outputs партии.
 Никаких команд `docker compose down -v` для такого обновления не требуется.
+
+
+## Тестовый этап 3: модели и распознавание рекламы
+
+В уже развёрнутой ветке `feature/ad-recognition`, после обычного MegaLoc
+и этапа 2 XFeat:
+
+```bash
+docker compose exec api python -m app.ad_recognition.cli --install-dino
+docker compose exec api python -m app.ad_recognition.cli --install-ocr
+docker compose exec worker python -m app.ad_recognition.cli --verify
+docker compose exec worker python -m app.ad_recognition.cli --run-id RUN_ID --limit 20
+```
+
+API контейнер может скачивать веса (сеть public), Worker читает только
+общие локальные тома (сеть private). Оригиналы рекламы загружаются через
+раздел «Макеты рекламы». Для продолжения используйте `--start-index 20`.
+При отсутствии OCR его статус будет `unavailable` и это будет показано
+пользователю; никакого выдуманного подтверждения текста нет.
+DINOv2 загружается только из проверенного safetensors по SHA-256.
+
+**Лицензия**: перед коммерческим использованием проверить условия
+конкретной весовой копии pretrained DINOv2. В метаданных checkpoint
+timm встречается ограничение CC-BY-NC-4.0; официальная карточка
+DINOv2 указывает Apache 2.0. Пока использовать модель только
+в тестовой ветке и для проверки технологии.

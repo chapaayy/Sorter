@@ -310,3 +310,31 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 `frontend/e2e/navigation.spec.ts`, `frontend/src/main.ts`,
 `PhotoSorter/requirements.txt`, `.github/workflows/ci.yml`,
 `PhotoSorter/tools/maintenance/smoke_container.sh`.
+
+
+## Этап 3 — новые используемые файлы
+
+| Файл | Назначение |
+| --- | --- |
+| `PhotoSorter/backend/server/db/migrations/0024_ad_layouts.sql` | Иммутабельный реестр рекламных макетов |
+| `PhotoSorter/backend/server/db/repositories/ad_layouts.py` | SQL CRUD с версиями |
+| `PhotoSorter/backend/server/services/ad_layouts.py` | Безопасная загрузка/удаление оригиналов и метаданные |
+| `PhotoSorter/backend/server/api/routes/ad_layouts.py` | Авторизованный API библиотеки макетов |
+| `PhotoSorter/backend/app/ad_recognition/dino.py` | DINOv2 ViT-S/14, SHA весов, CPU embedding |
+| `PhotoSorter/backend/app/ad_recognition/embedding_cache.py` | Версионированный кэш 384D признаков |
+| `PhotoSorter/backend/app/ad_recognition/scoring.py` | DINO-only выбор с порогом и запасом по сравнению |
+| `PhotoSorter/backend/app/ad_recognition/ocr.py` | PP-OCRv5 русский + проверка слов |
+| `PhotoSorter/backend/app/ad_recognition/cli.py` | Явная загрузка моделей и ручной анализ |
+| `PhotoSorter/backend/app/ad_recognition/cpu_smoke.py` | Реальный CPU-inference DINOv2 и PaddleOCR в CI |
+| `PhotoSorter/backend/server/services/ad_recognition.py` | Только подтверждённые XFeat-crop; сохранение результатов |
+| `PhotoSorter/backend/server/api/routes/ad_recognition.py` | Read-only результаты DINO/OCR |
+| `PhotoSorter/backend/tests/test_ad_recognition.py` | PostgreSQL, безопасность, cosine, OCR |
+| `PhotoSorter/frontend/src/api/adLayouts.ts` | Контракты библиотеки и диагностик |
+| `PhotoSorter/frontend/src/features/layouts/AdLayoutLibrary.vue` | Загрузка/правка/отключение макетов |
+| `PhotoSorter/frontend/src/styles/ad-layouts.css` | Адаптивные стили библиотеки и результата |
+
+Обновлены существующие `server/main.py`, `frontend/src/app/router.ts`,
+`frontend/src/main.ts`, `frontend/src/components/layout/Shell.vue`,
+`frontend/src/components/ui/UiIcon.vue`,
+`frontend/src/features/results/ScreenSearchDetail.vue`,
+`frontend/e2e/navigation.spec.ts`, Dockerfile, runtime smoke и requirements.
