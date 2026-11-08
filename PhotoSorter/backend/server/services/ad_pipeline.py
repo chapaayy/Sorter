@@ -24,7 +24,7 @@ def _root(run_id):
 
 def digest(snapshot):
     payload={key:snapshot.get(key) for key in
-             ("enabled","annotations","layouts","xfeat_signature","dino_signature","ocr_version")}
+             ("enabled","annotations","layouts","xfeat_signature","dino_signature","ocr_version","ocr_signature")}
     return hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False,
                            separators=(",",":")).encode()).hexdigest()
 
