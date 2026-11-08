@@ -65,7 +65,7 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 | Jobs | `PhotoSorter/backend/app/jobs/` | Стадии исполнения, прогресс и export |
 | Docker | `compose.yaml`, `PhotoSorter/docker/` | Caddy + API + 3 worker services + PostgreSQL |
 | Support | `PhotoSorter/tools/` | Benchmark, snapshot, verify, restore-test и CI smoke |
-| CI | `.github/workflows/ci.yml` | Один pipeline для `main` |
+| CI | `.github/workflows/ci.yml` | Один pipeline для `main` и `feature/ad-recognition` |
 
 ## Основные сценарии
 
@@ -194,3 +194,22 @@ Shell
 `ReferenceLibrary.vue` → `CreateConstructionDialog.vue` → `api/routes/references.py` → `services/construction_catalog.py` → `reference_constructions`. Пустой каталог независим от текущей версии признаков. Фото в индивидуальные конструкции по-прежнему идут через `useReferenceTransfer` → `reference_imports` → единую очередь подготовки → `reference_publication`, а массовый импорт сохраняет старую строгую валидацию.
 
 `stores/deletion.ts` + серверный `batches.delete_state` → `FoBatchCard.vue`, `QueueTaskRow.vue`, `ResultsList.vue` → единый `CompactTaskCard.vue` со статусным outline. Для `deleting` фон красный; для `delete_failed` только красная обводка. ZIP не выделен отдельным статусом.
+
+## Этап 1: разметка физических экранов (только feature/ad-recognition)
+
+```text
+Vue /references -> ReferenceLibrary -> ImageViewer (Выделить экран)
+ -> ScreenAnnotationEditor.vue (4 угла, толщина, несколько ракурсов)
+ -> frontend/src/api/references.ts
+ -> server/api/routes/screen_annotations.py (session + Origin через main.py)
+ -> server/services/screen_annotations.py
+    -> screen_geometry.py (выпуклость, площадь, диапазон, полоса)
+    -> server/storage/paths.py (защита пути), Pillow (EXIF)
+    -> PostgreSQL: reference_screens + reference_screen_annotations (0023)
+```
+
+Сейчас работа ФО не читает эти таблицы: действующий поток остаётся
+**загрузка → MegaLoc (группировка/сопоставление) → результат → ZIP → завершено**.
+Планируемый, **пока не реализованный** путь после MegaLoc:
+разметка своей конструкции → XFeat/OpenCV → экран → DINOv2 → OCR-проверка
+→ качество → отбор → единый ZIP. Вторая очередь не создаётся.
