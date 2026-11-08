@@ -36,6 +36,8 @@ async function mock(page:Page){
     if(p==='/api/reference-library/events')return respond(route,{events:[]})
     if(p==='/api/work-queue')return respond(route,{tasks:[],total:0})
     if(p==='/api/references')return respond(route,{sam:[{sam:'SAM-0001',photos:1}],total:1})
+    if(p==='/api/ad-layouts')return respond(route,{layouts:[],total:0})
+    if(p==='/api/ad-recognition/models')return respond(route,{dino:{available:true},ocr:{available:true}})
     if(p==='/api/references/cache/status')return respond(route,{total:1,cached:1,current_signature:null})
     if(p==='/api/references/SAM-0001/photos')return respond(route,{photos:[photo],next_cursor:null})
     if(p==='/api/references/SAM-0001/screens')return respond(route,{screens:[]})
@@ -76,12 +78,12 @@ async function mock(page:Page){
   })
 }
 test.beforeEach(async({page})=>{await mock(page)})
-test('six navigation sections and real data bindings',async({page})=>{
+test('seven navigation sections and real data bindings',async({page})=>{
   await page.goto('/fo')
   await expect(page.getByRole('heading',{name:'Фотоотчёты'})).toBeVisible()
   await expect(page.getByRole('link',{name:'Фотографии',exact:true})).toBeVisible()
   await expect(page.getByText('Выезд Самара 05.11').first()).toBeVisible()
-  for(const [path,heading] of [['/references','Образцы'],['/queue','Очередь'],['/results','Результаты'],['/logs','Логи'],['/settings','Настройки']] as const){
+  for(const [path,heading] of [['/references','Образцы'],['/layouts','Макеты рекламы'],['/queue','Очередь'],['/results','Результаты'],['/logs','Логи'],['/settings','Настройки']] as const){
     await page.goto(path)
     await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible()
   }
@@ -656,4 +658,41 @@ test('results viewer shows read-only XFeat diagnostics without changing MegaLoc'
   await dialog.getByLabel('Показать точки').check()
   await expect(dialog.locator('.screen-search-stage svg circle')).toHaveCount(5)
   await expect(dialog.getByLabel('Опорные точки Образца').locator('circle')).toHaveCount(1)
+})
+
+test('DINOv2 decides candidate, OCR mismatch only warns in XFeat viewer',async({page})=>{
+  await page.route('**/api/screen-search/runs/**',route=>{
+    if(!new URL(route.request().url()).pathname.endsWith('/photos/0'))
+      return route.fulfill({status:404})
+    return respond(route,{index:0,status:'found',assigned_sam:'SAM 0001',image_width:800,
+      image_height:600,reason:'Геометрия подтверждена',elapsed_seconds:1.8,
+      screens:[{screen_id:pid,screen_name:'Главный LED',reference_id:pid,
+        annotation_id:pid,annotation_version:1,reference_width:800,reference_height:600,
+        status:'found',reason:'Геометрия подтверждена',matches:32,inliers:25,
+        supported_sides:[0,1,2,3],reprojection_error_px:1.2,
+        crop_box:{x:100,y:80,width:480,height:240},
+        corners:[{x:100,y:80},{x:570,y:80},{x:570,y:300},{x:100,y:300}]}]})
+  })
+  await page.route('**/api/ad-recognition/runs/**',route=>respond(route,{
+    index:0,screen_id:pid,status:'matched',reason:'DINOv2: выбран наиболее близкий макет',
+    candidate_id:pid,margin:.16,review_required:true,elapsed_seconds:1.5,
+    top:[{id:pid,name:'Реклама ноября',score:.91,version:1,checksum:'a'.repeat(64)}],
+    ocr:{status:'mismatch',reason:'Контрольный текст не совпал',lines:['Реклама октября']}
+  }))
+  await page.goto('/results/'+rid)
+  await page.getByRole('button',{name:'Открыть ФО №1'}).click()
+  await page.getByRole('button',{name:'Диагностика XFeat'}).click()
+  const dialog=page.getByRole('dialog',{name:'Диагностика XFeat'})
+  await expect(dialog.getByText('Макет DINOv2 выбран')).toBeVisible()
+  await expect(dialog.getByText('Реклама ноября').first()).toBeVisible()
+  await expect(dialog.getByText('Текст не совпал').first()).toBeVisible()
+  await expect(dialog.getByText('OCR не менял кандидата DINOv2.')).toBeVisible()
+})
+
+test('layout library opens a working independent upload UI',async({page})=>{
+  await page.goto('/layouts')
+  await expect(page.getByRole('heading',{name:'Макеты рекламы'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'Добавить рекламный макет'})).toBeVisible()
+  await expect(page.getByRole('link',{name:'Перейти к результатам ФО'})).toBeVisible()
+  await expect(page.getByText('Макетов пока нет')).toBeVisible()
 })
