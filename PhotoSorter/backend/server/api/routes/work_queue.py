@@ -16,7 +16,7 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
         raise HTTPException(422,"Неверная выборка очереди")
     where={
         "active":""" WHERE (w.state IN ('queued','running','blocked') OR
-                 (w.kind='reference_preparation' AND w.state IN ('failed','interrupted')))""",
+                 (w.kind IN ('reference_preparation','layout_preparation') AND w.state IN ('failed','interrupted')))""",
         "history":""" WHERE w.state IN ('completed','completed_with_errors','stopped') OR
                  (w.kind='fo_processing' AND w.state IN ('failed','interrupted'))""",
         "all":""
@@ -25,10 +25,16 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
     with connect() as db:
         total=db.execute("SELECT count(*) AS n FROM work_queue w"+where).fetchone()["n"]
         entries=db.execute("""
-            SELECT w.seq,w.kind,w.fo_run_id,w.reference_job_id,w.state,
+            SELECT w.seq,w.kind,w.fo_run_id,w.reference_job_id,w.layout_job_id,w.state,
                    w.created_at,w.started_at,w.finished_at,
-                   p.session_id,p.total_count,p.completed_count,p.failed_count,p.progress_stage,
-                   p.error,p.stop_requested,
+                   p.session_id,
+                   CASE WHEN lp.id IS NOT NULL THEN 100 ELSE p.total_count END AS total_count,
+                   CASE WHEN lp.id IS NOT NULL THEN lp.progress_percent ELSE p.completed_count END AS completed_count,
+                   CASE WHEN lp.id IS NOT NULL THEN (CASE WHEN lp.state='failed' THEN 1 ELSE 0 END)
+                        ELSE p.failed_count END AS failed_count,
+                   coalesce(lp.progress_stage,p.progress_stage) AS progress_stage,
+                   coalesce(lp.error,p.error) AS error,p.stop_requested,
+                   l.name AS layout_name,lp.layout_id,
                    j.batch_id,j.snapshot->>'source' AS fo_source,
                    j.snapshot->'progress' AS fo_progress,
                    b.display_name AS batch_name,b.delete_state AS batch_delete_state,
@@ -38,6 +44,8 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
                    cover.thumbnail_id AS fo_thumbnail_id
             FROM work_queue w LEFT JOIN reference_preparation_jobs p
                  ON p.id=w.reference_job_id
+            LEFT JOIN ad_layout_preparation_jobs lp ON lp.id=w.layout_job_id
+            LEFT JOIN ad_layouts l ON l.id=lp.layout_id
             LEFT JOIN jobs j ON j.id=w.fo_run_id
             LEFT JOIN batches b ON b.id=j.batch_id
             LEFT JOIN LATERAL (
@@ -149,3 +157,54 @@ def stop_running(job_id:uuid.UUID):
             return {"id":str(job_id),"stop_requested":True,
                     "state":"interrupted"}
         raise HTTPException(409,"Остановка доступна только для выполняемой подготовки")
+
+@router.get("/layout-preparations/{job_id}")
+def layout_preparation(job_id:uuid.UUID):
+    with connect() as db:
+        row=db.execute("""SELECT p.*,l.name AS layout_name,w.seq AS queue_seq,
+            w.state AS queue_state FROM ad_layout_preparation_jobs p
+            JOIN work_queue w ON w.layout_job_id=p.id
+            LEFT JOIN ad_layouts l ON l.id=p.layout_id WHERE p.id=%s""",
+            (job_id,)).fetchone()
+    if not row:raise HTTPException(404,"Подготовка макета не найдена")
+    return row
+
+@router.post("/layout-preparations/{job_id}/retry")
+def retry_layout(job_id:uuid.UUID):
+    with connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        row=db.execute("""SELECT p.state,p.layout_id FROM ad_layout_preparation_jobs p
+            WHERE p.id=%s FOR UPDATE""",(job_id,)).fetchone()
+        if not row or not row["layout_id"]:
+            raise HTTPException(404,"Подготовка макета не найдена")
+        if row["state"] not in ("failed","interrupted"):
+            raise HTTPException(409,"Повтор доступен только после ошибки")
+        db.execute("""UPDATE ad_layout_preparation_jobs SET state='queued',
+            progress_stage='queued',progress_percent=0,error=NULL,
+            started_at=NULL,finished_at=NULL WHERE id=%s""",(job_id,))
+        db.execute("""UPDATE ad_layouts SET preparation_state='queued',
+            preparation_stage='queued',preparation_progress=0,
+            preparation_error=NULL WHERE id=%s""",(row["layout_id"],))
+        db.execute("""UPDATE work_queue SET state='queued',started_at=NULL,
+            finished_at=NULL WHERE layout_job_id=%s""",(job_id,))
+    return {"id":str(job_id),"state":"queued"}
+
+@router.post("/layout-preparations/{job_id}/skip")
+def skip_layout(job_id:uuid.UUID):
+    with connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        row=db.execute("""SELECT state,layout_id FROM ad_layout_preparation_jobs
+            WHERE id=%s FOR UPDATE""",(job_id,)).fetchone()
+        if not row:raise HTTPException(404,"Подготовка макета не найдена")
+        if row["state"] not in ("queued","failed","interrupted"):
+            raise HTTPException(409,"Выполняемую подготовку пропустить нельзя")
+        db.execute("""UPDATE ad_layout_preparation_jobs SET state='stopped',
+            progress_stage='stopped',error='Пропущено администратором',
+            finished_at=now() WHERE id=%s""",(job_id,))
+        db.execute("""UPDATE work_queue SET state='stopped',finished_at=now()
+            WHERE layout_job_id=%s""",(job_id,))
+        if row["layout_id"]:
+            db.execute("""UPDATE ad_layouts SET preparation_state='failed',
+                preparation_stage='stopped',preparation_error='Подготовка пропущена'
+                WHERE id=%s""",(row["layout_id"],))
+    return {"id":str(job_id),"state":"stopped"}
