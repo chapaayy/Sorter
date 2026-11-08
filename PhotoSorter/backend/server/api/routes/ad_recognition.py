@@ -2,7 +2,7 @@
 from __future__ import annotations
 from uuid import UUID
 from fastapi import APIRouter, HTTPException
-from ...services import ad_recognition, ad_visual_groups
+from ...services import ad_recognition, ad_visual_groups, ad_text_subgroups
 from app.ad_recognition import dino,ocr
 
 router=APIRouter(prefix="/api/ad-recognition",tags=["ad-recognition"])
@@ -48,3 +48,14 @@ def layout_member_scores(run_id: str, group_id: str, layout_id: UUID,
     _page(limit, offset)
     return ad_visual_groups.layout_members(
         run_id, _group_id(group_id), str(layout_id), limit, offset)
+
+@router.get("/runs/{run_id}/text-subgroups")
+def text_subgroups(run_id: str, limit: int = 50, offset: int = 0,
+                   visual_group_id: str | None = None):
+    _page(limit, offset)
+    return ad_text_subgroups.saved(run_id, limit, offset, visual_group_id)
+
+
+@router.get("/runs/{run_id}/text-subgroups/{subgroup_id}")
+def text_subgroup(run_id: str, subgroup_id: str):
+    return ad_text_subgroups.detail(run_id, subgroup_id)
