@@ -71,8 +71,9 @@ export interface Retention {
 }
 export interface LogEntry { at: string; level: string; model?: string | null; source?: string; message: string }
 export interface ModelInfo {
-  models: Array<{ id: string; title: string; available: boolean; reason?: string; downloadable: boolean }>
-  device: string; downloads?: Record<string, unknown>
+  models: Array<{ id: string; title: string; description?: string; available: boolean; reason?: string; downloadable: boolean }>
+  device: string
+  downloads?: Record<string,{status:'downloading'|'verifying'|'installed'|'error';stage?:string;message?:string;received_bytes?:number;elapsed_seconds?:number}>
 }
 export interface StorageUsage {
   disk: { total_bytes: number; used_bytes: number; available_bytes: number; used_fraction: number

@@ -7,12 +7,12 @@ import MegaLocSettings from './MegaLocSettings.vue'
 import PerformanceSettings from './PerformanceSettings.vue'
 import StorageSettings from './StorageSettings.vue'
 import SystemSettings from './SystemSettings.vue'
-type Category='appearance'|'uploads'|'megaloc'|'performance'|'storage'|'system'
+type Category='appearance'|'uploads'|'models'|'performance'|'storage'|'system'
 const selected=ref<Category>('appearance')
 const sections:Array<{id:Category;name:string;detail:string}>=[
   {id:'appearance',name:'Оформление',detail:'Тёмная и светлая темы'},
   {id:'uploads',name:'Загрузка файлов',detail:'Потоки, докачка'},
-  {id:'megaloc',name:'MegaLoc',detail:'Параметры группировки'},
+  {id:'models',name:'Модели',detail:'MegaLoc, XFeat, DINOv2 и OCR'},
   {id:'performance',name:'Производительность',detail:'CPU и службы'},
   {id:'storage',name:'Хранилище',detail:'Место и очистка'},
   {id:'system',name:'Система',detail:'Сервисы и диагностика'}
@@ -32,7 +32,7 @@ const sections:Array<{id:Category;name:string;detail:string}>=[
   <div class="settings-detail">
     <AppearanceSettings v-if="selected==='appearance'"/>
     <UploadSettings v-else-if="selected==='uploads'"/>
-    <MegaLocSettings v-else-if="selected==='megaloc'"/>
+    <MegaLocSettings v-else-if="selected==='models'"/>
     <PerformanceSettings v-else-if="selected==='performance'"/>
     <StorageSettings v-else-if="selected==='storage'"/>
     <SystemSettings v-else/>

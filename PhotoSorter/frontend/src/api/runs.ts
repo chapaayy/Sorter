@@ -28,5 +28,6 @@ export const runApi={
     api<WorkloadSettings>('/processing-settings/workloads',{
       method:'PATCH',body:JSON.stringify({mode,fo_threads,reference_threads})
     }),
-  downloadModel:()=>post<unknown>('/models/megaloc/download',{})
+  downloadModel:()=>post<unknown>('/models/megaloc/download',{}),
+  installModel:(id:string)=>post<unknown>('/models/'+encodeURIComponent(id)+'/download',{})
 }
