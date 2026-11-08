@@ -187,7 +187,7 @@ POST: `{reference_id,screen_id:null,screen_name:"Экран 1",corners:[{x,y},..
 - `GET /api/screen-search/model`: готовность проверенных локальных XFeat-файлов.
 - `GET /api/screen-search/runs/{run_id}/photos/{index}`: сохранённый результат
   со `status`, `reason`, `image_width/height` и `screens[]`. Каждый экран
-  содержит `screen_id`, имя, `annotation_version`, статус, количество
+  содержит `screen_id`, имя, `annotation_version`, `reference_width/reference_height`, статус, количество
   `matches` и `inliers`, `supported_sides`, ошибку геометрии, 4 угла и
   до 80 пар совпавших точек. Без анализа — `not_processed`.
 - `GET /api/screen-search/runs/{run_id}/photos/{index}/screens/{screen_id}/crop`:
