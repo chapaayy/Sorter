@@ -28,6 +28,7 @@ export interface GroupMatch {
  candidate_count:number;method:string;decision_version?:string
  ocr_leader_id?:string|null;visual_leader_id?:string|null
  ocr_margin?:number|null;ocr_conflicting_members?:boolean
+ matched_member_count?:number;unmatched_member_count?:number;member_layout_count?:number
 }
 export interface VisualGroup {
  id:string;assigned_sam:string;screen_id:string;member_count:number
@@ -49,12 +50,19 @@ export interface RankedLayout {
  ocr_matched_terms?:number;ocr_total_terms?:number;ocr_similarity?:number
  ocr_support?:number;relative_dino?:number;combined_score?:number
 }
+export interface MemberLayoutDecision {
+ index:number;screen_id:string;status:string;candidate_id:string|null
+ reason:string;best_score?:number|null;method?:string;ocr_leader_id?:string|null
+ visual_leader_id?:string|null;ocr_margin?:number|null
+}
 export interface RankingsPage {
  status:string;group_id:string;reason?:string;candidate_id?:string|null
  best_score?:number|null;margin?:number|null;member_margin?:number|null
  matching_threshold?:number;method?:string;selected_member?:{index:number;screen_id:string}|null
  decision_version?:string;ocr_leader_id?:string|null;visual_leader_id?:string|null
  ocr_margin?:number|null;ocr_conflicting_members?:boolean
+ matched_member_count?:number;unmatched_member_count?:number;member_layout_count?:number
+ member_decision?:MemberLayoutDecision|null
  total:number;limit?:number;offset?:number;rankings:RankedLayout[]
 }
 export interface TextSubgroup {
