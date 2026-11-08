@@ -75,7 +75,10 @@ def test_default_old_fifo_megaloc_only(system):
     run=add_fo()
     with connect() as db:job=work_queue.claim_next(db)
     assert job["id"]==run
-    assert job["info"]["ad_pipeline"]=={"enabled":False}
+    frozen=job["info"]["ad_pipeline"]
+    assert frozen["enabled"] is False
+    assert frozen["grouping_threshold"]==.81
+    assert frozen["matching_threshold"]==.81
     finish_fo(run)
 
 def test_fifo_claim_freezes_reference_and_layout_revisions(system,monkeypatch):
@@ -90,6 +93,16 @@ def test_fifo_claim_freezes_reference_and_layout_revisions(system,monkeypatch):
     monkeypatch.setattr(dino,"status",lambda:{"available":True})
     monkeypatch.setattr(ocr,"status",lambda:{"available":True})
     monkeypatch.setattr(ocr,"signature",lambda:"test-paddle-sha")
+    monkeypatch.setattr(dino,"verify",lambda:True)
+    monkeypatch.setattr(dino,"load",lambda:object())
+    monkeypatch.setattr(dino,"embed",lambda *_:np.r_[1.,np.zeros(383)].astype("float32"))
+    monkeypatch.setattr(ocr,"load",lambda:object())
+    monkeypatch.setattr(ocr,"read",lambda *_:[{"text":"СКИДКИ 50","score":.98}])
+    from app.ad_recognition import embedding_cache
+    from server.workers import ad_layout_prepare
+    from .test_ad_layout_preparation_stage1 import _claim_layout
+    monkeypatch.setattr(embedding_cache,"ROOT",system/"cache"/"dino"/"layouts")
+    ad_layout_prepare.run(_claim_layout(layout_id))
     assert ad_pipeline_settings.update(True)["enabled"]
     run=add_fo()
     with connect() as db:
