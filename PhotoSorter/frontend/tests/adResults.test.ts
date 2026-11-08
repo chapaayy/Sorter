@@ -4,10 +4,11 @@ import {isResultView,resultViews} from '../src/types/resultViews'
 afterEach(()=>vi.unstubAllGlobals())
 
 describe('Stage 4 saved-result navigation and typed API',()=>{
-  it('exposes all seven standalone result modes',()=>{
-    expect(resultViews).toEqual(['sam','group','screens','visual-groups','ads','ocr','comparisons'])
+  it('exposes all eight saved result modes including final photos',()=>{
+    expect(resultViews).toEqual(['sam','group','final','screens','visual-groups','ads','ocr','comparisons'])
     expect(resultViews.length).toBe(new Set(resultViews).size)
     expect(isResultView('comparisons')).toBe(true)
+    expect(isResultView('final')).toBe(true)
     expect(isResultView('unexpected')).toBe(false)
   })
   it('pages saved XFeat, DINO rankings, layout photos and OCR without write requests',async()=>{
