@@ -116,7 +116,7 @@ def analyze_run(run_id:str,*,limit:int|None=None,start_index:int=0,
         raise ValueError("limit вне допустимого диапазона")
     if not 0<=start_index<=10000000:raise ValueError("Invalid start-index")
     with connect() as db:
-        job=db.execute("""SELECT j.batch_id,j.status,b.delete_state FROM jobs j
+        job=db.execute("""SELECT j.batch_id,j.status,b.delete_state,j.snapshot FROM jobs j
             JOIN batches b ON b.id=j.batch_id WHERE j.id=%s""",(run_id,)).fetchone()
     if not job or job["status"] not in ("completed","completed_with_errors") or job["delete_state"]!="active":
         raise ValueError("Нужен завершённый MegaLoc run активной партии")
