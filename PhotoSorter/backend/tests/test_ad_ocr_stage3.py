@@ -34,8 +34,8 @@ def test_generic_ocr_words_preserve_diagnostics_without_semantic_decisions():
     assert observed["status"]=="readable"
     assert observed["confidence"]==.97
     assert observed["regions"][0]["polygon"]==[[0.,0.],[20.,0.],[20.,10.],[0.,10.]]
-    # Legacy diagnostic fields stay available but are no longer used to rank.
-    assert observed["significant"]["dates"]==["11.11.2026"]
+    # OCR retains its raw words, not speculative price/date classifications.
+    assert observed["significant"]=={}
     score=ocr.confirm(expected,actual)
     assert score["status"]=="probable"
     assert score["matched_terms"]>=3
