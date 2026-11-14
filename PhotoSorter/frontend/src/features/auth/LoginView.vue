@@ -18,7 +18,7 @@ async function submit(){
 }
 </script>
 <template>
-  <AuthLayout title="Вход в PhotoSorter" subtitle="Войдите, чтобы работать с фотоотчётами и скачивать готовые результаты.">
+  <AuthLayout title="Войти в MAP" subtitle="Войдите, чтобы работать с фотоотчётами и скачивать готовые результаты.">
     <form class="auth-form" @submit.prevent="submit">
       <AuthField v-model="username" label="Электронная почта или логин" autocomplete="username" :max="254"/>
       <AuthField v-model="password" label="Пароль" type="password" autocomplete="current-password"/>

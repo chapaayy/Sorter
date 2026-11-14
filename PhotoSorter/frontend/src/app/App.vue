@@ -17,7 +17,7 @@ onMounted(async()=>{await session.check();await gate()})
 watch(()=>route.fullPath,()=>{void gate()})
 </script>
 <template>
-  <div v-if="!session.checked" class="auth-loading">OUTDOOR · PHOTOSORTER</div>
+  <div v-if="!session.checked" class="auth-loading">MAP</div>
   <RouterView v-else-if="route.meta.public"/>
   <Shell v-else-if="session.user&&(session.isOwner||route.meta.viewer)"><RouterView/></Shell>
   <ToastStack/>

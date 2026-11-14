@@ -68,7 +68,7 @@ onMounted(()=>{void load()})
   <ApproveAccessDialog v-if="selected?.approved" :email="selected.item.email" :busy="busy" :edit-id="selected.edit?selected.item.id:undefined"
     @approve="decide" @cancel="selected=null"/>
   <ConfirmDialog v-else-if="selected" title="Отклонить заявку?"
-    :message="selected.item.email+' не получит доступ к PhotoSorter.'"
+    :message="selected.item.email+' не получит доступ к MAP.'"
     confirm-label="Отклонить" :busy="busy" danger @confirm="decide()" @cancel="selected=null"/>
 </template>
 

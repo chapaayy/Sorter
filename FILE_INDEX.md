@@ -238,6 +238,7 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | `PhotoSorter/frontend/src/features/queue/RunDetail.vue` | Подробности запуска, бывший Processing/RunDetail |
 | `PhotoSorter/frontend/src/features/queue/RunProgress.vue` | Статистика прогресса отдельной ФО |
 | `PhotoSorter/frontend/src/features/settings/AppearanceSettings.vue` | Тема |
+| `PhotoSorter/frontend/src/features/settings/AboutSettings.vue` | Название MAP, расшифровка и назначение сервиса |
 | `PhotoSorter/frontend/src/features/settings/UploadSettings.vue` | Параллельность загрузки |
 | `PhotoSorter/frontend/src/features/settings/MegaLocSettings.vue` | CPU и автозапуск, установка модели |
 | `PhotoSorter/frontend/src/features/settings/StorageSettings.vue` | Использование места, сроки и очистка |

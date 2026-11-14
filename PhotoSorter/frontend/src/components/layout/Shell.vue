@@ -24,9 +24,9 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
     <div v-if="menu" class="drawer-backdrop" @click="menu=false" aria-hidden="true"></div>
     <aside class="sidebar" :class="{open:menu}" aria-label="Основное меню">
       <div class="sidebar-brand-row">
-        <RouterLink class="brand" :to="session.home" aria-label="OUTDOOR PhotoSorter" @click="menu=false">
+        <RouterLink class="brand" :to="session.home" aria-label="MAP" @click="menu=false">
           <img class="brand-logo" src="/assets/logo.webp" alt="" width="35" height="35">
-          <div class="brand-text"><strong>OUTDOOR</strong><small>PHOTO SORTER</small></div>
+          <div class="brand-text"><strong>MAP</strong><small>ФОТООТЧЁТЫ</small></div>
         </RouterLink>
         <button class="sidebar-toggle" type="button"
           :aria-label="sidebar.collapsed?'Развернуть боковое меню':'Свернуть боковое меню'"
@@ -63,7 +63,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
           <button class="btn ghost icon" aria-label="Открыть меню" @click="menu=true">
             <UiIcon name="menu"/>
           </button>
-          <strong>OUTDOOR</strong>
+          <strong>MAP</strong>
         </div>
         <div class="breadcrumbs desktop-only">Приложение <span>›</span> <b>{{title()}}</b></div>
         <div class="header-right">

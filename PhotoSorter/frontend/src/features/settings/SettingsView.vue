@@ -8,7 +8,8 @@ import PerformanceSettings from './PerformanceSettings.vue'
 import StorageSettings from './StorageSettings.vue'
 import SystemSettings from './SystemSettings.vue'
 import AccessRequests from './users/AccessRequests.vue'
-type Category='appearance'|'uploads'|'megaloc'|'performance'|'storage'|'system'|'users'
+import AboutSettings from './AboutSettings.vue'
+type Category='appearance'|'uploads'|'megaloc'|'performance'|'storage'|'system'|'users'|'about'
 const selected=ref<Category>('appearance')
 const sections:Array<{id:Category;name:string;detail:string}>=[
   {id:'appearance',name:'Оформление',detail:'Тёмная и светлая темы'},
@@ -17,7 +18,8 @@ const sections:Array<{id:Category;name:string;detail:string}>=[
   {id:'performance',name:'Производительность',detail:'CPU и службы'},
   {id:'storage',name:'Хранилище',detail:'Место и очистка'},
   {id:'system',name:'Система',detail:'Сервисы и диагностика'},
-  {id:'users',name:'Пользователи',detail:'Заявки на доступ'}
+  {id:'users',name:'Пользователи',detail:'Заявки на доступ'},
+  {id:'about',name:'О сервисе',detail:'Что значит MAP'}
 ]
 </script>
 <template>
@@ -38,7 +40,8 @@ const sections:Array<{id:Category;name:string;detail:string}>=[
     <PerformanceSettings v-else-if="selected==='performance'"/>
     <StorageSettings v-else-if="selected==='storage'"/>
     <SystemSettings v-else-if="selected==='system'"/>
-    <AccessRequests v-else/>
+    <AccessRequests v-else-if="selected==='users'"/>
+    <AboutSettings v-else/>
   </div>
 </div>
 </template>
