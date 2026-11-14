@@ -89,7 +89,7 @@
 | `backend/server/storage/hardlinks.py` | Hard Link с безопасным fallback |
 | `backend/server/storage/thumbnail_cache.py` | Дисковый WebP cache |
 | `backend/server/workers/thumbnail.py` | Цикл генерации WebP |
-| `backend/server/workers/cleanup.py` | Фоновая постановка готовых opt-in партий в MegaLoc FIFO, retention и trash cleanup |
+| `backend/server/workers/cleanup.py` | Самостоятельный цикл удаления партий плюс плановое обслуживание, retention и ZIP-only повторы |
 
 ## MegaLoc и фотологика
 

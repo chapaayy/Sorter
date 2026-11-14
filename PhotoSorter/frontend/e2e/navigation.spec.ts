@@ -991,7 +991,8 @@ test('deletion shows server stages and progress instead of MegaLoc metrics',asyn
   await expect(card.locator('.task-card-status')).toHaveText('Удаляется')
   await expect(card.locator('.task-card-actions')).toHaveCount(0)
   await expect(card.getByText('Ожидаем завершения скачивания или другой операции')).toBeVisible()
-  await expect(card.getByRole('progressbar')).toHaveCount(0)
+  await expect(card.getByRole('progressbar')).toBeVisible()
+  await expect(card.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow',/./)
   await expect(card.locator('.task-card-time')).toHaveCount(0)
   progress={phase:'scanning',done:0,total:null}
   await expect(card.getByRole('progressbar')).toBeVisible()
@@ -999,7 +1000,7 @@ test('deletion shows server stages and progress instead of MegaLoc metrics',asyn
   progress={phase:'files',done:25,total:50}
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow','50')
   await expect(card.getByText('50%',{exact:true})).toBeVisible()
-  await expect(card.getByText('Удаляем оригиналы, результаты и временные файлы')).toBeVisible()
+  await expect(card.getByText('Удаляем оригиналы, результаты и временные файлы · 25 из 50 операций')).toBeVisible()
   await page.goto('/results')
   await expect(page.locator('.task-card').first()).toHaveClass(/task-card-deleting/)
   await expect(page.locator('.task-card-status').first()).toHaveText('Удаляется')
@@ -1017,6 +1018,24 @@ test('deletion shows server stages and progress instead of MegaLoc metrics',asyn
   state='deleted'
   await expect(page.getByText('Пока нет фотоотчётов')).toBeVisible()
   await expect(page.getByText('Партия «Выезд Самара 05.11» удалена')).toBeVisible()
+})
+
+test('a deletion faster than a status poll shows confirmation without invented progress',async({page})=>{
+  let done=false
+  await page.route('**/api/batches?*',route=>respond(route,{
+    batches:done?[]:[{...batch,delete_state:'deleting',deletion_progress:{phase:'queued',done:0,total:null}}],total:done?0:1
+  }))
+  await page.route('**/api/batches/'+bid+'/deletion',route=>respond(route,{
+    batch_id:bid,delete_state:done?'deleted':'deleting',task:{progress:
+      done?{phase:'completed',done:47,total:47}:{phase:'queued',done:0,total:null}}
+  }))
+  await page.goto('/fo')
+  const card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
+  await expect(card.getByText('В очереди на удаление')).toBeVisible()
+  await expect(card.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow',/./)
+  done=true
+  await expect(page.getByText('Партия «Выезд Самара 05.11» удалена')).toBeVisible()
+  await expect(card).toHaveCount(0)
 })
 
 test('website transfer queue stays FIFO across two FO folders and references',async({page})=>{

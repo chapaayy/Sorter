@@ -2,18 +2,30 @@
 from __future__ import annotations
 import logging
 import signal
+import threading
 import time
 from ..database import wait_and_initialize
 from ..services import heartbeat
 from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing,archive_retries
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
-RUN=True
+STOPPED=threading.Event()
 NEXT_GC=0.0
+DELETION_POLL_SECONDS=1.0
 
 def stop(*_):
-    global RUN
-    RUN=False
+    STOPPED.set()
+
+def run_deletions(stopped):
+    """Keep deletes responsive even while maintenance is rebuilding a ZIP."""
+    while not stopped.is_set():
+        try:
+            for batch_id,result in cleanup.process_pending():
+                if result not in ("busy","waiting","skipped"):
+                    logging.info("Batch cleanup %s: %s",batch_id,result)
+        except Exception:
+            logging.exception("Batch cleanup failure")
+        stopped.wait(DELETION_POLL_SECONDS)
 
 def run_cycle():
     global NEXT_GC
@@ -23,8 +35,6 @@ def run_cycle():
         logging.info('Auto processing queued for %s: %s',batch_id,run_id)
     for batch_id in retention.due_batch_ids():
         cleanup.request(batch_id,only_if_due=True)
-    for batch_id,result in cleanup.process_pending():
-        logging.info("Batch cleanup %s: %s",batch_id,result)
     removed=cleanup.reconcile_incomplete_exports()
     if removed:logging.info("Removed %s orphaned unpublished exports",len(removed))
     if time.monotonic()>=NEXT_GC:
@@ -39,11 +49,17 @@ def main():
     signal.signal(signal.SIGINT,stop)
     wait_and_initialize()
     pulse,thread=heartbeat.start("cleanup")
-    while RUN:
-        try:run_cycle()
-        except Exception:logging.exception("Lifecycle maintenance failure")
-        for _ in range(30):
-            if not RUN:break
-            time.sleep(1)
+    deletions=threading.Thread(name="batch-deletions",target=run_deletions,args=(STOPPED,))
+    deletions.start()
+    try:
+        while not STOPPED.is_set():
+            try:run_cycle()
+            except Exception:logging.exception("Lifecycle maintenance failure")
+            STOPPED.wait(30)
+    finally:
+        STOPPED.set()
+        deletions.join()
+        pulse.set()
+        thread.join()
 
 if __name__=="__main__":main()

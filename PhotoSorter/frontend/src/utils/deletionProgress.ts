@@ -17,8 +17,10 @@ export function deletionProgress(state?:string|null,progress?:DeletionProgress|n
   const percent=progress?.total&&progress.total>0
     ?Math.min(phase==='completed'?100:99,Math.max(0,Math.floor(100*progress.done/progress.total))):null
   return {
-    deleting,failed,inProgress:deleting&&phase==='scanning',
-    stage:failed?'Удаление не завершено · проверьте журнал':(phase&&stages[phase])||stages.queued,
+    deleting,failed,inProgress:deleting&&percent===null,
+    stage:failed?'Удаление не завершено · проверьте журнал':
+      phase==='files'&&progress?.total?stages.files+' · '+progress.done+' из '+progress.total+' операций':
+      (phase&&stages[phase])||stages.queued,
     percent:deleting||failed?percent:null
   }
 }

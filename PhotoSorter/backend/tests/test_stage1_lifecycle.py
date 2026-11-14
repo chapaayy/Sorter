@@ -208,6 +208,9 @@ def test_cleanup_exposes_committed_file_counts_and_database_phase(sandbox,monkey
             real_report(phase,done,total)
             if phase=="files":
                 observed.append((done,total,len(list(original.iterdir())) if original.exists() else None))
+                if done in (0,1,total-1):
+                    assert cleanup.get_status(own)["task"]["progress"]=={
+                        "phase":"files","done":done,"total":total}
             if phase=="database":
                 state=batches.get(own)
                 assert state["delete_state"]=="deleting"

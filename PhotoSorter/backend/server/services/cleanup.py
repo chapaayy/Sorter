@@ -10,6 +10,7 @@ from app.config import DATA_DIR,RUNS_DIR
 from .batches import uid
 
 IN_USE = ("queued","running","stopping")
+PROGRESS_INTERVAL_SECONDS=.1
 
 def request(batch_id, *, only_if_due=False):
     batch_id=uid(batch_id)
@@ -50,15 +51,24 @@ def request(batch_id, *, only_if_due=False):
 def get_status(batch_id):
     batch_id=uid(batch_id)
     with connect() as db:
-        batch=db.execute("SELECT delete_state,deleted_at FROM batches WHERE id=%s",
-                         (batch_id,)).fetchone()
+        batch=db.execute("""
+            SELECT b.delete_state,b.deleted_at,
+                CASE WHEN c.batch_id IS NOT NULL THEN jsonb_build_object(
+                    'state',c.state,'attempts',c.attempts,'error',c.error,
+                    'completed_at',c.completed_at,'progress',c.progress)
+                END AS task
+            FROM batches b LEFT JOIN cleanup_tasks c ON c.batch_id=b.id
+            WHERE b.id=%s
+        """,(batch_id,)).fetchone()
         if not batch:return {"state":"not_found","batch_id":str(batch_id)}
-        task=db.execute("""SELECT state,attempts,error,completed_at,progress FROM cleanup_tasks
-            WHERE batch_id=%s""",(batch_id,)).fetchone()
-    return {"batch_id":str(batch_id),**batch,"task":task}
+    return {"batch_id":str(batch_id),**batch}
 
 def _progress(phase,done=0,total=None):
     return Jsonb({"phase":phase,"done":done,"total":total})
+
+def _save_progress(db,batch_id,snapshot):
+    db.execute("""UPDATE cleanup_tasks SET progress=%s,updated_at=now()
+        WHERE batch_id=%s""",(snapshot,batch_id))
 
 def _files(batch_id,run_ids,upload_ids,report):
     return remove_batch_files(batch_id,run_ids,upload_ids,DATA_DIR,RUNS_DIR,report)
@@ -69,10 +79,10 @@ def _reporter(db,batch_id):
     def report(phase,done=0,total=None):
         nonlocal last_phase,last_update
         now=time.monotonic()
-        if phase==last_phase and now-last_update<.25:
+        checkpoint=phase=="files" and done in (1,total-1)
+        if phase==last_phase and not checkpoint and now-last_update<PROGRESS_INTERVAL_SECONDS:
             return
-        db.execute("""UPDATE cleanup_tasks SET progress=%s,updated_at=now()
-            WHERE batch_id=%s""",(_progress(phase,done,total),batch_id))
+        _save_progress(db,batch_id,_progress(phase,done,total))
         db.commit()
         last_phase,last_update=phase,now
     return report
@@ -99,8 +109,7 @@ def cleanup_one(batch_id):
             leases=db.execute("SELECT 1 FROM batch_operations WHERE batch_id=%s LIMIT 1",
                               (batch_id,)).fetchone()
             if active or leases:
-                db.execute("""UPDATE cleanup_tasks SET progress=%s,updated_at=now()
-                    WHERE batch_id=%s""",(_progress("stopping_jobs" if active else "waiting_operations"),batch_id))
+                _save_progress(db,batch_id,_progress("stopping_jobs" if active else "waiting_operations"))
                 db.commit()
                 return "waiting"
             jobs=db.execute("SELECT id FROM jobs WHERE batch_id=%s",(batch_id,)).fetchall()
@@ -141,7 +150,8 @@ def cleanup_one(batch_id):
 def process_pending(limit=20):
     with connect() as db:
         rows=db.execute("""SELECT batch_id FROM cleanup_tasks
-            WHERE state IN ('pending','running') ORDER BY requested_at LIMIT %s""",
+            WHERE state IN ('pending','running')
+            ORDER BY updated_at,requested_at,batch_id LIMIT %s""",
             (limit,)).fetchall()
     return [(str(r["batch_id"]),cleanup_one(r["batch_id"])) for r in rows]
 

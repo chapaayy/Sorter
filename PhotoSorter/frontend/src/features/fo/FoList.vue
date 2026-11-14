@@ -92,11 +92,9 @@ usePolling(async()=>{
   const ids=new Set([...Object.keys(deletion.requests),
     ...batches.value.filter(b=>b.delete_state==='deleting').map(b=>b.batch_id)])
   if(!ids.size)return
-  const statuses=await Promise.allSettled([...ids].map(id=>batchApi.deletion(id)))
   let finished=false
-  for(const status of statuses){
-    if(status.status!=='fulfilled')continue
-    const {batch_id,delete_state,state,task}=status.value
+  await Promise.allSettled([...ids].map(async id=>{
+    const {batch_id,delete_state,state,task}=await batchApi.deletion(id)
     if(delete_state==='deleted'||state==='not_found'){
       const batch=batches.value.find(b=>b.batch_id===batch_id)
       const name=batch?.display_name||deletion.requests[batch_id]
@@ -115,9 +113,9 @@ usePolling(async()=>{
       }
       if(delete_state==='delete_failed')deletion.clear(batch_id)
     }
-  }
+  }))
   if(finished)await refreshVisible()
-},750)
+},250)
 usePolling(refreshQueue,6000)
 
 async function start(batchId:string,threshold:number){
