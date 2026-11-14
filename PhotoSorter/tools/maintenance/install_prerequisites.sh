@@ -42,9 +42,24 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 echo '[INFO] Installing missing host prerequisites with apt.'
 apt-get update
-packages=()
-if (( need_docker || need_compose )); then
-  if ! apt-cache show docker-ce >/dev/null 2>&1; then
+docker_packages=()
+if (( need_docker )); then
+  docker_packages+=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin)
+fi
+if (( need_docker || need_compose )); then docker_packages+=(docker-compose-plugin); fi
+
+has_docker_candidates() {
+  local package
+  for package in "${docker_packages[@]}"; do
+    # apt-cache show may succeed for a known package name without a version.
+    if ! LC_ALL=C apt-cache policy "$package" | awk '$1 == "Candidate:" && $2 != "(none)" { found=1 } END { exit !found }'; then
+      return 1
+    fi
+  done
+}
+
+if (( ${#docker_packages[@]} )); then
+  if ! has_docker_candidates; then
     apt-get install -y --no-remove ca-certificates curl
     arch=$(dpkg --print-architecture)
     install -m 0755 -d /etc/apt/keyrings
@@ -59,12 +74,13 @@ Architectures: $arch
 Signed-By: /etc/apt/keyrings/docker.asc
 EOF
     apt-get update
+    if ! has_docker_candidates; then
+      echo "[ERROR] Docker packages still have no apt candidate for $ID $suite ($arch). Check the Docker repository and apt update output above." >&2
+      exit 1
+    fi
   fi
-  if (( need_docker )); then
-    packages+=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin)
-  fi
-  packages+=(docker-compose-plugin)
 fi
+packages=("${docker_packages[@]}")
 if (( need_python )); then packages+=(python3); fi
 apt-get install -y --no-remove "${packages[@]}"
 

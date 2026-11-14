@@ -18,10 +18,27 @@ command() {
 id() { echo "${SORTER_TEST_UID:-0}"; }
 apt-get() {
   echo "apt-get $*" >> "$SORTER_TEST_TMP/calls"
-  if [[ "$*" == *'docker-compose-plugin'* ]]; then touch "$SORTER_TEST_TMP/docker" "$SORTER_TEST_TMP/compose"; fi
+  if [[ "$1" == update && -f "$SORTER_TEST_TMP/docker.sources" && "${SORTER_TEST_NO_DOCKER_INDEX:-0}" != 1 ]]; then
+    touch "$SORTER_TEST_TMP/docker-index"
+  fi
+  if [[ "$*" == *'docker-compose-plugin'* ]]; then
+    [[ -f "$SORTER_TEST_TMP/docker-index" ]] || return 100
+    touch "$SORTER_TEST_TMP/docker" "$SORTER_TEST_TMP/compose"
+  fi
   if [[ "$*" == *' python3'* ]]; then touch "$SORTER_TEST_TMP/python"; fi
 }
-apt-cache() { return 100; }
+apt-cache() {
+  case "$1" in
+    show) return 0 ;; # APT can recognize the name without an installable version.
+    policy)
+      if [[ -f "$SORTER_TEST_TMP/docker-index" ]]; then
+        printf '%s:\n  Installed: (none)\n  Candidate: 1.2.3\n' "$2"
+      else
+        printf '%s:\n  Installed: (none)\n  Candidate: (none)\n' "$2"
+      fi ;;
+    *) return 1 ;;
+  esac
+}
 dpkg() { [[ "$1" == --print-architecture ]]; echo amd64; }
 dpkg-query() { [[ "${SORTER_TEST_DOCKER_CE:-0}" == 1 ]] && printf '%s' 'install ok installed'; }
 install() { echo "install $*" >> "$SORTER_TEST_TMP/calls"; }
@@ -68,6 +85,11 @@ expect_failure '--check installs nothing' bash install.sh --check
 expect_failure 'as root' env SORTER_TEST_UID=1000 bash install.sh --deploy
 [[ ! -e "$tmp/calls" && ! -e .env.generated ]]
 
+expect_failure 'Docker packages still have no apt candidate' env SORTER_TEST_NO_DOCKER_INDEX=1 bash install.sh --deploy
+[[ ! -e "$tmp/docker" && ! -e .env.generated ]]
+! grep -q docker-compose-plugin "$tmp/calls"
+rm "$tmp/calls" "$tmp/docker.sources"
+
 bash install.sh --deploy
 grep -Eq '^URIs: https://download.docker.com/linux/(ubuntu|debian)$' "$tmp/docker.sources"
 grep -Fxq 'apt-get install -y --no-remove docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin python3' "$tmp/calls"
@@ -89,4 +111,5 @@ cmp -s "$tmp/first-install-calls" "$tmp/calls"
 SORTER_TEST_DOCKER_CE=1 bash install.sh --deploy
 grep -Fxq 'apt-get install -y --no-remove docker-compose-plugin' "$tmp/calls"
 cmp -s "$tmp/credentials" .env.generated
+[[ "$(grep -c '^curl ' "$tmp/calls")" == 1 ]] # Reuse the existing official apt source.
 echo '[OK] Bootstrap, read-only check, repeat deployment and Compose-only installation'
