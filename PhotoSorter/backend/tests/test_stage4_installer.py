@@ -15,7 +15,7 @@ def deploy(tmp_path):
     host=root/"PhotoSorter/tools/maintenance/setup_tcp_bbr.sh"
     host.parent.mkdir(parents=True)
     shutil.copy2(ROOT/"PhotoSorter/tools/maintenance/setup_tcp_bbr.sh",host)
-    (root/".env").write_text("DOMAIN=stage4.example.test\n",encoding="utf8")
+    (root/".env").write_text("DOMAIN=stage4.example.test\nADMIN_PASSWORD='new_test_admin_$password'\n",encoding="utf8")
     (root/".env.example").write_text("DOMAIN=sorter.example.com\n",encoding="utf8")
     (root/"compose.yaml").write_text("name: outdoor-sorter\n",encoding="utf8")
     (root/".env.generated").write_text("POSTGRES_PASSWORD=synthetic_test_password_000\nADMIN_PASSWORD=synthetic_test_admin_password_111\n",encoding="utf8")
@@ -25,6 +25,8 @@ def deploy(tmp_path):
     docker.write_text("""#!/bin/sh
 echo "$*" >> "$STAGE4_DOCKER_LOG"
 if [ "$1" = compose ]; then echo "$PHOTOSORTER_CADDY_TCP_CC" >> "$STAGE4_CADDY_TCP_CC_LOG"; fi
+if [ "$1" = compose ] && [ "$ADMIN_PASSWORD" != 'new_test_admin_$password' ]; then exit 9; fi
+case "$*" in *"up -d --build") [ "$STAGE4_FAIL_UP" != 1 ] || exit 8 ;; esac
 if [ "$1" = volume ] && [ "$2" = inspect ]; then
   [ "$STAGE4_VOLUME" = 1 ] && exit 0 || exit 1
 fi
@@ -87,12 +89,27 @@ def test_upgrade_blocks_missing_original_secrets(deploy):
 
 def test_beta_upgrade_uses_one_command_without_approval_switches(deploy):
     root,run,log=deploy
-    before=(root/".env.generated").read_bytes()
-    result=run("--deploy")
+    result=run("--deploy",overrides={"ADMIN_PASSWORD":"ignored_shell_password"})
     assert result.returncode==0,result.stderr
     assert any(line.endswith("up -d --build") for line in log.read_text().splitlines())
+    assert (root/".env.generated").read_text()=="POSTGRES_PASSWORD=synthetic_test_password_000\n"
+    assert "new_test_admin_" not in result.stdout+result.stderr
+    assert "synthetic_test_" not in result.stdout+result.stderr
+    assert (root/".env").stat().st_mode & 0o777 == 0o600
+
+def test_missing_admin_env_fails_before_docker(deploy):
+    root,run,log=deploy
+    (root/".env").write_text("DOMAIN=stage4.example.test\n",encoding="utf8")
+    result=run("--deploy",overrides={"ADMIN_PASSWORD":"ignored_shell_password"})
+    assert result.returncode!=0
+    assert "Set ADMIN_PASSWORD in .env" in result.stderr
+    assert not log.exists()
+
+def test_failed_upgrade_preserves_legacy_env(deploy):
+    root,run,_=deploy
+    before=(root/".env.generated").read_bytes()
+    assert run("--deploy",overrides={"STAGE4_FAIL_UP":"1"}).returncode!=0
     assert (root/".env.generated").read_bytes()==before
-    assert "password" not in result.stdout.lower()
 
 def test_invalid_cpu_preflight_fails_without_up(deploy):
     root,run,log=deploy

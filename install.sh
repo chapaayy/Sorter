@@ -14,12 +14,20 @@ if [[ ! -f .env ]]; then
   if [[ "$MODE" == "--check" ]]; then echo '[ERROR] .env missing' >&2; exit 1; fi
   cp .env.example .env
 fi
+unset ADMIN_PASSWORD
 set -a
 # shellcheck disable=SC1091
-source .env
+if ! source .env 2>/dev/null; then
+  echo '[ERROR] Cannot read .env. Check its syntax.' >&2
+  exit 1
+fi
 set +a
 if [[ -z "${DOMAIN:-}" || "$DOMAIN" == 'sorter.example.com' || ! "$DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
   echo 'Set a real hostname in .env: DOMAIN=sorter.yourdomain.com' >&2
+  exit 1
+fi
+if [[ -z "${ADMIN_PASSWORD:-}" || "${#ADMIN_PASSWORD}" -lt 16 || "${#ADMIN_PASSWORD}" -gt 256 ]]; then
+  echo '[ERROR] Set ADMIN_PASSWORD in .env (16–256 characters).' >&2
   exit 1
 fi
 
@@ -38,7 +46,7 @@ fi
 
 # Deterministic volume name derives from "name: outdoor-sorter" in compose.yaml.
 # A missing .env.generated while PostgreSQL volume exists MUST NOT generate a
-# new DB password. Existing admin hash is only changed by an explicit recovery.
+# new DB password. The admin password is configured separately in .env.
 EXISTING_POSTGRES=0
 if docker volume inspect outdoor-sorter_postgres_data >/dev/null 2>&1; then
   EXISTING_POSTGRES=1
@@ -50,22 +58,16 @@ if [[ ! -f .env.generated ]]; then
     exit 1
   fi
   if [[ "$MODE" == "--check" ]]; then echo '[ERROR] .env.generated missing' >&2; exit 1; fi
-  umask 077
-  python3 - <<'PY' > .env.generated
+  (umask 077; python3 - <<'PY' > .env.generated
 import secrets
 print('POSTGRES_PASSWORD='+secrets.token_hex(24))
-print('ADMIN_PASSWORD='+secrets.token_urlsafe(24))
 PY
-  chmod 600 .env.generated
-  echo '[INFO] Generated new install credentials in .env.generated (keep offline backup).'
-  CREATED_CREDENTIALS=1
-else
-  CREATED_CREDENTIALS=0
+  )
+  echo '[INFO] Created PostgreSQL credentials in .env.generated.'
 fi
 
 # Verify that secrets exist without echoing them to CI/logs.
-if ! grep -Eq '^POSTGRES_PASSWORD=.{16,}$' .env.generated ||
-   ! grep -Eq '^ADMIN_PASSWORD=.{16,}$' .env.generated; then
+if ! grep -Eq '^POSTGRES_PASSWORD=.{16,}$' .env.generated; then
   echo '[ERROR] .env.generated incomplete; restore correct credentials.' >&2
   exit 1
 fi
@@ -129,6 +131,7 @@ fi
 if [[ "$EXISTING_POSTGRES" -eq 1 ]]; then
   echo '[INFO] Updating beta test containers; existing Docker volumes are unchanged.'
 fi
+chmod 600 .env .env.generated
 
 # Optional Linux host networking optimization, not a Docker setting.
 bash PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --apply
@@ -151,9 +154,10 @@ else
   echo '[INFO] Skipped recursive chown of existing model/photo storage.'
 fi
 "${COMPOSE[@]}" up -d --build
-printf '\n[OK] Site: https://%s\n' "$DOMAIN"
-echo '[INFO] Login: admin'
-if [[ "$CREATED_CREDENTIALS" -eq 1 ]]; then
-  echo '[INFO] Initial password was generated in .env.generated (not printed for security).'
+# Clean up the previous installer’s copy after Compose accepts the deployment.
+if grep -Eq '^ADMIN_PASSWORD=' .env.generated; then
+  sed -i '/^ADMIN_PASSWORD=/d' .env.generated
 fi
+printf '\n[OK] Site: https://%s\n' "$DOMAIN"
+echo '[INFO] Login: admin (ADMIN_PASSWORD in .env)'
 echo '[INFO] DNS and ports 80/443 must point to this VPS.'

@@ -16,13 +16,15 @@ nano .env
 bash ./install.sh --deploy
 ```
 
-`.env` содержит `DOMAIN=...` с настоящим доменом. При первой установке скрипт генерирует `.env.generated` с `ADMIN_PASSWORD` и `POSTGRES_PASSWORD`. Не публиковать, не коммитить, сохранить отдельно. Сайт: `https://DOMAIN/`. Логин: `admin`. Модель может быть скачана из интерфейса.
+`.env` содержит настоящий `DOMAIN` и заданный оператором `ADMIN_PASSWORD='…'` (16–256 символов). Он действует для входа под `admin` по `https://DOMAIN/` и не сохраняется в базе. При первой установке скрипт генерирует `.env.generated` только с `POSTGRES_PASSWORD`. Не публиковать и не коммитить оба файла. Модель можно скачать из интерфейса.
 
 Сервисы Compose: `caddy`, `postgres`, `api`, `worker`, `thumbnail`, `cleanup`. Том PostgreSQL и TLS-тома Caddy постоянные, а `PhotoSorter/data` и `Models` — bind mounts. Новый `git clone` **не обнуляет** volumes существующего Compose с именем `outdoor-sorter`.
 
 ## Обновление работающего VPS
 
 Перед обновлением получить проверенную внешнюю копию PostgreSQL, `PhotoSorter/data`, `Models`, `.env`, `.env.generated` и TLS volumes; см. [BACKUP_RESTORE](BACKUP_RESTORE.md), [ROLLBACK](ROLLBACK.md). Во время снимка все пишущие операции должны быть остановлены.
+
+Если старый установщик хранил `ADMIN_PASSWORD` в `.env.generated`, задай его в `.env` до `--check`: можно перенести прежний пароль или выбрать новый. После успешного запуска Compose установщик удалит старую строку `ADMIN_PASSWORD` из `.env.generated`, не трогая пароль PostgreSQL. Миграция обнуляет старый хеш и соль админа без изменения ID пользователя. Для смены пароля отредактируй `.env` и запусти `bash ./install.sh --deploy`. Сессии админа закрываются при каждом старте API.
 
 На VPS со старой веткой/отсоединённым HEAD сначала проверить `git status --short`. Не перетирать локальные изменения. Затем:
 

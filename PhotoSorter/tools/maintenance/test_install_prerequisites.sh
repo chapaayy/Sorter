@@ -63,7 +63,7 @@ expect_failure() {
 }
 
 expect_failure 'Set a real hostname' bash install.sh --deploy
-printf 'DOMAIN=sorter.example.test\nPHOTOSORTER_ENABLE_BBR=0\n' > .env
+printf "DOMAIN=sorter.example.test\nADMIN_PASSWORD='disposable test password'\nPHOTOSORTER_ENABLE_BBR=0\n" > .env
 expect_failure '--check installs nothing' bash install.sh --check
 expect_failure 'as root' env SORTER_TEST_UID=1000 bash install.sh --deploy
 [[ ! -e "$tmp/calls" && ! -e .env.generated ]]
@@ -72,7 +72,8 @@ bash install.sh --deploy
 grep -Eq '^URIs: https://download.docker.com/linux/(ubuntu|debian)$' "$tmp/docker.sources"
 grep -Fxq 'apt-get install -y --no-remove docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin python3' "$tmp/calls"
 [[ -f "$tmp/postgres" && "$(stat -c %a .env.generated)" == 600 ]]
-grep -q '^ADMIN_PASSWORD=' .env.generated
+[[ "$(stat -c %a .env)" == 600 ]]
+! grep -q '^ADMIN_PASSWORD=' .env.generated
 grep -q '^POSTGRES_PASSWORD=' .env.generated
 cp .env.generated "$tmp/credentials"
 cp "$tmp/calls" "$tmp/first-install-calls"

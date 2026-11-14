@@ -10,11 +10,11 @@
 git clone --single-branch --branch main https://github.com/chapaayy/Sorter.git /opt/Sorter
 cd /opt/Sorter
 cp .env.example .env
-nano .env                # DOMAIN=ваш.домен
+nano .env                # DOMAIN и свой ADMIN_PASSWORD
 bash ./install.sh --deploy
 ```
 
-Installer создаст только новые секреты в `.env.generated` для новой пустой PostgreSQL, соберёт Vue/CPU runtime и запустит caddy, postgres, api, worker, thumbnail, cleanup.
+Задай в `.env` настоящий домен и пароль для `admin` (16–256 символов в одинарных кавычках). Установщик создаёт `.env.generated` только со служебным паролем PostgreSQL, собирает Vue/CPU runtime и запускает caddy, postgres, api, worker, thumbnail, cleanup.
 
 ## Ранее установленный VPS: что считать «с нуля»
 

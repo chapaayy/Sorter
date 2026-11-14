@@ -14,7 +14,7 @@
 Caddy (:80/:443) ──────► FastAPI (api:8000, один процесс)
                               │ server/main.py
                               ├─ server/api/routes/site.py  => Vue dist на / и /assets/*
-                              ├─ server/api/routes/auth.py  => sessions/auth.py
+                              ├─ server/api/routes/auth.py  => server/auth.py
                               ├─ server/api/routes/batches.py, uploads.py
                               │           │
                               │           └─ services/batches.py, operations.py

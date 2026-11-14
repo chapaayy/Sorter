@@ -18,13 +18,13 @@ Linux x86-64, собственный домен с DNS на сервер и до
 git clone --branch main --single-branch https://github.com/chapaayy/Sorter.git /opt/Sorter
 cd /opt/Sorter
 cp .env.example .env
-nano .env            # DOMAIN=ваш-настоящий-домен
+nano .env            # DOMAIN и свой ADMIN_PASSWORD
 bash ./install.sh --deploy
 ```
 
 Если на сервере нет Git или редактора, выполни перед клонированием `apt-get update && apt-get install -y git nano`.
 
-На пустой установке `--deploy` сгенерирует `.env.generated` рядом с `.env`. Логин — `admin`. Начальный пароль для сайта можно посмотреть локально командой `sed -n 's/^ADMIN_PASSWORD=//p' .env.generated`. Там же хранится служебный `POSTGRES_PASSWORD`. Не удаляй этот файл и не добавляй его в Git. `--check` только проверяет уже настроенное окружение. Модель/веса можно загрузить из веб-интерфейса.
+Логин — `admin`. Пароль задай сам в `.env`, например в формате `ADMIN_PASSWORD='…'` (16–256 символов, одинарные кавычки). Это действующий пароль, а не временный. Чтобы его сменить, обнови `.env` и запусти `bash ./install.sh --deploy`. При старте API старые сессии админа закрываются. `.env.generated` содержит только автоматически созданный служебный пароль PostgreSQL. Оба файла приватные и не добавляются в Git. Модель/веса можно загрузить из веб-интерфейса.
 
 В результате поднимаются `caddy` (HTTPS), `postgres`, `api`, `worker` (MegaLoc), `thumbnail` (WebP) и `cleanup` (служебная очистка). Снаружи публикуются только 80/443.
 
@@ -36,7 +36,7 @@ bash ./install.sh --deploy
 
 ### Обновление ранее установленного PhotoSorter
 
-`git pull` и новая папка `git clone` **не сбрасывают существующую базу**. Compose использует постоянное имя `outdoor-sorter` и Docker volumes. Перед обновлением проверить `git status`, `./install.sh --check` и согласованную копию PostgreSQL + `PhotoSorter/data` + `Models` + `.env.generated` (внешнее защищённое хранилище, тест восстановления). После проверки бэкапа обновление запускают:
+`git pull` и новая папка `git clone` **не сбрасывают существующую базу**. Compose использует постоянное имя `outdoor-sorter` и Docker volumes. Перед обновлением проверить `git status`, `./install.sh --check` и согласованную копию PostgreSQL + `PhotoSorter/data` + `Models` + `.env` + `.env.generated` (внешнее защищённое хранилище, тест восстановления). Если прежняя установка генерировала пароль админа, перед запуском нового установщика задай `ADMIN_PASSWORD` в `.env`. После проверки бэкапа обновление запускают:
 
 ```bash
 git fetch origin main

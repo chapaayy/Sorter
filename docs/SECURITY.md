@@ -2,12 +2,13 @@
 
 ## Сделано в ветке
 
-- `server/security/login_throttle.py`: bounded 5 неправильных логинов / 10 минут для username и IP ключа, hashed ключи, `429`, всё поверх scrypt/constant-time проверки. Ограничение **в памяти одного API process** (для нескольких реплик нужен общий Redis/PostgreSQL limiter); restart сбрасывает историю, а атаки могут временно блокировать один account. Это best-effort, не WAF.
+- `server/auth.py`: пароль владельца `admin` берётся из `.env`, передаётся только API, сравнивается в памяти за постоянное время для одинаковой длины дайджестов и не хранится в базе. Сессии админа отзываются при каждом старте API.
+- `server/security/login_throttle.py`: bounded 5 неправильных логинов / 10 минут для username и IP ключа, hashed ключи, `429`. Ограничение **в памяти одного API process** (для нескольких реплик нужен общий Redis/PostgreSQL limiter); restart сбрасывает историю, а атаки могут временно блокировать один account. Это best-effort, не WAF.
 - `api/routes/downloads.py`: проверяет архивные относительные имена; Zip Slip через `..`, `/`, `\\`, NUL запрещён. Filesystem read lease до завершения ZIP сохраняется.
 - `server/uploads.py`: превышение 30 млн пикселей отклоняется до публикации оригинала; тип изображения по Pillow, лимит файла 60 MiB, сохранён checksum/PATCH.
 - `server/services/references.py`: запрещает переименовывать/удалять SAM, когда существуют опубликованные результаты, содержащие эту SAM. Старые manifests и reference paths не переписываются. Запрет может быть консервативным — нужен отдельный migration plan, если клиенту критично переименовывать использованные SAM.
 - `server/storage/*`: ранее созданная защита от path traversal/symlink, владелец UUID, lease и экранирование. Stage4 тесты проверяют owned paths и ZIP имена.
-- `install.sh`: не регенерирует пароль если существует PostgreSQL volume без `.env.generated`; не выводит секреты в лог, не делает recursive chown на апгрейде, требует явного backup approval token.
+- `install.sh`: не регенерирует пароль PostgreSQL, если существует его volume без `.env.generated`; не выводит секреты в лог, не делает recursive chown на апгрейде и выставляет права 0600 для обоих env-файлов.
 - `snapshot.py`: snapshot только после `--ack-writers-stopped`, рестор только в новый каталог со staging-маркером и БД `sorter_restore_*`, SHA-256 для всего включённого и проверка hardlinks. Никакие volumes не удаляются.
 - `server/services/heartbeat.py`: реальные записи присутствия процессов, тайм-аут 35 сек, страница Настроек не объявляет worker работающим из-за пустой очереди.
 

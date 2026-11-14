@@ -3,7 +3,7 @@
 **Перед любым обновлением или сбросом бета-сервера:** согласованный бэкап и его восстановление нужно проверить на отдельном стенде. Наличие файла архива на том же VPS не равно проверенной защите.
 
 1. Приостановить приём новых upload/run и убедиться, что активные дисковые записи завершились; обеспечить согласованность снимка каталога `PhotoSorter/data/` с PostgreSQL. Простой `pg_dump` при одновременно меняющихся файлах не гарантирует согласованный filesystem state.
-2. Сохранить в защищённое **другое хранилище**: `pg_dump --format=custom` соответствующей БД; `PhotoSorter/data/references/`, `uploads/`, `outputs/`, `runs/`, `incoming/` и service cache по политике; `.env.generated` с правами 0600; модельные веса `Models/models/` и информацию о version/code SHA.
+2. Сохранить в защищённое **другое хранилище**: `pg_dump --format=custom` соответствующей БД; `PhotoSorter/data/references/`, `uploads/`, `outputs/`, `runs/`, `incoming/` и service cache по политике; `.env` и `.env.generated` с правами 0600; модельные веса `Models/models/` и информацию о version/code SHA.
 3. Восстановить копии на **отдельный пустой тестовый VPS/volume**: сначала секреты и файлы с правильным UID, затем `pg_restore` в новую PostgreSQL DB, затем контейнеры тестового приложения. Никогда не использовать production тома для restore-test.
 4. Проверить count/size/checksum uploads/refs, индекс jobs/run/manifest, старый/новый ZIP, авторизацию, модель и безопасное удаление **созданной специально тестовой партии**.
 5. Записать даты backup/restore, исходный commit SHA, результат checksum smoke test и точку возврата.

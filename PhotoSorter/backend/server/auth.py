@@ -1,4 +1,4 @@
-"""Single-admin password login, server-side hashed sessions, strict cookie boundaries."""
+"""Environment-backed owner login and server-side hashed sessions."""
 from __future__ import annotations
 import hashlib
 import hmac
@@ -6,7 +6,6 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, Request
-from fastapi.responses import JSONResponse
 from .database import connect
 from .security.login_throttle import limiter
 
@@ -19,23 +18,33 @@ def hash_password(password: str, salt: bytes) -> str:
 
 
 def bootstrap_admin():
-    initial = os.environ.get('ADMIN_PASSWORD','')
-    if len(initial) < 16: raise RuntimeError('ADMIN_PASSWORD missing or too short')
+    password = os.environ.get('ADMIN_PASSWORD', '')
+    if not 16 <= len(password) <= 256:
+        raise RuntimeError('Set ADMIN_PASSWORD in .env (16–256 characters)')
     with connect() as db:
-        if db.execute('SELECT id FROM users LIMIT 1').fetchone(): return
-        salt=secrets.token_bytes(16)
-        db.execute('INSERT INTO users(username,password_salt,password_hash) VALUES (%s,%s,%s)',
-                   ('admin',salt.hex(),hash_password(initial,salt)))
+        db.execute("INSERT INTO users(username) VALUES ('admin') ON CONFLICT (username) DO NOTHING")
+        # One API process serves sessions. Invalidate on boot so a rotation never
+        # leaves live owner cookies and no password verifier needs to be persisted.
+        db.execute("DELETE FROM sessions USING users WHERE sessions.user_id=users.id AND users.username='admin'")
 
 
 def login(username: str, password: str, client_key: str = "") -> str:
     limiter.check(username, client_key)
     with connect() as db:
         user=db.execute('SELECT * FROM users WHERE username=%s',(username,)).fetchone()
-        # Match timing regardless of account existence.
-        salt=bytes.fromhex(user['password_salt']) if user else b'0'*16
-        candidate=hash_password(password,salt)
-        if not user or not hmac.compare_digest(candidate,user['password_hash']):
+        if username == 'admin':
+            configured = os.environ.get('ADMIN_PASSWORD', '')
+            # Compare fixed-length digests in memory only, never store the owner password or digest.
+            matches = hmac.compare_digest(hashlib.sha256(password.encode()).digest(),
+                                          hashlib.sha256(configured.encode()).digest())
+            valid = 16 <= len(configured) <= 256 and matches
+        else:
+            # Preserve any other existing accounts and avoid timing based on their existence.
+            salt=bytes.fromhex(user['password_salt']) if user and user['password_salt'] else b'0'*16
+            candidate=hash_password(password,salt)
+            stored = user['password_hash'] if user else None
+            valid = hmac.compare_digest(candidate, stored or '0'*64) and bool(stored and user['password_salt'])
+        if not user or not valid:
             limiter.fail(username,client_key)
             raise HTTPException(401,'Неправильный логин или пароль')
         token=secrets.token_urlsafe(40)
