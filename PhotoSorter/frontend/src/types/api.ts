@@ -4,7 +4,7 @@ export interface Batch {
   batch_id: string; display_name: string; created_at: string; upload_state: string
   thumbnail_state: string; delete_state: string; deleted_at?: string | null
   download_confirmed_at?: string | null; confirmed_run_id?: string | null
-  delete_after_at?: string | null; photos?: number; size_bytes?: number; runs?: number; pending?: number
+  delete_after_at?: string | null; photos?: number; media_files?: number; size_bytes?: number; runs?: number; pending?: number
   upload_manifest_state?: 'waiting'|'complete'|null;upload_manifest_completed_at?: string|null
   auto_process_state?: 'waiting'|'queued'|'cancelled'|'manual'|null
   auto_process_run_id?: string|null; auto_process_error?: string|null
@@ -39,6 +39,7 @@ export interface PendingUpload {
 export interface PendingUploadList { uploads:PendingUpload[];total:number }
 export interface Photo {
   id: string; name: string; bytes: number; created_at: string
+  original_media_type?: string | null
   thumbnail_status?: 'queued' | 'running' | 'pending' | 'ready' | 'failed'
   thumbnail_url?: string | null; original_url?: string | null
 }

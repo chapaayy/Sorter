@@ -8,7 +8,14 @@ export interface UploadEntry{file:File;relative:string}
 export interface PendingFileIdentity{filename:string;size:number;has_part:boolean;prefix_bytes:number;prefix_sha256:string|null}
 export const ALLOWED=/\.(jpe?g|png|webp|bmp|tiff?)$/i
 export const MAX_IMAGE_UPLOAD_BYTES=60*1024*1024
+export const MAX_FO_UPLOAD_BYTES=2*1024**3
 export const UPLOAD_CHUNK_BYTES=16*1024*1024
+// Browser MIME is a selection hint, not an authoritative upload check.
+const OTHER_MEDIA=/\.(avif|heic|heif|hif|jxl|gif|svgz?|ico|jp2|j2k|jpf|jpx|jpm|j2c|jpc|psd|psb|dng|cr2|cr3|crw|nef|nrw|arw|raf|orf|rw2|pef|sr2|srw|x3f|raw|tga|exr|hdr|dds|icns|ppm|pgm|pbm|pnm|mp4|m4v|mov|qt|avi|mkv|webm|mpg|mpeg|mpe|m2v|mts|m2ts|ts|3gp|3g2|wmv|asf|flv|f4v|ogv|vob|mxf|rmvb|dv)$/i
+const OS_METADATA=new Set(['thumbs.db','ehthumbs.db','desktop.ini','.ds_store'])
+function foMediaCandidate(file:File):boolean{
+  return /^(image|video)\//i.test(file.type)||ALLOWED.test(file.name)||OTHER_MEDIA.test(file.name)
+}
 
 function key(t:UploadTarget,entry:UploadEntry){
   return 'ps.up.v3.'+[t.kind,t.batchId||t.sam||'',entry.relative,entry.file.size,entry.file.lastModified].join(':')
@@ -100,8 +107,9 @@ export function expectedUploadId(t:UploadTarget,e:UploadEntry):string{
 export async function uploadOne(t:UploadTarget,e:UploadEntry,signal:AbortSignal,
   progress:(n:number)=>void,onState?:(state:TransferState)=>void,
   registeredId?:string):Promise<UploadResult>{
-  if(!ALLOWED.test(e.file.name))throw new Error('Неподдерживаемое изображение: '+e.file.name)
-  if(e.file.size>MAX_IMAGE_UPLOAD_BYTES)throw new Error('Файл превышает лимит 60 МБ: '+e.file.name)
+  if(t.kind==='reference'&&!ALLOWED.test(e.file.name))throw new Error('Неподдерживаемое изображение: '+e.file.name)
+  if(e.file.size>(t.kind==='fo'?MAX_FO_UPLOAD_BYTES:MAX_IMAGE_UPLOAD_BYTES))
+    throw new Error('Слишком большой файл: '+e.file.name)
   if(e.file.size===0)throw new Error('Пустой файл: '+e.file.name)
   const storage=key(t,e)
   const previous=saved(storage)
@@ -143,10 +151,19 @@ export async function resumePendingUpload(uploadId:string,t:UploadTarget,e:Uploa
   }
   return resume(uploadId,t,e,signal,progress,onState,false)
 }
-export function directoryEntries(files:FileList):{folder:string;entries:UploadEntry[]}{
-  const entries=Array.from(files).filter(f=>ALLOWED.test(f.name)).map(f=>({file:f,relative:f.webkitRelativePath||f.name}))
-  if(!entries.length)throw new Error('В папке не найдено поддерживаемых изображений')
+export function directoryEntries(files:ArrayLike<File>,includeUnknown=false):{folder:string;entries:UploadEntry[];unknown:number}{
+  const candidates=Array.from(files).filter(f=>!OS_METADATA.has(f.name.toLowerCase())&&!f.name.startsWith('._'))
+  const unknown=candidates.filter(f=>!foMediaCandidate(f)).length
+  const entries=candidates.filter(f=>includeUnknown||foMediaCandidate(f)).map(f=>({file:f,relative:f.webkitRelativePath||f.name}))
+  if(!candidates.length)throw new Error('В папке не найдено фото или видео')
+  const path=candidates[0]!.webkitRelativePath
+  if(!path.includes('/'))throw new Error('Выберите одну целую папку ФО')
   const roots=new Set(entries.map(e=>e.relative.split('/')[0]))
-  if(roots.size!==1||!entries[0]?.relative.includes('/'))throw new Error('Выберите одну целую папку ФО')
-  return {folder:entries[0].relative.split('/')[0]||'Фотоотчёт',entries}
+  if(roots.size>1||entries.some(e=>!e.relative.includes('/')))throw new Error('Выберите одну целую папку ФО')
+  for(const {file,relative} of entries){
+    if(!file.size)throw new Error('Пустой файл: '+relative)
+    if(file.size>MAX_FO_UPLOAD_BYTES)throw new Error('Файл больше 2 ГиБ: '+relative)
+    if([...file.name].length>200)throw new Error('Имя файла длиннее 200 символов: '+relative)
+  }
+  return {folder:path.split('/')[0]||'Фотоотчёт',entries,unknown}
 }

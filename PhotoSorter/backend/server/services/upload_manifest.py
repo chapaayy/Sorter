@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import uuid
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -17,7 +16,7 @@ from ..database import connect
 
 def _validated(files):
     # Import lazily: uploads.py calls this service when initiating/finalizing.
-    from .upload_validation import safe_name, MAX_FILE_BYTES
+    from .upload_validation import safe_name, MAX_FO_BYTES
     if not files or len(files) > 20000:
         raise HTTPException(422, "Манифест должен содержать от 1 до 20000 фотографий")
     result = []
@@ -31,9 +30,9 @@ def _validated(files):
                 relative.startswith("/") or
                 any(segment in ("", ".", "..") for segment in relative.split("/")) or
                 relative.split("/")[-1] != filename):
-            raise HTTPException(422, "Неверный относительный путь ФО")
-        if item.size <= 0 or item.size > MAX_FILE_BYTES:
-            raise HTTPException(422, "Неверный размер фотографии")
+            raise HTTPException(422, "Неверный относительный путь ФО: "+repr(relative))
+        if item.size <= 0 or item.size > MAX_FO_BYTES:
+            raise HTTPException(422, "Неверный размер файла: "+repr(filename))
         if upload_id in ids or relative in paths:
             raise HTTPException(422, "Повтор файла или пути в манифесте")
         ids.add(upload_id)

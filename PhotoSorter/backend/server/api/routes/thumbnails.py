@@ -15,12 +15,14 @@ def thumbnail(photo_id:str):
     except ValueError:raise HTTPException(404,"Фотография не найдена")
     with connect() as db:
         row=db.execute("""SELECT t.state,t.checksum,t.version,
-           u.kind,u.batch_id,b.delete_state
+           u.kind,u.batch_id,u.original_media_type,b.delete_state
            FROM uploads u LEFT JOIN thumbnail_tasks t ON t.upload_id=u.id
            LEFT JOIN batches b ON b.id=u.batch_id WHERE u.id=%s AND u.finalized""",
            (uid,)).fetchone()
     if not row or (row["batch_id"] and row["delete_state"]!="active"):
         raise HTTPException(404,"Фотография не найдена")
+    if row["original_media_type"] is not None:
+        raise HTTPException(404,"Для этого формата нет миниатюры")
     if row["state"]!="ready":raise HTTPException(202,"Миниатюра готовится")
     try:file=cache.safe_location(cache.location(row["checksum"],row["version"]))
     except ValueError:raise HTTPException(404,"Миниатюра недоступна")

@@ -224,27 +224,33 @@ test('FO upload opens a global dialog that can be minimized without unmounting',
   await expect(dialog).toBeVisible()
 })
 
-test('folder upload keeps sending bytes across pages and only opens its batch on click',async({page})=>{
+test('mixed folder upload keeps sending bytes across pages and only opens its batch on click',async({page})=>{
   const folder=await mkdtemp(join(tmpdir(),'map-fo-'))
   const source=Buffer.from('test photo for FO upload')
+  const names=['IMG_3908 — копия.JPG','clip.MOV']
   const gate=holdTransfer()
-  let sending=false,done=false,files:any[]=[]
+  let sending=false,done=0,files:any[]=[]
   try{
-    await writeFile(join(folder,'frame.jpg'),source)
+    await Promise.all(names.map(name=>writeFile(join(folder,name),source)))
     await page.route('**/api/batches',route=>route.request().method()==='POST'
       ?respond(route,{batch_id:bid}):route.fallback())
     await page.route('**/api/batches/'+bid,route=>respond(route,{...batch,photos:0,pending:0,runs:0}))
     await page.route('**/api/batches/'+bid+'/upload-manifest',route=>{
       if(route.request().method()==='PUT')files=route.request().postDataJSON().files
-      return respond(route,{state:done?'complete':files.length?'waiting':'legacy',pending:done?0:files.length,files})
+      return respond(route,{state:done===names.length?'complete':files.length?'waiting':'legacy',pending:files.length-done,files})
     })
+    await page.route('**/api/batches/'+bid+'/gallery?*',route=>respond(route,{photos:[
+      {...photo,name:names[0]},
+      {...photo,id:'video-id',name:names[1],thumbnail_url:null,original_media_type:'video/quicktime',
+        original_url:'/api/photos/video-id/original'}
+    ],next_cursor:null}))
     await page.route('**/api/uploads/**',async route=>{
       if(route.request().method()==='PATCH'){
         sending=true
         await gate.waiting
         return respond(route,{offset:source.length})
       }
-      if(route.request().url().endsWith('/finish')){done=true;return respond(route,{path:'frame.jpg'})}
+      if(route.request().url().endsWith('/finish')){done++;return respond(route,{path:'saved'})}
       return respond(route,{offset:0,size:source.length,finalized:false})
     })
     await page.goto('/fo')
@@ -260,14 +266,16 @@ test('folder upload keeps sending bytes across pages and only opens its batch on
     await indicator.click()
     await expect(dialog.getByRole('button',{name:'Приостановить'})).toBeVisible()
     await dialog.getByRole('button',{name:'Свернуть загрузку'}).click()
-    expect(done).toBe(false)
+    expect(done).toBe(0)
+    expect(files.map(file=>file.filename).sort()).toEqual([...names].sort())
     gate.release()
-    const toast=page.locator('.toast').filter({hasText:'Все фотографии партии сохранены'})
+    const toast=page.locator('.toast').filter({hasText:'Все файлы партии сохранены'})
     await expect(toast).toBeVisible()
     await expect(page).toHaveURL(/\/queue$/)
     await expect(indicator).toBeHidden()
     await toast.getByRole('link',{name:'Открыть'}).click()
     await expect(page).toHaveURL(new RegExp('/fo/'+bid+'$'))
+    await expect(page.getByRole('link',{name:'Скачать clip.MOV'})).toHaveAttribute('href','/api/photos/video-id/original')
   }finally{gate.release();await rm(folder,{recursive:true,force:true})}
 })
 

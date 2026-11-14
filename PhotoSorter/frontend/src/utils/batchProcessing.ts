@@ -47,7 +47,10 @@ export function batchProcessing(batch:Batch):BatchProcessingPresentation {
     else detail='Запуск остановлен или прерван'
   }else if(batch.upload_manifest_state==='waiting'||(batch.pending??0)>0){
     label='Загрузка не завершена'
-    detail='Нужны все исходные фотографии партии'
+    detail='Нужны все исходные файлы партии'
+  }else if((batch.photos??0)===0&&batch.media_files){
+    label='Только оригиналы'
+    detail='Нет фотографий в форматах, которые поддерживает MegaLoc'
   }else if(batch.auto_process_state==='waiting'){
     label='Ожидает автозапуска'
     detail=batch.auto_process_error||'MegaLoc автоматически появится в очереди'

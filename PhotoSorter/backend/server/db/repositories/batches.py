@@ -9,7 +9,8 @@ def insert(db,batch_id,name):
     db.execute("INSERT INTO batches(id,display_name) VALUES (%s,%s)",(batch_id,name))
 
 def count_photos_and_runs(db,batch_id):
-    counter=db.execute("""SELECT count(*) FILTER (WHERE finalized) AS photos,
+    counter=db.execute("""SELECT count(*) FILTER (WHERE finalized AND original_media_type IS NULL) AS photos,
+       count(*) FILTER (WHERE finalized AND original_media_type IS NOT NULL) AS media_files,
        coalesce(sum(declared_size) FILTER (WHERE finalized),0) AS size_bytes,
        count(*) FILTER (WHERE NOT finalized) AS pending
        FROM uploads WHERE kind='fo' AND batch_id=%s""",(batch_id,)).fetchone()

@@ -9,6 +9,15 @@ from .batches import uid
 
 LOGGER=logging.getLogger(__name__)
 
+def _has_sortable_photos(db,batch_id):
+    return db.execute("""SELECT 1 FROM uploads WHERE batch_id=%s AND kind='fo'
+        AND finalized AND original_media_type IS NULL LIMIT 1""",(batch_id,)).fetchone() is not None
+
+def _cancel_if_originals_only(db,batch_id):
+    if _has_sortable_photos(db,batch_id):return False
+    db.execute("""UPDATE batches SET auto_process_state='cancelled',
+        auto_process_error='Нет фотографий, поддерживаемых MegaLoc' WHERE id=%s""",(batch_id,))
+    return True
 
 def settings():
     with connect() as db:
@@ -84,6 +93,7 @@ def schedule_ready(limit:int=10):
                     db.execute("""UPDATE batches SET auto_process_error=%s
                         WHERE id=%s""",("Проверка ФО выявила недостающие файлы",batch_id))
                     continue
+                if _cancel_if_originals_only(db,batch_id):continue
                 try:
                     result=jobs._enqueue_locked(db, jobs.NewRun(
                         batch_id=batch_id,grouping_threshold=batch["auto_process_threshold"]),
@@ -116,6 +126,7 @@ def enqueue_on_manifest_completion(db,batch_id):
          batch["upload_manifest_state"]!="complete" or
          batch["delete_state"]!="active"):
         return None
+    if _cancel_if_originals_only(db,batch_id):return None
     try:
         with db.transaction():
             result=jobs._enqueue_locked(db,jobs.NewRun(

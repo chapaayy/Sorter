@@ -18,6 +18,7 @@ const emit=defineEmits<{
   (e:'state',busy:boolean,percent:number,phase:string):void
 }>()
 const entries=ref<UploadEntry[]>([]),folder=ref(''),batchId=ref(''),running=ref(false),error=ref(''),finished=ref(0)
+const source=ref<File[]>([]),unknown=ref(0),includeUnknown=ref(false)
 const amounts=ref<number[]>([]),phase=ref('')
 const autoProcess=ref(false),autoThreshold=ref(.50),manifestRegistered=ref(false),hasSavedSession=ref(false)
 let controller:AbortController|null=null
@@ -38,14 +39,22 @@ onMounted(async()=>{
 })
 function choose(e:Event){
   const files=(e.target as HTMLInputElement).files
-  if(!files)return
+  source.value=Array.from(files||[])
+  unknown.value=0
+  includeUnknown.value=false
+  applySelection()
+}
+function applySelection(){
+  if(!source.value.length){entries.value=[];return}
   try{
-    const batch=directoryEntries(files)
+    const batch=directoryEntries(source.value,includeUnknown.value)
+    unknown.value=batch.unknown
     entries.value=batch.entries;folder.value=batch.folder;batchId.value='';amounts.value=entries.value.map(()=>0)
     manifestRegistered.value=false
     error.value='';finished.value=0;phase.value='';hasSavedSession.value=!!storedId()
-  }catch(err){error.value=errorText(err)}
+  }catch(err){entries.value=[];error.value=errorText(err)}
 }
+watch(includeUnknown,applySelection)
 function storageKey(){
   return 'ps.folder:'+folder.value+':'+entries.value.length+':'+total.value
 }
@@ -150,8 +159,8 @@ async function start(){
         throw new Error('Сервер ожидает ещё '+confirmed.pending+' файлов. Выберите эту папку для продолжения.')
     }
     emit('finished',batchId.value,autoProcess.value
-      ?'Все ФО сохранены. MegaLoc автоматически встанет в очередь; миниатюры формируются отдельно.'
-      :'Все фотографии партии сохранены. Миниатюры формируются отдельно.')
+      ?'Все файлы партии сохранены. Автообработка доступна для поддерживаемых фотографий.'
+      :'Все файлы партии сохранены. Миниатюры создаются для поддерживаемых фото.')
   }catch(err){
     const firstError=error.value
     error.value=controller.signal.aborted
@@ -167,13 +176,17 @@ onUnmounted(stop)
   <label class="upload-drop">
     <input type="file" multiple webkitdirectory directory :disabled="running" @change="choose"/>
     <span style="font-size:27px;color:var(--muted)">▤</span><br/>
-    <strong>Выбрать папку с фотографиями</strong>
-    <p class="meta" style="margin:6px 0 0">JPEG, PNG, WebP, TIFF или BMP</p>
+    <strong>Выбрать папку с фото и видео</strong>
+    <p class="meta" style="margin:6px 0 0">Оригиналы сохраняются без конвертации · до 2 ГиБ на файл</p>
+  </label>
+  <label v-if="unknown" class="row wrap">
+    <input v-model="includeUnknown" type="checkbox" :disabled="running||!!batchId"/>
+    <span>Проверить на сервере файлы с неопознанным форматом ({{unknown}})</span>
   </label>
   <div v-if="entries.length" class="row wrap between">
     <div>
       <strong>{{folder}}</strong>
-      <p class="meta" style="margin:3px 0">{{entries.length.toLocaleString('ru-RU')}} фото · {{bytes(total)}}</p>
+      <p class="meta" style="margin:3px 0">{{entries.length.toLocaleString('ru-RU')}} файлов · {{bytes(total)}}</p>
     </div>
     <div class="row">
       <UiButton v-if="running" @click="stop">Приостановить</UiButton>
@@ -185,11 +198,11 @@ onUnmounted(stop)
   <label v-if="entries.length" class="row wrap" style="gap:10px;align-items:center">
     <input v-model="autoProcess" type="checkbox" :disabled="running||manifestRegistered"
       aria-label="Обработать после загрузки"/>
-    <span>Обработать после загрузки</span>
+    <span>Обработать поддерживаемые фото после загрузки</span>
   </label>
   <div v-if="running||uploaded" class="stack-sm">
     <div class="row between meta">
-      <span>{{running?(phase.includes('Ожидание')?'Ожидание соединения':'Загрузка фотографий'):'Передано'}} · {{finished}} из {{entries.length}}</span>
+      <span>{{running?(phase.includes('Ожидание')?'Ожидание соединения':'Загрузка файлов'):'Передано'}} · {{finished}} из {{entries.length}}</span>
       <strong>{{percent.toFixed(1)}}%</strong>
     </div>
     <div class="progress-track" role="progressbar" :aria-valuenow="percent" aria-valuemin="0" aria-valuemax="100">

@@ -8,8 +8,6 @@ import uuid
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from PIL import Image, UnidentifiedImageError
-from .storage.thumbnail_cache import PIXEL_LIMIT
 from .database import connect
 from .services import operations
 from .services import upload_manifest
@@ -17,7 +15,7 @@ from .db.repositories import batches as batch_repository
 from .services import thumbnails
 from .services.disk_guard import check_admission
 from app.config import DATA_DIR
-from .services.upload_validation import safe_name,MAX_FILE_BYTES
+from .services.upload_validation import safe_name,MAX_FILE_BYTES,MAX_FO_BYTES,fo_media_type,original_storage_name
 
 router=APIRouter(prefix='/api',tags=['uploads'])
 UPLOADS_DIR=DATA_DIR/'uploads'
@@ -41,7 +39,7 @@ def init_lock_for(upload_id):
 class BeginUpload(BaseModel):
     kind:str
     filename:str
-    size:int=Field(gt=0,le=MAX_FILE_BYTES)
+    size:int=Field(gt=0,le=MAX_FO_BYTES)
     batch_id:str|None=None
     sha256:str|None=None
     client_upload_id:uuid.UUID|None=None
@@ -209,13 +207,7 @@ def _finalize_sync(upload_id:str):
         digest=hashlib.file_digest(stream,'sha256').hexdigest()
     if row['checksum'] and digest!=row['checksum']:
         raise HTTPException(422,'SHA-256 не совпадает')
-    try:
-        with Image.open(part) as im:
-            if im.width*im.height>PIXEL_LIMIT:
-                raise HTTPException(422,'Слишком большое разрешение изображения')
-            im.verify()
-    except (OSError,UnidentifiedImageError,ValueError) as exc:
-        raise HTTPException(422,'Файл не является корректным изображением') from exc
+    media_type=fo_media_type(part,row['filename'])
     with connect() as db:
         db.execute('SELECT pg_advisory_xact_lock(723409133)')
         batch=db.execute("""SELECT delete_state FROM batches
@@ -231,7 +223,7 @@ def _finalize_sync(upload_id:str):
             return {'path':current['target_path'],'already_finalized':True}
         base=UPLOADS_DIR/str(row['batch_id'])
         base.mkdir(parents=True,exist_ok=True)
-        target=base/f'{digest[:20]}_{row["filename"]}'
+        target=base/original_storage_name(digest,row['filename'],media_type)
         if target.exists():
             with target.open('rb') as stream:
                 old=hashlib.file_digest(stream,'sha256').hexdigest()
@@ -241,8 +233,10 @@ def _finalize_sync(upload_id:str):
             os.link(part,target)
         target.chmod(0o444)
         db.execute("""UPDATE uploads SET finalized=true,received=declared_size,
-            checksum=%s,target_path=%s WHERE id=%s""",(digest,str(target),row['id']))
-        thumbnails.enqueue(db,row['id'],digest)
+            checksum=%s,target_path=%s,original_media_type=%s WHERE id=%s""",
+            (digest,str(target),media_type,row['id']))
+        if media_type is None:
+            thumbnails.enqueue(db,row['id'],digest)
         complete=upload_manifest.reconcile_locked(db,row['batch_id'])
         if complete:
             from .services.auto_processing import enqueue_on_manifest_completion
@@ -298,6 +292,8 @@ async def direct_upload(
     """Single-request upload; keep the resumable PATCH fallback."""
     try:uuid.UUID(upload_id)
     except ValueError:raise HTTPException(404,'Загрузка не найдена')
+    if not 0<size<=MAX_FILE_BYTES:
+        raise HTTPException(413,'Для больших файлов используйте загрузку по частям')
     payload=BeginUpload(kind=kind,filename=filename,size=size,
                         batch_id=batch_id or None)
     async with lock_for(upload_id):

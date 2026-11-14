@@ -35,7 +35,7 @@ def _manifest(files):
     for item in files:
         uid=_uid(item.upload_id)
         relative=item.relative_path
-        filename=safe_name(item.filename)
+        filename=safe_name(item.filename,reference=True)
         if filename!=item.filename:
             raise HTTPException(422,"Имя файла должно быть без пути")
         if (not relative or len(relative)>MAX_PATH or "\\" in relative or "\x00" in relative or

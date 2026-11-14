@@ -5,6 +5,7 @@ from fastapi import APIRouter,HTTPException
 from pydantic import BaseModel,Field
 from ...services import batches,cleanup,retention,upload_manifest,auto_processing,batch_runs
 from ...database import connect
+from ...services.upload_validation import MAX_FO_BYTES
 from ...db.repositories.pagination import page
 
 router=APIRouter(prefix="/api/batches",tags=["batches"])
@@ -20,7 +21,7 @@ class ManifestFile(BaseModel):
     upload_id:uuid.UUID
     relative_path:str=Field(min_length=1,max_length=1024)
     filename:str=Field(min_length=1,max_length=200)
-    size:int=Field(gt=0,le=60*1024*1024)
+    size:int=Field(gt=0,le=MAX_FO_BYTES)
 
 class BatchManifest(BaseModel):
     files:list[ManifestFile]=Field(min_length=1,max_length=20000)

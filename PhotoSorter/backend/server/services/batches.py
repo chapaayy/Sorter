@@ -39,7 +39,7 @@ def _serialize(row,counters=None):
     data={"batch_id":str(row["id"])}
     for field in fields:data[field]=row[field]
     # Each batch has the same counter contract, even with no photos/runs.
-    data.update({"photos":0,"size_bytes":0,"pending":0,"runs":0,
+    data.update({"photos":0,"media_files":0,"size_bytes":0,"pending":0,"runs":0,
                  "latest_run":None,"last_result_run_id":None,"cover_thumbnail_url":None})
     if counters:data.update(counters)
     return data
@@ -61,7 +61,8 @@ def list_all(limit=100,offset=0):
         aggregates={}
         if identifiers:
             stats=db.execute("""SELECT b.id,
-              count(u.id) FILTER(WHERE u.kind='fo' AND u.finalized) AS photos,
+              count(u.id) FILTER(WHERE u.kind='fo' AND u.finalized AND u.original_media_type IS NULL) AS photos,
+              count(u.id) FILTER(WHERE u.kind='fo' AND u.finalized AND u.original_media_type IS NOT NULL) AS media_files,
               coalesce(sum(u.declared_size) FILTER(WHERE u.kind='fo' AND u.finalized),0) AS size_bytes,
               count(u.id) FILTER(WHERE u.kind='fo' AND NOT u.finalized) AS pending
               FROM batches b LEFT JOIN uploads u ON u.batch_id=b.id

@@ -59,6 +59,7 @@ const stage=computed(()=>{
   :active="run?.status==='running'&&!deleting">
   <template #meta>
     <span>{{batch.photos??0}} фото</span>
+    <span v-if="batch.media_files">{{batch.media_files}} без сортировки</span>
     <span>{{bytes(batch.size_bytes)}}</span>
     <span v-if="run?.status==='queued'&&run.queue_position!=null">№{{run.queue_position}} в очереди</span>
     <span v-if="run?.models?.megaloc?.groups!=null">{{run.models.megaloc.groups}} групп</span>

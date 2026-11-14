@@ -19,6 +19,8 @@
 | `.dockerignore`, `.gitignore` | Исключение секретов, ФО, моделей, caches, build artifacts |
 | `.github/workflows/ci.yml` | **Единственный** актуальный CI (backend, restore, frontend, browser, full Docker runtime) |
 | `PhotoSorter/docker/app/Dockerfile` | Node 24 Vue build stage + Python/CPU PyTorch runtime |
+| `PhotoSorter/backend/server/services/upload_validation.py` | Проверка безопасного имени и определение формата фото или видео по содержимому ФО |
+| `PhotoSorter/backend/server/db/migrations/0025_fo_original_media.sql` | MIME оригиналов ФО, не участвующих в MegaLoc |
 | `PhotoSorter/docker/caddy/Caddyfile` | HTTPS reverse proxy, лимиты запросов и security headers |
 
 ## Backend / API

@@ -41,7 +41,7 @@ def test_zip_valid_sam_names():
 
 def test_large_image_pixel_bomb_is_rejected_before_publishing(thumbs,monkeypatch):
     from server import uploads
-    from server.services import cleanup
+    from server.services import cleanup, upload_validation
     own=_batch(thumbs,with_photo=False)
     raw=_jpg()
     item=uuid.uuid4()
@@ -49,12 +49,12 @@ def test_large_image_pixel_bomb_is_rejected_before_publishing(thumbs,monkeypatch
         batch_id=str(own)),item)
     (thumbs/"incoming"/f"{item}.part").write_bytes(raw)
     class Huge:
-        width=uploads.PIXEL_LIMIT+1
+        width=upload_validation.PIXEL_LIMIT+1
         height=1
         def __enter__(self):return self
         def __exit__(self,*args):return False
         def verify(self):raise AssertionError("must check pixels before verify")
-    monkeypatch.setattr(uploads.Image,"open",lambda path:Huge())
+    monkeypatch.setattr(upload_validation.Image,"open",lambda path:Huge())
     with pytest.raises(HTTPException) as exc:uploads._finalize_sync(str(item))
     assert exc.value.status_code==422
     with connect() as db:

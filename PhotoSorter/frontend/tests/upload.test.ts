@@ -19,12 +19,20 @@ beforeEach(()=>{
 afterEach(()=>vi.unstubAllGlobals())
 
 describe('folder input',()=>{
-  it('accepts only supported image extensions',()=>{
+  it('keeps the reference uploader limited to sortable image extensions',()=>{
     expect(ALLOWED.test('IMG_001.JPG')).toBe(true)
     expect(ALLOWED.test('file.jpeg')).toBe(true)
     expect(ALLOWED.test('image.png')).toBe(true)
     expect(ALLOWED.test('video.mp4')).toBe(false)
     expect(ALLOWED.test('archive.zip')).toBe(false)
+  })
+  it('keeps Windows copy names and selects HEIC/MOV for FO',()=>{
+    const names=['IMG_3908 — копия.JPG','IMG_3908.HEIC','IMG_3908.MOV','format.unknown','desktop.ini']
+    const files=names.map(name=>Object.assign(new File(['123'],name),{webkitRelativePath:'321/'+name}))
+    const normal=directoryEntries(files)
+    expect(normal.entries.map(e=>e.file.name)).toEqual(names.slice(0,3))
+    expect(normal.unknown).toBe(1)
+    expect(directoryEntries(files,true).entries.map(e=>e.file.name)).toEqual(names.slice(0,4))
   })
   it('rejects empty folder',()=>{
     expect(()=>directoryEntries({length:0} as FileList)).toThrow('не найдено')

@@ -27,7 +27,13 @@ const deleteWhole=ref(false),deletePhoto=ref<string|null>(null),viewer=ref<numbe
 const stopConfirm=ref(false),showHistory=ref(false),historyKey=ref(0)
 const processing=computed(()=>batch.value?batchProcessing(batch.value):null)
 const {items,cursor,loading,error:galleryError,load,reset}=useCursor<Photo>(next=>batchApi.gallery(id,next))
-const preview=computed(()=>items.value.map(p=>({src:p.original_url||'',label:p.name})))
+const photos=computed(()=>items.value.filter(p=>!p.original_media_type))
+const preview=computed(()=>photos.value.map(p=>({src:p.original_url||'',label:p.name})))
+function openPhoto(index:number){
+  const id=items.value[index]?.id
+  const position=photos.value.findIndex(p=>p.id===id)
+  if(position>=0)viewer.value=position
+}
 const readyPercent=computed(()=>count.value?.total?Math.round(count.value.ready/count.value.total*100):0)
 async function refresh(){
   try{batch.value=await batchApi.one(id);count.value=await batchApi.thumbs(id)}
@@ -93,7 +99,7 @@ async function removeBatch(){
 </script>
 <template>
 <div class="row" style="margin-bottom:22px"><RouterLink to="/fo" class="meta">← Все фотоотчёты</RouterLink></div>
-<PageHeader :title="batch?.display_name||'Галерея партии'" :subtitle="batch?date(batch.created_at)+' · '+(batch.photos??'—')+' ФО · '+bytes(batch.size_bytes):'Загрузка…'" eyebrow="ФО / ПАРТИЯ">
+<PageHeader :title="batch?.display_name||'Галерея партии'" :subtitle="batch?date(batch.created_at)+' · '+(batch.photos??'—')+' фото'+(batch.media_files?' · '+batch.media_files+' без сортировки':'')+' · '+bytes(batch.size_bytes):'Загрузка…'" eyebrow="ФО / ПАРТИЯ">
   <template #actions><UiButton @click="newName=batch?.display_name||'';rename=true">Переименовать</UiButton><UiButton kind="danger" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert">{{error}}</div>
@@ -114,15 +120,15 @@ async function removeBatch(){
 </section>
 <BatchRunHistory v-if="showHistory&&batch&&(batch.runs??0)>0" :key="id+'-'+historyKey" :batch-id="id" style="margin-bottom:19px"/>
 <PendingUploads v-if="batch?.delete_state==='active'" :batch-id="id" :disabled="!!batch?.runs" @changed="onPendingChanged"/>
-<section v-if="count" class="panel stack-sm" style="margin-bottom:19px">
+<section v-if="count&&(count.total||!batch?.media_files)" class="panel stack-sm" style="margin-bottom:19px">
   <div class="row between"><span>Подготовка миниатюр</span><span class="meta">{{count.ready}} / {{count.total}} · {{readyPercent}}%</span></div>
   <div class="progress-track" role="progressbar" :aria-valuenow="readyPercent" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill" :style="{width:readyPercent+'%'}"/></div>
   <div class="meta">{{count.failed?'Не удалось создать '+count.failed+' миниатюр.':''}} Оригиналы доступны независимо от превью.</div>
 </section>
 <div v-if="batch&&batch.runs" class="alert" style="margin-bottom:20px">Эта партия уже обрабатывалась. Удаление отдельного ФО заблокировано, чтобы не нарушить существующие результаты.</div>
 <div v-if="galleryError" class="alert error">{{galleryError}}</div>
-<VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_url:p.thumbnail_url,original_url:p.original_url,thumbnail_status:p.thumbnail_status}))"
-  :can-delete="!batch?.runs&&batch?.delete_state==='active'" @open="i=>viewer=i" @remove="pid=>deletePhoto=pid"/>
+<VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_url:p.thumbnail_url,original_url:p.original_url,thumbnail_status:p.thumbnail_status,original_media_type:p.original_media_type}))"
+  :can-delete="!batch?.runs&&batch?.delete_state==='active'" @open="openPhoto" @remove="pid=>deletePhoto=pid"/>
 <EmptyState v-else-if="!loading&&!galleryError" title="В этой партии пока нет фото"/>
 <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё фотографии</UiButton></div>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>

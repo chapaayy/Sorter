@@ -25,7 +25,7 @@ def page(db,filter_sql,params,*,cursor=None,limit=60):
     seek=decode(cursor)
     extra=" AND (u.created_at,u.id)>(%s,%s)" if seek else ""
     rows=db.execute(f"""SELECT u.id,u.filename,u.checksum,u.declared_size,u.created_at,
-        u.kind,u.batch_id,u.sam,u.finalized,
+        u.kind,u.batch_id,u.sam,u.finalized,u.original_media_type,
         t.state AS thumbnail_status,t.last_error AS thumbnail_error
       FROM uploads u LEFT JOIN thumbnail_tasks t ON t.upload_id=u.id
       WHERE {filter_sql}{extra}
@@ -36,7 +36,8 @@ def page(db,filter_sql,params,*,cursor=None,limit=60):
     for row in rows[:limit]:
         results.append({"id":str(row["id"]),"name":row["filename"],
            "bytes":row["declared_size"],"created_at":row["created_at"],
+           "original_media_type":row["original_media_type"],
            "thumbnail_status":row["thumbnail_status"] or "pending",
-           "thumbnail_url":f'/api/thumbnails/{row["id"]}' if row["finalized"] else None,
+           "thumbnail_url":f'/api/thumbnails/{row["id"]}' if row["finalized"] and row["original_media_type"] is None else None,
            "original_url":f'/api/photos/{row["id"]}/original' if row["finalized"] else None})
     return {"photos":results,"next_cursor":next_cursor}

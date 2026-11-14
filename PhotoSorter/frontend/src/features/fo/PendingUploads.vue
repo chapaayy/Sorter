@@ -132,7 +132,7 @@ usePolling(async()=>{if((items.value.length||manifest.value?.state==='waiting')&
         </template>
       </div>
     </div>
-    <input :id="'pending-source-'+item.id" type="file" accept=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff"
+    <input :id="'pending-source-'+item.id" type="file"
       style="display:none" :disabled="!!activeId||disabled" @change="continueFile(item,$event)"/>
     <div v-if="activeId===item.id" class="meta">{{activeStatus}}</div>
     <div v-if="errors[item.id]" class="alert error" role="alert">{{errors[item.id]}}</div>

@@ -122,7 +122,7 @@ def _refresh_batch(db,batch_id):
     if not batch_id:return
     db.execute("""UPDATE batches SET thumbnail_state=CASE
       WHEN EXISTS (SELECT 1 FROM uploads u LEFT JOIN thumbnail_tasks t ON t.upload_id=u.id
-        WHERE u.batch_id=%s AND u.finalized AND
+        WHERE u.batch_id=%s AND u.finalized AND u.original_media_type IS NULL AND
         (t.state IS NULL OR t.state<>'ready')) THEN 'pending'
       ELSE 'ready' END WHERE id=%s""",(batch_id,batch_id))
 
@@ -132,7 +132,7 @@ def counts(batch_id):
            count(*) FILTER(WHERE t.state='ready') AS ready,
            count(*) FILTER(WHERE t.state='failed') AS failed
            FROM uploads u LEFT JOIN thumbnail_tasks t ON t.upload_id=u.id
-           WHERE u.kind='fo' AND u.finalized AND u.batch_id=%s""",(batch_id,)).fetchone()
+           WHERE u.kind='fo' AND u.finalized AND u.original_media_type IS NULL AND u.batch_id=%s""",(batch_id,)).fetchone()
     return row
 
 def gc_unowned(limit=100,grace_seconds=86400):
