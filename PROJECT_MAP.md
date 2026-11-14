@@ -152,7 +152,7 @@ Vue /references → manifest образцов → /api/reference-imports
 
 ```text
 Shell
-├─ UploadCenter (сворачиваемый диалог папок ФО, докачки и образцов)
+├─ UploadCenter (отдельные сворачиваемые окна ФО / образцов)
 ├─ Фотографии -> FoList / FoGallery (маршруты /fo)
 ├─ Образцы -> ReferenceLibrary (два независимых scroll container)
 ├─ Очередь -> QueueView / RunDetail / RunProgress

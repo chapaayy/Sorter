@@ -3,21 +3,19 @@ import {computed,ref} from 'vue'
 import {referenceApi} from '../../api/references'
 import {errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
-import ReferenceDirectoryImporter from './ReferenceDirectoryImporter.vue'
 import type {CreatedConstruction} from '../../api/references'
 
-type Mode='standard'|'custom'|'import'
+type Mode='standard'|'custom'
 const emit=defineEmits<{
  (e:'dismiss'):void
  (e:'created',sam:string):void
- (e:'finished',message:string):void
  (e:'state',busy:boolean,percent:number,phase:string):void
 }>()
 const mode=ref<Mode>('standard'),city=ref('SAM'),number=ref(''),address=ref(''),name=ref('')
-const busy=ref(false),importBusy=ref(false),error=ref('')
+const busy=ref(false),error=ref('')
 const title=computed(()=>city.value.trim().toUpperCase()+' '+number.value.trim()+' — '+address.value.trim())
 async function save(){
- if(busy.value||importBusy.value)return
+ if(busy.value)return
  busy.value=true;error.value=''
  emit('state',true,0,'Создаём конструкцию…')
  try{
@@ -28,19 +26,14 @@ async function save(){
   emit('created',entry.sam)
  }catch(e){error.value=errorText(e)}finally{busy.value=false;emit('state',false,0,'')}
 }
-function importState(running:boolean,percent:number,phase:string){
-  importBusy.value=running
-  emit('state',running,percent,phase)
-}
 </script>
 <template>
   <div class="construction-dialog">
    <div class="segment construction-dialog-tabs" role="tablist" aria-label="Способ создания">
-    <button type="button" role="tab" :aria-selected="mode==='standard'" :disabled="busy||importBusy" @click="mode='standard'">Обычная</button>
-    <button type="button" role="tab" :aria-selected="mode==='custom'" :disabled="busy||importBusy" @click="mode='custom'">Индивидуальная</button>
-    <button type="button" role="tab" :aria-selected="mode==='import'" :disabled="busy||importBusy" @click="mode='import'">Импорт папки</button>
+    <button type="button" role="tab" :aria-selected="mode==='standard'" :disabled="busy" @click="mode='standard'">Обычная</button>
+    <button type="button" role="tab" :aria-selected="mode==='custom'" :disabled="busy" @click="mode='custom'">Индивидуальная</button>
    </div>
-   <form v-if="mode!=='import'" class="stack" @submit.prevent="save">
+   <form class="stack" @submit.prevent="save">
     <template v-if="mode==='standard'">
      <div class="grid2">
       <label class="field">Код города
@@ -68,7 +61,6 @@ function importState(running:boolean,percent:number,phase:string){
       <UiButton kind="primary" type="submit" :loading="busy">Создать конструкцию</UiButton>
     </div>
    </form>
-   <ReferenceDirectoryImporter v-else @finished="emit('finished',$event)" @state="importState"/>
   </div>
 </template>
 <style scoped>

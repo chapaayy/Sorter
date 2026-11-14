@@ -14,7 +14,8 @@ const items=ref<PendingUpload[]>([]),manifest=ref<BatchUploadManifest|null>(null
 const activeId=ref(''),activeStatus=ref(''),confirmCancel=ref<PendingUpload|null>(null)
 const errors=ref<Record<string,string>>({})
 const uploader=useUploadCenterStore()
-const batchUploading=computed(()=>uploader.busy&&uploader.batchId===props.batchId)
+const job=uploader.windows.fo
+const batchUploading=computed(()=>job.busy&&job.batchId===props.batchId)
 
 async function refreshManifest(){
   // The pending-upload recovery UI must still work if manifest inspection
@@ -53,7 +54,7 @@ async function finish(item:PendingUpload,automatic=false){
   }finally{activeId.value='';activeStatus.value=''}
 }
 function pick(item:PendingUpload){
-  if(uploader.busy){uploader.visible=true;return}
+  if(job.busy){uploader.show('fo');return}
   document.getElementById('pending-source-'+item.id)?.click()
 }
 function continueFile(item:PendingUpload,event:Event){
@@ -124,7 +125,7 @@ usePolling(async()=>{if((items.value.length||manifest.value?.state==='waiting')&
         </div>
       </div>
       <div class="row wrap">
-        <UiButton v-if="batchUploading&&(!uploader.recovery||uploader.recovery.item.id===item.id)" small @click="uploader.visible=true">Открыть загрузку</UiButton>
+        <UiButton v-if="batchUploading&&(!job.recovery||job.recovery.item.id===item.id)" small @click="uploader.show('fo')">Открыть загрузку</UiButton>
         <template v-else-if="!activeId&&!batchUploading">
           <UiButton v-if="item.can_finalize" small :disabled="disabled" @click="finish(item)">Завершить</UiButton>
           <UiButton v-else-if="item.has_part" small :disabled="disabled" @click="pick(item)">Продолжить</UiButton>

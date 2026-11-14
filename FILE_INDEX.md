@@ -231,8 +231,11 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 
 | Путь | Задача |
 |---|---|
-| `PhotoSorter/frontend/src/components/upload/UploadCenter.vue` | Единый глобальный диалог, индикатор фоновой загрузки и завершение без смены маршрута |
-| `PhotoSorter/frontend/src/stores/uploadCenter.ts` | Состояние видимости, текущая загрузка, событие завершения |
+| `PhotoSorter/frontend/src/components/upload/UploadCenter.vue` | Монтирование окон и индикаторы фоновых передач |
+| `PhotoSorter/frontend/src/components/upload/UploadDialog.vue` | Общий каркас сворачиваемых окон |
+| `PhotoSorter/frontend/src/components/upload/FoUploadDialog.vue` | Окно папки ФО и докачки, уведомление об изменениях образцов |
+| `PhotoSorter/frontend/src/components/upload/ReferenceUploadDialog.vue` | Окна библиотеки образцов и создания конструкции |
+| `PhotoSorter/frontend/src/stores/uploadCenter.ts` | Независимое состояние ФО и образцов, событие завершения |
 | `PhotoSorter/frontend/src/features/fo/RecoveryUpload.vue` | Докачка выбранного оригинала через глобальный диалог |
 | `PhotoSorter/frontend/src/styles/upload-dialog.css` | Модалка и фоновый индикатор |
 | `PhotoSorter/frontend/src/styles/reference-layout.css` | Два независимых scroll-контейнера образцов |

@@ -1,46 +1,49 @@
 import {defineStore} from 'pinia'
-import {ref,shallowRef} from 'vue'
+import {reactive,shallowRef} from 'vue'
 import type {PendingUpload} from '../types/api'
 
-export type UploadMode='fo'|'construction'|'single'|'recovery'
+export type UploadMode='fo'|'construction'|'library'|'single'|'recovery'
+export type UploadChannel='fo'|'references'
 export type RecoverySource={batchId:string;item:PendingUpload;file:File}
 type Completion={batchId:string}|{sam?:string}
-/** Mounted in Shell: hiding the dialog never unmounts the active transfer. */
+const newWindow=(mode:UploadMode)=>({
+  visible:false,mounted:false,busy:false,progress:0,session:0,label:'',mode,sam:'',samLabel:'',batchId:'',
+  recovery:null as RecoverySource|null
+})
+
+/** Each transfer keeps its files mounted in Shell when its window is hidden. */
 export const useUploadCenterStore=defineStore('upload-center',()=>{
-  const visible=ref(false),mounted=ref(false),busy=ref(false),progress=ref(0),session=ref(0)
-  const label=ref(''),mode=ref<UploadMode>('fo'),sam=ref(''),samLabel=ref(''),batchId=ref('')
-  const recovery=shallowRef<RecoverySource|null>(null)
+  const windows=reactive({fo:newWindow('fo'),references:newWindow('library')})
   const lastCompleted=shallowRef<Completion|null>(null)
-  function launch(next:Exclude<UploadMode,'recovery'>,selectedSam='',selectedLabel=''){
-    if(busy.value){
-      visible.value=true
-      return
-    }
-    recovery.value=null
-    batchId.value=''
-    session.value+=1
-    mode.value=next;sam.value=selectedSam;samLabel.value=selectedLabel
-    progress.value=0;label.value='';mounted.value=true;visible.value=true
+  function show(channel:UploadChannel){
+    windows[channel==='fo'?'references':'fo'].visible=false
+    windows[channel].visible=true
+  }
+  function launch(mode:Exclude<UploadMode,'recovery'>,sam='',samLabel=''){
+    const channel=mode==='fo'?'fo':'references'
+    const job=windows[channel]
+    if(!job.busy)Object.assign(job,newWindow(mode),{sam,samLabel,session:job.session+1,mounted:true})
+    show(channel)
   }
   function resume(source:RecoverySource){
-    if(busy.value){visible.value=true;return}
-    recovery.value=source
-    batchId.value=source.batchId
-    session.value+=1
-    mode.value='recovery'
-    report(true,0,'Проверяем оригинал…')
-    mounted.value=true;visible.value=true
+    const job=windows.fo
+    if(!job.busy)Object.assign(job,newWindow('recovery'),{
+      recovery:source,batchId:source.batchId,session:job.session+1,
+      busy:true,label:'Проверяем оригинал…',mounted:true
+    })
+    show('fo')
   }
-  function report(running:boolean,percent:number,phase:string){
-    busy.value=running
-    progress.value=Math.max(0,Math.min(100,Number.isFinite(percent)?percent:0))
-    label.value=phase
+  function report(channel:UploadChannel,running:boolean,percent:number,phase:string){
+    const job=windows[channel]
+    job.busy=running
+    job.progress=Math.max(0,Math.min(100,Number.isFinite(percent)?percent:0))
+    job.label=phase
   }
-  function close(){visible.value=false}
-  function finish(completion?:Completion){
-    busy.value=false;visible.value=false;mounted.value=false;progress.value=0;label.value=''
-    recovery.value=null;batchId.value=''
+  function close(channel:UploadChannel){windows[channel].visible=false}
+  function finish(channel:UploadChannel,completion?:Completion){
+    const job=windows[channel]
+    Object.assign(job,newWindow(job.mode),{session:job.session})
     if(completion)lastCompleted.value=completion
   }
-  return {visible,mounted,busy,progress,label,mode,sam,samLabel,batchId,session,recovery,lastCompleted,launch,resume,report,close,finish}
+  return {windows,lastCompleted,launch,resume,report,show,close,finish}
 })

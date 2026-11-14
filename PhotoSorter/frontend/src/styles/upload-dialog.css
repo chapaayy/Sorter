@@ -1,14 +1,16 @@
 .upload-overlay{z-index:1040}
 .upload-modal{width:min(760px,100%);max-height:min(94dvh,960px);padding:22px;overscroll-behavior:contain}
 .upload-modal-header{align-items:flex-start;margin-bottom:14px;gap:12px}
+.upload-modal-header h2{margin-bottom:2px}
 .upload-modal .upload-drop{padding:23px}
 .upload-modal-footer{margin-top:16px;padding-top:12px;border-top:1px solid var(--border-subtle);gap:12px;min-height:40px}
 .upload-modal .panel{border:0;padding:0;background:transparent;box-shadow:none}
-.upload-floating{position:fixed;bottom:22px;right:23px;z-index:900;border:1px solid var(--border);
+.upload-floating-stack{position:fixed;bottom:22px;right:23px;z-index:900;display:grid;justify-items:end;gap:8px}
+.upload-floating{border:1px solid var(--border);
   background:var(--panel);border-radius:12px;box-shadow:var(--shadow);padding:12px 15px;
   font-size:12px;font-weight:650;display:flex;align-items:center;gap:9px;max-width:calc(100vw - 30px)}
 .upload-floating-dot{width:7px;height:7px;border-radius:100%;background:var(--muted)}
 .upload-floating-dot.active{background:var(--success)}
 .upload-floating:hover{border-color:var(--muted)}
 @media(max-width:700px){.upload-modal{max-height:calc(100dvh - 18px);width:100%;padding:15px}
-.upload-floating{bottom:12px;right:12px}}
+.upload-floating-stack{bottom:12px;right:12px}}

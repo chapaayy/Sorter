@@ -17,9 +17,11 @@ const emit=defineEmits<{
   (e:'batch',batchId:string):void
   (e:'state',busy:boolean,percent:number,phase:string):void
 }>()
-const entries=ref<UploadEntry[]>([]),folder=ref(''),batchId=ref(''),running=ref(false),error=ref(''),finished=ref(0)
+const entries=ref<UploadEntry[]>([]),folder=ref(''),batchId=ref(''),running=ref(false),error=ref('')
 const source=ref<File[]>([]),unknown=ref(0),includeUnknown=ref(false)
 const amounts=ref<number[]>([]),phase=ref('')
+const completed=ref(new Set<number>())
+const finished=computed(()=>completed.value.size)
 const autoProcess=ref(false),autoThreshold=ref(.50),manifestRegistered=ref(false),hasSavedSession=ref(false)
 let controller:AbortController|null=null
 const total=computed(()=>entries.value.reduce((s,e)=>s+e.file.size,0))
@@ -51,7 +53,7 @@ function applySelection(){
     unknown.value=batch.unknown
     entries.value=batch.entries;folder.value=batch.folder;batchId.value='';amounts.value=entries.value.map(()=>0)
     manifestRegistered.value=false
-    error.value='';finished.value=0;phase.value='';hasSavedSession.value=!!storedId()
+    error.value='';completed.value.clear();phase.value='';hasSavedSession.value=!!storedId()
   }catch(err){entries.value=[];error.value=errorText(err)}
 }
 watch(includeUnknown,applySelection)
@@ -100,8 +102,12 @@ async function start(){
       manifestRegistered.value=true
       autoProcess.value=current.auto_process_state==='waiting'||current.auto_process_state==='queued'
       autoThreshold.value=current.auto_process_threshold??.50
-      const ids=new Map(current.files.map(file=>[file.relative_path,file.upload_id]))
-      manifestIds=entries.value.map(e=>ids.get(e.relative)!)
+      const byPath=new Map(current.files.map(file=>[file.relative_path,file]))
+      const received=entries.value.map(entry=>byPath.get(entry.relative)!)
+      manifestIds=received.map(file=>file.upload_id)
+      completed.value=new Set(received.flatMap((file,index)=>file.state==='finalized'?[index]:[]))
+      amounts.value=received.map(file=>file.state==='finalized'?file.size:
+        file.state==='unfinished'?Math.max(0,Math.min(file.received,file.size)):0)
     }else{
       const batch=await request(()=>batchApi.one(batchId.value))
       if((batch.photos??0)===0&&(batch.pending??0)===0&&(batch.runs??0)===0){
@@ -119,7 +125,9 @@ async function start(){
     }
     const reconnecting=new Set<number>()
     phase.value='Передача файлов'
-    const failures=await runUploadQueue(entries.value.length,uploadSettings.parallelUploads,signal,async idx=>{
+    const pending=entries.value.map((_,index)=>index).filter(index=>current.state==='legacy'||!completed.value.has(index))
+    const failures=await runUploadQueue(pending.length,uploadSettings.parallelUploads,signal,async position=>{
+      const idx=pending[position]!
       const entry=entries.value[idx]
       if(!entry)return
       await uploadOne({kind:'fo',batchId:batchId.value},entry,signal,n=>{
@@ -133,12 +141,12 @@ async function start(){
       },manifestIds?.[idx])
       reconnecting.delete(idx)
       phase.value=reconnecting.size?'Ожидание соединения':'Передача файлов'
-      finished.value++;amounts.value[idx]=entry.file.size
+      completed.value.add(idx);amounts.value[idx]=entry.file.size
     },{
       haltAfterFailuresWithoutSuccess:Math.min(3,uploadSettings.parallelUploads),
       onFailure:failure=>{
         if(error.value)return
-        const file=entries.value[failure.index]?.file.name||'Неизвестный файл'
+        const file=entries.value[pending[failure.index]!]?.file.name||'Неизвестный файл'
         const code=failure.error instanceof ApiError&&failure.error.status
           ?'HTTP '+failure.error.status+' · ':''
         error.value='Ошибка «'+file+'»: '+code+errorText(failure.error)
@@ -148,7 +156,7 @@ async function start(){
       const last=manifestIds?await request(()=>batchApi.manifest(batchId.value)):null
       if(last?.state!=='complete'){
         const details=failures.slice(0,3).map(({index,error})=>
-          entries.value[index]?.file.name+': '+errorText(error)).join('; ')
+          entries.value[pending[index]!]?.file.name+': '+errorText(error)).join('; ')
         throw new Error('Не загружено '+failures.length+' из '+entries.value.length+' файлов: '+details)
       }
     }

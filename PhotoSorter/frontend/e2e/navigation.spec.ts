@@ -260,6 +260,14 @@ test('mixed folder upload keeps sending bytes across pages and only opens its ba
     await dialog.getByRole('button',{name:'Загрузить',exact:true}).click()
     await expect.poll(()=>sending).toBe(true)
     await dialog.getByRole('button',{name:'Свернуть',exact:true}).click()
+    const drawer=page.getByRole('button',{name:'Открыть меню'})
+    if(await drawer.isVisible())await drawer.click()
+    await page.getByRole('link',{name:'Образцы',exact:true}).click()
+    await page.getByRole('button',{name:'+ Загрузить образцы'}).click()
+    const refs=page.getByRole('dialog',{name:'Загрузить образцы'})
+    await expect(refs.getByText('Выбрать папку библиотеки')).toBeVisible()
+    await expect(dialog).toBeHidden()
+    await refs.getByRole('button',{name:'Закрыть',exact:true}).click()
     await openQueue(page)
     const indicator=page.getByRole('button',{name:/Загрузка ФО.*%/})
     await expect(indicator).toBeVisible()
@@ -277,6 +285,59 @@ test('mixed folder upload keeps sending bytes across pages and only opens its ba
     await expect(page).toHaveURL(new RegExp('/fo/'+bid+'$'))
     await expect(page.getByRole('link',{name:'Скачать clip.MOV'})).toHaveAttribute('href','/api/photos/video-id/original')
   }finally{gate.release();await rm(folder,{recursive:true,force:true})}
+})
+
+test('pausing and resuming counts each saved file only once',async({page})=>{
+  const folder=await mkdtemp(join(tmpdir(),'map-pause-'))
+  const source=Buffer.from('photo bytes')
+  const firstGate=holdTransfer(),resumeGate=holdTransfer()
+  let files:any[]=[]
+  const finalized=new Set<string>()
+  let secondAttempts=0,firstChecks=0
+  try{
+    for(const name of ['first.jpg','second.jpg'])await writeFile(join(folder,name),source)
+    await page.route('**/api/batches',route=>route.request().method()==='POST'
+      ?respond(route,{batch_id:bid}):route.fallback())
+    await page.route('**/api/batches/'+bid,route=>respond(route,{...batch,photos:0,pending:0,runs:0}))
+    await page.route('**/api/batches/'+bid+'/upload-manifest',route=>{
+      if(route.request().method()==='PUT')files=route.request().postDataJSON().files
+      return respond(route,{state:finalized.size===2?'complete':files.length?'waiting':'legacy',
+        pending:files.length-finalized.size,files:files.map(file=>({...file,
+          state:finalized.has(file.upload_id)?'finalized':'not_started',received:finalized.has(file.upload_id)?source.length:0}))})
+    })
+    await page.route('**/api/uploads/**',async route=>{
+      const method=route.request().method(),path=new URL(route.request().url()).pathname
+      const id=path.split('/')[3]!
+      const file=files.find(file=>file.upload_id===id)
+      if(method==='GET'&&file?.filename==='first.jpg')firstChecks++
+      if(method==='PATCH'){
+        if(file?.filename==='second.jpg'){
+          const attempt=++secondAttempts
+          await (attempt===1?firstGate.waiting:resumeGate.waiting)
+          if(attempt===1){await route.abort().catch(()=>{});return}
+        }
+        return respond(route,{offset:source.length})
+      }
+      if(path.endsWith('/finish')){finalized.add(id);return respond(route,{path:'saved'})}
+      return respond(route,{offset:0,size:source.length,finalized:finalized.has(id)})
+    })
+    await page.goto('/fo')
+    await page.getByRole('button',{name:'+ Загрузить папку'}).click()
+    const dialog=page.getByRole('dialog',{name:'Загрузить фотографии'})
+    await dialog.locator('input[webkitdirectory]').setInputFiles(folder)
+    await dialog.getByRole('button',{name:'Загрузить',exact:true}).click()
+    await expect.poll(()=>secondAttempts).toBe(1)
+    await expect(dialog.getByText(/· 1 из 2/)).toBeVisible()
+    await dialog.getByRole('button',{name:'Приостановить'}).click()
+    firstGate.release()
+    await dialog.getByRole('button',{name:'Продолжить',exact:true}).click()
+    await expect.poll(()=>secondAttempts).toBe(2)
+    await expect(dialog.getByText(/· 1 из 2/)).toBeVisible()
+    expect(firstChecks).toBe(1)
+    resumeGate.release()
+    await expect(page.getByText(/Все файлы партии сохранены/)).toBeVisible()
+    expect(finalized.size).toBe(2)
+  }finally{firstGate.release();resumeGate.release();await rm(folder,{recursive:true,force:true})}
 })
 
 test('resuming an individual FO does not abort on internal navigation',async({page})=>{
@@ -693,8 +754,8 @@ for(const mode of ['single','folder'] as const)test('staged reference '+mode+' u
       const construction=join(folder,'SAM 0004 — Гагарина 64')
       await mkdir(construction)
       await writeFile(join(construction,'new.jpg'),source)
-      await page.getByRole('button',{name:'+ Создать конструкцию'}).click()
-      await page.getByRole('tab',{name:'Импорт папки'}).click()
+      await page.getByRole('button',{name:'+ Загрузить образцы'}).click()
+      await expect(page.getByRole('dialog',{name:'Загрузить образцы'})).toBeVisible()
       await page.locator('.upload-drop input[webkitdirectory]').setInputFiles(folder)
       await page.getByRole('button',{name:'Загрузить и подготовить'}).click()
     }else{
@@ -767,7 +828,7 @@ test('desktop references scroll inside two panels without scrolling the whole pa
   expect(await gallery.evaluate(el=>el.scrollTop)).toBeGreaterThan(100)
 })
 
-test('construction creation dialog keeps standard custom and folder import in one window',async({page})=>{
+test('construction creation and reference folder import have separate dialogs',async({page})=>{
   await page.goto('/references')
   await page.locator('.page-head').getByRole('button',{name:'+ Создать конструкцию'}).click()
   const dialog=page.getByRole('dialog',{name:'Создать конструкцию'})
@@ -782,10 +843,12 @@ test('construction creation dialog keeps standard custom and folder import in on
   await expect(dialog.getByText('MSK 0004 — Гагарина 64')).toBeVisible()
   await dialog.getByRole('tab',{name:'Индивидуальная'}).click()
   await expect(dialog.getByRole('textbox',{name:'Индивидуальное название'})).toBeVisible()
-  await dialog.getByRole('tab',{name:'Импорт папки'}).click()
-  await expect(dialog.getByText('Выбрать папку библиотеки')).toBeVisible()
+  await expect(dialog.getByRole('tab',{name:'Импорт папки'})).toHaveCount(0)
   await dialog.getByRole('tab',{name:'Обычная'}).click()
   await expect(dialog.getByText('MSK 0004 — Гагарина 64')).toBeVisible()
+  await dialog.getByRole('button',{name:'Отмена'}).click()
+  await page.getByRole('button',{name:'+ Загрузить образцы'}).click()
+  await expect(page.getByRole('dialog',{name:'Загрузить образцы'}).getByText('Выбрать папку библиотеки')).toBeVisible()
 })
 
 test('deleting has a full red card while a failure keeps a normal outline',async({page})=>{
