@@ -12,6 +12,7 @@ import {useNoticeStore} from '../../stores/notice'
 import {useDeletionStore} from '../../stores/deletion'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
+import EmptyState from '../../components/ui/EmptyState.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
@@ -122,7 +123,7 @@ async function removeBatch(){
 <div v-if="galleryError" class="alert error">{{galleryError}}</div>
 <VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_url:p.thumbnail_url,original_url:p.original_url,thumbnail_status:p.thumbnail_status}))"
   :can-delete="!batch?.runs&&batch?.delete_state==='active'" @open="i=>viewer=i" @remove="pid=>deletePhoto=pid"/>
-<div v-else-if="!loading" class="empty"><strong>В этой партии пока нет фото</strong><p>Вернитесь к списку и выберите папку для загрузки.</p></div>
+<EmptyState v-else-if="!loading&&!galleryError" title="В этой партии пока нет фото"/>
 <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё фотографии</UiButton></div>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
 <div v-if="rename" class="modal-overlay" @click.self="rename=false">

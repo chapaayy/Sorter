@@ -1,21 +1,18 @@
 <script setup lang="ts">
-import {ref,watch} from 'vue'
+import {ref} from 'vue'
 import ReferenceDirectoryImporter from './ReferenceDirectoryImporter.vue'
 import ReferencePhotoUploader from './ReferencePhotoUploader.vue'
 
-const props=withDefaults(defineProps<{
-  selectedSam:string;selectedLabel?:string;initialMode?:'library'|'single'
-}>(),{initialMode:'library',selectedLabel:''})
+defineProps<{selectedSam:string;selectedLabel:string}>()
 const emit=defineEmits<{
-  (e:'finished'):void
+  (e:'finished',message:string):void
   (e:'state',busy:boolean,percent:number,phase:string):void
 }>()
-const mode=ref<'library'|'single'>(props.initialMode),running=ref(false)
+const mode=ref<'library'|'single'>('single'),running=ref(false)
 function onState(busy:boolean,percent:number,phase:string){
   running.value=busy
   emit('state',busy,percent,phase)
 }
-watch(()=>props.initialMode,value=>{mode.value=value})
 </script>
 
 <template>
@@ -34,9 +31,8 @@ watch(()=>props.initialMode,value=>{mode.value=value})
     <button role="tab" :aria-selected="mode==='single'" :class="{active:mode==='single'}"
        :disabled="running" @click="mode='single'">Фото в конструкцию</button>
   </div>
-  <ReferenceDirectoryImporter v-if="mode==='library'" @finished="emit('finished')"
-    @state="onState"/>
+  <ReferenceDirectoryImporter v-if="mode==='library'" @finished="emit('finished',$event)" @state="onState"/>
   <ReferencePhotoUploader v-else :selected-sam="selectedSam"
-     :label="selectedLabel||selectedSam" @finished="emit('finished')" @state="onState"/>
+     :label="selectedLabel||selectedSam" @finished="emit('finished',$event)" @state="onState"/>
 </section>
 </template>

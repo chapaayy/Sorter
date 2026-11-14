@@ -1,4 +1,4 @@
-import {ref} from 'vue'
+import {onUnmounted,ref} from 'vue'
 import {ApiError} from '../api/client'
 import {referenceImportsApi} from '../api/referenceImports'
 import {referenceApi} from '../api/references'
@@ -171,5 +171,6 @@ export function useReferenceTransfer(){
     }finally{busy.value=false;controller=null}
   }
   function pause(){controller?.abort()}
+  onUnmounted(pause)
   return {busy,error,phase,completed,duplicates,sentBytes,start,pause}
 }

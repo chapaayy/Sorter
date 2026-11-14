@@ -1,4 +1,7 @@
 import {test,expect,Page} from '@playwright/test'
+import {mkdtemp,mkdir,rm,writeFile} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
+import {join} from 'node:path'
 import type {Batch} from '../src/types/api'
 const bid='a6d1a203-23d4-420b-a1c6-87c0f1100222'
 const rid='20261105T100000-abcd1234abcd'
@@ -73,6 +76,17 @@ async function mock(page:Page){
     if(p.includes('/api/thumbnails/'))return route.fulfill({status:202,contentType:'application/json',body:'{"detail":"pending"}'})
     return route.fulfill({status:404,contentType:'application/json',body:JSON.stringify({detail:'Unexpected test API: '+p})})
   })
+}
+async function openQueue(page:Page){
+  const drawer=page.getByRole('button',{name:'Открыть меню'})
+  if(await drawer.isVisible())await drawer.click()
+  await page.getByRole('link',{name:'Очередь',exact:true}).click()
+  await expect(page).toHaveURL(/\/queue$/)
+}
+function holdTransfer(){
+  let release=()=>{}
+  const waiting=new Promise<void>(resolve=>{release=resolve})
+  return {waiting,release}
 }
 test.beforeEach(async({page})=>{await mock(page)})
 test('six navigation sections and real data bindings',async({page})=>{
@@ -208,6 +222,90 @@ test('FO upload opens a global dialog that can be minimized without unmounting',
   await expect(dialog).toBeHidden()
   await page.getByRole('button',{name:/Загрузка ФО/}).click()
   await expect(dialog).toBeVisible()
+})
+
+test('folder upload keeps sending bytes across pages and only opens its batch on click',async({page})=>{
+  const folder=await mkdtemp(join(tmpdir(),'map-fo-'))
+  const source=Buffer.from('test photo for FO upload')
+  const gate=holdTransfer()
+  let sending=false,done=false,files:any[]=[]
+  try{
+    await writeFile(join(folder,'frame.jpg'),source)
+    await page.route('**/api/batches',route=>route.request().method()==='POST'
+      ?respond(route,{batch_id:bid}):route.fallback())
+    await page.route('**/api/batches/'+bid,route=>respond(route,{...batch,photos:0,pending:0,runs:0}))
+    await page.route('**/api/batches/'+bid+'/upload-manifest',route=>{
+      if(route.request().method()==='PUT')files=route.request().postDataJSON().files
+      return respond(route,{state:done?'complete':files.length?'waiting':'legacy',pending:done?0:files.length,files})
+    })
+    await page.route('**/api/uploads/**',async route=>{
+      if(route.request().method()==='PATCH'){
+        sending=true
+        await gate.waiting
+        return respond(route,{offset:source.length})
+      }
+      if(route.request().url().endsWith('/finish')){done=true;return respond(route,{path:'frame.jpg'})}
+      return respond(route,{offset:0,size:source.length,finalized:false})
+    })
+    await page.goto('/fo')
+    await page.getByRole('button',{name:'+ Загрузить папку'}).click()
+    const dialog=page.getByRole('dialog',{name:'Загрузить фотографии'})
+    await dialog.locator('input[webkitdirectory]').setInputFiles(folder)
+    await dialog.getByRole('button',{name:'Загрузить',exact:true}).click()
+    await expect.poll(()=>sending).toBe(true)
+    await dialog.getByRole('button',{name:'Свернуть',exact:true}).click()
+    await openQueue(page)
+    const indicator=page.getByRole('button',{name:/Загрузка ФО.*%/})
+    await expect(indicator).toBeVisible()
+    await indicator.click()
+    await expect(dialog.getByRole('button',{name:'Приостановить'})).toBeVisible()
+    await dialog.getByRole('button',{name:'Свернуть загрузку'}).click()
+    expect(done).toBe(false)
+    gate.release()
+    const toast=page.locator('.toast').filter({hasText:'Все фотографии партии сохранены'})
+    await expect(toast).toBeVisible()
+    await expect(page).toHaveURL(/\/queue$/)
+    await expect(indicator).toBeHidden()
+    await toast.getByRole('link',{name:'Открыть'}).click()
+    await expect(page).toHaveURL(new RegExp('/fo/'+bid+'$'))
+  }finally{gate.release();await rm(folder,{recursive:true,force:true})}
+})
+
+test('resuming an individual FO does not abort on internal navigation',async({page})=>{
+  const source=Buffer.from('partially sent photograph')
+  const pendingId='47370c5c-dbe0-413e-928f-d365f50e2201'
+  const gate=holdTransfer()
+  let sending=false,finished=false
+  await page.route('**/api/batches/'+bid,route=>respond(route,{...batch,runs:0,pending:finished?0:1}))
+  await page.route('**/api/batches/'+bid+'/pending',route=>respond(route,{uploads:finished?[]:[{
+    id:pendingId,filename:'resume.jpg',size:source.length,received:3,has_part:true,can_finalize:false,
+    prefix_bytes:0,prefix_sha256:null
+  }]}))
+  await page.route('**/api/uploads/'+pendingId,async route=>{
+    if(route.request().method()==='PATCH'){
+      expect(route.request().headers()['upload-offset']).toBe('3')
+      sending=true
+      await gate.waiting
+      return respond(route,{offset:source.length})
+    }
+    return respond(route,{offset:3,size:source.length,finalized:false})
+  })
+  await page.route('**/api/uploads/'+pendingId+'/finish',route=>{
+    finished=true;return respond(route,{path:'resume.jpg'})
+  })
+  try{
+    await page.goto('/fo/'+bid)
+    await page.locator('input[id="pending-source-'+pendingId+'"]').setInputFiles({
+      name:'resume.jpg',mimeType:'image/jpeg',buffer:source
+    })
+    await expect.poll(()=>sending).toBe(true)
+    await page.getByRole('button',{name:'Свернуть',exact:true}).click()
+    await openQueue(page)
+    await expect(page.getByRole('button',{name:/Загрузка ФО.*%/})).toBeVisible()
+    gate.release()
+    await expect(page.getByText('Загрузка фото завершена: resume.jpg',{exact:true})).toBeVisible()
+    await expect(page).toHaveURL(/\/queue$/)
+  }finally{gate.release()}
 })
 test('construction list remains one line with ellipsis and a separate count',async({page,isMobile})=>{
   test.skip(isMobile,'Desktop split list only')
@@ -518,7 +616,7 @@ test('FO library notice appears once, shows events and requires explicit acknowl
   expect(acks).toBe(1)
 })
 
-test('staged reference upload remains available during active FO and uses manifest API',async({page})=>{
+for(const mode of ['single','folder'] as const)test('staged reference '+mode+' upload continues on another page',async({page})=>{
   const status={
     unified_queue_enabled:true,staged_imports_enabled:true,baseline_state:'ready',
     current_version:12,current_version_id:12,published_references:1,
@@ -526,11 +624,16 @@ test('staged reference upload remains available during active FO and uses manife
     notice_version_id:null
   }
   const source=Buffer.from('test reference image bytes for staged import')
-  let registered:any=null,finished=false,queued=0
+  let registered:any=null,finished=false,queued=0,sending=false
+  const gate=holdTransfer()
+  const sam=mode==='single'?'SAM-0001':'SAM 0004'
+  await page.route('**/api/references/import/preview',route=>respond(route,{
+    errors:[],entries:[{sam,folder:'SAM 0004 — Гагарина 64',existing:false}]
+  }))
   await page.route('**/api/reference-library/status',route=>respond(route,status))
   await page.route(/^https?:\/\/[^/]+\/api\/runs(?:\?.*)?$/,route=>
     respond(route,{runs:[{...run,status:'running'}],total:1}))
-  await page.route(/^https?:\/\/[^/]+\/api\/reference-imports(?:\/.*)?(?:\?.*)?$/,route=>{
+  await page.route(/^https?:\/\/[^/]+\/api\/reference-imports(?:\/.*)?(?:\?.*)?$/,async route=>{
     const url=new URL(route.request().url())
     const path=url.pathname
     const method=route.request().method()
@@ -555,6 +658,8 @@ test('staged reference upload remains available during active FO and uses manife
       // the browser sends the request. Emulate the server-verified offset.
       expect(route.request().headers()['upload-offset']).toBe('0')
       expect(route.request().headers()['content-type']).toContain('application/octet-stream')
+      sending=true
+      await gate.waiting
       return respond(route,{offset:registered.size})
     }
     if(method==='POST'&&path.endsWith('/finish')){
@@ -573,21 +678,46 @@ test('staged reference upload remains available during active FO and uses manife
     }
     return route.fulfill({status:404,contentType:'application/json',body:'{}'})
   })
-  await page.goto('/references')
-  const uploadButton=page.getByRole('button',{name:'+ Добавить фото'})
-  await expect(uploadButton).toBeEnabled()
-  await uploadButton.click()
-  await expect(page.getByRole('tab',{name:'Фото в конструкцию'})).toHaveAttribute('aria-selected','true')
-  await page.locator('.upload-drop input[type="file"]').setInputFiles({
-    name:'new.jpg',mimeType:'image/jpeg',buffer:source
-  })
-  await page.getByRole('button',{name:'Добавить фото',exact:true}).click()
-  await expect.poll(()=>queued).toBe(1)
-  expect(finished).toBe(true)
-  expect(registered.sam).toBe('SAM-0001')
-  expect(registered.size).toBe(source.length)
-  expect(registered.sha256).toMatch(/^[0-9a-f]{64}$/)
-  await expect(page.getByText('Файлы приняты. Подготовка образцов поставлена в очередь.')).toBeVisible()
+  const folder=mode==='folder'?await mkdtemp(join(tmpdir(),'map-refs-')):null
+  try{
+    await page.goto('/references')
+    if(folder){
+      const construction=join(folder,'SAM 0004 — Гагарина 64')
+      await mkdir(construction)
+      await writeFile(join(construction,'new.jpg'),source)
+      await page.getByRole('button',{name:'+ Создать конструкцию'}).click()
+      await page.getByRole('tab',{name:'Импорт папки'}).click()
+      await page.locator('.upload-drop input[webkitdirectory]').setInputFiles(folder)
+      await page.getByRole('button',{name:'Загрузить и подготовить'}).click()
+    }else{
+      await page.getByRole('button',{name:'+ Добавить фото'}).click()
+      await expect(page.getByRole('tab',{name:'Фото в конструкцию'})).toHaveAttribute('aria-selected','true')
+      await page.locator('.upload-drop input[type="file"]').setInputFiles({
+        name:'new.jpg',mimeType:'image/jpeg',buffer:source
+      })
+      await page.getByRole('button',{name:'Добавить фото',exact:true}).click()
+    }
+    await expect.poll(()=>sending).toBe(true)
+    await page.getByRole('button',{name:'Свернуть загрузку'}).click()
+    await openQueue(page)
+    const indicator=page.getByRole('button',{name:/Загрузка образцов.*%/})
+    await expect(indicator).toBeVisible()
+    await indicator.click()
+    await expect(page.getByRole('button',{name:'Пауза'})).toBeVisible()
+    await page.getByRole('button',{name:'Свернуть',exact:true}).click()
+    expect(finished).toBe(false)
+    gate.release()
+    await expect.poll(()=>queued).toBe(1)
+    expect(finished).toBe(true)
+    expect(registered.sam).toBe(sam)
+    expect(registered.size).toBe(source.length)
+    expect(registered.sha256).toMatch(/^[0-9a-f]{64}$/)
+    await expect(page.getByText(mode==='folder'
+      ?'Образцы загружены. Подготовка поставлена в общую очередь.'
+      :'Файлы приняты. Подготовка образцов поставлена в очередь.')).toBeVisible()
+    await expect(page).toHaveURL(/\/queue$/)
+    await expect(indicator).toBeHidden()
+  }finally{gate.release();if(folder)await rm(folder,{recursive:true,force:true})}
 })
 
 test('desktop references scroll inside two panels without scrolling the whole page',async({page,isMobile})=>{

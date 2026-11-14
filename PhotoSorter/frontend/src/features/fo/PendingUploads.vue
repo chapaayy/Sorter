@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import {onMounted,onUnmounted,ref} from 'vue'
+import {computed,onMounted,onUnmounted,ref,watch} from 'vue'
 import {batchApi} from '../../api/batches'
 import type {PendingUpload,BatchUploadManifest} from '../../types/api'
-import {resumePendingUpload} from '../../utils/upload'
+import {useUploadCenterStore} from '../../stores/uploadCenter'
 import {bytes,errorText} from '../../utils/format'
 import {usePolling} from '../../composables/usePolling'
 import UiButton from '../../components/ui/UiButton.vue'
@@ -13,8 +13,8 @@ const emit=defineEmits<{(e:'changed'):void}>()
 const items=ref<PendingUpload[]>([]),manifest=ref<BatchUploadManifest|null>(null),loading=ref(true),error=ref('')
 const activeId=ref(''),activeStatus=ref(''),confirmCancel=ref<PendingUpload|null>(null)
 const errors=ref<Record<string,string>>({})
-const progress=ref<Record<string,number>>({})
-let controller:AbortController|null=null
+const uploader=useUploadCenterStore()
+const batchUploading=computed(()=>uploader.busy&&uploader.batchId===props.batchId)
 
 async function refreshManifest(){
   // The pending-upload recovery UI must still work if manifest inspection
@@ -29,7 +29,7 @@ async function load(autoFinish=false){
     items.value=result.uploads
     await refreshManifest()
     error.value=''
-    if(autoFinish&&!props.disabled){
+    if(autoFinish&&!props.disabled&&!batchUploading.value){
       // Fully transferred bytes are safe to finalize with no local file input.
       for(const item of result.uploads.filter(upload=>upload.can_finalize)){
         if(activeId.value)break
@@ -40,7 +40,7 @@ async function load(autoFinish=false){
   finally{loading.value=false}
 }
 async function finish(item:PendingUpload,automatic=false){
-  if(activeId.value||props.disabled)return
+  if(activeId.value||props.disabled||batchUploading.value)return
   activeId.value=item.id;activeStatus.value='Проверка и сохранение файла…'
   try{
     await batchApi.finishPending(item.id)
@@ -53,34 +53,20 @@ async function finish(item:PendingUpload,automatic=false){
   }finally{activeId.value='';activeStatus.value=''}
 }
 function pick(item:PendingUpload){
+  if(uploader.busy){uploader.visible=true;return}
   document.getElementById('pending-source-'+item.id)?.click()
 }
-async function continueFile(item:PendingUpload,event:Event){
+function continueFile(item:PendingUpload,event:Event){
   const input=event.target as HTMLInputElement
   const file=input.files?.item(0)
   input.value=''
   if(!file||activeId.value||props.disabled)return
-  activeId.value=item.id;activeStatus.value='Проверяем оригинал…'
   delete errors.value[item.id]
-  controller=new AbortController()
-  try{
-    await resumePendingUpload(item.id,{kind:'fo',batchId:props.batchId},
-      {file,relative:file.name},item,controller.signal,
-      count=>{progress.value[item.id]=count},
-      state=>{activeStatus.value=state.state==='waiting'
-        ?'Ожидание соединения · повтор через '+Math.ceil((state.delayMs||1000)/1000)+' с'
-        :'Передача восстановлена'})
-    delete errors.value[item.id]
-    items.value=(await batchApi.pending(props.batchId)).uploads
-    await refreshManifest()
-    emit('changed')
-  }catch(err){
-    errors.value[item.id]=controller.signal.aborted?'Передача приостановлена. Можно продолжить позже.':errorText(err)
-  }finally{controller=null;activeId.value='';activeStatus.value=''}
+  uploader.resume({batchId:props.batchId,item,file})
 }
 async function cancel(){
   const item=confirmCancel.value
-  if(!item||activeId.value||props.disabled)return
+  if(!item||activeId.value||props.disabled||batchUploading.value)return
   activeId.value=item.id;activeStatus.value='Отменяем незавершённую передачу…'
   try{
     await batchApi.cancelPending(item.id)
@@ -94,7 +80,12 @@ async function cancel(){
 }
 function online(){if(!activeId.value)void load(true)}
 onMounted(()=>{void load(true);window.addEventListener('online',online)})
-onUnmounted(()=>{controller?.abort();window.removeEventListener('online',online)})
+onUnmounted(()=>window.removeEventListener('online',online))
+watch(()=>uploader.lastCompleted,async completion=>{
+  if(!completion||!('batchId' in completion)||completion.batchId!==props.batchId)return
+  await load()
+  emit('changed')
+})
 usePolling(async()=>{if((items.value.length||manifest.value?.state==='waiting')&&!activeId.value)await load()},12000)
 </script>
 
@@ -128,13 +119,13 @@ usePolling(async()=>{if((items.value.length||manifest.value?.state==='waiting')&
       <div style="min-width:0;flex:1">
         <strong style="overflow-wrap:anywhere">{{item.filename}}</strong>
         <div class="meta">
-          {{bytes(progress[item.id]??item.received)}} / {{bytes(item.size)}} ·
-          {{!item.has_part?'временный файл на сервере отсутствует':item.can_finalize?'всё передано, осталось сохранить':'передача прервана'}}
+          {{bytes(item.received)}} / {{bytes(item.size)}} ·
+          {{batchUploading?'идёт загрузка партии':!item.has_part?'временный файл на сервере отсутствует':item.can_finalize?'всё передано, осталось сохранить':'передача прервана'}}
         </div>
       </div>
       <div class="row wrap">
-        <UiButton v-if="activeId===item.id&&controller" small kind="danger" @click="controller.abort()">Пауза</UiButton>
-        <template v-else-if="!activeId">
+        <UiButton v-if="batchUploading&&(!uploader.recovery||uploader.recovery.item.id===item.id)" small @click="uploader.visible=true">Открыть загрузку</UiButton>
+        <template v-else-if="!activeId&&!batchUploading">
           <UiButton v-if="item.can_finalize" small :disabled="disabled" @click="finish(item)">Завершить</UiButton>
           <UiButton v-else-if="item.has_part" small :disabled="disabled" @click="pick(item)">Продолжить</UiButton>
           <UiButton small kind="danger" :disabled="disabled" @click="confirmCancel=item">Отменить</UiButton>

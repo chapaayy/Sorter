@@ -11,10 +11,10 @@ import {useUploadSettingsStore} from '../../stores/uploadSettings'
 import type {UploadEntry} from '../../utils/upload'
 import type {BatchUploadManifest,UploadManifestFile} from '../../types/api'
 import {bytes,errorText} from '../../utils/format'
-import {useNoticeStore} from '../../stores/notice'
 import UiButton from '../../components/ui/UiButton.vue'
 const emit=defineEmits<{
-  (e:'finished',batchId:string):void
+  (e:'finished',batchId:string,message:string):void
+  (e:'batch',batchId:string):void
   (e:'state',busy:boolean,percent:number,phase:string):void
 }>()
 const entries=ref<UploadEntry[]>([]),folder=ref(''),batchId=ref(''),running=ref(false),error=ref(''),finished=ref(0)
@@ -26,7 +26,7 @@ const uploaded=computed(()=>amounts.value.reduce((a,b)=>a+b,0))
 const resumable=computed(()=>!!entries.value.length&&hasSavedSession.value)
 const percent=computed(()=>total.value?Math.min(100,100*uploaded.value/total.value):0)
 watch([running,percent,phase],()=>emit('state',running.value,percent.value,phase.value),{immediate:true})
-const notice=useNoticeStore(),uploadSettings=useUploadSettingsStore()
+const uploadSettings=useUploadSettingsStore()
 onMounted(async()=>{
   try{
     const defaults=await runApi.autoSettings()
@@ -82,6 +82,7 @@ async function start(){
       const created=await batchApi.create(folder.value)
       batchId.value=created.batch_id;saveId(batchId.value)
     }
+    emit('batch',batchId.value)
     phase.value='Проверка состава папки…'
     let manifestIds:string[]|null=null
     const current=await request(()=>batchApi.manifest(batchId.value))
@@ -148,10 +149,9 @@ async function start(){
       if(confirmed.state!=='complete')
         throw new Error('Сервер ожидает ещё '+confirmed.pending+' файлов. Выберите эту папку для продолжения.')
     }
-    notice.add(autoProcess.value
+    emit('finished',batchId.value,autoProcess.value
       ?'Все ФО сохранены. MegaLoc автоматически встанет в очередь; миниатюры формируются отдельно.'
-      :'Все фотографии партии сохранены. Миниатюры формируются отдельно.','ok')
-    emit('finished',batchId.value)
+      :'Все фотографии партии сохранены. Миниатюры формируются отдельно.')
   }catch(err){
     const firstError=error.value
     error.value=controller.signal.aborted

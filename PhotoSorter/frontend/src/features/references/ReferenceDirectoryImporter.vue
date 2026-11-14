@@ -1,22 +1,22 @@
 <script setup lang="ts">
-import {computed,ref,watch} from 'vue'
+import {computed,onUnmounted,ref,watch} from 'vue'
 import {referenceApi} from '../../api/references'
 import type {ImportPlan,ImportPlanEntry} from '../../api/references'
 import {inspectReferenceDirectory} from '../../utils/referenceSelection'
 import type {ReferenceSelection} from '../../utils/referenceSelection'
 import {useReferenceTransfer} from '../../composables/useReferenceTransfer'
 import {useUploadSettingsStore} from '../../stores/uploadSettings'
-import {useNoticeStore} from '../../stores/notice'
 import {bytes,errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 
 
-const emit=defineEmits<{(e:'finished'):void;(e:'state',busy:boolean,percent:number,phase:string):void}>()
-const uploadSettings=useUploadSettingsStore(),notice=useNoticeStore()
+const emit=defineEmits<{(e:'finished',message:string):void;(e:'state',busy:boolean,percent:number,phase:string):void}>()
+const uploadSettings=useUploadSettingsStore()
 const transfer=useReferenceTransfer()
 const selection=ref<ReferenceSelection|null>(null),plan=ref<ImportPlan|null>(null)
-const checking=ref(false),error=ref('')
+const checking=ref(false),starting=ref(false),error=ref('')
 let revision=0
+onUnmounted(()=>{revision++})
 const errors=computed(()=>[
   ...(selection.value?.errors||[]),
   ...(plan.value?.errors||[]).map(issue=>({path:issue.folder,reason:issue.reason}))
@@ -25,7 +25,8 @@ const planById=computed<Record<string,ImportPlanEntry>>(()=>
   Object.fromEntries((plan.value?.entries||[]).map(entry=>[entry.sam,entry])))
 const existingCount=computed(()=>plan.value?.entries.filter(entry=>entry.existing).length||0)
 const percent=computed(()=>selection.value?.totalBytes?100*transfer.sentBytes.value/selection.value.totalBytes:0)
-watch([transfer.busy,percent,transfer.phase],()=>emit('state',transfer.busy.value,percent.value,transfer.phase.value),{immediate:true})
+watch([starting,transfer.busy,percent,transfer.phase],()=>emit('state',starting.value||transfer.busy.value,percent.value,
+  starting.value?'Проверяем папку…':transfer.phase.value),{immediate:true})
 const ready=computed(()=>!checking.value&&!transfer.busy.value&&
   !!selection.value?.tasks.length&&!!plan.value&&!errors.value.length)
 
@@ -53,19 +54,21 @@ async function upload(){
   if(!ready.value||!selection.value)return
   error.value=''
   // Server verification is repeated immediately before beginning the batch.
+  starting.value=true
   checking.value=true
+  const current=revision
+  const {folders,tasks}=selection.value
   try{
-    const checked=await referenceApi.importPreview(selection.value.folders.map(folder=>folder.folder))
+    const checked=await referenceApi.importPreview(folders.map(folder=>folder.folder))
+    if(current!==revision)return
     plan.value=checked
     if(checked.errors.length)return
   }catch(err){error.value='Повторная проверка не удалась: '+errorText(err);return}
-  finally{checking.value=false}
-  const items=selection.value.tasks
-  const success=await transfer.start(items,uploadSettings.parallelUploads)
+  finally{checking.value=false;starting.value=false}
+  const success=await transfer.start(tasks,uploadSettings.parallelUploads)
   if(success){
-    notice.add('Образцы загружены. Подготовка поставлена в общую очередь.','ok')
     selection.value=null;plan.value=null
-    emit('finished')
+    emit('finished','Образцы загружены. Подготовка поставлена в общую очередь.')
   }
 }
 </script>

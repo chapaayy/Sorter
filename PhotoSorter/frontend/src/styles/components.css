@@ -139,6 +139,8 @@
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px;flex-wrap:wrap}
 .toast-stack{position:fixed;right:20px;bottom:20px;z-index:1100;display:grid;gap:8px;width:min(350px,calc(100vw - 40px))}
 .toast{background:var(--panel);border:1px solid var(--border);padding:13px 16px;border-radius:10px;box-shadow:var(--shadow);display:flex;gap:10px;justify-content:space-between}
+.toast-actions{display:flex;align-items:center;gap:4px;flex:none}
+body:has(.upload-floating) .toast-stack{bottom:76px}
 .auth-loading{min-height:100dvh;display:grid;place-items:center;background:#212121;color:#eee;font-size:12px;letter-spacing:.13em}
 .upload-drop{border:1px dashed var(--border);border-radius:12px;background:var(--panel-alt);padding:25px;text-align:center;cursor:pointer}
 .upload-drop:hover{border-color:var(--accent)}

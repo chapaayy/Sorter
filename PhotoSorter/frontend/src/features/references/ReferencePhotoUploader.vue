@@ -4,13 +4,12 @@ import {ALLOWED,MAX_IMAGE_UPLOAD_BYTES} from '../../utils/upload'
 import type {UploadEntry} from '../../utils/upload'
 import {useReferenceTransfer} from '../../composables/useReferenceTransfer'
 import {useUploadSettingsStore} from '../../stores/uploadSettings'
-import {useNoticeStore} from '../../stores/notice'
 import {bytes} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 
 const props=defineProps<{selectedSam:string;label:string}>()
-const emit=defineEmits<{(e:'finished'):void;(e:'state',busy:boolean,percent:number,phase:string):void}>()
-const uploadSettings=useUploadSettingsStore(),notice=useNoticeStore(),transfer=useReferenceTransfer()
+const emit=defineEmits<{(e:'finished',message:string):void;(e:'state',busy:boolean,percent:number,phase:string):void}>()
+const uploadSettings=useUploadSettingsStore(),transfer=useReferenceTransfer()
 const files=ref<UploadEntry[]>([]),issues=ref<string[]>([]),target=ref('')
 const total=computed(()=>files.value.reduce((sum,item)=>sum+item.file.size,0))
 const percent=computed(()=>total.value?100*transfer.sentBytes.value/total.value:0)
@@ -35,9 +34,8 @@ async function upload(){
   if(!ready.value)return
   const current=files.value.map(entry=>({sam:target.value,entry}))
   if(await transfer.start(current,uploadSettings.parallelUploads)){
-    notice.add('Файлы приняты. Подготовка образцов поставлена в очередь.','ok')
     files.value=[];issues.value=[]
-    emit('finished')
+    emit('finished','Файлы приняты. Подготовка образцов поставлена в очередь.')
   }
 }
 </script>
