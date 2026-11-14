@@ -252,8 +252,8 @@ def test_auto_fo_reserves_fifo_on_final_manifest_file(system,monkeypatch):
         assert db.execute("SELECT count(*) AS n FROM jobs WHERE batch_id=%s",
                           (batch,)).fetchone()["n"]==1
 
-def test_duplicate_only_preparation_does_not_create_version(system):
-    ref_id,path=add_published_reference(system)
+def test_duplicate_only_import_does_not_create_job_or_version(system):
+    _,path=add_published_reference(system)
     raw=path.read_bytes()
     digest=hashlib.sha256(raw).hexdigest()
     sid,fid=uuid.uuid4(),uuid.uuid4()
@@ -262,15 +262,13 @@ def test_duplicate_only_preparation_does_not_create_version(system):
     entry=ImportFile(upload_id=fid,sam="SAM 0001",
         relative_path="SAM 0001/duplicate.jpg",filename="duplicate.jpg",
         size=len(raw),sha256=digest)
+    with database.connect() as db:
+        current=reference_versions.current(db)["version_number"]
     reference_imports.register_manifest(sid,[entry])
     assert reference_uploads.confirm_duplicate(sid,fid,digest)["already_present"]
+    assert reference_imports.complete(sid)["state"]=="unchanged"
     with database.connect() as db:
-        task=work_queue.claim_next(db)
-        current=reference_versions.current(db)["version_number"]
-    assert task["kind"]=="reference_preparation"
-    result=reference_prepare.run(task["id"])
-    assert result=={"version":current,"changed":False}
-    with database.connect() as db:
+        assert work_queue.claim_next(db) is None
         assert reference_versions.current(db)["version_number"]==current
         assert db.execute("SELECT count(*) AS n FROM reference_library_versions").fetchone()["n"]==current
 
@@ -315,16 +313,9 @@ def test_stop_running_preparation_does_not_implicitly_skip_change(system):
 
 def test_delete_does_not_jump_ahead_of_queued_preparation(system):
     source_id,original=add_published_reference(system)
-    raw=original.read_bytes()
-    digest=hashlib.sha256(raw).hexdigest()
-    sid,uid=uuid.uuid4(),uuid.uuid4()
-    from server.api.routes.reference_imports import ImportFile
-    reference_imports.create(sid)
-    reference_imports.register_manifest(sid,[ImportFile(
-       upload_id=uid,sam="SAM 0001",
-       relative_path="SAM 0001/duplicate.jpg",filename="duplicate.jpg",
-       size=len(raw),sha256=digest)])
-    assert reference_uploads.confirm_duplicate(sid,uid,digest)["already_present"]
+    _,_,_,digest,_=prepare_import(system)
+    cache_vector(system,digest)
+    cache_vector(system,hashlib.sha256(original.read_bytes()).hexdigest())
     with pytest.raises(HTTPException) as conflict:
         library_service.delete_photo(source_id)
     assert conflict.value.status_code==409
@@ -333,8 +324,8 @@ def test_delete_does_not_jump_ahead_of_queued_preparation(system):
         before=reference_versions.current(db)["version_number"]
     assert job["kind"]=="reference_preparation"
     result=reference_prepare.run(job["id"])
-    assert result["changed"] is False
-    assert result["version"]==before
+    assert result["changed"] is True
+    assert result["version"]==before+1
 
 
 def test_clean_database_allows_first_reference_import(system):

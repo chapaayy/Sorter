@@ -8,9 +8,11 @@ import {useReferenceTransfer} from '../../composables/useReferenceTransfer'
 import {useUploadSettingsStore} from '../../stores/uploadSettings'
 import {bytes,errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
+import ReferenceImportReview from './ReferenceImportReview.vue'
+import ReferenceTransferProgress from './ReferenceTransferProgress.vue'
 
 
-const emit=defineEmits<{(e:'finished',message:string):void;(e:'state',busy:boolean,percent:number,phase:string):void}>()
+const emit=defineEmits<{(e:'finished',message:string,queued:boolean):void;(e:'state',busy:boolean,percent:number,phase:string):void}>()
 const uploadSettings=useUploadSettingsStore()
 const transfer=useReferenceTransfer()
 const selection=ref<ReferenceSelection|null>(null),plan=ref<ImportPlan|null>(null)
@@ -24,8 +26,7 @@ const errors=computed(()=>[
 const planById=computed<Record<string,ImportPlanEntry>>(()=>
   Object.fromEntries((plan.value?.entries||[]).map(entry=>[entry.sam,entry])))
 const existingCount=computed(()=>plan.value?.entries.filter(entry=>entry.existing).length||0)
-const percent=computed(()=>selection.value?.totalBytes?100*transfer.sentBytes.value/selection.value.totalBytes:0)
-watch([starting,transfer.busy,percent,transfer.phase],()=>emit('state',starting.value||transfer.busy.value,percent.value,
+watch([starting,transfer.busy,transfer.percent,transfer.phase],()=>emit('state',starting.value||transfer.busy.value,transfer.percent.value,
   starting.value?'Проверяем папку…':transfer.phase.value),{immediate:true})
 const ready=computed(()=>!checking.value&&!transfer.busy.value&&
   !!selection.value?.tasks.length&&!!plan.value&&!errors.value.length)
@@ -35,6 +36,7 @@ async function choose(event:Event){
   const files=Array.from(input.files||[])
   input.value=''
   const current=++revision
+  transfer.reset()
   selection.value=files.length?inspectReferenceDirectory(files):null
   plan.value=null;error.value=''
   if(!selection.value)return
@@ -52,6 +54,7 @@ async function choose(event:Event){
 
 async function upload(){
   if(!ready.value||!selection.value)return
+  if(transfer.approved.value){await accept();return}
   error.value=''
   // Server verification is repeated immediately before beginning the batch.
   starting.value=true
@@ -65,16 +68,28 @@ async function upload(){
     if(checked.errors.length)return
   }catch(err){error.value='Повторная проверка не удалась: '+errorText(err);return}
   finally{checking.value=false;starting.value=false}
-  const success=await transfer.start(tasks,uploadSettings.parallelUploads)
-  if(success){
+  await transfer.inspect(tasks)
+}
+
+async function accept(){
+  if(transfer.review.value&&!transfer.review.value.newFiles.length){
+    emit('finished','Все выбранные фото уже есть в библиотеке. В очередь ничего не добавлено.',false)
+    return
+  }
+  const result=await transfer.start(uploadSettings.parallelUploads)
+  if(result){
     selection.value=null;plan.value=null
-    emit('finished','Образцы загружены. Подготовка поставлена в общую очередь.')
+    const queued=result.state==='queued'
+    emit('finished',queued?'Образцы загружены. Подготовка поставлена в общую очередь.':
+      'Все выбранные фото уже есть в библиотеке. В очередь ничего не добавлено.',queued)
   }
 }
 </script>
 
 <template>
-<div class="stack">
+<ReferenceImportReview v-if="transfer.review.value" :review="transfer.review.value"
+  @confirm="accept" @cancel="transfer.reset()"/>
+<div v-else class="stack">
   <p class="meta">Выберите общую папку. Внутри — папки конструкций строго вида
     <strong>SAM 0004 — Гагарина 64</strong> или <strong>TLT 3245 — Южное шоссе 10</strong>.
     Существующие конструкции дополняются, новые создаются. Фото не заменяются и не удаляются.</p>
@@ -102,16 +117,16 @@ async function upload(){
     <div v-if="checking" class="meta">Проверяем названия и существующую библиотеку на сервере…</div>
     <template v-else-if="plan">
       <div class="row wrap meta">
-        <span>{{existingCount}} существующих конструкций — дополним</span>
-        <span>{{plan.entries.length-existingCount}} новых — создадим</span>
-        <span>Объём: {{bytes(selection.totalBytes)}}</span>
+        <span>В библиотеке: {{existingCount}}</span>
+        <span>Новых конструкций: {{plan.entries.length-existingCount}}</span>
+        <span>Выбрано: {{bytes(selection.totalBytes)}}</span>
       </div>
       <div class="stack-sm" style="max-height:270px;overflow-y:auto">
         <div v-for="folder in selection.folders" :key="folder.sam" class="row between wrap"
           style="padding:9px 0;border-bottom:1px solid var(--border-subtle)">
           <div>
             <strong>{{folder.folder}}</strong>
-            <div class="meta">{{planById[folder.sam]?.existing?'Дополнение существующей':'Новая конструкция'}}</div>
+            <div class="meta">{{planById[folder.sam]?.existing?'Уже в библиотеке':'Новая конструкция'}}</div>
           </div>
           <span class="meta">{{folder.count}} фото</span>
         </div>
@@ -132,18 +147,13 @@ async function upload(){
       <div class="row">
         <UiButton v-if="transfer.busy.value" kind="danger" @click="transfer.pause()">Пауза</UiButton>
         <UiButton v-else kind="primary" :disabled="!ready" @click="upload">
-          Загрузить и подготовить
+          {{transfer.approved.value?'Продолжить загрузку':'Загрузить и подготовить'}}
         </UiButton>
       </div>
     </div>
-    <div v-if="transfer.busy.value||transfer.completed.value" class="stack-sm">
-      <div class="row between meta">
-        <span>Готово {{transfer.completed.value}} из {{selection.tasks.length}} · совпадений {{transfer.duplicates.value}}</span>
-        <span>{{bytes(transfer.sentBytes.value)}} / {{bytes(selection.totalBytes)}}</span>
-      </div>
-      <div class="progress-track"><span class="progress-fill"
-        :style="{width:selection.totalBytes?100*transfer.sentBytes.value/selection.totalBytes+'%':'0%'}"/></div>
-    </div>
+    <ReferenceTransferProgress v-if="transfer.approved.value" :completed="transfer.completed.value"
+      :total-files="transfer.totalFiles.value" :duplicates="transfer.duplicates.value" :sent-bytes="transfer.sentBytes.value"
+      :total-bytes="transfer.totalBytes.value" :percent="transfer.percent.value"/>
     <div v-if="transfer.phase.value" class="meta" role="status">{{transfer.phase.value}}</div>
     <div v-if="transfer.error.value" class="alert error" role="alert">{{transfer.error.value}}</div>
   </div>

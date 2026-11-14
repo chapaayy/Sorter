@@ -1,4 +1,4 @@
-"""Stage-2 staged imports; API is gated off until immutable FIFO worker is ready."""
+"""Preflight and resumable staging for reference imports."""
 from __future__ import annotations
 
 import asyncio
@@ -29,6 +29,18 @@ class Manifest(BaseModel):
 
 class DuplicateConfirmation(BaseModel):
     sha256:str
+
+class ComparisonFile(BaseModel):
+    sam:str=Field(min_length=1,max_length=80)
+    sha256:str=Field(pattern=r"^[0-9a-f]{64}$")
+    size:int=Field(gt=0,le=60*1024*1024)
+
+class Comparison(BaseModel):
+    files:list[ComparisonFile]=Field(min_length=1,max_length=reference_imports.MAX_FILES)
+
+@router.post("/compare")
+def compare(data:Comparison):
+    return reference_imports.compare(data.files)
 
 @router.post("",status_code=201)
 def create(data:NewSession):

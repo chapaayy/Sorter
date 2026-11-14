@@ -75,6 +75,16 @@ def matching_published(db,sam,digest,size):
           AND m.declared_size=%s AND m.source_kind='staged'
     """,(sam,digest,size)).fetchall()
 
+def compare_published(db,sams,digests,sizes):
+    return db.execute("""
+        SELECT DISTINCT m.sam,m.source_hash,m.declared_size,m.target_path
+        FROM unnest(%s::text[],%s::text[],%s::bigint[]) AS selected(sam,digest,size)
+        JOIN reference_version_members m
+          ON (m.sam,m.source_hash,m.declared_size)=(selected.sam,selected.digest,selected.size)
+        JOIN reference_library_state s ON s.current_version_id=m.version_id
+        WHERE s.id=1 AND m.source_kind='staged'
+    """,(sams,digests,sizes)).fetchall()
+
 def matching_staged(db, session_id, sam, digest, size, exclude_id):
     return db.execute("""
         SELECT stored_path FROM reference_import_files
@@ -92,6 +102,13 @@ def preparation(db, session_id):
         LEFT JOIN work_queue w ON w.reference_job_id=p.id
         WHERE p.session_id=%s
     """,(session_id,)).fetchone()
+
+def complete_without_preparation(db,session_id):
+    db.execute("""
+        UPDATE reference_import_sessions SET upload_state='complete',
+            preparation_state='completed',completed_at=now(),error=NULL
+        WHERE id=%s
+    """,(session_id,))
 
 def enqueue_completed(db, session_id, count):
     """Atomic with state=complete: one prep job and one FIFO entry per session."""

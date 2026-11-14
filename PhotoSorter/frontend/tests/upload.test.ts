@@ -1,5 +1,5 @@
 import {parseConstructionFolder,inspectReferenceDirectory} from '../src/utils/referenceSelection'
-import {indexReferenceHashes,fileSha256} from '../src/utils/referenceDuplicates'
+import {reviewReferences,fileSha256} from '../src/utils/referenceDuplicates'
 import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest'
 import {directoryEntries,ALLOWED,UPLOAD_CHUNK_BYTES,uploadOne,resumePendingUpload,expectedUploadId} from '../src/utils/upload'
 import {runUploadQueue} from '../src/utils/uploadQueue'
@@ -264,9 +264,15 @@ describe('strict construction library imports',()=>{
 describe('reference duplicate detection before transfer',()=>{
   it('keeps hashes scoped to one construction, independent of filenames',()=>{
     const hash='a'.repeat(64)
-    const index=indexReferenceHashes([{id:'1',sam:'SAM 0004',name:'old.jpg',sha256:hash}])
-    expect(index.get('SAM 0004')?.has(hash)).toBe(true)
-    expect(index.has('TLT 0004')).toBe(false)
+    const photo=(sam:string,name:string,sha256=hash)=>({sam,sha256,entry:{file:new File(['photo'],name),relative:name}})
+    const files=[photo('SAM 0004','renamed.jpg'),photo('TLT 0004','new.jpg'),
+      photo('TLT 0004','copy.jpg'),photo('TLT 0004','new.jpg','b'.repeat(64))]
+    const review=reviewReferences(files,[true,false,false,false])
+    expect(review.newFiles).toEqual([files[1],files[3]])
+    expect(review.duplicates.map(file=>[file.entry.relative,file.reason]))
+      .toEqual([['renamed.jpg','library'],['copy.jpg','selection']])
+    expect(review.totalBytes).toBe(10)
+    expect(()=>reviewReferences(files,[true])).toThrow('неполный результат')
   })
   it('hashes actual file bytes with SHA-256 when browser crypto is available',async()=>{
     const digest=await fileSha256(new File(['abc'],'new.jpg'))

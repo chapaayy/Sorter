@@ -149,16 +149,42 @@ def test_duplicate_can_be_confirmed_against_published_staged_source(isolated_imp
     source.write_bytes(raw)
     with database.connect() as db:
         db.execute("SELECT pg_advisory_xact_lock(723409133)")
-        reference_publication.publish(db,[{
+        version,_=reference_publication.publish(db,[{
             "reference_id":key,"sam":"SAM 0004","filename":"old.jpg",
             "source_hash":digest,"target_path":str(source),
             "declared_size":len(raw),"source_kind":"staged"}],"test-model")
     item=entry("new-name.jpg",sha256=digest)
-    sid=open_session([item])
-    assert reference_uploads.confirm_duplicate(sid,item.upload_id,digest)["already_present"]
-    assert reference_imports.status(sid)["duplicates"]==1
-    assert count_jobs()==1
+    file=routes.ComparisonFile(sam=item.sam,sha256=digest,size=len(raw))
+    matches=routes.compare(routes.Comparison(files=[
+        file,file.model_copy(update={"sam":"SAM 0005"}),
+        file.model_copy(update={"sha256":"0"*64}),file.model_copy(update={"size":len(raw)+1}),file
+    ]))
+    assert matches=={"duplicates":[True,False,False,False,True]}
+    assert reference_imports.list_sessions()["total"]==0
+    for send_bytes in (False,True):
+        sid=open_session([item])
+        if send_bytes:
+            assert transfer(sid,item,raw)["already_present"]
+        else:
+            assert reference_uploads.confirm_duplicate(sid,item.upload_id,digest)["already_present"]
+        state=reference_imports.status(sid)
+        assert state["duplicates"]==1
+        assert state["state"]=="complete"
+        assert state["preparation_job_id"] is None
+        assert state["files"][0]["received"]==0
+        assert reference_imports.file_status(sid,item.upload_id)["offset"]==0
+        for _ in range(2):
+            assert reference_imports.complete(sid)=={
+                "session_id":str(sid),"preparation_job_id":None,
+                "queue_seq":None,"state":"unchanged"}
+        item=entry("another-name.jpg",sha256=digest)
+    assert count_jobs()==0
+    with database.connect() as db:
+        assert db.execute("SELECT count(*) AS n FROM work_queue").fetchone()["n"]==0
+        assert db.execute("SELECT current_version_id FROM reference_library_state WHERE id=1").fetchone()["current_version_id"]==version["id"]
     assert source.read_bytes()==raw
+    source.write_bytes(b"x"*len(raw))
+    assert routes.compare(routes.Comparison(files=[file]))=={"duplicates":[False]}
 
 def test_uploaded_bytes_are_deduplicated_on_server(isolated_import):
     raw=_jpg()

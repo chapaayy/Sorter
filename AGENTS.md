@@ -60,6 +60,10 @@
   `server/services/reference_imports.py`, `reference_uploads.py`
   и `storage/reference_objects.py`. Нельзя возвращать
   `kind=reference` в `/api/uploads`.
+- Предпросмотр дублей образцов читает текущую опубликованную версию
+  (ключ конструкции, размер, SHA-256), без создания сессии. Клиент не
+  передаёт подтверждённые дубли, сервер не создаёт FIFO-задание без
+  новых сохранённых образцов.
 - `uploads.py` отвечает только за ФО. `services/reference_publication.py`
   атомарно публикует версии; MegaLoc берёт исключительно pinned manifest;
   `reference_gallery.py` хранит лишь представление готовых файлов.

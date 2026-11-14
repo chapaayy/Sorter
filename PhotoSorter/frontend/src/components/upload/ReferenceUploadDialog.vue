@@ -8,9 +8,9 @@ import UploadDialog from './UploadDialog.vue'
 const upload=useUploadCenterStore(),notice=useNoticeStore()
 const job=upload.windows.references
 function onState(running:boolean,percent:number,phase:string){upload.report('references',running,percent,phase)}
-function finished(message:string){
-  upload.finish('references',{})
-  notice.add(message,'ok',{to:'/queue',label:'К очереди'})
+function finished(message:string,queued:boolean){
+  upload.finish('references',queued?{}:undefined)
+  notice.add(message,queued?'ok':'info',queued?{to:'/queue',label:'К очереди'}:undefined)
 }
 function created(sam:string){
   upload.finish('references',{sam})

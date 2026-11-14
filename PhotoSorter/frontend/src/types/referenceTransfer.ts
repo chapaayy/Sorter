@@ -6,3 +6,15 @@ export interface ReferenceTransferItem {
   address?:string
   entry:UploadEntry
 }
+
+export interface CheckedReference extends ReferenceTransferItem {
+  sha256:string
+}
+export interface DuplicateReference extends CheckedReference {
+  reason:'library'|'selection'
+}
+export interface ReferenceReview {
+  newFiles:CheckedReference[]
+  duplicates:DuplicateReference[]
+  totalBytes:number
+}

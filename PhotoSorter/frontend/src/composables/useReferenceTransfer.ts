@@ -1,13 +1,12 @@
-import {onUnmounted,ref} from 'vue'
+import {computed,onUnmounted,ref,shallowRef} from 'vue'
 import {ApiError} from '../api/client'
 import {referenceImportsApi} from '../api/referenceImports'
-import {referenceApi} from '../api/references'
-import {fileSha256,indexReferenceHashes} from '../utils/referenceDuplicates'
+import {fileSha256,reviewReferences} from '../utils/referenceDuplicates'
 import {runUploadQueue} from '../utils/uploadQueue'
 import {withUploadRetry} from '../utils/uploadRetry'
 import {errorText} from '../utils/format'
-import type {ReferenceTransferItem} from '../types/referenceTransfer'
-import type {ManifestFile,ReferenceImportStatus} from '../api/referenceImports'
+import type {CheckedReference,ReferenceReview,ReferenceTransferItem} from '../types/referenceTransfer'
+import type {Completion,ManifestFile,ReferenceImportStatus} from '../api/referenceImports'
 
 const CHUNK=16*1024*1024
 type SavedSession={sessionId:string;ids:string[];manifestKey:string}
@@ -36,33 +35,71 @@ function remove(key:string){
 /** Manifest-first, server-authoritative resumable staging. Writes only to isolated staged reference storage. */
 export function useReferenceTransfer(){
   const busy=ref(false),error=ref(''),phase=ref(''),completed=ref(0),duplicates=ref(0),sentBytes=ref(0)
+  const review=shallowRef<ReferenceReview|null>(null),approved=shallowRef<ReferenceReview|null>(null)
+  const totalBytes=ref(0),totalFiles=computed(()=>approved.value?.newFiles.length||0)
+  const percent=computed(()=>totalBytes.value?100*sentBytes.value/totalBytes.value:0)
   let controller:AbortController|null=null
 
-  async function start(items:readonly ReferenceTransferItem[],parallel:number):Promise<boolean>{
-    if(busy.value||!items.length)return false
-    busy.value=true;error.value='';completed.value=0;duplicates.value=0;sentBytes.value=0
+  function reset(){
+    review.value=null;approved.value=null;completed.value=0;duplicates.value=0
+    totalBytes.value=0;sentBytes.value=0;error.value='';phase.value=''
+  }
+  function begin(){
+    busy.value=true;error.value=''
     controller=new AbortController()
-    const signal=controller.signal
+    return controller.signal
+  }
+  function end(){busy.value=false;controller=null}
+
+  async function inspect(items:readonly ReferenceTransferItem[]){
+    if(busy.value||!items.length)return
+    reset()
+    const signal=begin()
+    try{
+      const checked:CheckedReference[]=[]
+      for(const [index,item] of items.entries()){
+        signal.throwIfAborted()
+        phase.value='Проверка файлов на дубли · '+index+' из '+items.length
+        const hash=await fileSha256(item.entry.file)
+        if(!hash)throw new Error('Не удалось прочитать файл «'+item.entry.file.name+'». Для проверки нужен HTTPS и поддержка SHA-256.')
+        checked.push({...item,sha256:hash})
+      }
+      signal.throwIfAborted()
+      phase.value='Сравниваем с библиотекой образцов…'
+      const result=await referenceImportsApi.compare(checked.map(({sam,sha256,entry})=>
+        ({sam,sha256,size:entry.file.size})),signal)
+      signal.throwIfAborted()
+      review.value=reviewReferences(checked,result.duplicates)
+      phase.value=''
+    }catch(e){
+      phase.value=''
+      error.value=signal.aborted?'Проверка остановлена. Её можно запустить снова.':errorText(e)
+    }finally{end()}
+  }
+
+  async function start(parallel:number):Promise<Completion|null>{
+    if(busy.value)return null
+    const confirmed=review.value??approved.value
+    if(!confirmed?.newFiles.length)return null
+    const items=confirmed.newFiles
+    approved.value=confirmed;review.value=null
+    const signal=begin()
+    completed.value=0;duplicates.value=0;sentBytes.value=0;totalBytes.value=confirmed.totalBytes
     const key=stableKey(items)
     const amounts=items.map(()=>0)
     const update=(i:number,n:number)=>{
+      sentBytes.value+=n-amounts[i]!
       amounts[i]=n
-      sentBytes.value=amounts.reduce((sum,value)=>sum+value,0)
+    }
+    const skip=(i:number)=>{
+      // Bytes already transmitted during this attempt still count, even if
+      // another import published the photo after the comparison.
+      totalBytes.value-=items[i]!.entry.file.size-amounts[i]!
+      completed.value++;duplicates.value++
     }
     try{
       const request=<T,>(fn:()=>Promise<T>)=>withUploadRetry(fn,signal,s=>
         {phase.value=s.state==='waiting'?'Ожидание соединения · повтор '+s.attempt:'Передача файлов'})
-      phase.value='Проверка контрольных сумм…'
-      // A full hash binds the selected file to the immutable session manifest,
-      // including a fresh browser selection after disconnect/refresh.
-      const hashes:string[]=[]
-      for(let i=0;i<items.length;i++){
-        if(signal.aborted)throw new DOMException('Пауза','AbortError')
-        const digest=await fileSha256(items[i]!.entry.file)
-        if(!digest)throw new Error('Нужен HTTPS и поддержка SHA-256 в браузере')
-        hashes.push(digest)
-        phase.value='Проверка файлов '+(i+1)+'/'+items.length
-      }
       let session=saved(key)
       if(session&&session.ids.length!==items.length){session=null;remove(key)}
       if(!session){
@@ -77,7 +114,7 @@ export function useReferenceTransfer(){
         relative_path:item.entry.relative,
         filename:item.entry.file.name,
         size:item.entry.file.size,
-        sha256:hashes[i]!
+        sha256:item.sha256
       }))
       phase.value='Регистрация полного списка образцов…'
       await request(()=>referenceImportsApi.create(sid))
@@ -92,37 +129,24 @@ export function useReferenceTransfer(){
       }
       if(state.expected!==items.length||state.files.length!==items.length)
         throw new Error('Сервер вернул неполный манифест образцов')
-      const knownFiles=await referenceApi.files().catch(()=>({files:[]}))
-      const known=indexReferenceHashes(knownFiles.files)
       const byId=new Map(state.files.map(file=>[file.upload_id,file]))
       phase.value='Передача файлов'
       const failures=await runUploadQueue(items.length,parallel,signal,async i=>{
         const item=items[i]!,entry=manifest[i]!
         const existing=byId.get(entry.upload_id)
-        if(!existing||existing.sha256!==hashes[i]||existing.size!==entry.size||
+        if(!existing||existing.sha256!==item.sha256||existing.size!==entry.size||
            existing.relative_path!==entry.relative_path||existing.sam!==entry.sam)
           throw new Error('Состав файлов на сервере не соответствует выбранной папке')
-        if(existing.state==='finalized'||existing.state==='duplicate'){
+        if(existing.state==='duplicate'){skip(i);return}
+        if(existing.state==='finalized'){
           update(i,item.entry.file.size);completed.value++
-          if(existing.state==='duplicate')duplicates.value++
           return
-        }
-        const knownHashes=known.get(item.sam)
-        if(knownHashes?.has(hashes[i]!)){
-          try{
-            await request(()=>referenceImportsApi.duplicate(sid,entry.upload_id,hashes[i]!))
-            update(i,item.entry.file.size);completed.value++;duplicates.value++
-            return
-          }catch(e){
-            // The server may have removed the old source; send the bytes.
-            if(!(e instanceof ApiError)||e.status!==409)throw e
-          }
         }
         let stateFile=await request(()=>referenceImportsApi.file(sid,entry.upload_id))
         let offset=stateFile.offset
+        if(stateFile.state==='duplicate'){skip(i);return}
         if(stateFile.state!=='pending'){
           update(i,item.entry.file.size);completed.value++
-          if(stateFile.state==='duplicate')duplicates.value++
           return
         }
         update(i,offset)
@@ -138,6 +162,7 @@ export function useReferenceTransfer(){
           }catch(e){
             if(!(e instanceof ApiError)||e.status!==409)throw e
             stateFile=await request(()=>referenceImportsApi.file(sid,entry.upload_id))
+            if(stateFile.state==='duplicate'){skip(i);return}
             if(stateFile.state!=='pending'){
               offset=item.entry.file.size;update(i,offset);break
             }
@@ -146,7 +171,7 @@ export function useReferenceTransfer(){
           }
         }
         const result=await request(()=>referenceImportsApi.finish(sid,entry.upload_id))
-        if(result.sha256!==hashes[i])throw new Error('Контрольная сумма образца изменилась')
+        if(result.sha256!==item.sha256)throw new Error('Контрольная сумма образца изменилась')
         if(result.already_present)duplicates.value++
         completed.value++;update(i,item.entry.file.size)
       },{
@@ -160,17 +185,17 @@ export function useReferenceTransfer(){
       state=await request(()=>referenceImportsApi.status(sid))
       if(state.state!=='complete'||state.pending!==0)
         throw new Error('Сервер ожидает ещё '+state.pending+' файлов, выберите исходные файлы повторно')
-      await request(()=>referenceImportsApi.complete(sid))
+      const result=await request(()=>referenceImportsApi.complete(sid))
       remove(key)
-      phase.value='Подготовка образцов поставлена в очередь'
-      return true
+      phase.value=result.state==='queued'?'Подготовка образцов поставлена в очередь':'Все файлы уже есть в библиотеке'
+      return result
     }catch(e){
-      error.value=signal.aborted?'Передача приостановлена. Повторно выберите те же файлы для продолжения.':
+      error.value=signal.aborted?'Передача приостановлена. Нажмите «Продолжить загрузку».':
         error.value?error.value+' · '+errorText(e):errorText(e)
-      return false
-    }finally{busy.value=false;controller=null}
+      return null
+    }finally{end()}
   }
   function pause(){controller?.abort()}
   onUnmounted(pause)
-  return {busy,error,phase,completed,duplicates,sentBytes,start,pause}
+  return {busy,error,phase,completed,duplicates,sentBytes,totalBytes,totalFiles,percent,review,approved,reset,inspect,start,pause}
 }

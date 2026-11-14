@@ -707,6 +707,7 @@ for(const mode of ['single','folder'] as const)test('staged reference '+mode+' u
     const url=new URL(route.request().url())
     const path=url.pathname
     const method=route.request().method()
+    if(path==='/api/reference-imports/compare')return respond(route,{duplicates:[false]})
     if(path==='/api/reference-imports'){
       if(method==='GET')return respond(route,{sessions:[],total:0})
       const payload=JSON.parse(route.request().postData()||'{}')
@@ -767,6 +768,7 @@ for(const mode of ['single','folder'] as const)test('staged reference '+mode+' u
       })
       await page.getByRole('button',{name:'Добавить фото',exact:true}).click()
     }
+    await page.getByRole('button',{name:'ОК',exact:true}).click()
     await expect.poll(()=>sending).toBe(true)
     await page.getByRole('button',{name:'Свернуть загрузку'}).click()
     await openQueue(page)
@@ -788,6 +790,103 @@ for(const mode of ['single','folder'] as const)test('staged reference '+mode+' u
     await expect(page).toHaveURL(/\/queue$/)
     await expect(indicator).toBeHidden()
   }finally{gate.release();if(folder)await rm(folder,{recursive:true,force:true})}
+})
+
+test('reference folder with only duplicates never starts transfer or creates a job',async({page})=>{
+  let checked=0,writes=0
+  await page.route('**/api/references/import/preview',route=>respond(route,{
+    errors:[],entries:[{sam:'SAM 0004',folder:'SAM 0004 — Гагарина 64',existing:true}]
+  }))
+  await page.route('**/api/reference-imports{,/**}',route=>{
+    const path=new URL(route.request().url()).pathname
+    if(path.endsWith('/compare')){
+      const {files}=route.request().postDataJSON()
+      expect(files).toEqual([{sam:'SAM 0004',sha256:expect.stringMatching(/^[0-9a-f]{64}$/),size:6}])
+      checked++
+      return respond(route,{duplicates:[true]})
+    }
+    writes++
+    return route.fulfill({status:500,body:'Unexpected staging request'})
+  })
+  const folder=await mkdtemp(join(tmpdir(),'map-ref-duplicate-'))
+  try{
+    const construction=join(folder,'SAM 0004 — Гагарина 64')
+    await mkdir(construction)
+    await writeFile(join(construction,'copy.jpg'),'sample')
+    await page.goto('/references')
+    await page.getByRole('button',{name:'+ Создать конструкцию'}).click()
+    const dialog=page.getByRole('dialog',{name:'Создать конструкцию'})
+    await dialog.getByRole('tab',{name:'Импорт папки'}).click()
+    await dialog.locator('input[webkitdirectory]').setInputFiles(folder)
+    await dialog.getByRole('button',{name:'Загрузить и подготовить'}).click()
+    await expect(dialog.getByText('Дубли — 1')).toBeVisible()
+    await expect(dialog.getByText(/copy.jpg/)).toBeVisible()
+    await expect(dialog.getByText('Новые фото — 0')).toBeVisible()
+    await dialog.getByRole('button',{name:'ОК',exact:true}).click()
+    await expect(dialog).toBeHidden()
+    await expect(page.getByText('Все выбранные фото уже есть в библиотеке. В очередь ничего не добавлено.')).toBeVisible()
+    await expect(page.getByText('К очереди',{exact:true})).toHaveCount(0)
+    expect(checked).toBe(1)
+    expect(writes).toBe(0)
+  }finally{await rm(folder,{recursive:true,force:true})}
+})
+
+test('reference review cancels without changes and uploads only confirmed new photos',async({page})=>{
+  const requests:string[]=[]
+  const gate=holdTransfer()
+  let registered:any
+  await page.route('**/api/reference-imports{,/**}',async route=>{
+    const path=new URL(route.request().url()).pathname
+    if(path.endsWith('/compare')){
+      const {files}=route.request().postDataJSON()
+      expect(files[1].sha256).toBe(files[2].sha256)
+      return respond(route,{duplicates:[true,false,false]})
+    }
+    const method=route.request().method()
+    requests.push(method+':'+path)
+    if(path==='/api/reference-imports')return respond(route,{})
+    if(path.endsWith('/manifest')){
+      const {files}=route.request().postDataJSON()
+      expect(files).toHaveLength(1)
+      registered=files[0]
+      expect(registered.filename).toBe('new.jpg')
+      return respond(route,{expected:1,files:[{...registered,state:'pending'}]})
+    }
+    if(method==='GET'&&path.includes('/files/'))return respond(route,{offset:0,state:'pending'})
+    if(method==='PATCH'){
+      await gate.waiting
+      return respond(route,{offset:registered.size})
+    }
+    if(path.endsWith('/finish'))return respond(route,{sha256:registered.sha256})
+    if(path.endsWith('/complete'))return respond(route,{state:'queued',queue_seq:2,preparation_job_id:'id'})
+    return respond(route,{state:'complete',pending:0})
+  })
+  try{
+    await page.goto('/references')
+    await page.getByRole('button',{name:'+ Добавить фото'}).click()
+    const dialog=page.getByRole('dialog',{name:'Добавить фото'})
+    await dialog.locator('input[type="file"]').setInputFiles([
+      {name:'stored.jpg',mimeType:'image/jpeg',buffer:Buffer.from('existing content')},
+      {name:'new.jpg',mimeType:'image/jpeg',buffer:Buffer.from('new content')},
+      {name:'second.jpg',mimeType:'image/jpeg',buffer:Buffer.from('new content')}
+    ])
+    await dialog.getByRole('button',{name:'Добавить фото',exact:true}).click()
+    await expect(dialog.getByText('Дубли — 2')).toBeVisible()
+    await expect(dialog.getByText('stored.jpg',{exact:true})).toBeVisible()
+    await expect(dialog.getByText(/Повтор среди выбранных фото/)).toBeVisible()
+    await expect(dialog.getByText('new.jpg',{exact:true})).toBeVisible()
+    await dialog.getByRole('button',{name:'Отмена'}).click()
+    await expect(dialog.getByText('Проверка на дубли завершена')).toBeHidden()
+    expect(requests).toEqual([])
+    await dialog.getByRole('button',{name:'Добавить фото',exact:true}).click()
+    await dialog.getByRole('button',{name:'ОК',exact:true}).click()
+    await expect.poll(()=>requests.filter(request=>request.startsWith('PATCH')).length).toBe(1)
+    await expect(dialog.getByText('0 Б / 11 Б')).toBeVisible()
+    gate.release()
+    await expect(dialog).toBeHidden()
+    await expect(page.getByText('Файлы приняты. Подготовка образцов поставлена в очередь.')).toBeVisible()
+    expect(requests.filter(request=>request.endsWith('/complete'))).toHaveLength(1)
+  }finally{gate.release()}
 })
 
 test('desktop references scroll inside two panels without scrolling the whole page',async({page,isMobile})=>{

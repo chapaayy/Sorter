@@ -1,18 +1,25 @@
-import type {ReferenceFile} from '../types/api'
+import type {CheckedReference,ReferenceReview} from '../types/referenceTransfer'
 
-/** Hash index of previously finalized reference photos, scoped by construction ID. */
-export function indexReferenceHashes(files:readonly ReferenceFile[]):Map<string,Set<string>>{
-  const index=new Map<string,Set<string>>()
-  for(const file of files){
-    if(!/^[0-9a-f]{64}$/i.test(file.sha256||''))continue
-    let known=index.get(file.sam)
-    if(!known){known=new Set();index.set(file.sam,known)}
-    known.add(file.sha256.toLowerCase())
+/** Compare exact content within a construction, regardless of filename. */
+export function reviewReferences(files:readonly CheckedReference[],published:boolean[]):ReferenceReview{
+  if(published.length!==files.length||published.some(match=>typeof match!=='boolean'))
+    throw new Error('Сервер вернул неполный результат проверки образцов')
+  const review:ReferenceReview={newFiles:[],duplicates:[],totalBytes:0}
+  const seen=new Set<string>()
+  for(const [index,file] of files.entries()){
+    const key=JSON.stringify([file.sam,file.sha256,file.entry.file.size])
+    if(published[index]||seen.has(key)){
+      review.duplicates.push({...file,reason:published[index]?'library':'selection'})
+    }else{
+      review.newFiles.push(file)
+      review.totalBytes+=file.entry.file.size
+    }
+    seen.add(key)
   }
-  return index
+  return review
 }
 
-/** Browser-local SHA-256. If unavailable, fall back to secure server deduplication. */
+/** Browser-local SHA-256, computed before sending any photo bytes. */
 export async function fileSha256(file:File):Promise<string|null>{
   if(typeof crypto==='undefined'||!crypto.subtle)return null
   try{

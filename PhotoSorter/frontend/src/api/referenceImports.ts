@@ -1,6 +1,4 @@
-/** Typed staged-reference import API. Intentionally not connected to the UI yet.
- * Enabled only when the shared FIFO worker is ready (stage 3).
- */
+/** Typed preflight and staging API for reference imports. */
 import {api,post,query} from './client'
 
 export type ImportFileState='pending'|'finalized'|'duplicate'|'missing_saved'
@@ -47,7 +45,11 @@ export interface TransferOffset{
   size:number
   sha256:string|null
 }
-export interface Completion{session_id:string;preparation_job_id:string;queue_seq:number;state:'queued'}
+export type Completion={session_id:string}&(
+  {preparation_job_id:string;queue_seq:number;state:'queued'}|
+  {preparation_job_id:null;queue_seq:null;state:'unchanged'}
+)
+export type ComparisonFile=Required<Pick<ManifestFile,'sam'|'size'>>&{sha256:string}
 export interface ImportSessionSummary{
   id:string
   state:ImportUploadState
@@ -65,6 +67,8 @@ export interface ImportSessionSummary{
   error:string|null
 }
 export const referenceImportsApi={
+  compare:(files:ComparisonFile[],signal:AbortSignal)=>api<{duplicates:boolean[]}>('/reference-imports/compare',
+    {method:'POST',body:JSON.stringify({files}),signal}),
   list:(limit=25,offset=0)=>api<{sessions:ImportSessionSummary[];total:number}>(
     '/reference-imports'+query({limit,offset})),
   create:(client_session_id:string)=>post<ReferenceImportStatus>('/reference-imports',{client_session_id}),

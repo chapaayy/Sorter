@@ -10,7 +10,7 @@ type Mode='standard'|'custom'|'import'
 const emit=defineEmits<{
  (e:'dismiss'):void
  (e:'created',sam:string):void
- (e:'finished',message:string):void
+ (e:'finished',message:string,queued:boolean):void
  (e:'state',busy:boolean,percent:number,phase:string):void
 }>()
 const mode=ref<Mode>('standard'),city=ref('SAM'),number=ref(''),address=ref(''),name=ref('')
@@ -68,7 +68,7 @@ function importState(running:boolean,percent:number,phase:string){
       <UiButton kind="primary" type="submit" :loading="busy">Создать конструкцию</UiButton>
     </div>
    </form>
-   <ReferenceDirectoryImporter v-else @finished="emit('finished',$event)" @state="importState"/>
+   <ReferenceDirectoryImporter v-else @finished="(message,queued)=>emit('finished',message,queued)" @state="importState"/>
   </div>
 </template>
 <style scoped>

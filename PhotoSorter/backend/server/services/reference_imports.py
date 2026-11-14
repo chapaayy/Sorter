@@ -102,6 +102,24 @@ def create(session_id):
         repository.create_session(db,session_id)
     return status(session_id)
 
+def compare(files):
+    """Read-only comparison with the currently published library."""
+    keys=[(item.sam,item.sha256,item.size) for item in files]
+    sams,digests,sizes=map(list,zip(*dict.fromkeys(keys)))
+    with connect() as db:
+        candidates=repository.compare_published(db,sams,digests,sizes)
+    matches=set()
+    for row in candidates:
+        key=(row["sam"],row["source_hash"],row["declared_size"])
+        if key in matches:
+            continue
+        try:
+            storage.verify(row["target_path"],storage.ROOT,key[2],digest=key[1])
+        except (OSError,TypeError,ValueError):
+            continue
+        matches.add(key)
+    return {"duplicates":[key in matches for key in keys]}
+
 def register_manifest(session_id,files):
     session_id=_uid(session_id)
     expected=_manifest(files)
@@ -139,14 +157,18 @@ def file_status(session_id,upload_id):
     if entry["state"]=="pending":
         actual=storage.offset(session_id,upload_id,entry["declared_size"])
     return {"upload_id":str(upload_id),"state":entry["state"],
-            "offset":actual if entry["state"]=="pending" else entry["declared_size"],
+            "offset":actual if entry["state"]=="pending" else entry["received"],
             "size":entry["declared_size"],"sha256":entry["checksum"]}
+
+def _completion(session_id,job=None):
+    return {"session_id":str(session_id),"preparation_job_id":str(job["id"]) if job else None,
+            "queue_seq":job["seq"] if job else None,"state":"queued" if job else "unchanged"}
 
 def _complete_locked(db,session_id):
     """Caller locks session row (FOR UPDATE); enqueue only at verified completion."""
     session=repository.session(db,session_id)
     if session["upload_state"]=="complete":
-        return repository.preparation(db,session_id)
+        return _completion(session_id,repository.preparation(db,session_id))
     if session["upload_state"]!="uploading" or session["manifest_digest"] is None:
         return None
     entries=repository.files(db,session_id)
@@ -161,7 +183,10 @@ def _complete_locked(db,session_id):
                                entry["declared_size"])
             except (OSError,TypeError,ValueError):
                 return None
-    return repository.enqueue_completed(db,session_id,len(entries))
+    if all(entry["state"]=="duplicate" for entry in entries):
+        repository.complete_without_preparation(db,session_id)
+        return _completion(session_id)
+    return _completion(session_id,repository.enqueue_completed(db,session_id,len(entries)))
 
 def reconcile(db,session_id):
     """Called after each finish/duplicate; no browser callback needed."""
@@ -174,11 +199,10 @@ def complete(session_id):
         db.execute("SELECT pg_advisory_xact_lock(723409133)")
         if not repository.session(db,session_id,lock=True):
             raise HTTPException(404,"Сессия не найдена")
-        job=_complete_locked(db,session_id)
-        if not job:
+        result=_complete_locked(db,session_id)
+        if result is None:
             raise HTTPException(409,"Не все файлы завершены и проверены")
-        return {"session_id":str(session_id),"preparation_job_id":str(job["id"]),
-                "queue_seq":job["seq"],"state":"queued"}
+        return result
     
 def status(session_id):
     session_id=_uid(session_id)
@@ -208,7 +232,7 @@ def status(session_id):
         items.append({"upload_id":str(entry["upload_id"]),
                       "relative_path":entry["relative_path"],"sam":entry["sam"],
                       "filename":entry["filename"],"size":size,"state":state,
-                      "received":saved_offset if state=="pending" else size,
+                      "received":saved_offset if state=="pending" else entry["received"],
                       "sha256":entry["checksum"]})
     return {"id":str(session_id),"state":session["upload_state"],
             "preparation_state":session["preparation_state"],

@@ -120,7 +120,7 @@
 | `frontend/src/types/api.ts` | Контракты JSON |
 | `frontend/src/stores/{session,theme,notice}.ts` | Вход, тема, уведомления |
 | `frontend/src/composables/{useCursor,usePolling}.ts` | Cursor/polling, предотвращение дублирующихся запросов |
-| `frontend/src/composables/useReferenceTransfer.ts` | Общая докачка и параллельная передача образцов |
+| `frontend/src/composables/useReferenceTransfer.ts` | Общая проверка точных дублей, передача и докачка новых образцов |
 | `frontend/src/components/layout/Shell.vue` | Шесть вкладок; сворачиваемая desktop-панель и mobile drawer |
 | `frontend/src/components/ui/` | Buttons, confirmation, empty state, toast, карточки |
 | `frontend/src/components/gallery/` | Lazy/virtual thumbnails и ImageViewer |
@@ -135,6 +135,8 @@
 | `frontend/src/features/references/ReferenceLibrary.vue` | Библиотека с городом, номером, адресом и просмотром фото |
 | `frontend/src/features/references/ReferenceUploader.vue` | Переключение двух способов импорта |
 | `frontend/src/features/references/ReferenceDirectoryImporter.vue` | Строгий массовый импорт, предпросмотр, ошибки и видимый список системных файлов, исключённых из передачи |
+| `frontend/src/features/references/ReferenceImportReview.vue` | Списки новых фото и дублей, подтверждение или отмена перед передачей |
+| `frontend/src/features/references/ReferenceTransferProgress.vue` | Общий прогресс передачи образцов без учёта пропущенных дублей как переданных байтов |
 | `frontend/src/features/references/ReferencePhotoUploader.vue` | Добавление фотографий в выбранную конструкцию |
 | `frontend/src/features/results/` | Результаты, ZIP, сохранение/retention |
 | `frontend/src/features/logs/LogsView.vue` | Лог обработки, tail |
