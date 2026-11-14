@@ -34,6 +34,12 @@
 | `backend/server/reference_cache.py` | Индекс и доступ к embeddings образцов |
 | `backend/server/api/routes/site.py` | **Один** Vue сайт на `/`, `/assets/*` и history fallback |
 | `backend/server/api/routes/auth.py` | Login/logout/current user endpoints |
+| `backend/server/api/routes/access_requests.py` | Публичная отправка и маршруты модерации |
+| `backend/server/{services,db/repositories}/access_requests.py` | Правила одобрения и SQL для заявок, аккаунтов и разрешений |
+| `backend/server/security/access_policy.py` | Политика доступа владельца и зрителя к конкретным результатам |
+| `backend/server/db/migrations/0024_access_requests.sql` | Роли, заявки и привязка доступа к запускам |
+| `frontend/src/features/auth/` | Общая форма входа, регистрации и их стили |
+| `frontend/src/features/settings/users/` | Очередь заявок и выбор доступных результатов |
 | `backend/server/api/routes/batches.py` | Партии, серверный манифест, отмена ожидаемой автообработки, незавершённые загрузки и безопасное удаление |
 | `backend/server/api/routes/references.py` | Галерея, проверка пакета, адрес конструкции и удаление образцов |
 | `backend/server/api/routes/models.py` | Модели, скачивание и состояние |

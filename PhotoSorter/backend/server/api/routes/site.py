@@ -10,7 +10,7 @@ from app.config import PROJECT_DIR
 
 router = APIRouter()
 VUE_DIST = PROJECT_DIR / "frontend" / "dist"
-UI_SECTIONS = frozenset({"login", "fo", "references", "processing", "results", "logs", "settings"})
+UI_SECTIONS = frozenset({"login", "register", "fo", "references", "processing", "queue", "results", "logs", "settings"})
 
 
 def _vue_index():

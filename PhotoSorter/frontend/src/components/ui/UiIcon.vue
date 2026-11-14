@@ -1,12 +1,16 @@
 <script setup lang="ts">
-defineProps<{name:'photos'|'references'|'processing'|'queue'|'results'|'logs'|'settings'|'menu'|'sidebar-collapse'|'sidebar-expand';size?:number}>()
+defineProps<{name:'photos'|'references'|'processing'|'queue'|'results'|'logs'|'settings'|'menu'|'sidebar-collapse'|'sidebar-expand'|'eye'|'eye-off';size?:number}>()
 </script>
 
 <template>
   <svg :width="size||18" :height="size||18" viewBox="0 0 24 24" fill="none"
     stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
     focusable="false" aria-hidden="true">
-    <template v-if="name==='photos'">
+    <template v-if="name==='eye'||name==='eye-off'">
+      <path d="M2 12s3.7-6 10-6 10 6 10 6-3.7 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/>
+      <path v-if="name==='eye-off'" d="m4 4 16 16"/>
+    </template>
+    <template v-else-if="name==='photos'">
       <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/>
     </template>
     <template v-else-if="name==='references'">

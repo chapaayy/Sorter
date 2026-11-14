@@ -37,12 +37,26 @@ class LoginThrottle:
     def fail(self,username,client):
         now=self.clock()
         with self._lock:
-            for key in self._keys(username,client):
-                stamps=self._failed.setdefault(key,deque())
-                while stamps and now-stamps[0]>=WINDOW:stamps.popleft()
-                stamps.append(now)
-                self._failed.move_to_end(key)
-            while len(self._failed)>MAX_BUCKETS:self._failed.popitem(last=False)
+            self._record(self._keys(username,client),now)
+    def _record(self,keys,now):
+        for key in keys:
+            stamps=self._failed.setdefault(key,deque())
+            while stamps and now-stamps[0]>=WINDOW:stamps.popleft()
+            stamps.append(now)
+            self._failed.move_to_end(key)
+        while len(self._failed)>MAX_BUCKETS:self._failed.popitem(last=False)
+    def take(self,username,client):
+        """Check and consume an allowance atomically for public submissions."""
+        now=self.clock()
+        keys=self._keys(username,client)
+        with self._lock:
+            for key in keys:
+                stamps=self._failed.get(key)
+                if stamps:
+                    while stamps and now-stamps[0]>=WINDOW:stamps.popleft()
+                    if len(stamps)>=ATTEMPTS:return False
+            self._record(keys,now)
+            return True
     def succeed(self,username,client):
         with self._lock:
             # Do not allow resetting per-client attempts on success to another account.

@@ -24,7 +24,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
     <div v-if="menu" class="drawer-backdrop" @click="menu=false" aria-hidden="true"></div>
     <aside class="sidebar" :class="{open:menu}" aria-label="Основное меню">
       <div class="sidebar-brand-row">
-        <RouterLink class="brand" to="/fo" aria-label="OUTDOOR PhotoSorter — Фотографии" @click="menu=false">
+        <RouterLink class="brand" :to="session.home" aria-label="OUTDOOR PhotoSorter" @click="menu=false">
           <div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           <div class="brand-text"><strong>OUTDOOR</strong><small>PHOTO SORTER</small></div>
         </RouterLink>
@@ -37,7 +37,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
       </div>
       <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav class="nav-links" aria-label="Разделы">
-        <RouterLink v-for="link in links.filter(item=>item.to!=='/settings')" :key="link.to" :to="link.to"
+        <RouterLink v-for="link in links.filter(item=>session.isOwner?item.to!=='/settings':item.to==='/results')" :key="link.to" :to="link.to"
           class="nav-link" :aria-label="link.label"
           :title="sidebar.collapsed?link.label:undefined">
           <span class="nav-icon" aria-hidden="true"><UiIcon :name="link.icon"/></span>
@@ -45,7 +45,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
         </RouterLink>
       </nav>
       <div class="sidebar-bottom">
-        <nav class="nav-links" aria-label="Настройки">
+        <nav v-if="session.isOwner" class="nav-links" aria-label="Настройки">
           <RouterLink to="/settings" class="nav-link" aria-label="Настройки"
             :title="sidebar.collapsed?'Настройки':undefined">
             <span class="nav-icon" aria-hidden="true"><UiIcon name="settings"/></span>
@@ -73,6 +73,6 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
       </header>
       <main class="content"><slot/></main>
     </section>
-    <UploadCenter/>
+    <UploadCenter v-if="session.isOwner"/>
   </div>
 </template>

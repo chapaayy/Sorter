@@ -1,6 +1,6 @@
 # API — актуальная поверхность
 
-База `/api`. Все маршруты кроме `GET /api/health` и `POST /api/auth/login` требуют существующую cookie session; mutating endpoints защищены Origin/Sec-Fetch-Site. JSON timestamps — UTC/ISO, photo paths наружу не выдаются новыми batch list endpoints.
+База `/api`. Публичны только `GET /api/health`, `POST /api/auth/login` и `POST /api/auth/register`. Остальные маршруты требуют cookie session, а изменение состояния защищено Origin/Sec-Fetch-Site. JSON timestamps — UTC/ISO.
 
 ## Сохранившиеся endpoints
 
@@ -8,6 +8,11 @@
 |---|---|---|
 | GET | `/health` | версия/status |
 | POST/POST/GET | `/auth/login`, `/auth/logout`, `/auth/me` | sessions (не менялись) |
+| POST | `/auth/register` | `email`, `password`, `confirmation`, `comment`. Возвращает 202 без создания активного аккаунта |
+| GET | `/admin/access-requests?status=pending&limit=30&offset=0` | Почта, комментарий, даты и статус заявки. Только владелец |
+| POST | `/admin/access-requests/{id}/decision` | `approved` и список `run_ids`. Только владелец |
+| GET/PUT | `/admin/access-requests/{id}/grants` | Текущие отчёты и полная замена списка `run_ids`. Пустой список закрывает все отчёты |
+| GET | `/results/catalog` | Готовые отчёты. Для зрителя только явно разрешённые |
 | POST | `/uploads` | init kind/filename/size/batch_id/sam/address/checksum; optional `client_upload_id` (UUID) makes POST idempotent after lost network response |
 | GET/PATCH | `/uploads/{upload_id}` | offsets и докачка |
 | PUT | `/uploads/direct/{upload_id}` | быстрый single request, fallback PATCH |

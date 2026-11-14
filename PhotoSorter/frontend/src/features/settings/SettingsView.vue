@@ -7,7 +7,8 @@ import MegaLocSettings from './MegaLocSettings.vue'
 import PerformanceSettings from './PerformanceSettings.vue'
 import StorageSettings from './StorageSettings.vue'
 import SystemSettings from './SystemSettings.vue'
-type Category='appearance'|'uploads'|'megaloc'|'performance'|'storage'|'system'
+import AccessRequests from './users/AccessRequests.vue'
+type Category='appearance'|'uploads'|'megaloc'|'performance'|'storage'|'system'|'users'
 const selected=ref<Category>('appearance')
 const sections:Array<{id:Category;name:string;detail:string}>=[
   {id:'appearance',name:'Оформление',detail:'Тёмная и светлая темы'},
@@ -15,7 +16,8 @@ const sections:Array<{id:Category;name:string;detail:string}>=[
   {id:'megaloc',name:'MegaLoc',detail:'Параметры группировки'},
   {id:'performance',name:'Производительность',detail:'CPU и службы'},
   {id:'storage',name:'Хранилище',detail:'Место и очистка'},
-  {id:'system',name:'Система',detail:'Сервисы и диагностика'}
+  {id:'system',name:'Система',detail:'Сервисы и диагностика'},
+  {id:'users',name:'Пользователи',detail:'Заявки на доступ'}
 ]
 </script>
 <template>
@@ -35,7 +37,8 @@ const sections:Array<{id:Category;name:string;detail:string}>=[
     <MegaLocSettings v-else-if="selected==='megaloc'"/>
     <PerformanceSettings v-else-if="selected==='performance'"/>
     <StorageSettings v-else-if="selected==='storage'"/>
-    <SystemSettings v-else/>
+    <SystemSettings v-else-if="selected==='system'"/>
+    <AccessRequests v-else/>
   </div>
 </div>
 </template>

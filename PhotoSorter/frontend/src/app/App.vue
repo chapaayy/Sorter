@@ -10,15 +10,15 @@ useThemeStore()
 const route=useRoute(),router=useRouter()
 async function gate(){
   if(!session.checked)return
-  if(!session.user && route.name!=='login')await router.replace({name:'login',query:{next:route.fullPath}})
-  if(session.user && route.name==='login')await router.replace('/fo')
+  if(!session.user && !route.meta.public)await router.replace({name:'login',query:{next:route.fullPath}})
+  if(session.user && (route.meta.public || (!session.isOwner && !route.meta.viewer)))await router.replace(session.home)
 }
 onMounted(async()=>{await session.check();await gate()})
 watch(()=>route.fullPath,()=>{void gate()})
 </script>
 <template>
-  <div v-if="!session.checked" class="login-page"><div class="eyebrow">OUTDOOR · PHOTOSORTER</div></div>
-  <RouterView v-else-if="route.name==='login'"/>
-  <Shell v-else-if="session.user"><RouterView/></Shell>
+  <div v-if="!session.checked" class="auth-loading">OUTDOOR · PHOTOSORTER</div>
+  <RouterView v-else-if="route.meta.public"/>
+  <Shell v-else-if="session.user&&(session.isOwner||route.meta.viewer)"><RouterView/></Shell>
   <ToastStack/>
 </template>

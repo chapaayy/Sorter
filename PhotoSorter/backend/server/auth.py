@@ -22,13 +22,17 @@ def bootstrap_admin():
     if not 16 <= len(password) <= 256:
         raise RuntimeError('Set ADMIN_PASSWORD in .env (16–256 characters)')
     with connect() as db:
-        db.execute("INSERT INTO users(username) VALUES ('admin') ON CONFLICT (username) DO NOTHING")
+        db.execute("""INSERT INTO users(username,access_role) VALUES ('admin','owner')
+            ON CONFLICT (username) DO UPDATE SET access_role='owner'""")
         # One API process serves sessions. Invalidate on boot so a rotation never
         # leaves live owner cookies and no password verifier needs to be persisted.
         db.execute("DELETE FROM sessions USING users WHERE sessions.user_id=users.id AND users.username='admin'")
 
 
 def login(username: str, password: str, client_key: str = "") -> str:
+    username = username.strip()
+    if '@' in username:
+        username = username.lower()
     limiter.check(username, client_key)
     with connect() as db:
         user=db.execute('SELECT * FROM users WHERE username=%s',(username,)).fetchone()
@@ -60,7 +64,7 @@ def authenticate(request:Request):
     token=request.cookies.get(COOKIE_NAME)
     if not token: raise HTTPException(401,'Необходим вход')
     with connect() as db:
-        row=db.execute('SELECT u.username FROM sessions s JOIN users u ON u.id=s.user_id '
+        row=db.execute('SELECT u.id,u.username,u.access_role FROM sessions s JOIN users u ON u.id=s.user_id '
                        'WHERE s.token_hash=%s AND s.expires_at>now()',
                        (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
         if not row: raise HTTPException(401,'Сессия истекла')

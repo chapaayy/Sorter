@@ -2,7 +2,7 @@
 import {computed,onMounted,ref,watch} from 'vue'
 import {useRoute,useRouter} from 'vue-router'
 import {batchApi} from '../../api/batches'
-import {resultApi} from '../../api/results'
+import {resultApi,type PublishedResult} from '../../api/results'
 import {referenceApi} from '../../api/references'
 import {runApi} from '../../api/runs'
 import {useCursor} from '../../composables/useCursor'
@@ -17,7 +17,9 @@ import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import {useNoticeStore} from '../../stores/notice'
 import {useDeletionStore} from '../../stores/deletion'
+import {useSessionStore} from '../../stores/session'
 const route=useRoute(),router=useRouter(),id=String(route.params.runId),notice=useNoticeStore(),deletion=useDeletionStore()
+const session=useSessionStore(),published=ref<PublishedResult|null>(null)
 const run=ref<Run|null>(null),batch=ref<Batch|null>(null),retention=ref<Retention|null>(null)
 const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),referenceNames=ref<Record<string,string>>({}),mode=ref<'sam'|'group'>('sam')
 const selected=ref(''),lastSam=ref(''),lastGroup=ref(''),error=ref(''),busy=ref(false)
@@ -29,7 +31,7 @@ const list=computed(()=>Object.entries(mode.value==='sam'?sams.value:groups.valu
   .map(([key,count])=>({id:key,label:mode.value==='sam'?displaySam(key):key,count})))
 const {items,cursor,loading,error:pageError,load,reset}=useCursor<ResultPhoto>(next=>
   resultApi.photos(id,{[mode.value==='sam'?'sam':'group']:selected.value,cursor:next,limit:60}))
-const tiles=computed(()=>items.value.map(p=>({id:String(p.index),label:'ФО №'+(p.index+1),thumbnail_url:p.thumbnail_url,original_url:p.image_url,score:p.score})))
+const tiles=computed(()=>items.value.map(p=>({id:String(p.index),label:'ФО №'+(p.index+1),thumbnail_url:session.isOwner?p.thumbnail_url:p.image_url,original_url:p.image_url,score:p.score})))
 const previews=computed(()=>items.value.map(p=>({src:p.image_url,label:'ФО №'+(p.index+1)+' · '+displaySam(p.assigned_sam||''),score:p.score})))
 const total=computed(()=>Object.values(sams.value).reduce((x,y)=>x+y,0))
 function changeMode(value:'sam'|'group'){
@@ -41,6 +43,12 @@ function changeMode(value:'sam'|'group'){
 watch(selected,(value,old)=>{if(value!==old&&value)void reset()})
 onMounted(async()=>{
   try{
+    if(!session.isOwner){
+      published.value=await resultApi.published(id)
+      const [s,g]=await Promise.all([resultApi.sam(id),resultApi.groups(id)])
+      sams.value=s;groups.value=g;selected.value=list.value[0]?.id||''
+      return
+    }
     run.value=await resultApi.one(id)
     if(!isComplete(run.value.status)){error.value='Этот запуск ещё не завершён';return}
     if(run.value.archive_state==='ready'){
@@ -86,8 +94,8 @@ async function deleteBatch(){
 </script>
 <template>
 <div class="row" style="margin-bottom:22px"><RouterLink class="meta" to="/results">← Все результаты</RouterLink></div>
-<PageHeader eyebrow="РЕЗУЛЬТАТЫ / MEGALOC" :title="batch?.display_name||'Результат запуска'" :subtitle="total+' ФО · '+Object.keys(groups).length+' групп ФО · '+date(run?.started_at)">
-  <template #actions><UiButton kind="primary" :disabled="!run||!isComplete(run.status)||archiveMissing" @click="download()">↓ Скачать всю сортировку ZIP</UiButton><UiButton kind="danger" :disabled="!batch" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
+<PageHeader eyebrow="РЕЗУЛЬТАТЫ / MEGALOC" :title="batch?.display_name||published?.display_name||'Результат запуска'" :subtitle="total+' ФО · '+Object.keys(groups).length+' групп ФО'+(run?' · '+date(run.started_at):'')">
+  <template #actions><UiButton kind="primary" :disabled="!(published||(run&&isComplete(run.status)&&!archiveMissing))" @click="download()">↓ Скачать всю сортировку ZIP</UiButton><UiButton v-if="session.isOwner" kind="danger" :disabled="!batch" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
 <div v-if="archiveMissing" class="alert error row between wrap" role="alert" style="margin-bottom:18px">
@@ -131,7 +139,8 @@ async function deleteBatch(){
     <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё</UiButton></div>
   </section>
 </div>
-<EmptyState v-else-if="run" title="Результаты ещё не опубликованы" detail="Проверьте статус обработки и журнал запуска."/>
+<EmptyState v-else-if="run||published" :title="session.isOwner?'Результаты ещё не опубликованы':'Фотографий в этом результате нет'"
+  :detail="session.isOwner?'Проверьте статус обработки и журнал запуска.':'Откройте другой результат.'"/>
 <ImageViewer v-if="viewer!==null" :items="previews" :initial="viewer" @close="viewer=null"/>
 <ConfirmDialog v-if="deleteWhole&&batch" title="Удалить ВСЮ партию безвозвратно?" :message="'Удалятся оригинальные ФО, все запуски, готовые результаты, миниатюры, временные файлы и логи партии «'+batch.display_name+'». Общая библиотека SAM останется.'" :required-text="batch.display_name" danger confirm-label="Удалить всю партию" :busy="busy" @confirm="deleteBatch" @cancel="deleteWhole=false"/>
 </template>

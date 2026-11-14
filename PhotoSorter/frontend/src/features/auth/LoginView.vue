@@ -3,25 +3,29 @@ import {ref} from 'vue'
 import {useRoute,useRouter} from 'vue-router'
 import {useSessionStore} from '../../stores/session'
 import {errorText} from '../../utils/format'
-import UiButton from '../../components/ui/UiButton.vue'
-const username=ref('admin'),password=ref(''),busy=ref(false),error=ref('')
+import AuthLayout from './AuthLayout.vue'
+import AuthField from './AuthField.vue'
+const username=ref(''),password=ref(''),busy=ref(false),error=ref('')
 const session=useSessionStore(),router=useRouter(),route=useRoute()
 async function submit(){
+  if(busy.value)return
   busy.value=true;error.value=''
   try{
     await session.login(username.value,password.value)
-    const next=typeof route.query.next==='string'&&route.query.next.startsWith('/')&&!route.query.next.startsWith('//')?route.query.next:'/fo'
+    const next=typeof route.query.next==='string'&&route.query.next.startsWith('/')&&!route.query.next.startsWith('//')?route.query.next:session.home
     await router.replace(next)
   }catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
 </script>
 <template>
-  <div class="login-page"><form class="login-card stack" @submit.prevent="submit">
-    <div class="brand"><div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div><strong>OUTDOOR</strong><small>PHOTO SORTER</small></div></div>
-    <div><div class="eyebrow">ПРИВАТНАЯ ПАНЕЛЬ</div><h1 style="margin:8px 0">С возвращением</h1><p class="muted">Войдите, чтобы работать с фотоотчётами.</p></div>
-    <div class="field"><label for="user">Логин</label><input id="user" v-model="username" autocomplete="username" required maxlength="64" /></div>
-    <div class="field"><label for="pass">Пароль</label><input id="pass" v-model="password" type="password" autocomplete="current-password" required /></div>
-    <div v-if="error" class="alert error" role="alert">{{error}}</div>
-    <UiButton kind="primary" type="submit" :loading="busy">Войти в панель</UiButton>
-  </form></div>
+  <AuthLayout title="Вход в PhotoSorter" subtitle="Войдите, чтобы работать с фотоотчётами и скачивать готовые результаты.">
+    <form class="auth-form" @submit.prevent="submit">
+      <AuthField v-model="username" label="Электронная почта или логин" autocomplete="username" :max="254"/>
+      <AuthField v-model="password" label="Пароль" type="password" autocomplete="current-password"/>
+      <p v-if="error" class="auth-feedback" role="alert">{{error}}</p>
+      <button type="submit" class="auth-button primary" :disabled="busy">{{busy?'Входим…':'Продолжить'}}</button>
+    </form>
+    <div class="auth-divider">ИЛИ</div>
+    <RouterLink class="auth-button" :to="{name:'register'}">Зарегистрироваться</RouterLink>
+  </AuthLayout>
 </template>

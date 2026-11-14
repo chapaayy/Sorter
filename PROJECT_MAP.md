@@ -8,7 +8,7 @@
   ├─ /results         Галереи результатов, готовые ZIP
   ├─ /logs            Логи и фильтры
   ├─ /settings        Темы, диск, жизненный цикл, состояние служб
-  └─ /login           Авторизация
+  └─ /login, /register   Авторизация и заявка на доступ
          │ HTTPS, same-origin /api/*
          ▼
 Caddy (:80/:443) ──────► FastAPI (api:8000, один процесс)
@@ -68,6 +68,8 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 | CI | `.github/workflows/ci.yml` | Один pipeline для `main` |
 
 ## Основные сценарии
+
+**Заявки на доступ:** `features/auth` → `api/routes/access_requests.py` → `services/access_requests.py` → репозиторий заявок и миграция 0024. Владелец выбирает готовые запуски в `features/settings/users`; одобрение создаёт аккаунт и разрешения в одной транзакции. `security/access_policy.py` ограничивает каталог, фото и ZIP конкретными разрешёнными запусками.
 
 **Образцы:** Vue `ReferenceDirectoryImporter` → проверка всех файлов в браузере → `POST /api/references/import/preview` → сверка город/номер/адрес с БД → передача через общий `useReferenceTransfer` и `/api/uploads` → SHA-256/Pillow → дополняем существующие конструкции или создаём новые. `ReferencePhotoUploader` добавляет обычные фото в выбранную конструкцию. Адрес хранится отдельно в `reference_constructions`, стабильный идентификатор не меняется. Старые `SAM-xxxx` записи остаются без миграции. [Инструкция](docs/REFERENCE_IMPORT.md).
 
