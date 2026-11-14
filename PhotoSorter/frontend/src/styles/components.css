@@ -6,10 +6,7 @@
 .sidebar-toggle{width:34px;height:34px;padding:0;flex:none;display:grid;place-items:center;background:transparent;color:var(--muted);border:1px solid transparent;border-radius:9px;transition:background .15s,color .15s}
 .sidebar-toggle:hover{background:var(--panel-alt);color:var(--text)}
 .sidebar-toggle:focus-visible{outline:2px solid var(--text);outline-offset:2px}
-.brand-mark{width:35px;height:35px;background:var(--panel-alt);border:1px solid var(--accent);border-radius:11px;display:grid;grid-template-columns:repeat(2,1fr);gap:3px;padding:7px;border-color:var(--border)}
-.brand-mark i{background:var(--text);border-radius:3px;opacity:.94}
-.brand-mark i:nth-child(2){opacity:.45}
-.brand-mark i:nth-child(3){opacity:.65}
+.brand-logo{display:block;width:35px;height:35px;flex:none;object-fit:contain}
 .brand strong{display:block;letter-spacing:.11em;font-size:12px}
 .brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.07em;margin-top:1px}
 .nav-caption{font-size:10px;letter-spacing:.09em;color:var(--muted-2);padding:8px 12px;margin-bottom:10px;font-weight:700}

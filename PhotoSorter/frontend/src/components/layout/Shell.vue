@@ -25,7 +25,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
     <aside class="sidebar" :class="{open:menu}" aria-label="Основное меню">
       <div class="sidebar-brand-row">
         <RouterLink class="brand" :to="session.home" aria-label="OUTDOOR PhotoSorter" @click="menu=false">
-          <div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <img class="brand-logo" src="/assets/logo.webp" alt="" width="35" height="35">
           <div class="brand-text"><strong>OUTDOOR</strong><small>PHOTO SORTER</small></div>
         </RouterLink>
         <button class="sidebar-toggle" type="button"
