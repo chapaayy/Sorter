@@ -116,15 +116,16 @@ test('main sections share header sizing and use plain text when empty',async({pa
     return {x:rect.x,y:rect.y,height:rect.height}
   })
   await page.goto('/fo')
-  const header=await Promise.all(['.page-head .eyebrow','.page-head h1','.page-head p'].map(top))
+  const header=await Promise.all(['.page-head .eyebrow','.page-head h1'].map(top))
   const buttonHeight=(await top('.page-head button')).height
   for(const [path,title] of screens){
     await page.goto(path)
-    const fields=await Promise.all(['.page-head .eyebrow','.page-head h1','.page-head p'].map(top))
+    const fields=await Promise.all(['.page-head .eyebrow','.page-head h1'].map(top))
+    await expect(page.locator('.page-head p')).toHaveCount(0)
     for(const [index,field] of fields.entries()){
       expect(field.x).toBeCloseTo(header[index].x)
       expect(field.y).toBeCloseTo(header[index].y)
-      if(index<2)expect(field.height).toBeCloseTo(header[index].height)
+      expect(field.height).toBeCloseTo(header[index].height)
     }
     for(const button of await page.locator('.page-head button').all())
       expect((await button.boundingBox())?.height).toBeCloseTo(buttonHeight)
@@ -213,14 +214,15 @@ test('processing overview moved to Settings, run details live under Queue',async
   await page.goto('/processing')
   await expect(page).toHaveURL(/\/fo$/)
 })
-test('FO upload opens a global dialog that can be minimized without unmounting',async({page})=>{
+test('FO file selection closes without creating an upload',async({page})=>{
   await page.goto('/fo')
   await page.getByRole('button',{name:'+ Загрузить папку'}).click()
   const dialog=page.getByRole('dialog',{name:'Загрузить фотографии'})
   await expect(dialog).toBeVisible()
-  await page.getByRole('button',{name:'Свернуть загрузку'}).click()
+  await dialog.getByRole('button',{name:'Закрыть',exact:true}).click()
   await expect(dialog).toBeHidden()
-  await page.getByRole('button',{name:/Загрузка ФО/}).click()
+  await expect(page.locator('.upload-floating')).toHaveCount(0)
+  await page.getByRole('button',{name:'+ Загрузить папку'}).click()
   await expect(dialog).toBeVisible()
 })
 
@@ -259,7 +261,7 @@ test('mixed folder upload keeps sending bytes across pages and only opens its ba
     await dialog.locator('input[webkitdirectory]').setInputFiles(folder)
     await dialog.getByRole('button',{name:'Загрузить',exact:true}).click()
     await expect.poll(()=>sending).toBe(true)
-    await dialog.getByRole('button',{name:'Свернуть',exact:true}).click()
+    await expect(dialog).toBeHidden()
     const drawer=page.getByRole('button',{name:'Открыть меню'})
     if(await drawer.isVisible())await drawer.click()
     await page.getByRole('link',{name:'Образцы',exact:true}).click()
@@ -270,11 +272,12 @@ test('mixed folder upload keeps sending bytes across pages and only opens its ba
     await expect(dialog).toBeHidden()
     await refs.getByRole('button',{name:'Закрыть',exact:true}).click()
     await openQueue(page)
-    const indicator=page.getByRole('button',{name:/Загрузка ФО.*%/})
+    const indicator=page.getByRole('button',{name:/ФО · .*%/})
     await expect(indicator).toBeVisible()
     await indicator.click()
-    await expect(dialog.getByRole('button',{name:'Приостановить'})).toBeVisible()
-    await dialog.getByRole('button',{name:'Свернуть загрузку'}).click()
+    const transfers=page.getByRole('dialog',{name:'Очередь загрузок'})
+    await expect(transfers.getByRole('button',{name:'Приостановить'})).toBeVisible()
+    await transfers.getByRole('button',{name:'Закрыть',exact:true}).click()
     expect(done).toBe(0)
     expect(files.map(file=>file.filename).sort()).toEqual([...names].sort())
     gate.release()
@@ -328,12 +331,14 @@ test('pausing and resuming counts each saved file only once',async({page})=>{
     await dialog.locator('input[webkitdirectory]').setInputFiles(folder)
     await dialog.getByRole('button',{name:'Загрузить',exact:true}).click()
     await expect.poll(()=>secondAttempts).toBe(1)
-    await expect(dialog.getByText(/· 1 из 2/)).toBeVisible()
-    await dialog.getByRole('button',{name:'Приостановить'}).click()
+    await page.locator('.upload-floating').click()
+    const transfers=page.getByRole('dialog',{name:'Очередь загрузок'})
+    await expect(transfers.getByText('1 из 2 файлов')).toBeVisible()
+    await transfers.getByRole('button',{name:'Приостановить'}).click()
     firstGate.release()
-    await dialog.getByRole('button',{name:'Продолжить',exact:true}).click()
+    await transfers.getByRole('button',{name:'Продолжить',exact:true}).click()
     await expect.poll(()=>secondAttempts).toBe(2)
-    await expect(dialog.getByText(/· 1 из 2/)).toBeVisible()
+    await expect(transfers.getByText('1 из 2 файлов')).toBeVisible()
     expect(firstChecks).toBe(1)
     resumeGate.release()
     await expect(page.getByText(/Все файлы партии сохранены/)).toBeVisible()
@@ -369,9 +374,8 @@ test('resuming an individual FO does not abort on internal navigation',async({pa
       name:'resume.jpg',mimeType:'image/jpeg',buffer:source
     })
     await expect.poll(()=>sending).toBe(true)
-    await page.getByRole('button',{name:'Свернуть',exact:true}).click()
     await openQueue(page)
-    await expect(page.getByRole('button',{name:/Загрузка ФО.*%/})).toBeVisible()
+    await expect(page.getByRole('button',{name:/ФО · resume.jpg.*%/})).toBeVisible()
     gate.release()
     await expect(page.getByText('Загрузка фото завершена: resume.jpg',{exact:true})).toBeVisible()
     await expect(page).toHaveURL(/\/queue$/)
@@ -770,13 +774,13 @@ for(const mode of ['single','folder'] as const)test('staged reference '+mode+' u
     }
     await page.getByRole('button',{name:'ОК',exact:true}).click()
     await expect.poll(()=>sending).toBe(true)
-    await page.getByRole('button',{name:'Свернуть загрузку'}).click()
     await openQueue(page)
-    const indicator=page.getByRole('button',{name:/Загрузка образцов.*%/})
+    const indicator=page.getByRole('button',{name:/Образцы · .*%/})
     await expect(indicator).toBeVisible()
     await indicator.click()
-    await expect(page.getByRole('button',{name:'Пауза'})).toBeVisible()
-    await page.getByRole('button',{name:'Свернуть',exact:true}).click()
+    const transfers=page.getByRole('dialog',{name:'Очередь загрузок'})
+    await expect(transfers.getByRole('button',{name:'Приостановить'})).toBeVisible()
+    await transfers.getByRole('button',{name:'Закрыть',exact:true}).click()
     expect(finished).toBe(false)
     gate.release()
     await expect.poll(()=>queued).toBe(1)
@@ -881,7 +885,8 @@ test('reference review cancels without changes and uploads only confirmed new ph
     await dialog.getByRole('button',{name:'Добавить фото',exact:true}).click()
     await dialog.getByRole('button',{name:'ОК',exact:true}).click()
     await expect.poll(()=>requests.filter(request=>request.startsWith('PATCH')).length).toBe(1)
-    await expect(dialog.getByText('0 Б / 11 Б')).toBeVisible()
+    await page.locator('.upload-floating').click()
+    await expect(page.getByRole('dialog',{name:'Очередь загрузок'}).getByText(/0 Б \/ 11 Б/)).toBeVisible()
     gate.release()
     await expect(dialog).toBeHidden()
     await expect(page.getByText('Файлы приняты. Подготовка образцов поставлена в очередь.')).toBeVisible()
@@ -992,4 +997,128 @@ test('deletion shows server stages and progress instead of MegaLoc metrics',asyn
   state='deleted'
   await expect(page.getByText('Пока нет фотоотчётов')).toBeVisible()
   await expect(page.getByText('Партия «Выезд Самара 05.11» удалена')).toBeVisible()
+})
+
+test('website transfer queue stays FIFO across two FO folders and references',async({page})=>{
+  const root=await mkdtemp(join(tmpdir(),'map-transfer-queue-'))
+  const firstGate=holdTransfer(),secondGate=holdTransfer(),refGate=holdTransfer()
+  const secondId='a6d1a203-23d4-420b-a1c6-87c0f1100223'
+  const created:string[]=[],started:string[]=[]
+  const byId=new Map<string,{files:any[];done:Set<string>}>()
+  const byUpload=new Map<string,string>()
+  let registered:any,referenceFinished=false
+  const selected=Buffer.from('new photo')
+  try{
+    for(const name of ['321','322','323']){
+      const folder=join(root,name)
+      await mkdir(folder)
+      await writeFile(join(folder,'one.jpg'),selected)
+      if(name==='321')await writeFile(join(folder,'two.jpg'),selected)
+    }
+    await page.route('**/api/batches',route=>{
+      if(route.request().method()!=='POST')return route.fallback()
+      const {display_name:name}=route.request().postDataJSON()
+      created.push(name)
+      const id=name==='321'?bid:secondId
+      byId.set(id,{files:[],done:new Set()})
+      return respond(route,{batch_id:id})
+    })
+    for(const id of [bid,secondId]){
+      await page.route('**/api/batches/'+id,route=>respond(route,{...batch,batch_id:id,photos:0,pending:0,runs:0}))
+      await page.route('**/api/batches/'+id+'/upload-manifest',route=>{
+        const state=byId.get(id)!
+        if(route.request().method()==='PUT'){
+          state.files=route.request().postDataJSON().files
+          for(const file of state.files)byUpload.set(file.upload_id,id)
+          started.push(id===bid?'321':'322')
+        }
+        return respond(route,{state:state.files.length===0?'legacy':state.files.length===state.done.size?'complete':'waiting',
+          pending:state.files.length-state.done.size,files:state.files})
+      })
+    }
+    await page.route('**/api/uploads/**',async route=>{
+      const path=new URL(route.request().url()).pathname
+      const uploadId=path.split('/')[3]!,id=byUpload.get(uploadId)!
+      const state=byId.get(id)!,file=state.files.find(f=>f.upload_id===uploadId)
+      if(route.request().method()==='PATCH'){
+        if(id===secondId)await secondGate.waiting
+        else if(file.filename==='two.jpg')await firstGate.waiting
+        return respond(route,{offset:selected.length})
+      }
+      if(path.endsWith('/finish')){
+        state.done.add(uploadId)
+        return respond(route,{path:'saved'})
+      }
+      return respond(route,{offset:0,size:selected.length,finalized:false})
+    })
+    await page.route('**/api/reference-imports{,/**}',async route=>{
+      const path=new URL(route.request().url()).pathname
+      if(path.endsWith('/compare'))return respond(route,{duplicates:[false]})
+      if(path==='/api/reference-imports')return respond(route,{})
+      if(path.endsWith('/manifest')){
+        registered=route.request().postDataJSON().files[0]
+        started.push('references')
+        return respond(route,{expected:1,files:[{...registered,state:'pending'}]})
+      }
+      if(route.request().method()==='PATCH'){
+        await refGate.waiting
+        return respond(route,{offset:registered.size})
+      }
+      if(path.endsWith('/finish')){
+        referenceFinished=true
+        return respond(route,{sha256:registered.sha256})
+      }
+      if(path.endsWith('/complete'))return respond(route,{state:'queued',queue_seq:2,preparation_job_id:'id'})
+      return respond(route,path.includes('/files/')?{state:'pending',offset:0}:
+        {state:referenceFinished?'complete':'uploading',pending:referenceFinished?0:1})
+    })
+    await page.goto('/fo')
+    async function addFo(name:string){
+      await page.getByRole('button',{name:'+ Загрузить папку'}).click()
+      const form=page.getByRole('dialog',{name:'Загрузить фотографии'})
+      await form.locator('input[webkitdirectory]').setInputFiles(join(root,name))
+      await form.getByRole('button',{name:'Загрузить',exact:true}).click()
+      await expect(form).toBeHidden()
+    }
+    const indicator=page.locator('.upload-floating')
+    await addFo('321')
+    await expect(indicator).toHaveText(/ФО · 321\s*50%/)
+    await addFo('322')
+    await addFo('323')
+    const drawer=page.getByRole('button',{name:'Открыть меню'})
+    if(await drawer.isVisible())await drawer.click()
+    await page.getByRole('link',{name:'Образцы',exact:true}).click()
+    await page.getByRole('button',{name:'+ Добавить фото'}).click()
+    const form=page.getByRole('dialog',{name:'Добавить фото'})
+    await form.locator('input[type="file"]').setInputFiles({name:'sample.jpg',mimeType:'image/jpeg',buffer:selected})
+    await form.getByRole('button',{name:'Добавить фото',exact:true}).click()
+    await form.getByRole('button',{name:'ОК',exact:true}).click()
+    await expect(form).toBeHidden()
+    await expect(indicator).toHaveText(/ФО · 321\s*50%/)
+    await indicator.click()
+    const transfers=page.getByRole('dialog',{name:'Очередь загрузок'})
+    const rows=transfers.getByRole('listitem')
+    await expect(rows).toHaveCount(4)
+    await expect(rows.nth(1)).toContainText('322')
+    await expect(rows.nth(1)).toContainText('Ждёт очереди')
+    await expect(rows.nth(1).getByRole('progressbar')).toHaveCount(0)
+    await expect(rows.nth(3)).toContainText('Образцы')
+    await rows.nth(2).getByRole('button',{name:'Убрать из очереди'}).click()
+    await expect(rows).toHaveCount(3)
+    expect(started).toEqual(['321'])
+    firstGate.release()
+    await expect(rows.first()).toContainText('322')
+    await expect.poll(()=>started).toEqual(['321','322'])
+    await transfers.getByRole('button',{name:'Закрыть',exact:true}).click()
+    await expect(indicator).toContainText('ФО · 322')
+    secondGate.release()
+    await expect(indicator).toContainText('Образцы · ')
+    await expect.poll(()=>started).toEqual(['321','322','references'])
+    refGate.release()
+    await expect(indicator).toHaveCount(0)
+    expect(created).toEqual(['321','322'])
+  }finally{
+    firstGate.release();secondGate.release();refGate.release()
+    await rm(root,{recursive:true,force:true})
+  }
 })

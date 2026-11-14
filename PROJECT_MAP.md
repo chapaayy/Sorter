@@ -71,7 +71,7 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 
 **Заявки на доступ:** `features/auth` → `api/routes/access_requests.py` → `services/access_requests.py` → репозиторий заявок и миграция 0024. Владелец выбирает готовые запуски в `features/settings/users`; одобрение создаёт аккаунт и разрешения в одной транзакции. `security/access_policy.py` ограничивает каталог, фото и ZIP конкретными разрешёнными запусками.
 
-**Образцы:** Vue `ReferenceDirectoryImporter` → проверка папок → `POST /api/references/import/preview` для сверки города, номера и адреса. Затем оба сценария, импорт папки и добавление фото через `ReferencePhotoUploader`, сравнивают SHA-256 c опубликованной библиотекой через `POST /api/reference-imports/compare`. `ReferenceImportReview` показывает новые фото и дубли. После подтверждения новые файлы передаются через `useReferenceTransfer` и `/api/reference-imports`, сервер проверяет их и создаёт задачу только при наличии новых образцов. Адрес хранится отдельно в `reference_constructions`. [Инструкция](docs/REFERENCE_IMPORT.md).
+**Образцы:** Vue `ReferenceDirectoryImporter` → проверка папок → `POST /api/references/import/preview` для сверки города, номера и адреса. Затем оба сценария, импорт папки и добавление фото через `ReferencePhotoUploader`, сравнивают SHA-256 c опубликованной библиотекой через `POST /api/reference-imports/compare`. `ReferenceImportReview` показывает новые фото и дубли. После подтверждения новые файлы передаются через `referenceTransfer.ts` и `/api/reference-imports`, сервер проверяет их и создаёт задачу только при наличии новых образцов. Адрес хранится отдельно в `reference_constructions`. [Инструкция](docs/REFERENCE_IMPORT.md).
 
 **Upload / восстановление:** Vue `UploadPanel` → `/api/batches` → регистрация точного набора ожидаемых файлов через `PUT /api/batches/{id}/upload-manifest` (новые партии) → `/api/uploads` (16 МиБ PATCH, идемпотентное POST создание через `client_upload_id` из манифеста) → повторяем сетевые ошибки с backoff и возможностью «Пауза», считываем фактическое смещение, докачиваем только отсутствующие байты → `finish` с проверкой Pillow/SHA-256 → постоянный оригинал в `data/uploads/`, запись PostgreSQL, thumbnail queue. Состояние `waiting/complete` хранится в batches; ожидаемые UUID/пути/размеры — `batch_upload_manifest_files`. После каждой финализации сервер сверяет ВСЕ ожидаемые файлы, при полном наборе подтверждает завершение транзакционно. Старые партии без манифеста идут по прежнему пути. Обработка запрещена до `complete`, а автоматическая постановка в очередь включается лишь для новых партий с opt-in (этап 2). При потере соединения или перезагрузке вкладки `PendingUploads` читает `GET /api/batches/{id}/pending`, автоматически завершает полностью переданные файлы; для неполного пользователь заново выбирает оригинал и его SHA-256 всей уже переданной части сверяется перед дозагрузкой. Отмена доступна только для незавершённой передачи. Готовность партии и причины блокировки отображаются в разделе «ФО»; панель «Обработка» предназначена для мониторинга MegaLoc.
 
@@ -152,9 +152,15 @@ Vue /references → manifest образцов → /api/reference-imports
 
 ## Актуальный интерфейс
 
+`UploadCenter.vue` отделяет формы выбора от `UploadQueueDialog.vue`.
+`stores/uploadCenter.ts` держит один активный перенос и очередь в памяти
+вкладки. Сами передачи выполняются `foTransfer.ts` и `referenceTransfer.ts`,
+используя прежние API докачки. Очередь передачи не является частью
+`work_queue` MegaLoc.
+
 ```text
 Shell
-├─ UploadCenter (отдельные сворачиваемые окна ФО / образцов)
+├─ UploadCenter (формы ФО / образцов и отдельная очередь передачи)
 ├─ Фотографии -> FoList / FoGallery (маршруты /fo)
 ├─ Образцы -> ReferenceLibrary (два независимых scroll container)
 ├─ Очередь -> QueueView / RunDetail / RunProgress
@@ -199,6 +205,6 @@ Shell
 
 `api/routes/processing_settings.py` → `services/compute_settings.py` → PostgreSQL `processing_settings` → единый `server/worker.py` → `services/worker_cpu_affinity.py` + `app/system/performance.py`. Настройка действует **со следующего задания** FIFO; оба вида обработки используют один budget. Контейнер Worker ограничен доступным cpuset на этапе установки. Другие контейнеры не помещаются в жёсткий системный cpuset. Thumbnail/cleanup имеют относительные CPU shares, без жёсткой квоты.
 
-`ReferenceLibrary.vue` → `CreateConstructionDialog.vue` → `api/routes/references.py` → `services/construction_catalog.py` → `reference_constructions`. Пустой каталог независим от текущей версии признаков. Фото в индивидуальные конструкции по-прежнему идут через `useReferenceTransfer` → `reference_imports` → единую очередь подготовки → `reference_publication`, а массовый импорт сохраняет старую строгую валидацию.
+`ReferenceLibrary.vue` → `CreateConstructionDialog.vue` → `api/routes/references.py` → `services/construction_catalog.py` → `reference_constructions`. Пустой каталог независим от текущей версии признаков. Фото в индивидуальные конструкции по-прежнему идут через `referenceTransfer.ts` → `reference_imports` → единую очередь подготовки → `reference_publication`, а массовый импорт сохраняет старую строгую валидацию.
 
 `stores/deletion.ts` + серверный `batches.delete_state` → `FoBatchCard.vue`, `QueueTaskRow.vue`, `ResultsList.vue` → единый `CompactTaskCard.vue` со статусным outline. Для `deleting` фон красный; для `delete_failed` только красная обводка. ZIP не выделен отдельным статусом.

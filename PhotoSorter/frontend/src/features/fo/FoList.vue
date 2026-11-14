@@ -153,8 +153,7 @@ async function stop(){
 }
 </script>
 <template>
-<PageHeader eyebrow="БИБЛИОТЕКА ФО" title="Фотоотчёты"
-  subtitle="Состояние загрузки и MegaLoc для каждой партии, управление обработкой и результаты.">
+<PageHeader eyebrow="БИБЛИОТЕКА ФО" title="Фотоотчёты">
   <template #actions>
     <UiButton kind="primary" @click="uploader.launch('fo')">+ Загрузить папку</UiButton>
   </template>

@@ -85,8 +85,7 @@ function message(){
 }
 </script>
 <template>
-<PageHeader eyebrow="ЗАДАНИЯ" title="Очередь"
-  subtitle="Фотографии и подготовка образцов обрабатываются по порядку поступления.">
+<PageHeader eyebrow="ЗАДАНИЯ" title="Очередь">
   <template #actions>
     <UiButton @click="historyMode=!historyMode">{{historyMode?'Активные задачи':'История · '+historyTotal}}</UiButton>
     <UiButton @click="refresh">Обновить</UiButton>

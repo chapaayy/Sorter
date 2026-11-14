@@ -71,7 +71,7 @@ async function removeSam(){
 </script>
 <template>
 <div class="reference-library-view">
-<PageHeader eyebrow="БИБЛИОТЕКА КОНСТРУКЦИЙ" title="Образцы" subtitle="Одна постоянная библиотека для всех фотоотчётов.">
+<PageHeader eyebrow="БИБЛИОТЕКА КОНСТРУКЦИЙ" title="Образцы">
   <template #actions><UiButton kind="primary" @click="uploader.launch('construction')">+ Создать конструкцию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>

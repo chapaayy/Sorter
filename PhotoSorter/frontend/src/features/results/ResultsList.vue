@@ -60,8 +60,7 @@ const finishedCards=computed(()=>finished.value.map(run=>{
 }))
 </script>
 <template>
-<PageHeader eyebrow="ГОТОВЫЕ ФОТОГРАФИИ" title="Результаты"
-  subtitle="Завершённые сортировки, длительность и готовые архивы."/>
+<PageHeader eyebrow="ГОТОВЫЕ ФОТОГРАФИИ" title="Результаты"/>
 <div class="toolbar">
   <input v-model="search" class="search" placeholder="Поиск по названию фотоотчёта…"
     aria-label="Поиск результатов"/>

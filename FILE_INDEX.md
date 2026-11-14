@@ -122,7 +122,7 @@
 | `frontend/src/types/api.ts` | Контракты JSON |
 | `frontend/src/stores/{session,theme,notice}.ts` | Вход, тема, уведомления |
 | `frontend/src/composables/{useCursor,usePolling}.ts` | Cursor/polling, предотвращение дублирующихся запросов |
-| `frontend/src/composables/useReferenceTransfer.ts` | Общая проверка точных дублей, передача и докачка новых образцов |
+| `frontend/src/utils/referenceTransfer.ts` | Передача и докачка новых образцов после предпросмотра |
 | `frontend/src/components/layout/Shell.vue` | Шесть вкладок; сворачиваемая desktop-панель и mobile drawer |
 | `frontend/src/components/ui/` | Buttons, confirmation, empty state, toast, карточки |
 | `frontend/src/components/gallery/` | Lazy/virtual thumbnails и ImageViewer |
@@ -138,7 +138,7 @@
 | `frontend/src/features/references/ReferenceUploader.vue` | Переключение двух способов импорта |
 | `frontend/src/features/references/ReferenceDirectoryImporter.vue` | Строгий массовый импорт, предпросмотр, ошибки и видимый список системных файлов, исключённых из передачи |
 | `frontend/src/features/references/ReferenceImportReview.vue` | Списки новых фото и дублей, подтверждение или отмена перед передачей |
-| `frontend/src/features/references/ReferenceTransferProgress.vue` | Общий прогресс передачи образцов без учёта пропущенных дублей как переданных байтов |
+| `frontend/src/composables/useReferencePreflight.ts` | Проверка SHA-256 и дублей до добавления образцов в очередь передачи |
 | `frontend/src/features/references/ReferencePhotoUploader.vue` | Добавление фотографий в выбранную конструкцию |
 | `frontend/src/features/results/` | Результаты, ZIP, сохранение/retention |
 | `frontend/src/features/logs/LogsView.vue` | Лог обработки, tail |
@@ -209,7 +209,7 @@
 | `PhotoSorter/backend/server/storage/reference_objects.py` | Изолированное файловое staging-хранилище |
 | `PhotoSorter/backend/server/api/routes/reference_imports.py` | API сессий, файлов, статуса и возобновления |
 | `PhotoSorter/backend/server/api/routes/references.py` | Каталог/галерея/удаление |
-| `PhotoSorter/frontend/src/composables/useReferenceTransfer.ts` | Единственный resumable загрузчик образцов |
+| `PhotoSorter/frontend/src/utils/referenceTransfer.ts` | Единственный resumable загрузчик образцов |
 | `PhotoSorter/frontend/src/types/referenceTransfer.ts` | Тип выбранного образца |
 | `PhotoSorter/frontend/src/features/queue/*` | Общая очередь |
 | `PhotoSorter/frontend/src/features/references/*` | Загрузка, статус подготовки, библиотека |
@@ -235,12 +235,13 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 
 | Путь | Задача |
 |---|---|
-| `PhotoSorter/frontend/src/components/upload/UploadCenter.vue` | Монтирование окон и индикаторы фоновых передач |
-| `PhotoSorter/frontend/src/components/upload/UploadDialog.vue` | Общий каркас сворачиваемых окон |
-| `PhotoSorter/frontend/src/components/upload/FoUploadDialog.vue` | Окно папки ФО и докачки, уведомление об изменениях образцов |
+| `PhotoSorter/frontend/src/components/upload/UploadCenter.vue` | Открытие форм и индикатор текущей передачи |
+| `PhotoSorter/frontend/src/components/upload/UploadQueueDialog.vue` | Список передач ФО и образцов, прогресс, пауза, продолжение и отмена |
+| `PhotoSorter/frontend/src/components/upload/UploadDialog.vue` | Общий каркас окон выбора файлов и очереди передач |
+| `PhotoSorter/frontend/src/components/upload/FoUploadDialog.vue` | Окно выбора папки ФО, уведомление об изменениях образцов |
 | `PhotoSorter/frontend/src/components/upload/ReferenceUploadDialog.vue` | Окно создания конструкции с импортом папки и добавление фото в выбранную конструкцию |
-| `PhotoSorter/frontend/src/stores/uploadCenter.ts` | Независимое состояние ФО и образцов, событие завершения |
-| `PhotoSorter/frontend/src/features/fo/RecoveryUpload.vue` | Докачка выбранного оригинала через глобальный диалог |
+| `PhotoSorter/frontend/src/stores/uploadCenter.ts` | Очередь передачи ФО и образцов в пределах вкладки, управление одной активной передачей |
+| `PhotoSorter/frontend/src/utils/foTransfer.ts` | Передача папки ФО и докачка одного оригинала через серверные манифесты |
 | `PhotoSorter/frontend/src/styles/upload-dialog.css` | Модалка и фоновый индикатор |
 | `PhotoSorter/frontend/src/styles/reference-layout.css` | Два независимых scroll-контейнера образцов |
 | `PhotoSorter/frontend/src/components/ui/EmptyState.vue` | Единая надпись для пустых списков, очереди, истории и галерей |

@@ -14,8 +14,7 @@ const items=ref<PendingUpload[]>([]),manifest=ref<BatchUploadManifest|null>(null
 const activeId=ref(''),activeStatus=ref(''),confirmCancel=ref<PendingUpload|null>(null)
 const errors=ref<Record<string,string>>({})
 const uploader=useUploadCenterStore()
-const job=uploader.windows.fo
-const batchUploading=computed(()=>job.busy&&job.batchId===props.batchId)
+const batchUploading=computed(()=>uploader.isBatchScheduled(props.batchId))
 
 async function refreshManifest(){
   // The pending-upload recovery UI must still work if manifest inspection
@@ -54,7 +53,7 @@ async function finish(item:PendingUpload,automatic=false){
   }finally{activeId.value='';activeStatus.value=''}
 }
 function pick(item:PendingUpload){
-  if(job.busy){uploader.show('fo');return}
+  if(batchUploading.value){uploader.showQueue();return}
   document.getElementById('pending-source-'+item.id)?.click()
 }
 function continueFile(item:PendingUpload,event:Event){
@@ -121,11 +120,11 @@ usePolling(async()=>{if((items.value.length||manifest.value?.state==='waiting')&
         <strong style="overflow-wrap:anywhere">{{item.filename}}</strong>
         <div class="meta">
           {{bytes(item.received)}} / {{bytes(item.size)}} ·
-          {{batchUploading?'идёт загрузка партии':!item.has_part?'временный файл на сервере отсутствует':item.can_finalize?'всё передано, осталось сохранить':'передача прервана'}}
+          {{batchUploading?'партия в очереди загрузок':!item.has_part?'временный файл на сервере отсутствует':item.can_finalize?'всё передано, осталось сохранить':'передача прервана'}}
         </div>
       </div>
       <div class="row wrap">
-        <UiButton v-if="batchUploading&&(!job.recovery||job.recovery.item.id===item.id)" small @click="uploader.show('fo')">Открыть загрузку</UiButton>
+        <UiButton v-if="batchUploading" small @click="uploader.showQueue()">Открыть загрузку</UiButton>
         <template v-else-if="!activeId&&!batchUploading">
           <UiButton v-if="item.can_finalize" small :disabled="disabled" @click="finish(item)">Завершить</UiButton>
           <UiButton v-else-if="item.has_part" small :disabled="disabled" @click="pick(item)">Продолжить</UiButton>

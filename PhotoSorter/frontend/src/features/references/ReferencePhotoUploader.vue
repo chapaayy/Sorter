@@ -2,19 +2,19 @@
 import {computed,ref,watch} from 'vue'
 import {ALLOWED,MAX_IMAGE_UPLOAD_BYTES} from '../../utils/upload'
 import type {UploadEntry} from '../../utils/upload'
-import {useReferenceTransfer} from '../../composables/useReferenceTransfer'
-import {useUploadSettingsStore} from '../../stores/uploadSettings'
+import {useReferencePreflight} from '../../composables/useReferencePreflight'
+import {useUploadCenterStore} from '../../stores/uploadCenter'
+import {ALL_DUPLICATES} from '../../utils/referenceTransfer'
 import {bytes} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 import ReferenceImportReview from './ReferenceImportReview.vue'
-import ReferenceTransferProgress from './ReferenceTransferProgress.vue'
 
 const props=defineProps<{selectedSam:string;label:string}>()
-const emit=defineEmits<{(e:'finished',message:string,queued:boolean):void;(e:'state',busy:boolean,percent:number,phase:string):void}>()
-const uploadSettings=useUploadSettingsStore(),transfer=useReferenceTransfer()
+const emit=defineEmits<{(e:'noChanges',message:string):void;(e:'checking',busy:boolean):void}>()
+const uploadCenter=useUploadCenterStore(),transfer=useReferencePreflight()
 const files=ref<UploadEntry[]>([]),issues=ref<string[]>([]),target=ref('')
 const total=computed(()=>files.value.reduce((sum,item)=>sum+item.file.size,0))
-watch([transfer.busy,transfer.percent,transfer.phase],()=>emit('state',transfer.busy.value,transfer.percent.value,transfer.phase.value),{immediate:true})
+watch(transfer.busy,value=>emit('checking',value),{immediate:true})
 const ready=computed(()=>!!files.value.length&&!issues.value.length&&
   !!props.selectedSam&&target.value===props.selectedSam&&!transfer.busy.value)
 
@@ -34,23 +34,15 @@ function choose(event:Event){
 
 async function upload(){
   if(!ready.value)return
-  if(transfer.approved.value){await accept();return}
   const current=files.value.map(entry=>({sam:target.value,entry}))
   await transfer.inspect(current)
 }
 
-async function accept(){
-  if(transfer.review.value&&!transfer.review.value.newFiles.length){
-    emit('finished','Все выбранные фото уже есть в библиотеке. В очередь ничего не добавлено.',false)
-    return
-  }
-  const result=await transfer.start(uploadSettings.parallelUploads)
-  if(result){
-    files.value=[];issues.value=[]
-    const queued=result.state==='queued'
-    emit('finished',queued?'Файлы приняты. Подготовка образцов поставлена в очередь.':
-      'Все выбранные фото уже есть в библиотеке. В очередь ничего не добавлено.',queued)
-  }
+function accept(){
+  const review=transfer.review.value
+  if(!review)return
+  if(!review.newFiles.length){emit('noChanges',ALL_DUPLICATES);return}
+  uploadCenter.enqueue({kind:'references',name:props.label,review,success:'Файлы приняты. Подготовка образцов поставлена в очередь.'})
 }
 </script>
 
@@ -73,9 +65,9 @@ async function accept(){
       <div class="row between wrap">
         <span class="meta">{{files.length}} фото · {{bytes(total)}}</span>
         <div class="row">
-          <UiButton v-if="transfer.busy.value" kind="danger" @click="transfer.pause()">Пауза</UiButton>
+          <UiButton v-if="transfer.busy.value" kind="danger" @click="transfer.pause()">Остановить проверку</UiButton>
           <UiButton v-else kind="primary" :disabled="!ready" @click="upload">
-            {{transfer.approved.value?'Продолжить загрузку':'Добавить фото'}}
+            Добавить фото
           </UiButton>
         </div>
       </div>
@@ -84,9 +76,6 @@ async function accept(){
         <div v-for="(issue,index) in issues" :key="index" style="overflow-wrap:anywhere">{{issue}}</div>
       </div>
     </div>
-    <ReferenceTransferProgress v-if="transfer.approved.value" :completed="transfer.completed.value"
-      :total-files="transfer.totalFiles.value" :duplicates="transfer.duplicates.value" :sent-bytes="transfer.sentBytes.value"
-      :total-bytes="transfer.totalBytes.value" :percent="transfer.percent.value"/>
     <div v-if="transfer.phase.value" class="meta" role="status">{{transfer.phase.value}}</div>
     <div v-if="transfer.error.value" class="alert error" role="alert">{{transfer.error.value}}</div>
   </template>

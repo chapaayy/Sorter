@@ -1,34 +1,33 @@
 <script setup lang="ts">
 import {onMounted,onUnmounted} from 'vue'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
+import {uploadKindLabel,uploadPercent,uploadStatusLabel} from '../../utils/transferPresentation'
 import FoUploadDialog from './FoUploadDialog.vue'
 import ReferenceUploadDialog from './ReferenceUploadDialog.vue'
+import UploadQueueDialog from './UploadQueueDialog.vue'
 
 const upload=useUploadCenterStore()
-const channels=[{id:'fo',label:'Загрузка ФО'},{id:'references',label:'Загрузка образцов'}] as const
 function key(event:KeyboardEvent){
   if(event.defaultPrevented||event.key!=='Escape')return
-  for(const {id} of channels)if(upload.windows[id].visible)upload.close(id)
+  if(upload.queueOpen)upload.closeQueue()
+  else if(upload.form)upload.closeForm()
 }
 onMounted(()=>document.addEventListener('keydown',key))
 onUnmounted(()=>{
   document.removeEventListener('keydown',key)
-  for(const {id} of channels)upload.finish(id)
+  upload.reset()
 })
 </script>
 <template>
-  <div v-if="channels.some(({id})=>upload.windows[id].mounted&&!upload.windows[id].visible)" class="upload-floating-stack">
-    <template v-for="{id,label} in channels" :key="id">
-      <button v-if="upload.windows[id].mounted&&!upload.windows[id].visible" class="upload-floating"
-        type="button" @click="upload.show(id)">
-        <span class="upload-floating-dot" :class="{active:upload.windows[id].busy}"/>
-        {{label}}
-        <span v-if="upload.windows[id].busy"
-          :title="upload.windows[id].label">{{Math.round(upload.windows[id].progress)}}%</span>
-        <span v-else-if="!upload.windows[id].busy">Продолжить</span>
-      </button>
-    </template>
+  <div v-if="upload.current&&!upload.queueOpen" class="upload-floating-stack">
+    <button type="button" class="upload-floating" @click="upload.showQueue()">
+      <span class="upload-floating-dot" :class="{active:upload.current.status==='running'}" aria-hidden="true"/>
+      <span class="upload-floating-name">{{uploadKindLabel(upload.current.kind)}} · {{upload.current.name}}</span>
+      <strong>{{upload.current.status==='running'?uploadPercent(upload.current)+'%':uploadStatusLabel(upload.current.status)}}</strong>
+    </button>
   </div>
-  <FoUploadDialog v-if="upload.windows.fo.mounted"/>
-  <ReferenceUploadDialog v-if="upload.windows.references.mounted"/>
+  <FoUploadDialog v-if="upload.form?.mode==='fo'" :key="upload.form.id"/>
+  <ReferenceUploadDialog v-else-if="upload.form" :key="upload.form.id"
+    :mode="upload.form.mode" :sam="upload.form.sam" :sam-label="upload.form.samLabel"/>
+  <UploadQueueDialog v-if="upload.queueOpen"/>
 </template>

@@ -79,7 +79,7 @@ function scrolled(){
 }
 </script>
 <template>
-<PageHeader eyebrow="ДИАГНОСТИКА" title="Логи" subtitle="Журнал запусков с поиском, уровнями, источниками и подгрузкой.">
+<PageHeader eyebrow="ДИАГНОСТИКА" title="Логи">
   <template #actions><UiButton @click="copied" :disabled="!events.length">Скопировать</UiButton><UiButton @click="download" :disabled="!selected">↓ Скачать журнал</UiButton></template>
 </PageHeader>
 <div class="panel stack" style="margin-bottom:18px">

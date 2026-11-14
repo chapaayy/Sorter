@@ -10,8 +10,7 @@ type Mode='standard'|'custom'|'import'
 const emit=defineEmits<{
  (e:'dismiss'):void
  (e:'created',sam:string):void
- (e:'finished',message:string,queued:boolean):void
- (e:'state',busy:boolean,percent:number,phase:string):void
+ (e:'noChanges',message:string):void
 }>()
 const mode=ref<Mode>('standard'),city=ref('SAM'),number=ref(''),address=ref(''),name=ref('')
 const busy=ref(false),importBusy=ref(false),error=ref('')
@@ -19,18 +18,13 @@ const title=computed(()=>city.value.trim().toUpperCase()+' '+number.value.trim()
 async function save(){
  if(busy.value||importBusy.value)return
  busy.value=true;error.value=''
- emit('state',true,0,'Создаём конструкцию…')
  try{
   const payload=mode.value==='standard'
     ?{kind:'standard' as const,city_code:city.value.trim().toUpperCase(),number:number.value.trim(),address:address.value.trim()}
     :{kind:'custom' as const,name:name.value.trim()}
   const entry:CreatedConstruction=await referenceApi.createConstruction(payload)
   emit('created',entry.sam)
- }catch(e){error.value=errorText(e)}finally{busy.value=false;emit('state',false,0,'')}
-}
-function importState(running:boolean,percent:number,phase:string){
-  importBusy.value=running
-  emit('state',running,percent,phase)
+ }catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
 </script>
 <template>
@@ -68,7 +62,7 @@ function importState(running:boolean,percent:number,phase:string){
       <UiButton kind="primary" type="submit" :loading="busy">Создать конструкцию</UiButton>
     </div>
    </form>
-   <ReferenceDirectoryImporter v-else @finished="(message,queued)=>emit('finished',message,queued)" @state="importState"/>
+   <ReferenceDirectoryImporter v-else @no-changes="emit('noChanges',$event)" @checking="importBusy=$event"/>
   </div>
 </template>
 <style scoped>

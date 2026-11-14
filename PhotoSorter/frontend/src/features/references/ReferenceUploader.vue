@@ -5,14 +5,9 @@ import ReferencePhotoUploader from './ReferencePhotoUploader.vue'
 
 defineProps<{selectedSam:string;selectedLabel:string}>()
 const emit=defineEmits<{
-  (e:'finished',message:string,queued:boolean):void
-  (e:'state',busy:boolean,percent:number,phase:string):void
+  (e:'noChanges',message:string):void
 }>()
 const mode=ref<'library'|'single'>('single'),running=ref(false)
-function onState(busy:boolean,percent:number,phase:string){
-  running.value=busy
-  emit('state',busy,percent,phase)
-}
 </script>
 
 <template>
@@ -31,8 +26,8 @@ function onState(busy:boolean,percent:number,phase:string){
     <button role="tab" :aria-selected="mode==='single'" :class="{active:mode==='single'}"
        :disabled="running" @click="mode='single'">Фото в конструкцию</button>
   </div>
-  <ReferenceDirectoryImporter v-if="mode==='library'" @finished="(message,queued)=>emit('finished',message,queued)" @state="onState"/>
+  <ReferenceDirectoryImporter v-if="mode==='library'" @no-changes="emit('noChanges',$event)" @checking="running=$event"/>
   <ReferencePhotoUploader v-else :selected-sam="selectedSam"
-     :label="selectedLabel||selectedSam" @finished="(message,queued)=>emit('finished',message,queued)" @state="onState"/>
+     :label="selectedLabel||selectedSam" @no-changes="emit('noChanges',$event)" @checking="running=$event"/>
 </section>
 </template>

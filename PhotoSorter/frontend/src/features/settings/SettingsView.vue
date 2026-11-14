@@ -23,8 +23,7 @@ const sections:Array<{id:Category;name:string;detail:string}>=[
 ]
 </script>
 <template>
-<PageHeader eyebrow="ПАРАМЕТРЫ" title="Настройки"
-  subtitle="Управление обработкой, загрузками, хранилищем и интерфейсом."/>
+<PageHeader eyebrow="ПАРАМЕТРЫ" title="Настройки"/>
 <div class="settings-layout">
   <nav class="panel settings-categories" aria-label="Категории настроек">
     <button v-for="item in sections" :key="item.id" type="button"

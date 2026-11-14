@@ -5,25 +5,24 @@ import CreateConstructionDialog from '../../features/references/CreateConstructi
 import ReferenceUploader from '../../features/references/ReferenceUploader.vue'
 import UploadDialog from './UploadDialog.vue'
 
+defineProps<{mode:'construction'|'single';sam:string;samLabel:string}>()
 const upload=useUploadCenterStore(),notice=useNoticeStore()
-const job=upload.windows.references
-function onState(running:boolean,percent:number,phase:string){upload.report('references',running,percent,phase)}
-function finished(message:string,queued:boolean){
-  upload.finish('references',queued?{}:undefined)
-  notice.add(message,queued?'ok':'info',queued?{to:'/queue',label:'К очереди'}:undefined)
+function noChanges(message:string){
+  upload.closeForm()
+  notice.add(message,'info')
 }
 function created(sam:string){
-  upload.finish('references',{sam})
+  upload.closeForm()
+  upload.complete({sam})
   notice.add('Конструкция создана. Теперь можно добавить образцы.','ok')
 }
 </script>
 
 <template>
-  <UploadDialog :title="job.mode==='construction'?'Создать конструкцию':'Добавить фото'"
-    heading-id="reference-upload-heading" :visible="job.visible" :busy="job.busy" @close="upload.close('references')">
-    <CreateConstructionDialog v-if="job.mode==='construction'" :key="job.session"
-      @dismiss="upload.finish('references')" @created="created" @finished="finished" @state="onState"/>
-    <ReferenceUploader v-else :key="job.session" :selected-sam="job.sam" :selected-label="job.samLabel"
-      initial-mode="single" @finished="finished" @state="onState"/>
+  <UploadDialog :title="mode==='construction'?'Создать конструкцию':'Добавить фото'"
+    heading-id="reference-upload-heading" @close="upload.closeForm()">
+    <CreateConstructionDialog v-if="mode==='construction'"
+      @dismiss="upload.closeForm()" @created="created" @no-changes="noChanges"/>
+    <ReferenceUploader v-else :selected-sam="sam" :selected-label="samLabel" @no-changes="noChanges"/>
   </UploadDialog>
 </template>

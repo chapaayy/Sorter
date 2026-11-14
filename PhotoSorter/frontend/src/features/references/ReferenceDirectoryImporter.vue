@@ -4,17 +4,16 @@ import {referenceApi} from '../../api/references'
 import type {ImportPlan,ImportPlanEntry} from '../../api/references'
 import {inspectReferenceDirectory} from '../../utils/referenceSelection'
 import type {ReferenceSelection} from '../../utils/referenceSelection'
-import {useReferenceTransfer} from '../../composables/useReferenceTransfer'
-import {useUploadSettingsStore} from '../../stores/uploadSettings'
+import {useReferencePreflight} from '../../composables/useReferencePreflight'
+import {useUploadCenterStore} from '../../stores/uploadCenter'
+import {ALL_DUPLICATES} from '../../utils/referenceTransfer'
 import {bytes,errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 import ReferenceImportReview from './ReferenceImportReview.vue'
-import ReferenceTransferProgress from './ReferenceTransferProgress.vue'
 
 
-const emit=defineEmits<{(e:'finished',message:string,queued:boolean):void;(e:'state',busy:boolean,percent:number,phase:string):void}>()
-const uploadSettings=useUploadSettingsStore()
-const transfer=useReferenceTransfer()
+const emit=defineEmits<{(e:'noChanges',message:string):void;(e:'checking',busy:boolean):void}>()
+const uploadCenter=useUploadCenterStore(),transfer=useReferencePreflight()
 const selection=ref<ReferenceSelection|null>(null),plan=ref<ImportPlan|null>(null)
 const checking=ref(false),starting=ref(false),error=ref('')
 let revision=0
@@ -26,8 +25,7 @@ const errors=computed(()=>[
 const planById=computed<Record<string,ImportPlanEntry>>(()=>
   Object.fromEntries((plan.value?.entries||[]).map(entry=>[entry.sam,entry])))
 const existingCount=computed(()=>plan.value?.entries.filter(entry=>entry.existing).length||0)
-watch([starting,transfer.busy,transfer.percent,transfer.phase],()=>emit('state',starting.value||transfer.busy.value,transfer.percent.value,
-  starting.value?'Проверяем папку…':transfer.phase.value),{immediate:true})
+watch([starting,transfer.busy],()=>emit('checking',starting.value||transfer.busy.value),{immediate:true})
 const ready=computed(()=>!checking.value&&!transfer.busy.value&&
   !!selection.value?.tasks.length&&!!plan.value&&!errors.value.length)
 
@@ -54,7 +52,6 @@ async function choose(event:Event){
 
 async function upload(){
   if(!ready.value||!selection.value)return
-  if(transfer.approved.value){await accept();return}
   error.value=''
   // Server verification is repeated immediately before beginning the batch.
   starting.value=true
@@ -71,18 +68,12 @@ async function upload(){
   await transfer.inspect(tasks)
 }
 
-async function accept(){
-  if(transfer.review.value&&!transfer.review.value.newFiles.length){
-    emit('finished','Все выбранные фото уже есть в библиотеке. В очередь ничего не добавлено.',false)
-    return
-  }
-  const result=await transfer.start(uploadSettings.parallelUploads)
-  if(result){
-    selection.value=null;plan.value=null
-    const queued=result.state==='queued'
-    emit('finished',queued?'Образцы загружены. Подготовка поставлена в общую очередь.':
-      'Все выбранные фото уже есть в библиотеке. В очередь ничего не добавлено.',queued)
-  }
+function accept(){
+  const review=transfer.review.value
+  if(!review)return
+  if(!review.newFiles.length){emit('noChanges',ALL_DUPLICATES);return}
+  const name=review.newFiles[0]!.entry.relative.split('/')[0]||'Библиотека'
+  uploadCenter.enqueue({kind:'references',name,review,success:'Образцы загружены. Подготовка поставлена в общую очередь.'})
 }
 </script>
 
@@ -145,15 +136,12 @@ async function accept(){
     <div class="row between wrap">
       <span class="meta">Учтено {{selection.scanned}}: {{selection.tasks.length}} фото · {{selection.skipped.length}} служебных пропущено · {{selection.errors.length}} ошибок</span>
       <div class="row">
-        <UiButton v-if="transfer.busy.value" kind="danger" @click="transfer.pause()">Пауза</UiButton>
+        <UiButton v-if="transfer.busy.value" kind="danger" @click="transfer.pause()">Остановить проверку</UiButton>
         <UiButton v-else kind="primary" :disabled="!ready" @click="upload">
-          {{transfer.approved.value?'Продолжить загрузку':'Загрузить и подготовить'}}
+          Загрузить и подготовить
         </UiButton>
       </div>
     </div>
-    <ReferenceTransferProgress v-if="transfer.approved.value" :completed="transfer.completed.value"
-      :total-files="transfer.totalFiles.value" :duplicates="transfer.duplicates.value" :sent-bytes="transfer.sentBytes.value"
-      :total-bytes="transfer.totalBytes.value" :percent="transfer.percent.value"/>
     <div v-if="transfer.phase.value" class="meta" role="status">{{transfer.phase.value}}</div>
     <div v-if="transfer.error.value" class="alert error" role="alert">{{transfer.error.value}}</div>
   </div>
