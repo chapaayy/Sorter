@@ -5,15 +5,11 @@ cd "$(dirname "$0")"
 
 usage() {
   echo "Usage: ./install.sh [--check | --deploy]"
-  echo "  --check : read-only env/Compose/CPU prerequisite checks (no creation or restart)"
-  echo "  --deploy: initial install or approved upgrade"
+  echo "  --check : read-only env/Compose/CPU prerequisite checks"
+  echo "  --deploy: install missing prerequisites on Ubuntu/Debian, then deploy Sorter"
 }
 MODE="${1:---deploy}"
 if [[ "$MODE" != "--check" && "$MODE" != "--deploy" ]]; then usage >&2; exit 2; fi
-command -v docker >/dev/null || { echo 'Install Docker Engine and Compose v2 first.' >&2; exit 1; }
-docker compose version >/dev/null || { echo 'Docker Compose v2 is required.' >&2; exit 1; }
-command -v python3 >/dev/null || { echo 'Python 3 is required.' >&2; exit 1; }
-
 if [[ ! -f .env ]]; then
   if [[ "$MODE" == "--check" ]]; then echo '[ERROR] .env missing' >&2; exit 1; fi
   cp .env.example .env
@@ -24,6 +20,19 @@ source .env
 set +a
 if [[ -z "${DOMAIN:-}" || "$DOMAIN" == 'sorter.example.com' || ! "$DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
   echo 'Set a real hostname in .env: DOMAIN=sorter.yourdomain.com' >&2
+  exit 1
+fi
+
+if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1 ||
+   ! command -v python3 >/dev/null; then
+  if [[ "$MODE" == "--check" ]]; then
+    echo '[ERROR] Docker Engine, Compose v2 and Python 3 are required. --check installs nothing.' >&2
+    exit 1
+  fi
+  bash PhotoSorter/tools/maintenance/install_prerequisites.sh
+fi
+if ! docker info --format '{{.ServerVersion}}' >/dev/null; then
+  echo '[ERROR] Cannot reach Docker Engine. Check that it is running and accessible to this user.' >&2
   exit 1
 fi
 

@@ -12,6 +12,8 @@
 | `FILE_INDEX.md` | Индекс обязанностей файлов |
 | `PhotoSorter/tools/maintenance/setup_tcp_bbr.sh` | Настройка TCP BBR на Linux-хосте, read-only проверка и управляемый откат, без изменения Compose |
 | `install.sh` | Установка/обновление, preflight, сохранение действующих паролей и mounts |
+| `PhotoSorter/tools/maintenance/install_prerequisites.sh` | Установка недостающих Docker Engine, Compose v2 и Python 3 на Ubuntu/Debian через apt |
+| `PhotoSorter/tools/maintenance/test_install_prerequisites.sh` | Тесты установщика с подменёнными системными командами, без изменения хоста |
 | `compose.yaml` | Caddy, PostgreSQL, API, MegaLoc Worker, WebP и cleanup |
 | `.env.example` | Шаблон DOMAIN, не содержит реальные секреты |
 | `.dockerignore`, `.gitignore` | Исключение секретов, ФО, моделей, caches, build artifacts |

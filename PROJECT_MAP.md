@@ -183,6 +183,10 @@ Shell
 `GET /api/runs/{id}/archive/status` определяет доступность полного ZIP после обработки. `POST /api/runs/{id}/archive/retry` восстанавливает пропавший/недоделанный ZIP по сохранённым результатам без повторного MegaLoc; задание хранится в `archive_retries`, обрабатывается сервисом cleanup. Перед атомарным опубликованием ZIP проверяются количество файлов и CRC. Новые UI-уведомления и кнопки восстановления расположены в `RunDetail.vue` и `ResultDetail.vue`.
 
 
+## Зависимости чистого VPS
+
+`install.sh --deploy` проверяет домен, затем при отсутствии зависимостей вызывает `PhotoSorter/tools/maintenance/install_prerequisites.sh`. На Ubuntu/Debian модуль использует официальный apt-репозиторий Docker и ставит недостающие пакеты до создания секретов и контейнеров. Рабочая установка Docker остаётся без изменений. `--check` пакеты не устанавливает.
+
 ## TCP BBR на Linux-хосте
 
 Установщик `install.sh --deploy` вызывает `PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --apply` после preflight и до Docker Compose. Отдельный модуль включает BBR только при наличии поддержки ядра, сохраняет собственные drop-in в `/etc/sysctl.d` и `/etc/modules-load.d`, не меняет qdisc и контейнерные настройки прочих сервисов. В `compose.yaml` алгоритм явно устанавливается для отдельного сетевого пространства Caddy через `PHOTOSORTER_CADDY_TCP_CC`, который `install.sh` берёт из текущего алгоритма хоста после попытки включить BBR. `--check` ничего не изменяет; `--disable` удаляет только файлы PhotoSorter и возвращает `cubic`. `PHOTOSORTER_ENABLE_BBR=0` пропускает будущие попытки настройки, но не отменяет ранее установленный BBR.

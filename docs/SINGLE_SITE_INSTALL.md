@@ -4,15 +4,14 @@
 
 ## Чистая установка на новый сервер
 
-Требования: Docker Engine + Compose v2, Python3, Linux x86-64, доступные 80/443 и реальный домен.
+Требования: Linux x86-64, доступные TCP 80/443 и реальный домен. На чистой Ubuntu/Debian запусти `--deploy` от root, и он сам поставит Docker Engine, Compose v2 и Python 3. На других дистрибутивах установи эти зависимости заранее.
 
 ```bash
-git clone --single-branch --branch main https://github.com/chapaayy/Sorter.git
-cd Sorter
+git clone --single-branch --branch main https://github.com/chapaayy/Sorter.git /opt/Sorter
+cd /opt/Sorter
 cp .env.example .env
 nano .env                # DOMAIN=ваш.домен
 bash ./install.sh --deploy
-docker compose --env-file .env --env-file .env.generated ps
 ```
 
 Installer создаст только новые секреты в `.env.generated` для новой пустой PostgreSQL, соберёт Vue/CPU runtime и запустит caddy, postgres, api, worker, thumbnail, cleanup.

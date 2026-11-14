@@ -4,17 +4,16 @@
 
 ## Требования
 
-Linux x86-64, Docker Engine + Compose v2, Python 3, DNS домена на VPS и открытые 80/443. По умолчанию `PHOTOSORTER_WORKER_CPUSET=0-6` и `PHOTOSORTER_WORKER_CPUS=7`; на сервере с менее чем семью доступными CPU ID установить допустимый cpuset в shell или `.env` до проверки. Worker mem limit — 20GiB, поэтому учитывать реальную RAM. Для больших фото нужны место на диске, CPU PyTorch и стабильный канал.
+Linux x86-64, DNS домена на VPS и открытые TCP 80/443. На чистой Ubuntu/Debian `--deploy` от root устанавливает недостающие Docker Engine, Compose v2 и Python 3; на других дистрибутивах они должны быть установлены заранее. Рабочий Docker с Compose установщик не заменяет. Если уже установлен Docker из другого источника без Compose v2, сначала добавь совместимый плагин. По умолчанию установщик выбирает доступные CPU и оставляет один для системы, если CPU больше одного. Worker mem limit — 20 GiB, поэтому учитывай реальную RAM. Для больших фото нужны место на диске и стабильный канал.
 
 ## Установка на пустой сервер / пустое состояние
 
 ```bash
-git clone --single-branch --branch main https://github.com/chapaayy/Sorter.git
-cd Sorter
+git clone --single-branch --branch main https://github.com/chapaayy/Sorter.git /opt/Sorter
+cd /opt/Sorter
 cp .env.example .env
 nano .env
 bash ./install.sh --deploy
-docker compose --env-file .env --env-file .env.generated ps
 ```
 
 `.env` содержит `DOMAIN=...` с настоящим доменом. При первой установке скрипт генерирует `.env.generated` с `ADMIN_PASSWORD` и `POSTGRES_PASSWORD`. Не публиковать, не коммитить, сохранить отдельно. Сайт: `https://DOMAIN/`. Логин: `admin`. Модель может быть скачана из интерфейса.
@@ -38,11 +37,11 @@ bash ./install.sh --check
 После успешного preflight, snapshot и теста восстановления:
 
 ```bash
-PHOTOSORTER_APPROVE_UPGRADE=VERIFIED_BACKUP_AND_ROLLBACK bash ./install.sh --deploy
+bash ./install.sh --deploy
 docker compose --env-file .env --env-file .env.generated ps
 ```
 
-`--check` **не** меняет файлы/пароли и не запускает контейнеры. `--deploy` пересобирает и обновляет runtime, сохраняет существующие модели, файлы, PostgreSQL и сертификаты. Токен одобрения не использовать, если резервная копия действительно не проверена.
+`--check` **не** меняет файлы/пароли, не устанавливает пакеты и не запускает контейнеры. `--deploy` пересобирает и обновляет runtime, сохраняет существующие модели, файлы, PostgreSQL и сертификаты.
 
 Проверить `/api/health`, вход, `/`, `/fo`, `/references`, `/processing`, просмотр фото, историю runs, ZIP, состояния трех background workers, HTTPS и ошибки. Любые данные настоящей партии удалять только после осознанного выбора.
 

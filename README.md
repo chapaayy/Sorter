@@ -12,18 +12,19 @@
 
 ## Установка на новый пустой сервер
 
-Linux x86-64, Docker Engine + Compose v2, Python 3, собственный домен с DNS на сервер, доступные TCP 80/443. Целевая конфигурация: 8 vCPU (доступность CPU IDs 0–6), около 24 ГБ RAM и 200 ГБ диска. Указанные CPU — настройки, а не гарантия скорости обработки.
+Linux x86-64, собственный домен с DNS на сервер и доступные TCP 80/443. На чистой Ubuntu или Debian запускай установщик от root. Он сам поставит Docker Engine, Compose v2 и Python 3, если их нет. На других дистрибутивах установи эти зависимости заранее. Целевая конфигурация: 8 vCPU, около 24 ГБ RAM и 200 ГБ диска.
 
 ```bash
-git clone --branch main --single-branch https://github.com/chapaayy/Sorter.git
-cd Sorter
+git clone --branch main --single-branch https://github.com/chapaayy/Sorter.git /opt/Sorter
+cd /opt/Sorter
 cp .env.example .env
 nano .env            # DOMAIN=ваш-настоящий-домен
 bash ./install.sh --deploy
-docker compose --env-file .env --env-file .env.generated ps
 ```
 
-**Примечание:** на пустой установке `--deploy` сгенерирует секреты; `--check` предназначен для проверки уже настроенного окружения. Логин `admin`, пароль сохранён в приватном `.env.generated`, который нельзя удалять или добавлять в Git. Модель/веса можно загрузить из веб-интерфейса.
+Если на сервере нет Git или редактора, выполни перед клонированием `apt-get update && apt-get install -y git nano`.
+
+На пустой установке `--deploy` сгенерирует `.env.generated` рядом с `.env`. Логин — `admin`. Начальный пароль для сайта можно посмотреть локально командой `sed -n 's/^ADMIN_PASSWORD=//p' .env.generated`. Там же хранится служебный `POSTGRES_PASSWORD`. Не удаляй этот файл и не добавляй его в Git. `--check` только проверяет уже настроенное окружение. Модель/веса можно загрузить из веб-интерфейса.
 
 В результате поднимаются `caddy` (HTTPS), `postgres`, `api`, `worker` (MegaLoc), `thumbnail` (WebP) и `cleanup` (служебная очистка). Снаружи публикуются только 80/443.
 
