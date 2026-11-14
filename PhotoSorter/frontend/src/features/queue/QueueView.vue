@@ -11,6 +11,7 @@ import {hasBlockingFailure} from '../../utils/queuePresentation'
 import {estimateQueue} from '../../utils/queueEstimates'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
+import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import QueueTaskRow from './QueueTaskRow.vue'
@@ -27,7 +28,7 @@ const filteredHistory=computed(()=>history.value.filter(item=>(
   (item.batch_name||'')+' '+item.seq+' '+(item.kind==='reference_preparation'?'образцы':'фотографии')
 ).toLowerCase().includes(search.value.toLowerCase())))
 const blocking=computed(()=>active.value.find(hasBlockingFailure))
-const clock=ref(Date.now()),loadingMore=ref(false)
+const clock=ref(Date.now()),loadingMore=ref(false),initialLoading=ref(true)
 const estimates=computed(()=>estimateQueue(active.value,history.value,clock.value))
 async function refresh(){
   try{
@@ -39,7 +40,7 @@ async function refresh(){
     history.value=h.tasks;historyTotal.value=h.total
     clock.value=Date.now()
     error.value=''
-  }catch(e){error.value=errorText(e)}
+  }catch(e){error.value=errorText(e)}finally{initialLoading.value=false}
 }
 onMounted(()=>void refresh())
 usePolling(refresh,4000)
@@ -107,6 +108,7 @@ function message(){
       Показаны первые {{active.length}} из {{activeTotal}} задач.
     </div>
   </div>
+  <LoadingSkeleton v-else-if="initialLoading" variant="tasks" label="Загружаем очередь"/>
   <EmptyState v-else-if="!error" title="Нет активных заданий"/>
 </template>
 <template v-else>
@@ -118,6 +120,7 @@ function message(){
     <QueueTaskRow v-for="(task,index) in filteredHistory" :key="task.seq" :task="task"
       :position="index+1" @details="t=>detail=t.reference_job_id"/>
   </div>
+  <LoadingSkeleton v-else-if="initialLoading" variant="tasks" label="Загружаем историю"/>
   <EmptyState v-else-if="!error" :title="history.length?'Ничего не найдено':'История пока пуста'"/>
   <div v-if="history.length<historyTotal" class="pagination">
     <UiButton small :loading="loadingMore" @click="moreHistory">Показать ещё</UiButton>

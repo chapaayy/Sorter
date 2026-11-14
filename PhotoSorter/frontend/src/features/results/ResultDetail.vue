@@ -14,6 +14,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import GroupPicker from '../../components/split/GroupPicker.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
+import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import {useNoticeStore} from '../../stores/notice'
 import {useDeletionStore} from '../../stores/deletion'
@@ -24,6 +25,7 @@ const run=ref<Run|null>(null),batch=ref<Batch|null>(null),retention=ref<Retentio
 const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),referenceNames=ref<Record<string,string>>({}),mode=ref<'sam'|'group'>('sam')
 const selected=ref(''),lastSam=ref(''),lastGroup=ref(''),error=ref(''),busy=ref(false)
 const viewer=ref<number|null>(null),deleteWhole=ref(false)
+const initialLoading=ref(true)
 const archiveMissing=ref(false),archiveRetryBusy=ref(false)
 const displaySam=(sam:string)=>referenceNames.value[sam]||friendlySam(sam)
 const list=computed(()=>Object.entries(mode.value==='sam'?sams.value:groups.value)
@@ -59,7 +61,7 @@ onMounted(async()=>{
     referenceNames.value=Object.fromEntries((refs?.sam||[]).map(item=>[item.sam,item.display_name||item.sam]))
     batch.value=b;sams.value=s;groups.value=g;selected.value=list.value[0]?.id||''
     retention.value=await batchApi.retention(b.batch_id)
-  }catch(e){error.value=errorText(e)}
+  }catch(e){error.value=errorText(e)}finally{initialLoading.value=false}
 })
 function download(sam?:string){
   const anchor=document.createElement('a')
@@ -135,11 +137,13 @@ async function deleteBatch(){
     </div>
     <div v-if="pageError" class="alert error" role="alert">{{pageError}}</div>
     <VirtualThumbnailGrid v-if="items.length" :items="tiles" :show-scores="true" @open="i=>viewer=i"/>
-    <EmptyState v-else-if="!loading&&!pageError" title="Фотографий здесь нет"/>
+    <LoadingSkeleton v-else-if="loading" variant="gallery" label="Загружаем фотографии результата"/>
+    <EmptyState v-else-if="!pageError" title="Фотографий здесь нет"/>
     <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё</UiButton></div>
   </section>
 </div>
-<EmptyState v-else-if="run||published" :title="session.isOwner?'Результаты ещё не опубликованы':'Фотографий в этом результате нет'"/>
+<LoadingSkeleton v-else-if="initialLoading" variant="split" label="Загружаем результат"/>
+<EmptyState v-else-if="!error&&(run||published)" :title="session.isOwner?'Результаты ещё не опубликованы':'Фотографий в этом результате нет'"/>
 <ImageViewer v-if="viewer!==null" :items="previews" :initial="viewer" @close="viewer=null"/>
 <ConfirmDialog v-if="deleteWhole&&batch" title="Удалить ВСЮ партию безвозвратно?" :message="'Удалятся оригинальные ФО, все запуски, готовые результаты, миниатюры, временные файлы и логи партии «'+batch.display_name+'». Общая библиотека SAM останется.'" :required-text="batch.display_name" danger confirm-label="Удалить всю партию" :busy="busy" @confirm="deleteBatch" @cancel="deleteWhole=false"/>
 </template>

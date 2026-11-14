@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from '../../../components/ui/LoadingSkeleton.vue'
 import {onMounted,ref} from 'vue'
 import {accessRequests,type AccessRequest,type RequestStatus} from '../../../api/accessRequests'
 import {date,errorText} from '../../../utils/format'
@@ -61,7 +62,7 @@ onMounted(()=>{void load()})
       </div>
       <UiButton v-else-if="item.status==='approved'" small @click="selected={item,approved:true,edit:true}">Изменить доступ</UiButton>
     </article>
-    <p v-if="loading" class="meta" role="status">Загружаем заявки…</p>
+    <LoadingSkeleton v-if="loading&&!items.length" variant="lines" :count="2" label="Загружаем заявки"/>
     <p v-else-if="!items.length&&!error" class="meta">Заявок пока нет.</p>
     <UiButton v-if="more" small :disabled="loading" @click="load(true)">Показать ещё</UiButton>
   </section>

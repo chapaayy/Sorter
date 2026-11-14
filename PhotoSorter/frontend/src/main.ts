@@ -10,4 +10,5 @@ import './styles/task-cards.css'
 import './styles/upload-dialog.css'
 import './styles/reference-layout.css'
 import './styles/settings-layout.css'
+import './styles/skeleton.css'
 createApp(App).use(createPinia()).use(router).mount('#app')

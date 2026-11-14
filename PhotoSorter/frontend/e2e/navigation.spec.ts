@@ -23,6 +23,7 @@ async function mock(page:Page){
     if(p==='/api/auth/me')return respond(route,{username:'admin'})
     if(p==='/api/auth/login')return respond(route,{username:'admin'})
     if(p==='/api/auth/logout')return respond(route,{ok:true})
+    if(p==='/api/admin/access-requests')return respond(route,{items:[],has_more:false})
     if(p==='/api/batches')return respond(route,{batches:[batch],total:1})
     if(p==='/api/batches/'+bid)return respond(route,batch)
     if(p==='/api/batches/'+bid+'/gallery')return respond(route,{photos:[photo],next_cursor:null})
@@ -161,34 +162,36 @@ test('full ZIP is ready for direct download without extra confirmation',async({p
 })
 test('auto-processing preference defaults off and saves on the server',async({page})=>{
   await page.goto('/settings')
-  await page.getByRole('button',{name:/MegaLoc/}).click()
   const enabled=page.getByRole('checkbox',{name:'Автоматически обрабатывать загруженные ФО'})
   await expect(enabled).not.toBeChecked()
   await enabled.check()
   await expect(enabled).toBeChecked()
   await page.reload()
-  await page.getByRole('button',{name:/MegaLoc/}).click()
   await expect(enabled).toBeChecked()
 })
 test('storage settings persist minute-level automatic deletion',async({page})=>{
   await page.goto('/settings')
-  await page.getByRole('button',{name:/Хранилище/}).click()
   const enabled=page.getByRole('checkbox',{name:'Удалять старые фотоотчёты автоматически'})
   await expect(enabled).toBeChecked()
   await page.getByRole('spinbutton',{name:'Удалять через'}).fill('5')
   await page.getByRole('combobox',{name:'Единицы срока хранения'}).click()
   await page.getByRole('option',{name:'Минут'}).click()
-  await page.getByRole('button',{name:'Сохранить'}).click()
+  await page.getByRole('region',{name:'Хранилище'}).getByRole('button',{name:'Сохранить'}).click()
   await page.reload()
-  await page.getByRole('button',{name:/Хранилище/}).click()
   await expect(page.getByRole('spinbutton',{name:'Удалять через'})).toHaveValue('5')
   await expect(page.getByRole('combobox',{name:'Единицы срока хранения'})).toContainText('Минут')
 })
 test('theme setting works in light and dark',async({page})=>{
   await page.goto('/settings')
-  await page.getByRole('radio',{name:'Светлая'}).click()
+  await page.locator('.theme-option').filter({hasText:'Светлая'}).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme','light')
-  await page.getByRole('radio',{name:'Тёмная'}).click()
+  await page.locator('.theme-option').filter({hasText:'Тёмная'}).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme','dark')
+  await expect(page.getByRole('radio',{name:'Тёмная'})).toBeChecked()
+  await page.emulateMedia({colorScheme:'light'})
+  await page.locator('.theme-option').filter({hasText:'Системная'}).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme','light')
+  await page.emulateMedia({colorScheme:'dark'})
   await expect(page.locator('html')).toHaveAttribute('data-theme','dark')
 })
 test('mobile drawer allows navigation',async({page,isMobile})=>{
@@ -201,10 +204,8 @@ test('mobile drawer allows navigation',async({page,isMobile})=>{
 
 test('processing overview moved to Settings, run details live under Queue',async({page})=>{
   await page.goto('/settings')
-  await page.getByRole('button',{name:/MegaLoc/}).click()
   await expect(page.getByRole('heading',{name:'MegaLoc',exact:true})).toBeVisible()
   await expect(page.getByText('Модель установлена')).toBeVisible()
-  await page.getByRole('button',{name:/Производительность/}).click()
   await expect(page.getByRole('heading',{name:'Производительность',exact:true})).toBeVisible()
   await expect(page.getByRole('slider',{name:'CPU модели'})).toBeVisible()
   await expect(page.getByRole('slider',{name:'Резерв CPU системы'})).toBeVisible()
@@ -666,7 +667,6 @@ test('System settings identify a lost Worker heartbeat',async({page})=>{
     api:{uptime_seconds:10,latency:{samples:0,p50_ms:null,p95_ms:null},rss_peak_kib:100}
   }))
   await page.goto('/settings')
-  await page.getByRole('button',{name:/Система/}).click()
   await expect(page.getByText('Нет свежего сигнала').first()).toBeVisible()
 })
 test('FO library notice appears once, shows events and requires explicit acknowledgement',async({page})=>{
@@ -1160,4 +1160,89 @@ test('website transfer queue stays FIFO across two FO folders and references',as
     firstGate.release();secondGate.release();refGate.release()
     await rm(root,{recursive:true,force:true})
   }
+})
+
+test('settings are stacked and the theme cards preview the actual palettes',async({page})=>{
+  await page.goto('/settings')
+  const sections=page.locator('.settings-layout > section')
+  await expect(sections).toHaveCount(8)
+  await expect(sections.first().getByRole('heading',{name:'Оформление'})).toBeVisible()
+  await expect(sections.nth(1).getByRole('heading',{name:'Загрузка файлов'})).toBeVisible()
+  await expect(sections.last().getByRole('heading',{name:'О сервисе MAP'})).toBeVisible()
+  const boxes=await sections.evaluateAll(nodes=>nodes.map(node=>{
+    const bounds=node.getBoundingClientRect()
+    return {left:bounds.left,top:bounds.top,bottom:bounds.bottom}
+  }))
+  for(let i=1;i<boxes.length;i++){
+    expect(boxes[i]!.left).toBe(boxes[0]!.left)
+    expect(boxes[i]!.top).toBeGreaterThan(boxes[i-1]!.bottom)
+  }
+  await expect(page.locator('.theme-preview-window')).toHaveCount(4)
+  await expect(page.locator('.theme-preview-light .theme-preview-window')).toHaveCSS('background-color','rgb(250, 250, 250)')
+  await expect(page.locator('.theme-preview-dark .theme-preview-window')).toHaveCSS('background-color','rgb(16, 16, 16)')
+})
+
+test('slow report data and slow thumbnails have distinct skeleton states',async({page})=>{
+  const metadata=holdTransfer(),image=holdTransfer(),refresh=holdTransfer()
+  let fetches=0
+  const placeholder=page.locator('[data-skeleton="tasks"]')
+  const thumbPath='/api/thumbnails/'+pid
+  await page.emulateMedia({reducedMotion:'reduce'})
+  await page.route('**/api/batches?*',async route=>{
+    fetches++
+    await (fetches===1?metadata:refresh).waiting
+    return respond(route,{batches:[{...batch,cover_thumbnail_url:thumbPath}],total:1})
+  })
+  await page.route('**'+thumbPath,async route=>{
+    await image.waiting
+    return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="#777"/></svg>'})
+  })
+  try{
+    await page.goto('/fo',{waitUntil:'domcontentloaded'})
+    await expect(placeholder).toBeVisible()
+    await expect(placeholder.locator('.skeleton-shape').first()).toHaveCSS('animation-name','none')
+    await expect(page.getByText('Пока нет фотоотчётов')).toHaveCount(0)
+    metadata.release()
+    const card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
+    await expect(card).toBeVisible()
+    await expect(placeholder).toHaveCount(0)
+    await expect(card.locator('.deferred-image-fill')).toBeVisible()
+    image.release()
+    await expect(card.locator('img')).toBeVisible()
+    await expect(card.locator('.deferred-image-fill')).toHaveCount(0)
+    await page.getByRole('button',{name:'Обновить',exact:true}).click()
+    await expect.poll(()=>fetches).toBeGreaterThan(1)
+    await expect(card).toBeVisible()
+    await expect(placeholder).toHaveCount(0)
+  }finally{metadata.release();image.release();refresh.release()}
+})
+
+test('reference gallery keeps the construction visible while photo tiles load',async({page})=>{
+  const library=holdTransfer(),gallery=holdTransfer(),thumb=holdTransfer()
+  await page.route('**/api/references',async route=>{
+    await library.waiting
+    return respond(route,{sam:[{sam:'SAM-0001',photos:1}],total:1})
+  })
+  await page.route('**/api/references/SAM-0001/photos?*',async route=>{
+    await gallery.waiting
+    return respond(route,{photos:[{...photo,thumbnail_status:'ready'}],next_cursor:null})
+  })
+  await page.route('**'+photo.thumbnail_url,async route=>{
+    await thumb.waiting
+    return route.fulfill({status:404,body:''})
+  })
+  try{
+    await page.goto('/references',{waitUntil:'domcontentloaded'})
+    await expect(page.locator('[data-skeleton="split"]')).toBeVisible()
+    library.release()
+    await expect(page.getByRole('heading',{name:'SAM-0001'})).toBeVisible()
+    await expect(page.locator('[data-skeleton="gallery"]')).toBeVisible()
+    gallery.release()
+    await expect(page.getByText(photo.name,{exact:true})).toBeVisible()
+    await expect(page.locator('[data-skeleton="gallery"]')).toHaveCount(0)
+    await expect(page.locator('.photo-item .deferred-image-fill')).toBeVisible()
+    thumb.release()
+    await expect(page.getByText('Не удалось загрузить превью')).toBeVisible()
+    await expect(page.locator('.photo-item .deferred-image-fill')).toHaveCount(0)
+  }finally{library.release();gallery.release();thumb.release()}
 })

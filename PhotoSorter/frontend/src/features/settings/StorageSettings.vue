@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import {computed,onMounted,ref} from 'vue'
 import {batchApi} from '../../api/batches'
 import {systemApi} from '../../api/system'
@@ -11,6 +12,7 @@ import UiSelect from '../../components/ui/UiSelect.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 
 const notice=useNoticeStore()
+const usageLoading=ref(true),retentionLoading=ref(true)
 const usage=ref<StorageUsage|null>(null),batches=ref<Batch[]>([]),busy=ref(false),
   cleanConfirm=ref(false),error=ref(''),savingRetention=ref(false),retentionPrefs=ref<RetentionPreference|null>(null)
 const due=computed(()=>batches.value.filter(b=>b.delete_state==='active'&&b.delete_after_at)
@@ -22,13 +24,13 @@ async function refresh(){
   try{
     const [u,b]=await Promise.all([systemApi.usage(),batchApi.list(200)])
     usage.value=u;batches.value=b.batches;error.value=''
-  }catch(e){error.value=errorText(e)}
+  }catch(e){error.value=errorText(e)}finally{usageLoading.value=false}
 }
 onMounted(()=>{void refresh();void loadRetention()})
 usePolling(refresh,20000)
 async function loadRetention(){
   try{retentionPrefs.value=await systemApi.retention()}
-  catch(e){error.value=errorText(e)}
+  catch(e){error.value=errorText(e)}finally{retentionLoading.value=false}
 }
 async function saveRetention(){
   if(!retentionPrefs.value||savingRetention.value)return
@@ -81,13 +83,14 @@ async function cleanup(){
           <strong>{{bytes(usage.database_estimated_bytes)}}</strong></div>
       </div>
     </template>
-    <p v-else class="meta">Считываем использование хранилища…</p>
+    <LoadingSkeleton v-else-if="usageLoading" variant="lines" label="Считываем использование хранилища"/>
   </section>
   <section class="panel stack">
     <div class="row between wrap">
       <div><h2>Автоматическое удаление</h2><p class="meta">После обработки удаляются исходные ФО, результаты и ZIP.</p></div>
       <UiButton :disabled="!retentionPrefs" :loading="savingRetention" @click="saveRetention">Сохранить</UiButton>
     </div>
+    <LoadingSkeleton v-if="retentionLoading" variant="lines" :count="2" label="Загружаем срок хранения"/>
     <label v-if="retentionPrefs" class="row" style="gap:10px">
       <input v-model="retentionPrefs.enabled" type="checkbox"/>
       <strong>Удалять старые фотоотчёты автоматически</strong>
@@ -112,7 +115,7 @@ async function cleanup(){
         <div class="meta">Удаление: {{date(batch.delete_after_at)}}</div></div>
       <UiButton small :loading="busy" @click="extend(batch.batch_id)">Продлить</UiButton>
     </div>
-    <p v-if="!due.length" class="meta">Пока нет партий с назначенным сроком удаления.</p>
+    <p v-if="!usageLoading&&!due.length&&usage" class="meta">Пока нет партий с назначенным сроком удаления.</p>
   </section>
   <section class="panel stack">
     <div class="row between wrap">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {ref,computed,watch,onMounted,onUnmounted,nextTick} from 'vue'
+import DeferredImage from './DeferredImage.vue'
 export interface ViewerItem{src:string;label:string;score?:number|null}
 const props=defineProps<{items:ViewerItem[];initial:number}>()
 const emit=defineEmits<{(e:'close'):void}>()
@@ -29,7 +30,9 @@ onUnmounted(()=>{document.removeEventListener('keydown',key);document.body.style
       </div>
     </div>
     <div class="viewer-main" @touchstart.passive="start" @touchend.passive="end" @dblclick="zoom=!zoom">
-      <img v-if="current" :key="current.src" :src="current.src" :alt="current.label" :class="{zoomed:zoom}"/>
+      <DeferredImage v-if="current?.src" :key="current.src" :src="current.src" :alt="current.label" :class="{zoomed:zoom}">
+        <template #error><span class="meta">Не удалось открыть фотографию</span></template>
+      </DeferredImage>
     </div>
     <div class="row between" style="width:100%">
       <button class="btn" :disabled="items.length<2" aria-label="Предыдущее фото" @click="move(-1)">← Назад</button>

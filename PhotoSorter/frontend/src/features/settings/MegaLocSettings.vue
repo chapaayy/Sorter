@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import {onMounted,ref} from 'vue'
 import {runApi} from '../../api/runs'
 import {useNoticeStore} from '../../stores/notice'
@@ -9,13 +10,14 @@ import UiButton from '../../components/ui/UiButton.vue'
 
 const notice=useNoticeStore()
 const autoEnabled=ref(false),threshold=ref(.50),autoBusy=ref(false),autoReady=ref(false)
+const initialLoading=ref(true)
 const model=ref<ModelInfo|null>(null),modelBusy=ref(false),error=ref('')
 async function refresh(){
   try{
     const [a,m]=await Promise.all([runApi.autoSettings(),runApi.models()])
     if(!autoBusy.value){autoEnabled.value=a.auto_process_new_batches;threshold.value=a.grouping_threshold}
     model.value=m;autoReady.value=true;error.value=''
-  }catch(e){error.value=errorText(e)}
+  }catch(e){error.value=errorText(e)}finally{initialLoading.value=false}
 }
 onMounted(()=>void refresh())
 usePolling(refresh,15000)
@@ -43,16 +45,19 @@ async function install(){
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
   <section class="panel stack">
     <div class="panel-header"><h2>MegaLoc</h2>
-      <span class="status" :class="model?.models[0]?.available?'ok':'danger'">
+      <span v-if="model" class="status" :class="model?.models[0]?.available?'ok':'danger'">
         {{model?.models[0]?.available?'Модель установлена':'Модель не найдена'}}
       </span>
     </div>
-    <div class="row between wrap"><div><strong>Устройство: CPU</strong><div class="meta">Единственная модель сортировки</div></div>
+    <LoadingSkeleton v-if="initialLoading" variant="lines" :count="2" label="Проверяем MegaLoc"/>
+    <div v-else-if="model" class="row between wrap"><div><strong>Устройство: CPU</strong><div class="meta">Единственная модель сортировки</div></div>
       <UiButton v-if="model&&!model.models[0]?.available" :loading="modelBusy" @click="install">Установить MegaLoc</UiButton>
     </div>
   </section>
   <section class="panel stack">
     <h2>Автоматическая обработка</h2>
+    <LoadingSkeleton v-if="initialLoading" variant="lines" :count="2" label="Загружаем параметры MegaLoc"/>
+    <template v-else-if="autoReady">
     <label class="row" style="gap:10px">
       <input v-model="autoEnabled" type="checkbox" :disabled="!autoReady||autoBusy" @change="saveAuto"/>
       <strong>Автоматически обрабатывать загруженные ФО</strong>
@@ -62,6 +67,7 @@ async function install(){
         :disabled="!autoReady||autoBusy" @change="saveAuto"/>
     </label>
     <p class="meta">Новые партии используют эти значения. Существующие задания не изменяются.</p>
+    </template>
   </section>
 
 </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import {computed,onMounted,ref} from 'vue'
 import {runApi} from '../../api/runs'
 import type {WorkloadSettings} from '../../types/api'
@@ -48,6 +49,7 @@ async function save(){
   </div>
   <p class="meta">Модель ограничивается количеством потоков и набором допустимых CPU при начале следующего задания. Система не запирается в резерве: при свободной модели другие службы могут использовать все доступные ядра.</p>
  </section>
+ <LoadingSkeleton v-else-if="!error" class="panel" variant="lines" label="Загружаем настройки производительности"/>
  <section class="panel stack">
   <h2>Фоновые службы</h2>
   <p class="meta">Миниатюры и очистка выполняются в отдельных контейнерах с низким CPU-приоритетом и без жёстких квот. Linux распределяет свободное процессорное время автоматически.</p>

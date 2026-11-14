@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed} from 'vue'
+import DeferredImage from '../gallery/DeferredImage.vue'
 import UiIcon from './UiIcon.vue'
 
 type Tone='running'|'queued'|'success'|'danger'|'warning'|'neutral'|'deleting'
@@ -28,7 +29,9 @@ const percentage=computed(()=>typeof props.progress==='number' &&
   <div class="task-card-identity">
     <span class="task-card-number">{{number}}</span>
     <div class="task-card-thumbnail">
-      <img v-if="thumbnailUrl" :src="thumbnailUrl" alt="" loading="lazy"/>
+      <DeferredImage v-if="thumbnailUrl" :key="thumbnailUrl" :src="thumbnailUrl" alt="" lazy>
+        <template #error><UiIcon :name="icon" :size="22"/></template>
+      </DeferredImage>
       <UiIcon v-else :name="icon" :size="22"/>
     </div>
     <div class="task-card-heading">

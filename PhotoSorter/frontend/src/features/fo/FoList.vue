@@ -13,6 +13,7 @@ import {useNoticeStore} from '../../stores/notice'
 import {useDeletionStore} from '../../stores/deletion'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
+import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import FoBatchCard from './FoBatchCard.vue'
@@ -178,7 +179,7 @@ async function stop(){
     <UiButton :loading="loadingMore" @click="load(true)">Показать ещё</UiButton>
   </div>
 </div>
-<div v-else-if="loading" class="meta">Загружаем список партий…</div>
+<LoadingSkeleton v-else-if="loading" variant="tasks" label="Загружаем фотоотчёты"/>
 <EmptyState v-else-if="!error" :title="total&&search.trim()?'Ничего не найдено':'Пока нет фотоотчётов'"/>
 <ConfirmDialog v-if="stopConfirm" :title="stopConfirm.queued?'Убрать из очереди MegaLoc?':'Остановить обработку MegaLoc?'"
   :message="'Партия «'+stopConfirm.name+'». История предыдущих запусков и фотографии сохранятся.'"

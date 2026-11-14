@@ -1,0 +1,29 @@
+.visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.skeleton-shape{display:block;background:color-mix(in srgb,var(--panel-alt) 82%,var(--muted-2));animation:skeleton-pulse 1.6s ease-in-out infinite alternate}
+@keyframes skeleton-pulse{from{opacity:.52}to{opacity:.95}}
+.skeleton-line{height:10px;min-width:14px;width:84%;border-radius:99px}
+.skeleton-line.short{width:50%}
+.skeleton-task{pointer-events:none}
+.skeleton-task .task-card-heading{flex:0 1 158px;width:100%;gap:8px}
+.skeleton-task .task-card-status{width:72px;height:26px}
+.skeleton-task .task-card-actions{width:60px;height:34px;border-radius:8px}
+.skeleton-search{height:42px;width:100%;border-radius:8px}
+.skeleton-count{width:24px;height:18px;border-radius:5px}
+.skeleton-gallery-heading{width:32%;margin:4px 0 22px}
+.skeleton-lines{display:grid;gap:16px;padding:10px 0}
+.skeleton-lines .skeleton-line{max-width:680px}
+.task-card-thumbnail,.viewer-main{position:relative}
+.deferred-image-pending{visibility:hidden}
+.task-card-thumbnail>.deferred-image-pending,.viewer-main>.deferred-image-pending{position:absolute;inset:0}
+.deferred-image-fill{position:absolute;inset:0}
+.photo-item>.deferred-image-fill,.photo-item>.photo-load-error{position:absolute;inset:0 0 32px;height:auto}
+.photo-load-error{display:grid;place-items:center;text-align:center;color:var(--muted);font-size:12px}
+.viewer-main>.deferred-image-fill{inset:10% 12%;border-radius:10px}
+.skeleton-task .task-card-number,.skeleton-task .task-card-thumbnail,.skeleton-task .task-card-status{background:color-mix(in srgb,var(--panel-alt) 82%,var(--muted-2))}
+@media(prefers-reduced-motion:reduce){.skeleton-shape{animation:none;opacity:.72}}
+.log-loading{padding:12px 14px}
+@media(min-width:701px){
+  .reference-library-view>.loading-skeleton{display:flex;flex:1;min-height:0}
+  .reference-library-view .skeleton-split{width:100%}
+  .reference-library-view .skeleton-split .split-main{padding:16px}
+}

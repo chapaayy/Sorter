@@ -152,6 +152,12 @@ Vue /references → manifest образцов → /api/reference-imports
 
 ## Актуальный интерфейс
 
+`SettingsView.vue` показывает все секции в одной колонке. `ThemePreview.vue`
+использует настоящие токены палитр MAP, а выбор темы применяется через
+`stores/theme.ts`. `LoadingSkeleton.vue` показывает форму контента, пока
+нет первого ответа API. `DeferredImage.vue` независимо показывает загрузку
+изображения, не скрывая уже полученные данные карточки.
+
 `UploadCenter.vue` отделяет формы выбора от `UploadQueueDialog.vue`.
 `stores/uploadCenter.ts` держит один активный перенос и очередь в памяти
 вкладки. Сами передачи выполняются `foTransfer.ts` и `referenceTransfer.ts`,

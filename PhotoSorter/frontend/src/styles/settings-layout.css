@@ -1,16 +1,36 @@
-.settings-layout{display:grid;grid-template-columns:minmax(210px,260px) minmax(0,1fr);
-  align-items:start;gap:18px}
-.settings-categories{padding:8px;display:grid;gap:3px}
-.settings-categories button{display:grid;gap:4px;padding:12px 14px;min-width:0;width:100%;text-align:left;
-  background:transparent;color:var(--muted);border:1px solid transparent;border-radius:9px}
-.settings-categories button strong{font-size:13px}
-.settings-categories button span{font-size:11px}
-.settings-categories button:hover{background:var(--panel-alt);color:var(--text)}
-.settings-categories button.active{color:var(--text);background:var(--accent-bg);border-color:var(--border-subtle)}
-.settings-detail{min-width:0}
-@media(max-width:850px){.settings-layout{grid-template-columns:1fr}
-.settings-categories{grid-template-columns:repeat(2,minmax(0,1fr))}
+.settings-layout{display:grid;gap:24px;width:min(100%,1100px);min-width:0}
+.settings-layout>section{min-width:0}
+.theme-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;max-width:840px}
+.theme-option{position:relative;cursor:pointer;min-width:0}
+.theme-option-card{height:100%;display:grid;align-content:start;gap:6px;padding:9px;border:1px solid var(--border);border-radius:12px}
+.theme-option:hover .theme-option-card{background:var(--panel-alt)}
+.theme-option input:checked+.theme-option-card{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.theme-option input:focus-visible+.theme-option-card{outline:2px solid var(--accent);outline-offset:3px}
+.theme-option-title{min-height:22px;display:flex;align-items:center;justify-content:space-between;gap:6px}
+.theme-option-title strong{font-size:13px}
+.theme-option-check{width:18px;height:18px;display:grid;place-items:center;border-radius:50%;background:var(--accent);color:var(--on-accent);font-size:11px}
+.theme-preview{display:block;position:relative;overflow:hidden;aspect-ratio:16/10;border:1px solid var(--border);border-radius:7px;margin-bottom:4px}
+.theme-preview-palette{position:absolute;inset:0;display:block}
+.theme-preview-half.theme-preview-light{clip-path:inset(0 50% 0 0)}
+.theme-preview-half.theme-preview-dark{clip-path:inset(0 0 0 50%)}
+.theme-preview-window{position:absolute;inset:0;display:grid;grid-template-columns:25% 1fr;background:var(--page);color:var(--text)}
+.theme-preview-sidebar{display:flex;flex-direction:column;gap:8%;padding:13% 12%;background:var(--sidebar);border-right:1px solid var(--border-subtle)}
+.theme-preview-brand{font-size:clamp(7px,1vw,12px);line-height:1;font-weight:750;letter-spacing:.06em;margin-bottom:12%}
+.theme-preview-sidebar i{height:4%;min-height:3px;width:60%;border-radius:4px;background:var(--muted-2);opacity:.55}
+.theme-preview-sidebar .theme-preview-selected{width:100%;height:10%;background:var(--accent-bg);opacity:1}
+.theme-preview-content{display:flex;flex-direction:column;gap:7%;padding:5% 9%;min-width:0}
+.theme-preview-topbar{height:13%;border-bottom:1px solid var(--border)}
+.theme-preview-title{height:6%;width:42%;background:var(--text);opacity:.85;border-radius:4px}
+.theme-preview-report{height:22%;min-height:0;display:flex;align-items:center;gap:7%;padding:3%;border:1px solid var(--border-subtle);border-radius:5px;background:var(--panel)}
+.theme-preview-photo{width:20%;height:100%;border-radius:2px;background:var(--panel-alt)}
+.theme-preview-lines{width:55%;height:62%;display:flex;flex-direction:column;justify-content:space-between}
+.theme-preview-lines i{height:24%;width:85%;background:var(--muted-2);border-radius:3px;opacity:.65}
+.theme-preview-lines i:last-child{width:55%;opacity:.35}
+@media(max-width:540px){
+  .settings-layout{gap:16px}
+  .theme-options{gap:7px}
+  .theme-option-card{padding:5px}
+  .theme-option-title strong{font-size:11px}
+  .theme-option .meta{font-size:10px}
+  .theme-option-check{width:14px;height:14px;font-size:9px}
 }
-@media(max-width:550px){.settings-categories{grid-template-columns:1fr 1fr}
-.settings-categories button{padding:10px}
-.settings-categories button span{display:none}}

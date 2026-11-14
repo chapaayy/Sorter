@@ -8,6 +8,7 @@ import type {Photo,SamCount} from '../../types/api'
 import {errorText} from '../../utils/format'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
+import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import GroupPicker from '../../components/split/GroupPicker.vue'
@@ -19,6 +20,7 @@ const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),addressDraft=
   deletePhoto=ref<string|null>(null),deleteSam=ref(false)
 
 const notice=useNoticeStore(),uploader=useUploadCenterStore()
+const listLoading=ref(true)
 const groups=computed(()=>list.value.map(s=>({id:s.sam,label:s.display_name||s.sam,count:s.photos})))
 const selectedEntry=computed(()=>list.value.find(item=>item.sam===selected.value))
 const {items,cursor,loading,error:galleryError,load,reset}=useCursor<Photo>(cursor=>referenceApi.gallery(selected.value,cursor))
@@ -29,7 +31,7 @@ async function refresh(){
     list.value=refs.sam
     if(!selected.value||!list.value.some(x=>x.sam===selected.value))selected.value=list.value[0]?.sam||''
     error.value=''
-  }catch(e){error.value=errorText(e)}
+  }catch(e){error.value=errorText(e)}finally{listLoading.value=false}
 }
 watch(selected,()=>{viewer.value=null;if(selected.value)void reset();else items.value=[]})
 onMounted(()=>{void refresh()})
@@ -93,11 +95,13 @@ async function removeSam(){
     <div class="reference-library-gallery-scroll">
     <div v-if="galleryError" class="alert error">{{galleryError}}</div>
     <VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_status:p.thumbnail_status,thumbnail_url:p.thumbnail_url,original_url:p.original_url}))" :can-delete="true" @open="i=>viewer=i" @remove="id=>deletePhoto=id"/>
-    <EmptyState v-else-if="!loading&&!galleryError" title="В этой SAM пока нет фотографий"/>
+    <LoadingSkeleton v-else-if="loading" variant="gallery" label="Загружаем образцы"/>
+    <EmptyState v-else-if="!galleryError" title="В этой SAM пока нет фотографий"/>
     <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё</UiButton></div>
     </div>
   </section>
 </div>
+<LoadingSkeleton v-else-if="listLoading" variant="split" label="Загружаем библиотеку образцов"/>
 <EmptyState v-else-if="!error" title="Пока нет образцов"/>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
 <ConfirmDialog v-if="deletePhoto" title="Удалить Образец?" message="Удаление создаст новую опубликованную версию после завершения очереди. Старые результаты ФО сохранятся." danger confirm-label="Удалить Образец" :busy="busy" @cancel="deletePhoto=null" @confirm="dropOne"/>

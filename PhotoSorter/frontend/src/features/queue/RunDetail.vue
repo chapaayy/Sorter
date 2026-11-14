@@ -8,6 +8,7 @@ import type {Run,Batch} from '../../types/api'
 import {date,errorText,isActive,isComplete,runLabels} from '../../utils/format'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
+import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import RunProgress from './RunProgress.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 const route=useRoute(),id=String(route.params.runId)
@@ -59,6 +60,7 @@ async function stop(){
   Полный архив отсутствует или повреждён. Можно восстановить ZIP без повторного запуска MegaLoc.
 </div>
 <RunProgress v-if="run" :run="run"/>
+<LoadingSkeleton v-else-if="!error" class="panel" variant="lines" label="Загружаем запуск"/>
 <div v-if="run" class="panel stack" style="margin-top:20px">
   <h2>Параметры и действия</h2>
   <div class="grid3"><div><span class="label">Модель</span><strong>MegaLoc</strong></div><div><span class="label">Порог группировки</span><strong>{{run.grouping_threshold?.toFixed(2)||'0.50'}}</strong></div><div><span class="label">Идентификатор запуска</span><code class="meta">{{run.id}}</code></div></div>

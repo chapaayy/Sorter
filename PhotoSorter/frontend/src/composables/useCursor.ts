@@ -13,7 +13,7 @@ export function useCursor<T>(fetcher:(cursor:string|null)=>Promise<CursorPage<T>
       items.value=items.value.concat(next.photos)
       cursor.value=next.next_cursor
     }catch(e){if(stamp===generation)error.value=errorText(e)}
-    finally{loading.value=false}
+    finally{if(stamp===generation)loading.value=false}
   }
   async function reset(){
     generation++;items.value=[];cursor.value=null;loading.value=false

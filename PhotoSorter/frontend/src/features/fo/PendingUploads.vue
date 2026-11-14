@@ -6,6 +6,7 @@ import {useUploadCenterStore} from '../../stores/uploadCenter'
 import {bytes,errorText} from '../../utils/format'
 import {usePolling} from '../../composables/usePolling'
 import UiButton from '../../components/ui/UiButton.vue'
+import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 
 const props=defineProps<{batchId:string;disabled?:boolean}>()
@@ -98,7 +99,7 @@ usePolling(async()=>{if((items.value.length||manifest.value?.state==='waiting')&
     </div>
     <UiButton small :disabled="!!activeId" @click="load(true)">Проверить</UiButton>
   </div>
-  <div v-if="loading" class="meta">Проверяем незавершённые файлы…</div>
+  <LoadingSkeleton v-if="loading" variant="lines" :count="2" label="Проверяем незавершённые файлы"/>
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
   <div v-if="manifest?.state==='waiting'" class="alert warning">
     Партия ещё не полная: сервер сохранил {{manifest.finalized}} из {{manifest.expected}} ожидаемых фотографий.

@@ -245,7 +245,10 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | `PhotoSorter/frontend/src/styles/upload-dialog.css` | Модалка и фоновый индикатор |
 | `PhotoSorter/frontend/src/styles/reference-layout.css` | Два независимых scroll-контейнера образцов |
 | `PhotoSorter/frontend/src/components/ui/EmptyState.vue` | Единая надпись для пустых списков, очереди, истории и галерей |
-| `PhotoSorter/frontend/src/styles/settings-layout.css` | Навигация категорий настроек |
+| `PhotoSorter/frontend/src/styles/settings-layout.css` | Вертикальные секции настроек и карточки тем |
+| `PhotoSorter/frontend/src/features/settings/ThemePreview.vue` | Мини-интерфейс MAP в светлой, тёмной и системной палитрах |
+| `PhotoSorter/frontend/src/components/ui/LoadingSkeleton.vue` | Заглушки строк задач, галерей, двухпанельных видов и журналов |
+| `PhotoSorter/frontend/src/components/gallery/DeferredImage.vue` | Скелетон только на месте загружаемого изображения, отдельное состояние ошибки |
 | `PhotoSorter/frontend/src/features/queue/RunDetail.vue` | Подробности запуска, бывший Processing/RunDetail |
 | `PhotoSorter/frontend/src/features/queue/RunProgress.vue` | Статистика прогресса отдельной ФО |
 | `PhotoSorter/frontend/src/features/settings/AppearanceSettings.vue` | Тема |

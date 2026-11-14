@@ -9,16 +9,18 @@ import type {Run,LogEntry} from '../../types/api'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import UiSelect from '../../components/ui/UiSelect.vue'
+import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import {useNoticeStore} from '../../stores/notice'
 const route=useRoute(),notice=useNoticeStore()
 const runs=ref<Run[]>([]),selected=ref(''),level=ref(''),source=ref(''),search=ref('')
 const events=ref<LogEntry[]>([]),cursor=ref<string|null>(null),loading=ref(false),error=ref(''),following=ref(true),tailMode=ref(true),host=ref<HTMLElement|null>(null)
+const initialLoading=ref(true)
 let sequence=0,searchTimer:ReturnType<typeof setTimeout>|undefined
 const filters=computed(()=>({level:level.value||undefined,source:source.value||undefined,search:search.value||undefined}))
 function scrollEnd(){if(following.value)void nextTick(()=>host.value?.scrollTo({top:host.value.scrollHeight,behavior:'smooth'}))}
 async function read(reset=false,tail=false){
-  if(!selected.value||loading.value)return
+  if(!selected.value||(!reset&&loading.value))return
   const stamp=sequence
   loading.value=true;error.value=''
   try{
@@ -30,19 +32,19 @@ async function read(reset=false,tail=false){
     if(tail)tailMode.value=true
     scrollEnd()
   }catch(e){if(stamp===sequence)error.value=errorText(e)}
-  finally{loading.value=false}
+  finally{if(stamp===sequence)loading.value=false}
 }
 function reset(tail=true){
   sequence++;events.value=[];cursor.value=null;tailMode.value=tail
-  void read(true,tail)
+  if(selected.value)void read(true,tail)
+  else loading.value=false
 }
 onMounted(async()=>{
   try{
     const data=await runApi.list(200);runs.value=data.runs
     const requested=typeof route.query.run==='string'?route.query.run:''
     selected.value=data.runs.some(r=>r.id===requested)?requested:data.runs[0]?.id||''
-    reset()
-  }catch(e){error.value=errorText(e)}
+  }catch(e){error.value=errorText(e)}finally{initialLoading.value=false}
 })
 watch([selected,level,source],()=>reset())
 watch(search,()=>{if(searchTimer)clearTimeout(searchTimer);searchTimer=setTimeout(()=>reset(),400)})
@@ -102,9 +104,11 @@ function scrolled(){
       <span class="meta" style="flex:0 0 72px">{{event.source||event.model||'API'}}</span>
       <span style="min-width:0;overflow-wrap:anywhere;white-space:pre-wrap">{{event.message}}</span>
     </div>
-    <div v-if="!events.length&&!loading" class="meta" style="padding:24px">Журнал пуст для выбранных фильтров.</div>
+    <LoadingSkeleton v-if="!events.length&&loading" class="log-loading" variant="lines" label="Загружаем журнал"/>
+    <div v-else-if="!events.length&&!error" class="meta" style="padding:24px">Журнал пуст для выбранных фильтров.</div>
   </div>
   <div v-if="cursor&&!tailMode" class="pagination"><UiButton :loading="loading" @click="read(false,false)">Показать следующую страницу</UiButton></div>
 </div>
+<LoadingSkeleton v-else-if="initialLoading" class="panel" variant="lines" label="Загружаем запуски"/>
 <EmptyState v-else-if="!error" title="Пока нет запусков"/>
 </template>

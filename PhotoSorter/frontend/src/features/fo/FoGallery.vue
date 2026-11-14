@@ -12,6 +12,7 @@ import {useNoticeStore} from '../../stores/notice'
 import {useDeletionStore} from '../../stores/deletion'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
+import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
@@ -34,6 +35,7 @@ function openPhoto(index:number){
   const position=photos.value.findIndex(p=>p.id===id)
   if(position>=0)viewer.value=position
 }
+const initialGallery=ref(true)
 const readyPercent=computed(()=>count.value?.total?Math.round(count.value.ready/count.value.total*100):0)
 async function refresh(){
   try{batch.value=await batchApi.one(id);count.value=await batchApi.thumbs(id)}
@@ -50,7 +52,7 @@ usePolling(async()=>{
     items.value=items.value.map(p=>map.get(p.id)||p)
   }
 },4500)
-onMounted(async()=>{await Promise.all([refresh(),reset()])})
+onMounted(async()=>{try{await Promise.all([refresh(),reset()])}finally{initialGallery.value=false}})
 async function onPendingChanged(){await Promise.all([refresh(),reset()])}
 async function saveName(){
   if(!newName.value.trim())return
@@ -129,7 +131,8 @@ async function removeBatch(){
 <div v-if="galleryError" class="alert error">{{galleryError}}</div>
 <VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_url:p.thumbnail_url,original_url:p.original_url,thumbnail_status:p.thumbnail_status,original_media_type:p.original_media_type}))"
   :can-delete="!batch?.runs&&batch?.delete_state==='active'" @open="openPhoto" @remove="pid=>deletePhoto=pid"/>
-<EmptyState v-else-if="!loading&&!galleryError" title="В этой партии пока нет фото"/>
+<LoadingSkeleton v-else-if="loading||initialGallery" variant="gallery" label="Загружаем фотографии"/>
+<EmptyState v-else-if="!galleryError" title="В этой партии пока нет фото"/>
 <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё фотографии</UiButton></div>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
 <div v-if="rename" class="modal-overlay" @click.self="rename=false">
