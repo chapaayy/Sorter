@@ -40,6 +40,7 @@ if [[ "$healthy" -ne 1 ]]; then
 fi
 curl -kfsS --max-time 10 https://localhost/ | grep -q 'OUTDOOR'
 curl -kfsS --max-time 10 https://localhost/fo | grep -q 'OUTDOOR'
+curl -kfsS --max-time 10 https://localhost/assets/logo.webp | cmp - PhotoSorter/frontend/public/assets/logo.webp
 test "$(curl -ksS -o /dev/null -w '%{http_code}' https://localhost/v3/)" = 404
 test "$(curl -ksS -o /dev/null -w '%{http_code}' https://localhost/static/app.js)" = 404
 cookie_file="$(mktemp)"

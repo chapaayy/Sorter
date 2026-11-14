@@ -5,6 +5,7 @@ COPY PhotoSorter/frontend/package.json PhotoSorter/frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY PhotoSorter/frontend/tsconfig.json PhotoSorter/frontend/vite.config.ts PhotoSorter/frontend/index.html ./
 COPY PhotoSorter/frontend/src ./src
+COPY PhotoSorter/frontend/public ./public
 RUN npm run build
 
 FROM python:3.11-slim-bookworm
