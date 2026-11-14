@@ -178,15 +178,50 @@ def test_cleanup_waits_for_operations_and_running_jobs(sandbox):
     running=_job(sandbox,own,"running")
     lease=operations.start(own,"download")
     cleanup.request(own)
+    assert cleanup.get_status(own)["task"]["progress"]["phase"]=="queued"
     with connect() as db:
         assert db.execute("SELECT status FROM jobs WHERE id=%s",(queued,)).fetchone()["status"]=="stopped"
         assert db.execute("SELECT status FROM jobs WHERE id=%s",(running,)).fetchone()["status"]=="stopping"
     assert cleanup.cleanup_one(own)=="waiting"
-    operations.finish(lease)
-    assert cleanup.cleanup_one(own)=="waiting"
+    assert cleanup.get_status(own)["task"]["progress"]["phase"]=="stopping_jobs"
     with connect() as db:
         db.execute("UPDATE jobs SET status='stopped' WHERE id=%s",(running,))
+    assert cleanup.cleanup_one(own)=="waiting"
+    assert cleanup.get_status(own)["task"]["progress"]["phase"]=="waiting_operations"
+    operations.finish(lease)
     assert cleanup.cleanup_one(own)=="completed"
+
+def test_cleanup_exposes_committed_file_counts_and_database_phase(sandbox,monkeypatch):
+    from server.services import batches,cleanup
+    own=_batch(sandbox)
+    original=paths.batch_dir(own)
+    (original/"second.jpg").write_bytes(b"photo")
+    external=sandbox/"outside.jpg"
+    external.write_bytes(b"keep")
+    (original/"link.jpg").symlink_to(external)
+    observed=[]
+    real_reporter=cleanup._reporter
+
+    def track(db,batch_id):
+        real_report=real_reporter(db,batch_id)
+        def report(phase,done,total):
+            real_report(phase,done,total)
+            if phase=="files":
+                observed.append((done,total,len(list(original.iterdir())) if original.exists() else None))
+            if phase=="database":
+                state=batches.get(own)
+                assert state["delete_state"]=="deleting"
+                assert state["deletion_progress"]=={"phase":"database","done":total-1,"total":total}
+                assert next(b for b in batches.list_all()["batches"] if b["batch_id"]==str(own))["deletion_progress"]==state["deletion_progress"]
+                assert cleanup.request(own)["state"]=="deleting"
+                assert cleanup.get_status(own)["task"]["progress"]==state["deletion_progress"]
+        return report
+    monkeypatch.setattr(cleanup,"_reporter",track)
+    cleanup.request(own)
+    assert cleanup.cleanup_one(own)=="completed"
+    assert observed==[(0,5,3),(1,5,2),(2,5,1),(3,5,0),(4,5,None)]
+    assert cleanup.get_status(own)["task"]["progress"]=={"phase":"completed","done":5,"total":5}
+    assert external.read_bytes()==b"keep"
 
 def test_cleanup_crash_resume_no_unrelated_deletion(sandbox,monkeypatch):
     from server.services import cleanup
@@ -199,7 +234,7 @@ def test_cleanup_crash_resume_no_unrelated_deletion(sandbox,monkeypatch):
         if state["attempts"]==1:
             original(*args)
             raise RuntimeError("simulated crash after filesystem cleanup")
-        original(*args)
+        return original(*args)
     monkeypatch.setattr(cleanup,"_files",failing)
     cleanup.request(own)
     assert cleanup.cleanup_one(own)=="failed"

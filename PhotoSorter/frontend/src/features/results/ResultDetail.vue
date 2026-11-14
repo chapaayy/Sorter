@@ -87,7 +87,7 @@ async function extend(){
 async function deleteBatch(){
   if(!batch.value)return
   busy.value=true
-  deletion.mark(batch.value.batch_id)
+  deletion.mark(batch.value.batch_id,batch.value.display_name)
   try{await batchApi.remove(batch.value.batch_id);deleteWhole.value=false;notice.add('Партия поставлена на полное удаление','ok');await router.push('/results')}
   catch(e){if(batch.value)deletion.clear(batch.value.batch_id);error.value=errorText(e)}finally{busy.value=false}
 }

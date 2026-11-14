@@ -1,5 +1,5 @@
 import {api,post,patch,del,query} from './client'
-import type {Batch,Photo,CursorPage,Retention,PendingUploadList,BatchUploadManifest,UploadManifestFile,Run} from '../types/api'
+import type {Batch,DeletionProgress,Photo,CursorPage,Retention,PendingUploadList,BatchUploadManifest,UploadManifestFile,Run} from '../types/api'
 export const batchApi={
   list:(limit=100,offset=0)=>api<{batches:Batch[];total:number}>('/batches'+query({limit,offset})),
   one:(id:string)=>api<Batch>('/batches/'+encodeURIComponent(id)),
@@ -20,7 +20,9 @@ export const batchApi={
   gallery:(id:string,cursor?:string|null,limit=60)=>api<CursorPage<Photo>>('/batches/'+id+'/gallery'+query({cursor,limit})),
   removePhoto:(id:string,pid:string)=>del<{deleted:boolean}>('/batches/'+id+'/photos/'+pid),
   remove:(id:string)=>del<{state:string}>('/batches/'+id),
-  deletion:(id:string)=>api<{state:string}>('/batches/'+id+'/deletion'),
+  deletion:(id:string)=>api<{batch_id:string;state?:'not_found';delete_state?:string;task?:{
+    state:string;progress:DeletionProgress|null;error:string|null
+  }|null}>('/batches/'+id+'/deletion'),
   thumbs:(id:string)=>api<{total:number;ready:number;failed:number}>('/thumbnails/status/'+id+'/counts'),
   retention:(id:string)=>api<Retention>('/batches/'+id+'/retention'),
   confirm:(id:string,runId:string)=>post<Retention>('/batches/'+id+'/downloads/confirm',{run_id:runId}),

@@ -92,7 +92,7 @@ async function cancelAuto(){
 }
 async function removeBatch(){
   busy.value=true
-  deletion.mark(id)
+  deletion.mark(id,batch.value?.display_name||id)
   try{await batchApi.remove(id);deleteWhole.value=false;notice.add('Партия поставлена на безопасное удаление','ok');await router.push('/fo')}
   catch(e){deletion.clear(id);error.value=errorText(e)}finally{busy.value=false}
 }

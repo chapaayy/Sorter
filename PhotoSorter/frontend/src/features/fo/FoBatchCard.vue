@@ -5,6 +5,7 @@ import type {TaskEstimate} from '../../utils/queueEstimates'
 import {runTime} from '../../utils/queueEstimates'
 import {batchProcessing,batchThreshold} from '../../utils/batchProcessing'
 import {bytes,date} from '../../utils/format'
+import {deletionProgress} from '../../utils/deletionProgress'
 import CompactTaskCard from '../../components/ui/CompactTaskCard.vue'
 
 const props=defineProps<{batch:Batch;position:number;estimate?:TaskEstimate;busy?:boolean;deleting?:boolean}>()
@@ -16,9 +17,10 @@ const emit=defineEmits<{
 const state=computed(()=>batchProcessing(props.batch))
 const run=computed(()=>state.value.run)
 const timing=computed(()=>runTime(run.value,props.estimate))
+const removal=computed(()=>deletionProgress(props.batch.delete_state,props.batch.deletion_progress,props.deleting))
 const statusTone=computed(()=>{
-  if(props.batch.delete_state==='delete_failed')return 'danger'
-  if(props.deleting||props.batch.delete_state==='deleting')return 'deleting'
+  if(removal.value.failed)return 'danger'
+  if(removal.value.deleting)return 'deleting'
   const status=run.value?.status
   if(status==='running')return 'running'
   if(status==='queued')return 'queued'
@@ -28,7 +30,7 @@ const statusTone=computed(()=>{
   return 'neutral'
 })
 const progress=computed(()=>{
-  if(props.deleting||props.batch.delete_state!=='active')return null
+  if(removal.value.deleting||removal.value.failed)return removal.value.percent
   if(run.value?.status==='queued')return 0
   if(run.value?.status==='completed')return 100
   return run.value?.status==='running'||run.value?.status==='completed_with_errors'
@@ -36,8 +38,7 @@ const progress=computed(()=>{
     :null
 })
 const stage=computed(()=>{
-  if(props.batch.delete_state==='delete_failed')return 'Ошибка удаления · проверьте журнал'
-  if(props.deleting||props.batch.delete_state==='deleting')return 'Удаление файлов и результатов'
+  if(removal.value.deleting||removal.value.failed)return removal.value.stage
   if(run.value?.status==='running'){
     const p=run.value.progress
     return p?.stage==='archive'
@@ -53,10 +54,11 @@ const stage=computed(()=>{
 <template>
 <CompactTaskCard :number="position" :title="batch.display_name"
   :aria-label="'Фотоотчёт '+batch.display_name"
-  :thumbnail-url="batch.cover_thumbnail_url" :status="batch.delete_state==='delete_failed'?'Ошибка удаления':deleting?'Удаляется':state.label"
-  :tone="statusTone" :progress="progress" :stage="stage"
-  :time-label="timing.label" :time-detail="timing.detail"
-  :active="run?.status==='running'&&!deleting">
+  :thumbnail-url="batch.cover_thumbnail_url" :status="removal.failed?'Ошибка удаления':removal.deleting?'Удаляется':state.label"
+  :tone="statusTone" :progress="progress" :stage="stage" :indeterminate="removal.inProgress"
+  :time-label="removal.deleting||removal.failed?undefined:timing.label"
+  :time-detail="removal.deleting||removal.failed?undefined:timing.detail"
+  :active="run?.status==='running'&&!removal.deleting&&!removal.failed">
   <template #meta>
     <span>{{batch.photos??0}} фото</span>
     <span v-if="batch.media_files">{{batch.media_files}} без сортировки</span>

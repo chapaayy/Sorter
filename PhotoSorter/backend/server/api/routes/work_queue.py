@@ -32,6 +32,7 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
                    j.batch_id,j.snapshot->>'source' AS fo_source,
                    j.snapshot->'progress' AS fo_progress,
                    b.display_name AS batch_name,b.delete_state AS batch_delete_state,
+                   c.progress AS batch_deletion_progress,
                    (SELECT count(*)::integer FROM uploads photos
                      WHERE photos.batch_id=j.batch_id AND photos.kind='fo'
                        AND photos.finalized AND photos.original_media_type IS NULL) AS fo_photo_count,
@@ -40,6 +41,7 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
                  ON p.id=w.reference_job_id
             LEFT JOIN jobs j ON j.id=w.fo_run_id
             LEFT JOIN batches b ON b.id=j.batch_id
+            LEFT JOIN cleanup_tasks c ON c.batch_id=b.id
             LEFT JOIN LATERAL (
                 SELECT u.id AS thumbnail_id
                 FROM uploads u JOIN thumbnail_tasks t ON t.upload_id=u.id

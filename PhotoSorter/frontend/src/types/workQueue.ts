@@ -1,4 +1,4 @@
-import type {RunProgress} from './api'
+import type {DeletionProgress,RunProgress} from './api'
 export type QueueKind='fo_processing'|'reference_preparation'
 export type QueueStatus='queued'|'running'|'blocked'|'completed'|'completed_with_errors'|'stopped'|'failed'|'interrupted'
 export interface QueueTask {
@@ -19,6 +19,7 @@ export interface QueueTask {
   batch_id:string|null
   batch_name:string|null
   batch_delete_state?:string|null
+  batch_deletion_progress?:DeletionProgress|null
   fo_source:string|null
   fo_progress?:RunProgress|null
   fo_photo_count?:number|null

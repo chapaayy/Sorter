@@ -950,23 +950,46 @@ test('construction creation keeps standard, custom and folder import tabs in one
   await expect(dialog.getByText('MSK 0004 — Гагарина 64')).toBeVisible()
 })
 
-test('deleting has a full red card while a failure keeps a normal outline',async({page})=>{
+test('deletion shows server stages and progress instead of MegaLoc metrics',async({page})=>{
   let state='deleting'
+  let progress={phase:'waiting_operations',done:0,total:null as number|null}
   await page.route(/^https?:\/\/[^/]+\/api\/batches(?:\?.*)?$/,route=>respond(route,{
-    batches:[{...batch,delete_state:state,latest_run:run,last_result_run_id:rid}],total:1
+    batches:state==='deleted'?[]:[{...batch,delete_state:state,deletion_progress:progress,latest_run:run,last_result_run_id:rid}],
+    total:state==='deleted'?0:1
+  }))
+  await page.route('**/api/batches/'+bid+'/deletion',route=>respond(route,{
+    batch_id:bid,delete_state:state,task:{progress}
   }))
   await page.goto('/fo')
   let card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
   await expect(card).toHaveClass(/task-card-deleting/)
   await expect(card.locator('.task-card-status')).toHaveText('Удаляется')
   await expect(card.locator('.task-card-actions')).toHaveCount(0)
+  await expect(card.getByText('Ожидаем завершения скачивания или другой операции')).toBeVisible()
+  await expect(card.getByRole('progressbar')).toHaveCount(0)
+  await expect(card.locator('.task-card-time')).toHaveCount(0)
+  progress={phase:'scanning',done:0,total:null}
+  await expect(card.getByRole('progressbar')).toBeVisible()
+  await expect(card.locator('.task-card-progress-moving')).toBeVisible()
+  progress={phase:'files',done:25,total:50}
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow','50')
+  await expect(card.getByText('50%',{exact:true})).toBeVisible()
+  await expect(card.getByText('Удаляем оригиналы, результаты и временные файлы')).toBeVisible()
   await page.goto('/results')
   await expect(page.locator('.task-card').first()).toHaveClass(/task-card-deleting/)
   await expect(page.locator('.task-card-status').first()).toHaveText('Удаляется')
+  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow','50')
   state='delete_failed'
   await page.reload()
   card=page.locator('.task-card').first()
   await expect(card).toHaveClass(/task-card-danger/)
   await expect(card).not.toHaveClass(/task-card-deleting/)
   await expect(card.locator('.task-card-status')).toHaveText('Ошибка удаления')
+  state='deleting'
+  progress={phase:'database',done:49,total:50}
+  await page.goto('/fo')
+  await expect(page.getByText('Удаляем записи партии')).toBeVisible()
+  state='deleted'
+  await expect(page.getByText('Пока нет фотоотчётов')).toBeVisible()
+  await expect(page.getByText('Партия «Выезд Самара 05.11» удалена')).toBeVisible()
 })

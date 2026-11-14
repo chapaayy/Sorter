@@ -1,9 +1,11 @@
 """Idempotent, batch-ID-scoped deletion; never traverse references or Models."""
 from __future__ import annotations
 import shutil
-from pathlib import Path
+import time
+from psycopg.types.json import Jsonb
 from ..database import connect
-from ..storage.paths import batch_dir,run_dir,owned_directory,owned_file
+from ..storage.batch_cleanup import remove_batch_files
+from ..storage.paths import run_dir,owned_directory
 from app.config import DATA_DIR,RUNS_DIR
 from .batches import uid
 
@@ -26,6 +28,8 @@ def request(batch_id, *, only_if_due=False):
             if not due:return {"batch_id":str(batch_id),"state":"skipped"}
         if batch["delete_state"]=="deleted":
             return {"batch_id":str(batch_id),"state":"deleted"}
+        if batch["delete_state"]=="deleting":
+            return {"batch_id":str(batch_id),"state":"deleting"}
         db.execute("""UPDATE batches SET delete_state='deleting',
             delete_after_at=NULL WHERE id=%s""",(batch_id,))
         db.execute("""UPDATE jobs SET
@@ -38,9 +42,9 @@ def request(batch_id, *, only_if_due=False):
         db.execute("""UPDATE work_queue w SET state='stopped',finished_at=now()
             FROM jobs j WHERE w.fo_run_id=j.id AND j.batch_id=%s
             AND w.state='queued' AND j.status='stopped'""",(batch_id,))
-        db.execute("""INSERT INTO cleanup_tasks(batch_id,state) VALUES (%s,'pending')
+        db.execute("""INSERT INTO cleanup_tasks(batch_id,state,progress) VALUES (%s,'pending',%s)
             ON CONFLICT(batch_id) DO UPDATE SET state='pending',error=NULL,
-            updated_at=now()""",(batch_id,))
+            progress=EXCLUDED.progress,updated_at=now()""",(batch_id,_progress("queued")))
     return {"batch_id":str(batch_id),"state":"deleting"}
 
 def get_status(batch_id):
@@ -49,24 +53,29 @@ def get_status(batch_id):
         batch=db.execute("SELECT delete_state,deleted_at FROM batches WHERE id=%s",
                          (batch_id,)).fetchone()
         if not batch:return {"state":"not_found","batch_id":str(batch_id)}
-        task=db.execute("""SELECT state,attempts,error,completed_at FROM cleanup_tasks
+        task=db.execute("""SELECT state,attempts,error,completed_at,progress FROM cleanup_tasks
             WHERE batch_id=%s""",(batch_id,)).fetchone()
     return {"batch_id":str(batch_id),**batch,"task":task}
 
-def _rmdir(root, location):
-    path=owned_directory(location,root)
-    if path.exists():
-        shutil.rmtree(path)
+def _progress(phase,done=0,total=None):
+    return Jsonb({"phase":phase,"done":done,"total":total})
 
-def _files(batch_id,run_ids,upload_ids):
-    # Names derive solely from verified DB UUIDs/run IDs, never from client paths.
-    for run_id in run_ids:
-        _rmdir(DATA_DIR/"outputs",run_dir(run_id))
-        _rmdir(RUNS_DIR,run_dir(run_id,RUNS_DIR))
-    for upload_id in upload_ids:
-        path=owned_file(DATA_DIR/"incoming"/f"{upload_id}.part",DATA_DIR/"incoming")
-        path.unlink(missing_ok=True)
-    _rmdir(DATA_DIR/"uploads",batch_dir(batch_id))
+def _files(batch_id,run_ids,upload_ids,report):
+    return remove_batch_files(batch_id,run_ids,upload_ids,DATA_DIR,RUNS_DIR,report)
+
+def _reporter(db,batch_id):
+    last_phase=None
+    last_update=0.0
+    def report(phase,done=0,total=None):
+        nonlocal last_phase,last_update
+        now=time.monotonic()
+        if phase==last_phase and now-last_update<.25:
+            return
+        db.execute("""UPDATE cleanup_tasks SET progress=%s,updated_at=now()
+            WHERE batch_id=%s""",(_progress(phase,done,total),batch_id))
+        db.commit()
+        last_phase,last_update=phase,now
+    return report
 
 def cleanup_one(batch_id):
     batch_id=uid(batch_id)
@@ -90,15 +99,20 @@ def cleanup_one(batch_id):
             leases=db.execute("SELECT 1 FROM batch_operations WHERE batch_id=%s LIMIT 1",
                               (batch_id,)).fetchone()
             if active or leases:
+                db.execute("""UPDATE cleanup_tasks SET progress=%s,updated_at=now()
+                    WHERE batch_id=%s""",(_progress("stopping_jobs" if active else "waiting_operations"),batch_id))
                 db.commit()
                 return "waiting"
             jobs=db.execute("SELECT id FROM jobs WHERE batch_id=%s",(batch_id,)).fetchall()
             files=db.execute("SELECT id FROM uploads WHERE batch_id=%s",(batch_id,)).fetchall()
             db.execute("""UPDATE cleanup_tasks SET state='running',
-                attempts=attempts+1,updated_at=now() WHERE batch_id=%s""",(batch_id,))
+                attempts=attempts+1,progress=%s,updated_at=now() WHERE batch_id=%s""",
+                (_progress("scanning"),batch_id))
             db.commit()
             try:
-                _files(batch_id,[r["id"] for r in jobs],[r["id"] for r in files])
+                report=_reporter(db,batch_id)
+                total=_files(batch_id,[r["id"] for r in jobs],[r["id"] for r in files],report)
+                report("database",total-1,total)
                 # Repeatable: if previous run deleted paths and crashed, this is harmless.
                 db.execute("DELETE FROM download_confirmations WHERE batch_id=%s",(batch_id,))
                 db.execute("DELETE FROM uploads WHERE batch_id=%s",(batch_id,))
@@ -107,8 +121,8 @@ def cleanup_one(batch_id):
                     download_confirmed_at=NULL,confirmed_run_id=NULL,delete_after_at=NULL
                     WHERE id=%s""",(batch_id,))
                 db.execute("""UPDATE cleanup_tasks SET state='completed',
-                    completed_at=now(),error=NULL,updated_at=now() WHERE batch_id=%s""",
-                    (batch_id,))
+                    completed_at=now(),error=NULL,progress=%s,updated_at=now() WHERE batch_id=%s""",
+                    (_progress("completed",total,total),batch_id))
                 db.commit()
                 return "completed"
             except Exception as exc:
@@ -136,8 +150,6 @@ def reconcile_incomplete_exports(limit=100, grace_seconds=3600):
 
     No generic recursive temp purge: a running inference may still be writing.
     """
-    import time
-    from ..storage.paths import owned_directory
     with connect() as db:
         rows=db.execute("""SELECT j.id FROM jobs j
              WHERE j.status IN ('completed','completed_with_errors','failed',

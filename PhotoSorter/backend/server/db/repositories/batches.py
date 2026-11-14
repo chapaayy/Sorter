@@ -1,7 +1,10 @@
 """PostgreSQL persistence of batch and photo metadata (no filesystem side effects)."""
 from __future__ import annotations
 
-def get(db, batch_id, *, for_update=False):
+def get(db, batch_id, *, for_update=False, include_deletion=False):
+    if include_deletion:
+        return db.execute("""SELECT b.*,c.progress AS deletion_progress FROM batches b
+            LEFT JOIN cleanup_tasks c ON c.batch_id=b.id WHERE b.id=%s""",(batch_id,)).fetchone()
     suffix=" FOR UPDATE" if for_update else ""
     return db.execute("SELECT * FROM batches WHERE id=%s"+suffix,(batch_id,)).fetchone()
 
@@ -18,8 +21,9 @@ def count_photos_and_runs(db,batch_id):
     return {**counter,**runs}
 
 def list_rows(db,limit,offset):
-    rows=db.execute("""SELECT * FROM batches WHERE delete_state <> 'deleted'
-        ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s""",
+    rows=db.execute("""SELECT b.*,c.progress AS deletion_progress FROM batches b
+        LEFT JOIN cleanup_tasks c ON c.batch_id=b.id WHERE b.delete_state <> 'deleted'
+        ORDER BY b.created_at DESC,b.id DESC LIMIT %s OFFSET %s""",
         (limit,offset)).fetchall()
     total=db.execute("""SELECT count(*) AS c FROM batches
         WHERE delete_state <> 'deleted'""").fetchone()["c"]

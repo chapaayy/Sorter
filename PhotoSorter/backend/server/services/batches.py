@@ -38,6 +38,7 @@ def _serialize(row,counters=None):
             "delete_after_at","deleted_at")
     data={"batch_id":str(row["id"])}
     for field in fields:data[field]=row[field]
+    data["deletion_progress"]=row.get("deletion_progress")
     # Each batch has the same counter contract, even with no photos/runs.
     data.update({"photos":0,"media_files":0,"size_bytes":0,"pending":0,"runs":0,
                  "latest_run":None,"last_result_run_id":None,"cover_thumbnail_url":None})
@@ -47,7 +48,7 @@ def _serialize(row,counters=None):
 def get(batch_id):
     batch_id=uid(batch_id)
     with connect() as db:
-        row=repository.get(db,batch_id)
+        row=repository.get(db,batch_id,include_deletion=True)
         if not row:raise HTTPException(404,"Партия не найдена")
         counters=repository.count_photos_and_runs(db,batch_id)
         counters["latest_run"]=batch_runs.latest(db,[batch_id]).get(batch_id)

@@ -11,6 +11,7 @@ const props=withDefaults(defineProps<{
   status:string
   tone?:Tone
   progress?:number|null
+  indeterminate?:boolean
   stage:string
   timeLabel?:string
   timeDetail?:string
@@ -39,18 +40,19 @@ const percentage=computed(()=>typeof props.progress==='number' &&
   </span>
   <div class="task-card-progress">
     <div class="task-card-progress-line">
-      <div class="task-card-progress-track" :role="percentage!==null?'progressbar':undefined"
+      <div class="task-card-progress-track" :role="percentage!==null||indeterminate?'progressbar':undefined"
         :aria-valuenow="percentage??undefined" :aria-valuemin="percentage!==null?0:undefined"
         :aria-valuemax="percentage!==null?100:undefined"
-        :aria-label="percentage!==null?'Общий прогресс '+title:undefined">
+        :aria-label="percentage!==null||indeterminate?(tone==='deleting'?'Прогресс удаления ':'Общий прогресс ')+title:undefined">
         <span v-if="percentage!==null" class="task-card-progress-fill"
           :style="{width:percentage+'%'}"/>
+        <span v-else-if="indeterminate" class="task-card-progress-fill task-card-progress-moving"/>
       </div>
-      <strong class="task-card-percent">{{percentage===null?'—':percentage+'%'}}</strong>
+      <strong v-if="percentage!==null||tone!=='deleting'" class="task-card-percent">{{percentage===null?'—':percentage+'%'}}</strong>
     </div>
     <span class="task-card-stage" :title="stage">{{stage}}</span>
   </div>
-  <div class="task-card-time">
+  <div v-if="timeLabel||timeDetail||tone!=='deleting'" class="task-card-time">
     <strong>{{timeLabel||'—'}}</strong>
     <span v-if="timeDetail" :title="timeDetail">{{timeDetail}}</span>
   </div>

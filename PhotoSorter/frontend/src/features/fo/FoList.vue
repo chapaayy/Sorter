@@ -49,11 +49,16 @@ async function load(more=false){
   else if(!batches.value.length)loading.value=true
   try{
     const data=await batchApi.list(100,more?batches.value.length:0)
+    rememberDeletions(data.batches)
     deletion.reconcile(data.batches)
     batches.value=more?[...batches.value,...data.batches]:data.batches
     total.value=data.total;error.value=''
   }catch(e){error.value=errorText(e)}
   finally{loading.value=false;loadingMore.value=false}
+}
+function rememberDeletions(rows:readonly Batch[]){
+  for(const batch of rows)if(batch.delete_state==='deleting')
+    deletion.mark(batch.batch_id,batch.display_name)
 }
 /** Poll all visible pages, never drop previously loaded rows on refresh. */
 async function refreshVisible(){
@@ -69,6 +74,7 @@ async function refreshVisible(){
       newTotal=data.total
       if(next.length>=newTotal)break
     }
+    rememberDeletions(next)
     deletion.reconcile(next)
     batches.value=next;total.value=newTotal;error.value=''
   }catch(e){error.value=errorText(e)}
@@ -76,6 +82,36 @@ async function refreshVisible(){
 }
 onMounted(()=>{void load();void refreshQueue()})
 usePolling(refreshVisible,4000)
+usePolling(async()=>{
+  const ids=new Set([...Object.keys(deletion.requests),
+    ...batches.value.filter(b=>b.delete_state==='deleting').map(b=>b.batch_id)])
+  if(!ids.size)return
+  const statuses=await Promise.allSettled([...ids].map(id=>batchApi.deletion(id)))
+  let finished=false
+  for(const status of statuses){
+    if(status.status!=='fulfilled')continue
+    const {batch_id,delete_state,state,task}=status.value
+    if(delete_state==='deleted'||state==='not_found'){
+      const batch=batches.value.find(b=>b.batch_id===batch_id)
+      const name=batch?.display_name||deletion.requests[batch_id]
+      if(batch){
+        batches.value=batches.value.filter(b=>b.batch_id!==batch_id)
+        total.value=Math.max(0,total.value-1)
+      }
+      if(name&&delete_state==='deleted')notice.add('Партия «'+name+'» удалена','ok')
+      deletion.clear(batch_id)
+      finished=true
+    }else if(delete_state==='deleting'||delete_state==='delete_failed'){
+      const batch=batches.value.find(b=>b.batch_id===batch_id)
+      if(batch){
+        batch.delete_state=delete_state
+        batch.deletion_progress=task?.progress??null
+      }
+      if(delete_state==='delete_failed')deletion.clear(batch_id)
+    }
+  }
+  if(finished)await refreshVisible()
+},750)
 usePolling(refreshQueue,6000)
 
 async function start(batchId:string,threshold:number){

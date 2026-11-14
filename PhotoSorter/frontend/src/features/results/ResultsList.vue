@@ -13,6 +13,7 @@ import CompactTaskCard from '../../components/ui/CompactTaskCard.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import {useSessionStore} from '../../stores/session'
+import {deletionProgress} from '../../utils/deletionProgress'
 
 const deletion=useDeletionStore(),session=useSessionStore()
 const runs=ref<Run[]>([]),batches=ref<Batch[]>([]),loading=ref(true),error=ref(''),search=ref('')
@@ -48,8 +49,15 @@ async function load(append=false){
 }
 onMounted(()=>{void load()})
 usePolling(async()=>{if(session.isOwner)await load()},4000)
-const deleting=(batchId:string)=>!deletionFailed(batchId)&&(deletion.pending(batchId)||batchById.value.get(batchId)?.delete_state==='deleting')
-const deletionFailed=(batchId:string)=>batchById.value.get(batchId)?.delete_state==='delete_failed'
+const finishedCards=computed(()=>finished.value.map(run=>{
+  const batch=batchById.value.get(run.batch_id)
+  const removal=deletionProgress(batch?.delete_state,batch?.deletion_progress,deletion.pending(run.batch_id))
+  const isRemoval=removal.deleting||removal.failed
+  return {run,removal,
+    progress:isRemoval?removal.percent:run.progress?.overall_percent??(run.status==='completed'?100:null),
+    stage:isRemoval?removal.stage:run.status==='completed'?'Готово к скачиванию':'Завершено с ошибками',
+    time:isRemoval?null:runTime(run)}
+}))
 </script>
 <template>
 <PageHeader eyebrow="ГОТОВЫЕ ФОТОГРАФИИ" title="Результаты"
@@ -77,14 +85,13 @@ const deletionFailed=(batchId:string)=>batchById.value.get(batchId)?.delete_stat
   <div v-if="more" class="pagination"><UiButton :loading="paging" @click="load(true)">Показать ещё</UiButton></div>
 </template>
 <div v-else-if="finished.length" class="stack">
-  <CompactTaskCard v-for="(run,index) in finished" :key="run.id"
+  <CompactTaskCard v-for="({run,removal,progress,stage,time},index) in finishedCards" :key="run.id"
     :number="index+1" :title="title(run.batch_id)"
     :thumbnail-url="batchById.get(run.batch_id)?.cover_thumbnail_url"
-    :status="deletionFailed(run.batch_id)?'Ошибка удаления':deleting(run.batch_id)?'Удаляется':runLabels[run.status]||run.status"
-    :tone="deletionFailed(run.batch_id)?'danger':deleting(run.batch_id)?'deleting':run.status==='completed'?'success':'warning'"
-    :progress="run.progress?.overall_percent??(run.status==='completed'?100:null)"
-    :stage="deletionFailed(run.batch_id)?'Ошибка удаления':deleting(run.batch_id)?'Удаление файлов и результатов':run.status==='completed'?'Готово к скачиванию':'Завершено с ошибками'"
-    :time-label="runTime(run).label" :time-detail="runTime(run).detail">
+    :status="removal.failed?'Ошибка удаления':removal.deleting?'Удаляется':runLabels[run.status]||run.status"
+    :tone="removal.failed?'danger':removal.deleting?'deleting':run.status==='completed'?'success':'warning'"
+    :progress="progress" :stage="stage" :indeterminate="removal.inProgress"
+    :time-label="time?.label" :time-detail="time?.detail">
     <template #meta>
       <span v-if="photoCount(run)!=null">{{photoCount(run)}} фото</span>
       <span v-if="groups(run)!=null">{{groups(run)}} групп</span>

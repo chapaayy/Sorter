@@ -70,6 +70,8 @@
 | `backend/server/services/archive_retries.py` | Сохранённая в PostgreSQL очередь ZIP-only восстановления и обнаружение пропавшего архива |
 | `backend/server/services/retention.py` | Срок хранения от успешного ZIP, глобальная пауза при выключении и безопасный повторный запуск политики |
 | `backend/server/services/cleanup.py` | Удаление только owned files через доверенные UUID |
+| `backend/server/storage/batch_cleanup.py` | Удаление файлов партии по фактическим операциям, без обхода символических ссылок |
+| `backend/server/db/migrations/0026_cleanup_progress.sql` | Аддитивное поле прогресса фонового удаления |
 | `backend/server/services/temp_cleanup.py` | Устаревшие незавершённые передачи |
 | `backend/server/services/thumbnails.py` | WebP queue и кеширование превью |
 | `backend/server/services/thumbnail_gc.py` | Сборка вызовов очистки WebP cache |
@@ -282,5 +284,6 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | `PhotoSorter/backend/server/db/migrations/0022_custom_constructions.sql` | Новая метадата для пустых и индивидуальных конструкций |
 | `PhotoSorter/backend/server/services/construction_catalog.py` | Безопасная регистрация конструкций в каталоге |
 | `PhotoSorter/frontend/src/stores/deletion.ts` | Немедленный общий статус удаления партии |
+| `PhotoSorter/frontend/src/utils/deletionProgress.ts` | Фазы и проценты удаления по серверному снимку, отдельно от MegaLoc |
 | `PhotoSorter/frontend/src/components/ui/CompactTaskCard.vue` | Общий компонент статусных карточек, красная заливка удаления |
 | `PhotoSorter/frontend/src/styles/task-cards.css` | Палитра обводок и красная заливка удаления |

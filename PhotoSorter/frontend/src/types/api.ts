@@ -1,8 +1,14 @@
 export type ThemeChoice = 'system' | 'dark' | 'light'
 export interface User { username: string }
+export interface DeletionProgress {
+  phase:'queued'|'stopping_jobs'|'waiting_operations'|'scanning'|'files'|'database'|'completed'
+  done:number
+  total:number|null
+}
 export interface Batch {
   batch_id: string; display_name: string; created_at: string; upload_state: string
   thumbnail_state: string; delete_state: string; deleted_at?: string | null
+  deletion_progress?:DeletionProgress|null
   download_confirmed_at?: string | null; confirmed_run_id?: string | null
   delete_after_at?: string | null; photos?: number; media_files?: number; size_bytes?: number; runs?: number; pending?: number
   upload_manifest_state?: 'waiting'|'complete'|null;upload_manifest_completed_at?: string|null
