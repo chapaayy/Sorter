@@ -67,6 +67,9 @@
   color:var(--text);border:0;background:transparent;border-radius:7px;font-size:12px;line-height:1.4}
 .task-card-menu-content a:hover,.task-card-menu-content button:hover{background:var(--panel-alt)}
 .task-card-menu-content .is-danger{color:var(--danger)}
+@media(min-width:1251px){
+  .task-card-no-time{grid-template-columns:minmax(230px,2.1fr) max-content minmax(165px,1.67fr) max-content}
+}
 @media(max-width:1250px){
   .task-card{grid-template-columns:minmax(220px,1.5fr) max-content minmax(150px,1fr) max-content;row-gap:8px}
   .task-card-time{grid-column:3;grid-row:2;justify-items:start;text-align:left}

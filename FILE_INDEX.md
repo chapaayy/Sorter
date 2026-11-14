@@ -129,7 +129,7 @@
 | `frontend/src/components/split/GroupPicker.vue` | Двухпанельный выбор: однострочные подписи, счётчики, tooltip, регулируемая ширина с сохранением в браузере; мобильная версия |
 | `frontend/src/features/auth/LoginView.vue` | Логин |
 | `frontend/src/features/fo/` | Список и галерея ФО, загрузка, восстановление и встроенные состояния MegaLoc |
-| `frontend/src/features/fo/FoBatchCard.vue` | Компактная карточка партии, ссылки и доступные действия MegaLoc |
+| `frontend/src/features/fo/FoBatchCard.vue` | Компактная карточка партии, текущий прогресс передачи, ссылки и доступные действия MegaLoc |
 | `frontend/src/features/fo/BatchProcessingStatus.vue` | Общий блок статуса/реального прогресса MegaLoc в списке и галерее |
 | `frontend/src/features/fo/BatchRunHistory.vue` | Постраничная история всех запусков партии, включая предыдущие результаты |
 | `frontend/src/utils/batchProcessing.ts` | Правила UI-состояний MegaLoc, отдельные от состояния миниатюр |

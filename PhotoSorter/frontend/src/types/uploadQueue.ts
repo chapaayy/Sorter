@@ -17,5 +17,5 @@ export type UploadContext={
 }
 export type UploadStatus='waiting'|'running'|'pausing'|'paused'|'failed'|'cancelling'
 export interface UploadRow extends UploadProgress{
-  id:number;name:string;kind:'fo'|'references';status:UploadStatus;error:string;batchId?:string
+  id:number;name:string;kind:'fo'|'references';status:UploadStatus;error:string;batchId?:string;recovery?:boolean
 }

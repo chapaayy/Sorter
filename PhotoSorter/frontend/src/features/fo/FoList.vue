@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue'
+import {computed,onMounted,ref,watch} from 'vue'
 import {batchApi} from '../../api/batches'
 import {runApi} from '../../api/runs'
 import {usePolling} from '../../composables/usePolling'
@@ -22,6 +22,8 @@ const batches=ref<Batch[]>([]),search=ref('')
 const queueTasks=ref<QueueTask[]>([]),queueHistory=ref<QueueTask[]>([])
 const clock=ref(Date.now())
 const estimates=computed(()=>estimateQueue(queueTasks.value,queueHistory.value,clock.value))
+const uploadsByBatch=computed(()=>new Map(uploader.rows.flatMap(row=>
+  row.kind==='fo'&&row.batchId?[[row.batchId,row] as const]:[])))
 function runEstimate(id?:string){
   if(!id)return undefined
   const row=queueTasks.value.find(t=>t.fo_run_id===id)
@@ -81,6 +83,10 @@ async function refreshVisible(){
   finally{refreshing=false}
 }
 onMounted(()=>{void load();void refreshQueue()})
+watch(()=>uploader.current?.batchId,id=>{if(id&&!batches.value.some(batch=>batch.batch_id===id))void refreshVisible()})
+watch(()=>uploader.lastCompleted,completion=>{
+  if(completion&&'batchId' in completion)void refreshVisible()
+})
 usePolling(refreshVisible,4000)
 usePolling(async()=>{
   const ids=new Set([...Object.keys(deletion.requests),
@@ -167,9 +173,9 @@ async function stop(){
 <div v-if="filtered.length" class="stack">
   <FoBatchCard v-for="(batch,index) in filtered" :key="batch.batch_id" :batch="batch"
     :position="index+1" :estimate="runEstimate(batch.latest_run?.id)"
-    :deleting="deletion.pending(batch.batch_id)"
+    :deleting="deletion.pending(batch.batch_id)" :upload="uploadsByBatch.get(batch.batch_id)"
     :busy="activeAction===batch.batch_id||activeAction===batch.latest_run?.id"
-    @start="start" @stop="confirmStop" @cancel-auto="cancelAuto"/>
+    @start="start" @stop="confirmStop" @cancel-auto="cancelAuto" @show-uploads="uploader.showQueue()"/>
   <div v-if="batches.length<total" class="pagination">
     <UiButton :loading="loadingMore" @click="load(true)">Показать ещё</UiButton>
   </div>

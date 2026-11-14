@@ -302,6 +302,10 @@ test('pausing and resuming counts each saved file only once',async({page})=>{
     for(const name of ['first.jpg','second.jpg'])await writeFile(join(folder,name),source)
     await page.route('**/api/batches',route=>route.request().method()==='POST'
       ?respond(route,{batch_id:bid}):route.fallback())
+    await page.route('**/api/batches?*',route=>respond(route,{batches:[
+      {...batch,display_name:'Тест загрузки',runs:0,upload_manifest_state:finalized.size===2?'complete':'waiting'},
+      {...batch,batch_id:'a6d1a203-23d4-420b-a1c6-87c0f1100223',display_name:'Тест загрузки',upload_manifest_state:'waiting'}
+    ],total:2}))
     await page.route('**/api/batches/'+bid,route=>respond(route,{...batch,photos:0,pending:0,runs:0}))
     await page.route('**/api/batches/'+bid+'/upload-manifest',route=>{
       if(route.request().method()==='PUT')files=route.request().postDataJSON().files
@@ -331,17 +335,33 @@ test('pausing and resuming counts each saved file only once',async({page})=>{
     await dialog.locator('input[webkitdirectory]').setInputFiles(folder)
     await dialog.getByRole('button',{name:'Загрузить',exact:true}).click()
     await expect.poll(()=>secondAttempts).toBe(1)
-    await page.locator('.upload-floating').click()
+    const cards=page.getByRole('article',{name:'Фотоотчёт Тест загрузки',exact:true})
+    const card=cards.first()
+    await expect(card.getByRole('progressbar',{name:'Прогресс загрузки Тест загрузки'})).toHaveAttribute('aria-valuenow','50')
+    await expect(card.getByText('Загружается',{exact:true})).toBeVisible()
+    await expect(card.getByText('1 из 2 файлов · Передача файлов')).toBeVisible()
+    await expect(card.getByText('Не обрабатывалось')).toHaveCount(0)
+    await expect(cards.nth(1).getByText('Загрузка не завершена')).toBeVisible()
+    await expect(cards.nth(1).getByRole('progressbar')).toHaveCount(0)
+    await card.getByRole('button',{name:'Ход загрузки'}).click()
     const transfers=page.getByRole('dialog',{name:'Очередь загрузок'})
     await expect(transfers.getByText('1 из 2 файлов')).toBeVisible()
     await transfers.getByRole('button',{name:'Приостановить'}).click()
     firstGate.release()
+    await expect(transfers.getByRole('button',{name:'Продолжить',exact:true})).toBeVisible()
+    await transfers.getByRole('button',{name:'Закрыть',exact:true}).click()
+    await expect(card.getByText('Приостановлено',{exact:true})).toBeVisible()
+    await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow','50')
+    await card.getByRole('button',{name:'Ход загрузки'}).click()
     await transfers.getByRole('button',{name:'Продолжить',exact:true}).click()
     await expect.poll(()=>secondAttempts).toBe(2)
     await expect(transfers.getByText('1 из 2 файлов')).toBeVisible()
     expect(firstChecks).toBe(1)
     resumeGate.release()
     await expect(page.getByText(/Все файлы партии сохранены/)).toBeVisible()
+    await transfers.getByRole('button',{name:'Закрыть',exact:true}).click()
+    await expect(card.getByText('Не обработано',{exact:true})).toBeVisible()
+    await expect(card.getByRole('button',{name:'Ход загрузки'})).toHaveCount(0)
     expect(finalized.size).toBe(2)
   }finally{firstGate.release();resumeGate.release();await rm(folder,{recursive:true,force:true})}
 })

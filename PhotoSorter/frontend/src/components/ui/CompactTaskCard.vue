@@ -11,10 +11,12 @@ const props=withDefaults(defineProps<{
   status:string
   tone?:Tone
   progress?:number|null
+  progressLabel?:string
   indeterminate?:boolean
   stage:string
   timeLabel?:string
   timeDetail?:string
+  hideTime?:boolean
   active?:boolean
 }>(),{icon:'photos',tone:'neutral',progress:null,active:false})
 const percentage=computed(()=>typeof props.progress==='number' &&
@@ -22,7 +24,7 @@ const percentage=computed(()=>typeof props.progress==='number' &&
   ?Math.round(props.progress):null)
 </script>
 <template>
-<article class="task-card" :class="{'task-card-active':active,'task-card-deleting':tone==='deleting',['task-card-'+tone]:true}">
+<article class="task-card" :class="{'task-card-active':active,'task-card-deleting':tone==='deleting','task-card-no-time':hideTime,['task-card-'+tone]:true}">
   <div class="task-card-identity">
     <span class="task-card-number">{{number}}</span>
     <div class="task-card-thumbnail">
@@ -43,7 +45,7 @@ const percentage=computed(()=>typeof props.progress==='number' &&
       <div class="task-card-progress-track" :role="percentage!==null||indeterminate?'progressbar':undefined"
         :aria-valuenow="percentage??undefined" :aria-valuemin="percentage!==null?0:undefined"
         :aria-valuemax="percentage!==null?100:undefined"
-        :aria-label="percentage!==null||indeterminate?(tone==='deleting'?'Прогресс удаления ':'Общий прогресс ')+title:undefined">
+        :aria-label="percentage!==null||indeterminate?progressLabel??(tone==='deleting'?'Прогресс удаления ':'Общий прогресс ')+title:undefined">
         <span v-if="percentage!==null" class="task-card-progress-fill"
           :style="{width:percentage+'%'}"/>
         <span v-else-if="indeterminate" class="task-card-progress-fill task-card-progress-moving"/>
@@ -52,7 +54,7 @@ const percentage=computed(()=>typeof props.progress==='number' &&
     </div>
     <span class="task-card-stage" :title="stage">{{stage}}</span>
   </div>
-  <div v-if="timeLabel||timeDetail||tone!=='deleting'" class="task-card-time">
+  <div v-if="!hideTime&&(timeLabel||timeDetail||tone!=='deleting')" class="task-card-time">
     <strong>{{timeLabel||'—'}}</strong>
     <span v-if="timeDetail" :title="timeDetail">{{timeDetail}}</span>
   </div>

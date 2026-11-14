@@ -48,7 +48,7 @@ export const useUploadCenterStore=defineStore('upload-center',()=>{
       runners.set(id,context=>transferReferences(source.review,source.success,context))
     }else{
       row={...base,kind:'fo',name:source.source.item.filename,totalBytes:source.source.item.size,
-        sentBytes:source.source.item.received,totalFiles:1,batchId:source.source.batchId}
+        sentBytes:source.source.item.received,totalFiles:1,batchId:source.source.batchId,recovery:true}
       runners.set(id,context=>transferRecovery(source.source,context))
     }
     const waits=!!current.value

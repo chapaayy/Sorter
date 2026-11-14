@@ -155,7 +155,9 @@ Vue /references → manifest образцов → /api/reference-imports
 `UploadCenter.vue` отделяет формы выбора от `UploadQueueDialog.vue`.
 `stores/uploadCenter.ts` держит один активный перенос и очередь в памяти
 вкладки. Сами передачи выполняются `foTransfer.ts` и `referenceTransfer.ts`,
-используя прежние API докачки. Очередь передачи не является частью
+используя прежние API докачки. `FoList` привязывает строки передачи к
+`FoBatchCard` по серверному ID партии и использует тот же прогресс, что и плашка.
+Очередь передачи не является частью
 `work_queue` MegaLoc.
 
 ```text
