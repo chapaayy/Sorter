@@ -14,7 +14,7 @@ const visible=ref(false)
       <input v-model="value" :type="visible?'text':type" :autocomplete="props.autocomplete"
         :minlength="min" :maxlength="max" placeholder=" " required
         :inputmode="type==='email'?'email':undefined" autocapitalize="none" :spellcheck="false"/>
-      <span>{{label}}</span>
+      <span class="auth-field-caption"><span class="auth-field-caption-text">{{label}}</span></span>
     </label>
     <button v-if="type==='password'" type="button" class="auth-eye" @click="visible=!visible"
       :aria-label="(visible?'Скрыть ':'Показать ')+label.toLowerCase()">

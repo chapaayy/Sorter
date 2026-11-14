@@ -5,6 +5,35 @@ const run='20261114T170000-0123456789ab'
 const item={id:'00000000-0000-4000-8000-000000000001',email,comment:'Я из отдела рекламы. Нужны готовые фотоотчёты.',
   status:'pending',created_at:'2026-11-14T17:00:00Z',decided_at:null}
 
+test('password caption transitions on focus and holds position with a value',async({page})=>{
+  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{detail:'Необходим вход'}}))
+  await page.emulateMedia({reducedMotion:'no-preference'})
+  await page.goto('/login')
+  const field=page.locator('.auth-field').filter({has:page.locator('input[autocomplete="current-password"]')})
+  const caption=field.locator('.auth-field-caption')
+  await expect(caption).toHaveCSS('transition-property','transform')
+  await expect(caption).toHaveCSS('transition-duration','0.08s')
+  await expect(caption).toHaveCSS('transition-timing-function','ease-in-out')
+  const motion=await caption.evaluate(async node=>{
+    const input=node.closest('label')!.querySelector('input')!
+    const initialY=node.getBoundingClientRect().top
+    input.focus()
+    const animations=node.getAnimations()
+    await Promise.all(animations.map(animation=>animation.finished))
+    return {lift:initialY-node.getBoundingClientRect().top,animated:animations.length>0}
+  })
+  expect(motion.animated).toBe(true)
+  expect(motion.lift).toBeCloseTo(26)
+  await field.locator('input').fill(password)
+  await field.locator('input').blur()
+  await expect(caption).not.toHaveCSS('transform','none')
+  await field.locator('input').fill('')
+  await field.locator('input').blur()
+  await expect(caption).toHaveCSS('transform','none')
+  await page.emulateMedia({reducedMotion:'reduce'})
+  await expect(caption).toHaveCSS('transition-property','none')
+})
+
 test('pill fields, password toggle and registration feedback',async({page})=>{
   await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{detail:'Необходим вход'}}))
   let sent=0

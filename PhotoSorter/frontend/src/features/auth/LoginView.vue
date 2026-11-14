@@ -23,7 +23,10 @@ async function submit(){
       <AuthField v-model="username" label="Электронная почта или логин" autocomplete="username" :max="254"/>
       <AuthField v-model="password" label="Пароль" type="password" autocomplete="current-password"/>
       <p v-if="error" class="auth-feedback" role="alert">{{error}}</p>
-      <button type="submit" class="auth-button primary" :disabled="busy">{{busy?'Входим…':'Продолжить'}}</button>
+      <button type="submit" class="auth-button primary" :disabled="busy" :aria-busy="busy||undefined" :aria-label="busy?'Входим…':undefined">
+        <span v-if="busy" class="btn-spinner" aria-hidden="true"></span>
+        <template v-else>Продолжить</template>
+      </button>
     </form>
     <div class="auth-divider">ИЛИ</div>
     <RouterLink class="auth-button" :to="{name:'register'}">Зарегистрироваться</RouterLink>

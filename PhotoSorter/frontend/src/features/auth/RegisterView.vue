@@ -33,7 +33,10 @@ async function submit(){
         <textarea v-model="comment" required maxlength="1500" placeholder="Кто вы и какие фотоотчёты хотите смотреть?"/>
       </label>
       <p v-if="error" class="auth-feedback" role="alert">{{error}}</p>
-      <button type="submit" class="auth-button primary" :disabled="busy">{{busy?'Отправляем…':'Отправить на модерацию'}}</button>
+      <button type="submit" class="auth-button primary" :disabled="busy" :aria-busy="busy||undefined" :aria-label="busy?'Отправляем…':undefined">
+        <span v-if="busy" class="btn-spinner" aria-hidden="true"></span>
+        <template v-else>Отправить на модерацию</template>
+      </button>
     </form>
     <RouterLink class="auth-back" :to="{name:'login'}">Вернуться ко входу</RouterLink>
   </AuthLayout>
