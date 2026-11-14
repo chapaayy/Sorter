@@ -106,5 +106,5 @@ function scrolled(){
   </div>
   <div v-if="cursor&&!tailMode" class="pagination"><UiButton :loading="loading" @click="read(false,false)">Показать следующую страницу</UiButton></div>
 </div>
-<EmptyState v-else title="Запусков пока нет" detail="После первой обработки здесь появятся события MegaLoc." icon="⌘"/>
+<EmptyState v-else-if="!error" title="Пока нет запусков"/>
 </template>

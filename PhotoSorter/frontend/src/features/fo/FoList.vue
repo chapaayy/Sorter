@@ -139,11 +139,8 @@ async function stop(){
     <UiButton :loading="loadingMore" @click="load(true)">Показать ещё</UiButton>
   </div>
 </div>
-<EmptyState v-else-if="!loading" title="Пока нет фотоотчётов"
-  detail="Выберите папку, чтобы загрузить фотографии первой партии." icon="▤">
-  <UiButton kind="primary" @click="uploader.launch('fo')">Загрузить папку</UiButton>
-</EmptyState>
-<div v-else class="meta">Загружаем список партий…</div>
+<div v-else-if="loading" class="meta">Загружаем список партий…</div>
+<EmptyState v-else-if="!error" :title="total&&search.trim()?'Ничего не найдено':'Пока нет фотоотчётов'"/>
 <ConfirmDialog v-if="stopConfirm" :title="stopConfirm.queued?'Убрать из очереди MegaLoc?':'Остановить обработку MegaLoc?'"
   :message="'Партия «'+stopConfirm.name+'». История предыдущих запусков и фотографии сохранятся.'"
   :confirm-label="stopConfirm.queued?'Убрать из очереди':'Остановить'"

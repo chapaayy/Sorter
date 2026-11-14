@@ -3,9 +3,9 @@
   .main-area.reference-layout{height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden}
   .main-area.reference-layout .main-header{flex:none}
   .main-area.reference-layout .content{flex:1;min-height:0;display:flex;flex-direction:column;
-    padding-top:22px;padding-bottom:16px;overflow:hidden;width:100%}
+    padding-bottom:16px;overflow:hidden;width:100%}
   .reference-library-view{min-height:0;flex:1;display:flex;flex-direction:column}
-  .reference-library-view .page-head{flex:none;margin-bottom:16px}
+  .reference-library-view .page-head,.reference-library-view .toolbar{flex:none}
   .reference-library-view .split{min-height:0;flex:1;overflow:hidden;align-items:stretch}
   .reference-library-view .split-aside{min-height:0;overflow:visible}
   .reference-library-view .split-list{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain}

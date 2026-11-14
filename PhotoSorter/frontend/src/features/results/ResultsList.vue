@@ -72,8 +72,8 @@ const deletionFailed=(batchId:string)=>batchById.value.get(batchId)?.delete_stat
       </template>
     </CompactTaskCard>
   </div>
-  <EmptyState v-else-if="!loading" title="Доступных результатов нет" detail="Здесь появятся отчёты, к которым администратор открыл доступ."/>
-  <div v-else class="meta">Загрузка результатов…</div>
+  <div v-else-if="loading" class="meta">Загрузка результатов…</div>
+  <EmptyState v-else-if="!error" :title="published.length&&search.trim()?'Ничего не найдено':'Пока нет доступных результатов'"/>
   <div v-if="more" class="pagination"><UiButton :loading="paging" @click="load(true)">Показать ещё</UiButton></div>
 </template>
 <div v-else-if="finished.length" class="stack">
@@ -102,9 +102,6 @@ const deletionFailed=(batchId:string)=>batchById.value.get(batchId)?.delete_stat
     </template>
   </CompactTaskCard>
 </div>
-<EmptyState v-else-if="!loading" title="Завершённых сортировок нет"
-  detail="Загрузите ФО и запустите MegaLoc; результаты появятся здесь." icon="▣">
-  <RouterLink class="btn primary" to="/fo">К фотоотчётам</RouterLink>
-</EmptyState>
-<div v-else class="meta">Загрузка результатов…</div>
+<div v-else-if="loading" class="meta">Загрузка результатов…</div>
+<EmptyState v-else-if="!error" title="Пока нет результатов"/>
 </template>

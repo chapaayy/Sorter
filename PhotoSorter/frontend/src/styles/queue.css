@@ -1,6 +1,0 @@
-.queue-empty{min-height:240px;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;text-align:center;gap:9px;padding:36px 16px}
-.queue-empty h2{margin:0;font-size:18px}
-.queue-empty p{max-width:410px;margin:0}
-.queue-empty-mark{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;
-  border:1px solid var(--border);background:var(--panel);color:var(--success);font-size:22px}

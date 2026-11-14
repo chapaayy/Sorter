@@ -85,6 +85,49 @@ test('six navigation sections and real data bindings',async({page})=>{
     await expect(page.getByRole('heading',{name:heading,exact:true})).toBeVisible()
   }
 })
+test('main sections share header sizing and use plain text when empty',async({page})=>{
+  await page.route('**/api/batches?*',route=>respond(route,{batches:[],total:0}))
+  await page.route('**/api/references',route=>respond(route,{sam:[],total:0}))
+  await page.route('**/api/runs?*',route=>respond(route,{runs:[],total:0}))
+  const screens=[
+    ['/fo','Пока нет фотоотчётов'],
+    ['/references','Пока нет образцов'],
+    ['/queue','Нет активных заданий'],
+    ['/results','Пока нет результатов'],
+    ['/logs','Пока нет запусков'],
+    ['/settings',null]
+  ] as const
+  const top=(selector:string)=>page.locator(selector).evaluate(node=>{
+    const rect=node.getBoundingClientRect()
+    return {x:rect.x,y:rect.y,height:rect.height}
+  })
+  await page.goto('/fo')
+  const header=await Promise.all(['.page-head .eyebrow','.page-head h1','.page-head p'].map(top))
+  const buttonHeight=(await top('.page-head button')).height
+  for(const [path,title] of screens){
+    await page.goto(path)
+    const fields=await Promise.all(['.page-head .eyebrow','.page-head h1','.page-head p'].map(top))
+    for(const [index,field] of fields.entries()){
+      expect(field.x).toBeCloseTo(header[index].x)
+      expect(field.y).toBeCloseTo(header[index].y)
+      if(index<2)expect(field.height).toBeCloseTo(header[index].height)
+    }
+    for(const button of await page.locator('.page-head button').all())
+      expect((await button.boundingBox())?.height).toBeCloseTo(buttonHeight)
+    if(title){
+      const empty=page.locator('.page-empty')
+      await expect(empty).toHaveText(title)
+      await expect(empty).toHaveCSS('text-align','center')
+      await expect(empty).toHaveCSS('background-color','rgba(0, 0, 0, 0)')
+      await expect(empty.locator('*')).toHaveCount(0)
+    }
+    if(path==='/queue'){
+      await page.getByRole('button',{name:'История · 0'}).click()
+      await expect(page.locator('.page-empty')).toHaveText('История пока пуста')
+      await expect(page.getByText('✓',{exact:true})).toHaveCount(0)
+    }
+  }
+})
 test('FO gallery is separate and shows real original viewer',async({page})=>{
   await page.goto('/fo/'+bid)
   await expect(page.getByRole('heading',{name:'Выезд Самара 05.11'})).toBeVisible()
@@ -255,7 +298,7 @@ test('incomplete photo batch remains blocked in FO, not via a second launch form
   await expect(card.locator('.task-card-status')).toHaveText('Загрузка не завершена')
   await expect(card.getByRole('button',{name:'Обработать'})).toHaveCount(0)
   await page.goto('/queue')
-  await expect(page.getByText('Очередь пуста')).toBeVisible()
+  await expect(page.getByText('Нет активных заданий')).toBeVisible()
 })
 test('opening a batch finalizes already transferred pending files without resending bytes',async({page})=>{
   // Recovery actions are valid only before the first MegaLoc run.

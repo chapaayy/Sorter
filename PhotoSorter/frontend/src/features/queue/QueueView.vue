@@ -11,6 +11,7 @@ import {hasBlockingFailure} from '../../utils/queuePresentation'
 import {estimateQueue} from '../../utils/queueEstimates'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
+import EmptyState from '../../components/ui/EmptyState.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import QueueTaskRow from './QueueTaskRow.vue'
 import QueueTaskDetail from './QueueTaskDetail.vue'
@@ -87,8 +88,8 @@ function message(){
 <PageHeader eyebrow="ЗАДАНИЯ" title="Очередь"
   subtitle="Фотографии и подготовка образцов обрабатываются по порядку поступления.">
   <template #actions>
-    <UiButton small @click="historyMode=!historyMode">{{historyMode?'Активные задачи':'История · '+historyTotal}}</UiButton>
-    <UiButton small @click="refresh">Обновить</UiButton>
+    <UiButton @click="historyMode=!historyMode">{{historyMode?'Активные задачи':'История · '+historyTotal}}</UiButton>
+    <UiButton @click="refresh">Обновить</UiButton>
   </template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:15px">{{error}}</div>
@@ -107,11 +108,7 @@ function message(){
       Показаны первые {{active.length}} из {{activeTotal}} задач.
     </div>
   </div>
-  <div v-else class="queue-empty" aria-label="Очередь пуста">
-    <span class="queue-empty-mark" aria-hidden="true">✓</span>
-    <h2>Очередь пуста</h2>
-    <p class="meta">Все задания завершены. Новые фотографии и образцы появятся здесь автоматически.</p>
-  </div>
+  <EmptyState v-else-if="!error" title="Нет активных заданий"/>
 </template>
 <template v-else>
   <div class="toolbar">
@@ -122,9 +119,7 @@ function message(){
     <QueueTaskRow v-for="(task,index) in filteredHistory" :key="task.seq" :task="task"
       :position="index+1" @details="t=>detail=t.reference_job_id"/>
   </div>
-  <div v-else class="queue-empty">
-    <h2>{{history.length?'Ничего не найдено':'История пока пуста'}}</h2>
-  </div>
+  <EmptyState v-else-if="!error" :title="history.length?'Ничего не найдено':'История пока пуста'"/>
   <div v-if="history.length<historyTotal" class="pagination">
     <UiButton small :loading="loadingMore" @click="moreHistory">Показать ещё</UiButton>
   </div>

@@ -135,12 +135,11 @@ async function deleteBatch(){
     </div>
     <div v-if="pageError" class="alert error" role="alert">{{pageError}}</div>
     <VirtualThumbnailGrid v-if="items.length" :items="tiles" :show-scores="true" @open="i=>viewer=i"/>
-    <EmptyState v-else-if="!loading" title="Фотографий здесь нет" detail="Выберите другую SAM или группу."/>
+    <EmptyState v-else-if="!loading&&!pageError" title="Фотографий здесь нет"/>
     <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё</UiButton></div>
   </section>
 </div>
-<EmptyState v-else-if="run||published" :title="session.isOwner?'Результаты ещё не опубликованы':'Фотографий в этом результате нет'"
-  :detail="session.isOwner?'Проверьте статус обработки и журнал запуска.':'Откройте другой результат.'"/>
+<EmptyState v-else-if="run||published" :title="session.isOwner?'Результаты ещё не опубликованы':'Фотографий в этом результате нет'"/>
 <ImageViewer v-if="viewer!==null" :items="previews" :initial="viewer" @close="viewer=null"/>
 <ConfirmDialog v-if="deleteWhole&&batch" title="Удалить ВСЮ партию безвозвратно?" :message="'Удалятся оригинальные ФО, все запуски, готовые результаты, миниатюры, временные файлы и логи партии «'+batch.display_name+'». Общая библиотека SAM останется.'" :required-text="batch.display_name" danger confirm-label="Удалить всю партию" :busy="busy" @confirm="deleteBatch" @cancel="deleteWhole=false"/>
 </template>

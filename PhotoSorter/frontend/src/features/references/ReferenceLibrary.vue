@@ -82,7 +82,7 @@ async function removeSam(){
   <template #actions><UiButton kind="primary" @click="createOpen=true">+ Создать конструкцию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
-<div class="row wrap between" style="margin-bottom:17px">
+<div class="toolbar">
   <span class="meta">Всего {{list.length}} конструкций · {{list.reduce((n,s)=>n+s.photos,0)}} эталонных фото</span>
 </div>
 <div v-if="list.length" class="split">
@@ -100,14 +100,12 @@ async function removeSam(){
     <div class="reference-library-gallery-scroll">
     <div v-if="galleryError" class="alert error">{{galleryError}}</div>
     <VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_status:p.thumbnail_status,thumbnail_url:p.thumbnail_url,original_url:p.original_url}))" :can-delete="true" @open="i=>viewer=i" @remove="id=>deletePhoto=id"/>
-    <EmptyState v-else-if="!loading" title="В этой SAM пока нет фотографий" detail="Добавьте эталонные фото для сопоставления."/>
+    <EmptyState v-else-if="!loading&&!galleryError" title="В этой SAM пока нет фотографий"/>
     <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё</UiButton></div>
     </div>
   </section>
 </div>
-<EmptyState v-else title="Библиотека Образцов пуста" detail="Выберите библиотеку с папками вида SAM 0004 — Гагарина 64. Перед отправкой будет полная проверка.">
-  <UiButton kind="primary" @click="createOpen=true">Создать конструкцию или импортировать папку</UiButton>
-</EmptyState>
+<EmptyState v-else-if="!error" title="Пока нет образцов"/>
 <CreateConstructionDialog v-if="createOpen" @close="createOpen=false" @created="constructionCreated" @imported="libraryImported"/>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
 <ConfirmDialog v-if="deletePhoto" title="Удалить Образец?" message="Удаление создаст новую опубликованную версию после завершения очереди. Старые результаты ФО сохранятся." danger confirm-label="Удалить Образец" :busy="busy" @cancel="deletePhoto=null" @confirm="dropOne"/>

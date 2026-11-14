@@ -233,7 +233,7 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | `PhotoSorter/frontend/src/stores/uploadCenter.ts` | Состояние видимости, текущая загрузка |
 | `PhotoSorter/frontend/src/styles/upload-dialog.css` | Модалка и фоновый индикатор |
 | `PhotoSorter/frontend/src/styles/reference-layout.css` | Два независимых scroll-контейнера образцов |
-| `PhotoSorter/frontend/src/styles/queue.css` | Пустое состояние очереди |
+| `PhotoSorter/frontend/src/components/ui/EmptyState.vue` | Единая надпись для пустых списков, очереди, истории и галерей |
 | `PhotoSorter/frontend/src/styles/settings-layout.css` | Навигация категорий настроек |
 | `PhotoSorter/frontend/src/features/queue/RunDetail.vue` | Подробности запуска, бывший Processing/RunDetail |
 | `PhotoSorter/frontend/src/features/queue/RunProgress.vue` | Статистика прогресса отдельной ФО |
