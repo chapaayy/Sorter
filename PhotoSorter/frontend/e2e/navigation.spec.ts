@@ -263,8 +263,9 @@ test('mixed folder upload keeps sending bytes across pages and only opens its ba
     const drawer=page.getByRole('button',{name:'Открыть меню'})
     if(await drawer.isVisible())await drawer.click()
     await page.getByRole('link',{name:'Образцы',exact:true}).click()
-    await page.getByRole('button',{name:'+ Загрузить образцы'}).click()
-    const refs=page.getByRole('dialog',{name:'Загрузить образцы'})
+    await page.getByRole('button',{name:'+ Создать конструкцию'}).click()
+    const refs=page.getByRole('dialog',{name:'Создать конструкцию'})
+    await refs.getByRole('tab',{name:'Импорт папки'}).click()
     await expect(refs.getByText('Выбрать папку библиотеки')).toBeVisible()
     await expect(dialog).toBeHidden()
     await refs.getByRole('button',{name:'Закрыть',exact:true}).click()
@@ -754,8 +755,8 @@ for(const mode of ['single','folder'] as const)test('staged reference '+mode+' u
       const construction=join(folder,'SAM 0004 — Гагарина 64')
       await mkdir(construction)
       await writeFile(join(construction,'new.jpg'),source)
-      await page.getByRole('button',{name:'+ Загрузить образцы'}).click()
-      await expect(page.getByRole('dialog',{name:'Загрузить образцы'})).toBeVisible()
+      await page.getByRole('button',{name:'+ Создать конструкцию'}).click()
+      await page.getByRole('dialog',{name:'Создать конструкцию'}).getByRole('tab',{name:'Импорт папки'}).click()
       await page.locator('.upload-drop input[webkitdirectory]').setInputFiles(folder)
       await page.getByRole('button',{name:'Загрузить и подготовить'}).click()
     }else{
@@ -828,8 +829,9 @@ test('desktop references scroll inside two panels without scrolling the whole pa
   expect(await gallery.evaluate(el=>el.scrollTop)).toBeGreaterThan(100)
 })
 
-test('construction creation and reference folder import have separate dialogs',async({page})=>{
+test('construction creation keeps standard, custom and folder import tabs in one dialog',async({page})=>{
   await page.goto('/references')
+  await expect(page.getByRole('button',{name:'+ Загрузить образцы'})).toHaveCount(0)
   await page.locator('.page-head').getByRole('button',{name:'+ Создать конструкцию'}).click()
   const dialog=page.getByRole('dialog',{name:'Создать конструкцию'})
   await expect(dialog).toBeVisible()
@@ -843,12 +845,10 @@ test('construction creation and reference folder import have separate dialogs',a
   await expect(dialog.getByText('MSK 0004 — Гагарина 64')).toBeVisible()
   await dialog.getByRole('tab',{name:'Индивидуальная'}).click()
   await expect(dialog.getByRole('textbox',{name:'Индивидуальное название'})).toBeVisible()
-  await expect(dialog.getByRole('tab',{name:'Импорт папки'})).toHaveCount(0)
+  await dialog.getByRole('tab',{name:'Импорт папки'}).click()
+  await expect(dialog.getByText('Выбрать папку библиотеки')).toBeVisible()
   await dialog.getByRole('tab',{name:'Обычная'}).click()
   await expect(dialog.getByText('MSK 0004 — Гагарина 64')).toBeVisible()
-  await dialog.getByRole('button',{name:'Отмена'}).click()
-  await page.getByRole('button',{name:'+ Загрузить образцы'}).click()
-  await expect(page.getByRole('dialog',{name:'Загрузить образцы'}).getByText('Выбрать папку библиотеки')).toBeVisible()
 })
 
 test('deleting has a full red card while a failure keeps a normal outline',async({page})=>{

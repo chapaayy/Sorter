@@ -19,11 +19,11 @@ function created(sam:string){
 </script>
 
 <template>
-  <UploadDialog :title="job.mode==='construction'?'Создать конструкцию':'Загрузить образцы'"
+  <UploadDialog :title="job.mode==='construction'?'Создать конструкцию':'Добавить фото'"
     heading-id="reference-upload-heading" :visible="job.visible" :busy="job.busy" @close="upload.close('references')">
     <CreateConstructionDialog v-if="job.mode==='construction'" :key="job.session"
-      @dismiss="upload.finish('references')" @created="created" @state="onState"/>
+      @dismiss="upload.finish('references')" @created="created" @finished="finished" @state="onState"/>
     <ReferenceUploader v-else :key="job.session" :selected-sam="job.sam" :selected-label="job.samLabel"
-      :initial-mode="job.mode==='single'?'single':'library'" @finished="finished" @state="onState"/>
+      initial-mode="single" @finished="finished" @state="onState"/>
   </UploadDialog>
 </template>

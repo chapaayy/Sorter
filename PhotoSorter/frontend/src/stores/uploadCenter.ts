@@ -2,7 +2,7 @@ import {defineStore} from 'pinia'
 import {reactive,shallowRef} from 'vue'
 import type {PendingUpload} from '../types/api'
 
-export type UploadMode='fo'|'construction'|'library'|'single'|'recovery'
+export type UploadMode='fo'|'construction'|'single'|'recovery'
 export type UploadChannel='fo'|'references'
 export type RecoverySource={batchId:string;item:PendingUpload;file:File}
 type Completion={batchId:string}|{sam?:string}
@@ -13,7 +13,7 @@ const newWindow=(mode:UploadMode)=>({
 
 /** Each transfer keeps its files mounted in Shell when its window is hidden. */
 export const useUploadCenterStore=defineStore('upload-center',()=>{
-  const windows=reactive({fo:newWindow('fo'),references:newWindow('library')})
+  const windows=reactive({fo:newWindow('fo'),references:newWindow('construction')})
   const lastCompleted=shallowRef<Completion|null>(null)
   function show(channel:UploadChannel){
     windows[channel==='fo'?'references':'fo'].visible=false
