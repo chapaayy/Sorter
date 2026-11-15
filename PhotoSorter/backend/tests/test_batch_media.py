@@ -84,6 +84,9 @@ def test_compatible_files_are_untouched_no_media_queue_and_video_has_poster(thum
     app.include_router(originals.router)
     with TestClient(app) as client:
         response=client.get(tile['play_url'],headers={'Range':'bytes=0-19'})
+        assert client.get(tile['play_url'],headers={'Range':f'bytes={len(mp4)+1}-'}).status_code==416
+    with database.connect() as db:
+        assert db.execute("SELECT 1 FROM batch_operations WHERE batch_id=%s",(batch,)).fetchone() is None
     assert response.status_code==206 and response.content==mp4[:20]
     assert response.headers['content-type']=='video/mp4'
 

@@ -50,6 +50,7 @@
 | `backend/server/api/routes/models.py` | Модели, скачивание и состояние |
 | `backend/server/api/routes/results.py` | История прогонов и результаты |
 | `backend/server/api/routes/images.py` | Изображения результатов |
+| `backend/server/api/file_response.py` | Потоковая отдача файлов с Range и гарантированным освобождением lease при завершении запроса |
 | `backend/server/api/routes/originals.py` | Скачивание оригиналов и inline-просмотр ФО через operation lease |
 | `backend/server/api/routes/thumbnails.py` | WebP превью и queue state |
 | `backend/server/api/routes/downloads.py` | Streaming ZIP, подтверждения, пути внутри ZIP |

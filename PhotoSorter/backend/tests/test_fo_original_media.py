@@ -88,6 +88,10 @@ def test_mixed_batch_preserves_download_and_only_indexes_supported_photos(thumbs
         with TestClient(app) as client:
             response=client.get(tile['original_url'])
             preview=client.get(tile['preview_url'],headers={'Range':'bytes=0-7'})
+            assert client.get(tile['preview_url'],headers={'Range':'bytes=bad'}).status_code==400
+            assert client.get(tile['preview_url'],headers={'Range':f'bytes={len(clip)+1}-'}).status_code==416
+        with connect() as conn:
+            assert conn.execute("SELECT 1 FROM batch_operations WHERE batch_id=%s",(batch,)).fetchone() is None
         assert preview.status_code==206 and preview.content==clip[:8]
         assert preview.headers['Content-Type']=='video/quicktime'
         assert preview.headers['Content-Range']==f'bytes 0-7/{len(clip)}'
@@ -104,7 +108,7 @@ def test_mixed_batch_preserves_download_and_only_indexes_supported_photos(thumbs
         with TestClient(app) as client:
             assert client.get(tile['preview_url']).status_code==404
     finally:
-        cleanup.request(batch);cleanup.cleanup_one(batch)
+        cleanup.request(batch);assert cleanup.cleanup_one(batch)=="completed"
 
 def test_legacy_video_only_batch_cannot_schedule_megaloc(thumbs):
     batch=_batch(thumbs,with_photo=False)

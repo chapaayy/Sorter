@@ -14,6 +14,7 @@ import pytest
 
 from server.storage.hardlinks import link_or_copy,sha256
 from server.storage import paths
+from .asgi_response import response_bytes
 
 def test_hardlink_exact_inode_checksum_and_original_survives(tmp_path):
     source=tmp_path/"original.jpg"
@@ -290,9 +291,8 @@ def test_legacy_zip_and_stream_lease_survives_delete_request(sandbox):
     response=download_results(run)
     cleanup.request(own)
     assert cleanup.cleanup_one(own)=="waiting"
-    body=Path(response.path).read_bytes()
+    body=asyncio.run(response_bytes(response))
     assert response.stat_result is None or response.stat_result.st_size==len(body)
-    asyncio.run(response.background())
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
         member="Тестовая партия/SAM-0045/test.jpg"
         assert archive.namelist()==[member]

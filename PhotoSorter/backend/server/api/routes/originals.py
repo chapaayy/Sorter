@@ -1,11 +1,9 @@
 """Authenticated original image viewer by UUID, with batch read leases."""
 from __future__ import annotations
-import asyncio,mimetypes,time,uuid
+import mimetypes,uuid
 from pathlib import Path
 from urllib.parse import quote
 from fastapi import APIRouter,HTTPException
-from fastapi.responses import StreamingResponse,FileResponse
-from starlette.background import BackgroundTask
 from app.config import DATA_DIR
 from app.photos.reader import EXTS
 from app.photos.labels import check_label
@@ -13,6 +11,7 @@ from ...database import connect
 from ...media.preview import INLINE_TYPES
 from ...storage.paths import owned_file
 from ...services import operations
+from ..file_response import LeasedFileResponse
 
 router=APIRouter(prefix="/api/photos",tags=["photos"])
 
@@ -34,11 +33,14 @@ def prepared(photo_id:uuid.UUID):
             ('video/webm' if row['media_video_format']=='webm' else 'video/mp4')
             if video else ('image/png' if row['media_image_format']=='png' else 'image/jpeg')
         )
-        return FileResponse(path,media_type=mime,background=BackgroundTask(operations.finish,token),
+        return LeasedFileResponse(path,lease=token,media_type=mime,
                             headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
     except (ValueError,OSError):
         operations.finish(token)
         raise HTTPException(404,"Файл не готов к просмотру")
+    except BaseException:
+        operations.finish(token)
+        raise
 
 @router.get("/{photo_id}/preview")
 def preview(photo_id:uuid.UUID):
@@ -52,12 +54,14 @@ def preview(photo_id:uuid.UUID):
     try:
         path=owned_file(Path(row["target_path"]),DATA_DIR/"uploads"/str(row["batch_id"]))
         if not path.is_file():raise FileNotFoundError()
-        return FileResponse(path,media_type=row["original_media_type"],
-                            background=BackgroundTask(operations.finish,token),
+        return LeasedFileResponse(path,lease=token,media_type=row["original_media_type"],
                             headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
     except (ValueError,OSError):
         operations.finish(token)
         raise HTTPException(404,"Файл недоступен для просмотра")
+    except BaseException:
+        operations.finish(token)
+        raise
 
 
 @router.get("/{photo_id}/original")
@@ -79,23 +83,11 @@ def original(photo_id:str):
         attachment=row["kind"]=="fo" and row["original_media_type"] is not None
         if not path.is_file() or (not attachment and path.suffix.lower() not in EXTS):
             raise HTTPException(404,"Фотография не найдена")
-        size=path.stat().st_size
         content_type="application/octet-stream" if attachment else mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        headers={"Content-Length":str(size),"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
+        headers={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
         if attachment:
             headers["Content-Disposition"]="attachment; filename*=UTF-8''"+quote(row["filename"],safe="")
-        async def stream():
-            last=time.monotonic()
-            try:
-                with path.open("rb") as f:
-                    while chunk:=await asyncio.to_thread(f.read,512*1024):
-                        if token and time.monotonic()-last>=5:
-                            await asyncio.to_thread(operations.heartbeat,token)
-                            last=time.monotonic()
-                        yield chunk
-            finally:
-                if token:await asyncio.to_thread(operations.finish,token)
-        return StreamingResponse(stream(),media_type=content_type,headers=headers)
-    except Exception:
-        if token:operations.finish(token)
+        return LeasedFileResponse(path,lease=token,media_type=content_type,headers=headers)
+    except BaseException:
+        operations.finish(token)
         raise

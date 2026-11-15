@@ -2,9 +2,9 @@
 from pathlib import Path
 from fastapi import APIRouter,HTTPException,Request
 from fastapi.responses import FileResponse
-from starlette.background import BackgroundTask
 from ...database import connect
 from ...services import operations
+from ..file_response import LeasedFileResponse
 from ...storage.paths import owned_file
 from ...storage import thumbnail_cache as cache
 from app.config import DATA_DIR
@@ -66,8 +66,11 @@ def _video(run_id,row,kind):
             file=owned_file(Path(row["copy"]),DATA_DIR/"outputs"/run_id/"megaloc")
             mime="video/webm" if Path(row["export_name"]).suffix.lower()==".webm" else "video/mp4"
         if not file.is_file():raise FileNotFoundError()
-        return FileResponse(file,media_type=mime,background=BackgroundTask(operations.finish,token),
+        return LeasedFileResponse(file,lease=token,media_type=mime,
                             headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
     except (OSError,ValueError):
         operations.finish(token)
         raise HTTPException(404,"Видео или обложка не найдены")
+    except BaseException:
+        operations.finish(token)
+        raise

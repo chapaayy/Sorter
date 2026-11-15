@@ -1,11 +1,10 @@
 """Completed result ZIP as a cached seekable file with Range/206 support."""
 from __future__ import annotations
 from fastapi import APIRouter,HTTPException,Request
-from fastapi.responses import FileResponse
-from starlette.background import BackgroundTask
 from psycopg.types.json import Jsonb
 from ...database import connect
 from ...services import operations,archives,archive_pipeline
+from ..file_response import LeasedFileResponse
 from ...security.access_policy import current_user,is_viewer,require_published
 
 router=APIRouter(prefix="/api/download",tags=["downloads"])
@@ -54,11 +53,10 @@ def download_results(run_id:str,sam:str|None=None,request:Request=None):
                           AND NOT (snapshot ? 'archive_file')""",
                         (Jsonb({"archive_file":file.name,"archive_title":title,
                                 "archive_bytes":file.stat().st_size,"archive_state":"ready"}),run_id))
-        return FileResponse(file,media_type="application/zip",
+        return LeasedFileResponse(file,lease=lease,media_type="application/zip",
             filename=title+".zip",
             headers={"Cache-Control":"private, no-store",
-                     "X-Content-Type-Options":"nosniff"},
-            background=BackgroundTask(operations.finish,lease))
+                     "X-Content-Type-Options":"nosniff"})
     except (FileNotFoundError,ValueError) as exc:
         operations.finish(lease)
         raise HTTPException(404,"Готовые файлы результата не найдены") from exc

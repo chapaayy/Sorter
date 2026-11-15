@@ -14,6 +14,7 @@ import zipfile
 from pathlib import Path
 import pytest
 
+from .asgi_response import response_bytes
 from .test_stage1_lifecycle import _batch,_job,sandbox,db
 from server.database import connect
 from server.storage import paths
@@ -21,9 +22,7 @@ from server.storage import paths
 def _read_zip(response):
     archive=Path(response.path)
     assert archive.is_file()
-    content=archive.read_bytes()
-    asyncio.run(response.background())
-    return content
+    return asyncio.run(response_bytes(response))
 
 def test_1315_synthetic_hardlinks_full_zip_filters_and_cleanup(sandbox,monkeypatch):
     from server.services import result_pages,cleanup

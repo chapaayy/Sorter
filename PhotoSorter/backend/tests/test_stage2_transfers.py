@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 from PIL import Image
 from pathlib import Path
+from .asgi_response import http_scope,receive,response_bytes
 from .test_stage2_platform import thumbs,_jpg,_finalize_picture
 from .test_stage1_lifecycle import _batch,_job,sandbox,db
 from server.database import connect
@@ -113,10 +114,19 @@ def test_seekable_zip_lease_released_after_response_and_preserves_originals(thum
     async def consume_part():
         response=downloads.download_results(run)
         assert cleanup.request(own)["state"]=="deleting"
-        assert cleanup.cleanup_one(own)=="waiting"
-        assert Path(response.path).is_file()
-        assert response.background is not None
-        await response.background()
+
+        async def send(message):
+            if message["type"]=="http.response.body":
+                assert await asyncio.to_thread(cleanup.cleanup_one,own)=="waiting"
+                assert Path(response.path).is_file()
+
+        await response(http_scope(headers=[(b"range",b"bytes=0-31")]),receive,send)
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    app=FastAPI()
+    app.include_router(downloads.router)
+    with TestClient(app) as client:
+        assert client.get(f"/api/download/{run}",headers={"Range":"bytes=99999999-"}).status_code==416
     asyncio.run(consume_part())
     with connect() as db:
         n=db.execute("SELECT count(*) AS n FROM batch_operations WHERE batch_id=%s",
@@ -132,18 +142,46 @@ def test_original_viewer_streaming_lease(thumbs,monkeypatch):
     own=_batch(thumbs,with_photo=False)
     blob=_jpg()
     uid=_finalize_picture(thumbs,own,blob)
-    async def download():
-        response=originals.original(str(uid))
-        assert response.headers["content-length"]==str(len(blob))
-        body=[]
-        async for part in response.body_iterator:body.append(part)
-        assert b"".join(body)==blob
-    asyncio.run(download())
+    response=originals.original(str(uid))
+    assert asyncio.run(response_bytes(response))==blob
+    assert response.headers["content-length"]==str(len(blob))
     with connect() as db:
         assert db.execute("""SELECT count(*) AS n FROM batch_operations
                       WHERE batch_id=%s""",(own,)).fetchone()["n"]==0
     cleanup.request(own)
     cleanup.cleanup_one(own)
+
+@pytest.mark.parametrize("disconnect",["send_error","cancel"])
+def test_interrupted_original_response_unblocks_batch_cleanup(thumbs,monkeypatch,disconnect):
+    import anyio
+    from server.api.routes import originals
+    from server.services import cleanup
+
+    monkeypatch.setattr(originals,"DATA_DIR",thumbs)
+    own=_batch(thumbs,with_photo=False)
+    uid=_finalize_picture(thumbs,own,_jpg())
+    response=originals.original(str(uid))
+    assert cleanup.request(own)["state"]=="deleting"
+    assert cleanup.cleanup_one(own)=="waiting"
+
+    async def simulate_disconnect():
+        async def send(message):
+            if message["type"]=="http.response.body":
+                if disconnect=="send_error":
+                    raise BrokenPipeError("client disconnected")
+                transfer.cancel()
+                await anyio.sleep_forever()
+
+        with anyio.CancelScope() as transfer:
+            if disconnect=="send_error":
+                with pytest.raises(BrokenPipeError):
+                    await response(http_scope(),receive,send)
+            else:
+                await response(http_scope(),receive,send)
+
+    asyncio.run(simulate_disconnect())
+    assert cleanup.cleanup_one(own)=="completed"
+
 
 def test_parallel_upload_creation_on_same_batch_has_no_deadlocks(thumbs,monkeypatch):
     """Many browser file starts on one batch must not deadlock."""
