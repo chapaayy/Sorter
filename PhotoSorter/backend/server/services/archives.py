@@ -10,6 +10,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -26,6 +27,16 @@ def existing(run_id:str,sam:str|None,selected:list[tuple[Path,str]])->Path|None:
 
 def output_root()->Path:
     return storage_paths.OUTPUTS
+
+def published(run_id:str,filename:str)->Path|None:
+    """Look up a saved archive by its validated run-local cache filename."""
+    if not re.fullmatch(r"[a-f0-9]{12}-[a-f0-9]{20}\.zip",filename):
+        return None
+    root=output_root()
+    run=owned_directory(storage_paths.run_dir(run_id,root),root)
+    folder=owned_directory(run/".archives",run)
+    target=owned_file(folder/filename,folder)
+    return target if target.is_file() and zipfile.is_zipfile(target) else None
 
 def archive_member(sam:str,filename:str)->str:
     if (not sam or sam in (".","..") or

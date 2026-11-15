@@ -66,7 +66,6 @@ onMounted(async()=>{
 function download(sam?:string){
   const anchor=document.createElement('a')
   anchor.href=resultApi.download(id,sam)
-  anchor.download='photosorter-'+id+'.zip'
   document.body.append(anchor)
   anchor.click();anchor.remove()
 }

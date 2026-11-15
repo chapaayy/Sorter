@@ -154,11 +154,19 @@ test('FO gallery is separate and shows real original viewer',async({page})=>{
   await expect(page.getByRole('dialog',{name:'Просмотр фотографии'})).not.toBeVisible()
 })
 test('full ZIP is ready for direct download without extra confirmation',async({page})=>{
+  const filename='Выезд Самара 05.11.zip'
+  await page.route('**/api/download/'+rid,route=>route.fulfill({
+    contentType:'application/zip',headers:{'Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(filename)},
+    body:'test archive'
+  }))
   await page.goto('/results/'+rid)
   await expect(page.getByRole('heading',{name:'Выезд Самара 05.11'})).toBeVisible()
   await expect(page.getByText('Архив подготовлен автоматически после сортировки.')).toBeVisible()
   await expect(page.getByRole('button',{name:/Скачать всю сортировку ZIP/})).toBeVisible()
   await expect(page.getByRole('button',{name:'Я сохранил полный архив'})).toHaveCount(0)
+  const download=page.waitForEvent('download')
+  await page.getByRole('button',{name:/Скачать всю сортировку ZIP/}).click()
+  expect((await download).suggestedFilename()).toBe(filename)
 })
 test('auto-processing preference defaults off and saves on the server',async({page})=>{
   await page.goto('/settings')

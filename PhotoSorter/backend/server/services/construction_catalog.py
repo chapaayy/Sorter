@@ -12,6 +12,10 @@ from app.photos.labels import check_label
 _EDIT_LOCK = 723409133
 
 
+def construction_title(sam: str, kind: str, address: str | None) -> str:
+    return f"{sam} — {address}" if kind == "standard" and address else sam
+
+
 def preview(folders: list[str]) -> dict:
     if not folders or len(folders) > 5000:
         raise HTTPException(422, "Выберите от 1 до 5000 папок конструкций")

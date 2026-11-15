@@ -53,15 +53,14 @@ def list_references():
     with connect() as db:
         rows=db.execute("""SELECT coalesce(c.sam,u.sam) AS sam,
             coalesce(u.photos,0) AS photos,c.city_code,c.construction_number,c.address,
-            coalesce(c.kind,'standard') AS kind,
-            CASE WHEN c.sam IS NOT NULL AND c.kind='standard'
-                THEN c.sam || ' — ' || c.address
-                ELSE coalesce(c.sam,u.sam) END AS display_name
+            coalesce(c.kind,'standard') AS kind
             FROM reference_constructions c FULL OUTER JOIN (
                 SELECT sam,count(*) AS photos FROM uploads
                 WHERE kind='reference' AND finalized GROUP BY sam
             ) u ON c.sam=u.sam
             ORDER BY coalesce(c.sam,u.sam)""").fetchall()
+    for row in rows:
+        row["display_name"]=construction_catalog.construction_title(row["sam"],row["kind"],row["address"])
     return {"sam":rows,"total":sum(row["photos"] for row in rows)}
 
 @router.get("/files")

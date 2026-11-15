@@ -14,12 +14,14 @@ from . import operations
 
 log=logging.getLogger(__name__)
 
-def _available(run_id:str)->bool:
+def _available(run_id:str,snapshot:dict)->bool:
     """Cheap structural check; full CRCs are verified before publishing."""
     from . import archives
-    from .archive_pipeline import selections
+    from .archive_pipeline import legacy_selections
     try:
-        return archives.existing(run_id,None,selections(run_id)) is not None
+        if filename:=snapshot.get("archive_file"):
+            return archives.published(run_id,filename) is not None
+        return archives.existing(run_id,None,legacy_selections(run_id)) is not None
     except (OSError,ValueError,HTTPException):
         return False
 
@@ -29,7 +31,7 @@ def archive_status(run_id:str):
     if not row:raise HTTPException(404,"Запуск не найден")
     snapshot=row["snapshot"]
     state=snapshot.get("archive_state") or "legacy"
-    if state=="ready" and not _available(run_id):
+    if state=="ready" and not _available(run_id,snapshot):
         state="missing"
     model=snapshot.get("models",{}).get("megaloc",{})
     can_retry=model.get("status")=="completed" and (
@@ -60,7 +62,7 @@ def request(run_id:str):
         if snapshot.get("models",{}).get("megaloc",{}).get("status")!="completed":
             raise HTTPException(409,"Нет завершённых результатов MegaLoc")
         if missing:
-            if _available(run_id):
+            if _available(run_id,snapshot):
                 raise HTTPException(409,"Полный ZIP уже готов")
             info=dict(snapshot)
             info.update(status="failed",archive_state="failed",
@@ -114,12 +116,13 @@ def process_pending(limit=1):
         try:
             lease=operations.start(task["batch_id"],"archive_retry")
             with connect() as db:
-                row=db.execute("SELECT snapshot FROM jobs WHERE id=%s FOR UPDATE",(run_id,)).fetchone()
+                row=db.execute("SELECT snapshot,batch_id FROM jobs WHERE id=%s FOR UPDATE",(run_id,)).fetchone()
                 if not row:raise RuntimeError("Запуск удалён")
                 info=dict(row["snapshot"])
                 if info.get("archive_state") not in ("failed","preparing"):
                     raise RuntimeError("Архив не нуждается в подготовке")
                 info.update(status="running",archive_state="preparing",archive_retry=True)
+                info["batch_id"]=str(row["batch_id"])
                 info.pop("error",None)
                 db.execute("""UPDATE jobs SET status='running',stop_requested=false,
                   snapshot=%s,updated_at=now(),finished_at=NULL WHERE id=%s""",

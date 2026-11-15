@@ -72,3 +72,15 @@ def test_archive_reports_byte_progress_and_skips_rebuild(tmp_path,monkeypatch):
         progress=lambda done,total:updates.append((done,total)))
     assert updates[-1]==(photo.stat().st_size,photo.stat().st_size)
     assert archives.existing(run,None,[(photo,"SAM 0001/one.jpg")])==archive
+
+def test_portable_zip_names_and_duplicates():
+    from server.services.archive_layout import portable_name,_unique
+    assert portable_name("IMG_0015 — копия.JPG","Фото",file=True)=="IMG_0015 — копия.JPG"
+    assert portable_name("..","Фотоотчёт")=="Фотоотчёт"
+    assert portable_name(r"Выезд / Самара: 1","Фотоотчёт")=="Выезд _ Самара_ 1"
+    assert portable_name("CON.jpg","Фото",file=True)=="_CON.jpg"
+    assert list(_unique(["IMG.JPG","img.jpg","img (2).jpg"],file=True))==[
+        "IMG.JPG","img (3).jpg","img (2).jpg"]
+    long=portable_name("Я"*150+".JPG","Фото",file=True)
+    assert len(long.encode("utf-8"))<=250
+    assert long.endswith(".JPG")

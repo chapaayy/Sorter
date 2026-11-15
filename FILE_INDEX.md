@@ -66,6 +66,7 @@
 | `backend/server/services/references.py` | Безопасное редактирование и удаление конструкций, защита исторических manifests |
 | `backend/server/services/construction_catalog.py` | Серверная проверка массового импорта, метаданные и адреса конструкций |
 | `backend/server/services/archive_pipeline.py` | Обязательный финальный ZIP после результатов MegaLoc; обновляет прогресс этапа |
+| `backend/server/services/archive_layout.py` | Названия ФО, конструкций и оригиналов в ZIP; безопасные пути и разрешение совпадений |
 | `backend/server/services/archives.py` | Атомарный ZIP_STORED, проверка CRC перед публикацией, повторное использование готового архива |
 | `backend/server/services/archive_retries.py` | Сохранённая в PostgreSQL очередь ZIP-only восстановления и обнаружение пропавшего архива |
 | `backend/server/services/retention.py` | Срок хранения от успешного ZIP, глобальная пауза при выключении и безопасный повторный запуск политики |

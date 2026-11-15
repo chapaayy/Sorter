@@ -12,8 +12,7 @@ from server.storage import paths
 from .test_stage1_lifecycle import sandbox,db,_batch,_job
 
 
-def test_completed_zip_missing_can_be_queued_for_zip_only_repair(sandbox,monkeypatch):
-    monkeypatch.setattr(archive_pipeline,"DATA_DIR",sandbox)
+def test_completed_zip_missing_can_be_queued_for_zip_only_repair(sandbox):
     batch=_batch(sandbox)
     run=_job(sandbox,batch)
     folder=paths.run_dir(run)/"megaloc"
@@ -50,6 +49,89 @@ def test_completed_zip_missing_can_be_queued_for_zip_only_repair(sandbox,monkeyp
         assert row["snapshot"]["models"]["megaloc"]["status"]=="completed"
         assert retry["state"]=="pending"
     finally:
+        cleanup.request(batch)
+        cleanup.cleanup_one(batch)
+
+@pytest.mark.parametrize("legacy_format",[True,False])
+def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_format):
+    from io import BytesIO
+    from urllib.parse import unquote
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from server.api.routes.downloads import router
+    from server.services import batches
+
+    batch=_batch(sandbox)
+    title=batches.rename(batch,"Самара 15.11")["display_name"]
+    run=_job(sandbox,batch)
+    model=paths.run_dir(run)/"megaloc"
+    index=sandbox/"runs"/run/"models"
+    index.mkdir(parents=True)
+    sam="SAM 9961"
+    address="Гагарина 64"
+    with connect() as db:
+        db.execute("""INSERT INTO reference_constructions(sam,city_code,construction_number,address)
+            VALUES (%s,'SAM','9961',%s)""",(sam,address))
+        original=db.execute("SELECT target_path FROM uploads WHERE batch_id=%s",(batch,)).fetchone()["target_path"]
+        db.execute("UPDATE uploads SET filename='IMG_0115.JPG' WHERE batch_id=%s",(batch,))
+        db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(
+            Jsonb({"id":run,"status":"completed","archive_state":"ready",
+                   "models":{"megaloc":{"status":"completed"}}}),run))
+    rows=[]
+    try:
+        for folder,name,query in [(sam,"hash1.jpg",original),(sam,"hash2.jpg",original),
+                                  ("_Неопределено","hash3.jpg","/unused/IMG_0914.JPG")]:
+            source=model/folder/name
+            source.parent.mkdir(parents=True,exist_ok=True)
+            source.write_bytes(name.encode())
+            rows.append({"copy":str(source),"query":query,"assigned_sam":folder})
+        manifest=model/"manifest.json"
+        manifest.write_text(json.dumps(rows))
+        (index/"megaloc.json").write_text(json.dumps({"path":str(manifest)}))
+        if legacy_format:
+            initial=archives.prepare(run,None,archive_pipeline.legacy_selections(run))
+        else:
+            from types import SimpleNamespace
+            info={"id":run,"batch_id":str(batch),"status":"completed",
+                  "models":{"megaloc":{"status":"completed"}}}
+            noop=lambda *args:None
+            job=SimpleNamespace(info=info,progress=noop,log=noop,stopped=lambda:False,save=noop)
+            archive_pipeline.build_for_job(job)
+            initial=archives.published(run,info["archive_file"])
+            with connect() as db:
+                db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(Jsonb(info),run))
+
+        app=FastAPI()
+        app.include_router(router)
+        with TestClient(app) as client:
+            reply=client.get("/api/download/"+run)
+            assert reply.status_code==200, reply.text[:100]
+            assert title+".zip" in unquote(reply.headers["content-disposition"])
+            with zipfile.ZipFile(BytesIO(reply.content)) as result:
+                expected={
+                    f"{title}/{sam} — {address}/IMG_0115.JPG":b"hash1.jpg",
+                    f"{title}/{sam} — {address}/IMG_0115 (2).JPG":b"hash2.jpg",
+                    f"{title}/_Неопределено/IMG_0914.JPG":b"hash3.jpg",
+                }
+                assert {name:result.read(name) for name in result.namelist()}==expected
+            group=client.get("/api/download/"+run,params={"sam":sam})
+            with zipfile.ZipFile(BytesIO(group.content)) as result:
+                assert result.namelist()==list(expected)[:2]
+            with connect() as db:
+                row=db.execute("SELECT status,snapshot FROM jobs WHERE id=%s",(run,)).fetchone()
+                assert row["status"]=="completed"
+                assert (row["snapshot"]["archive_file"]!=initial.name)==legacy_format
+            assert archive_retries.archive_status(run)["state"]=="ready"
+            # A catalog edit cannot invalidate the immutable published ZIP.
+            with connect() as db:
+                db.execute("UPDATE reference_constructions SET address='Другой адрес' WHERE sam=%s",(sam,))
+            partial=client.get("/api/download/"+run,headers={"Range":"bytes=5-20"})
+            assert partial.status_code==206
+            assert partial.content==reply.content[5:21]
+        assert initial.is_file()
+    finally:
+        with connect() as db:
+            db.execute("DELETE FROM reference_constructions WHERE sam=%s",(sam,))
         cleanup.request(batch)
         cleanup.cleanup_one(batch)
 

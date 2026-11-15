@@ -32,6 +32,8 @@ def test_1315_synthetic_hardlinks_full_zip_filters_and_cleanup(sandbox,monkeypat
     monkeypatch.setattr(result_pages,"DATA_DIR",sandbox)
     # Legacy safe_manifest reads run index; outputs symlink ownership checked.
     own=_batch(sandbox)
+    from server.services import batches
+    title=batches.get(own)["display_name"]
     source=next(paths.batch_dir(own).iterdir())
     before=hashlib.sha256(source.read_bytes()).hexdigest()
     run=_job(sandbox,own)
@@ -69,13 +71,13 @@ def test_1315_synthetic_hardlinks_full_zip_filters_and_cleanup(sandbox,monkeypat
     with zipfile.ZipFile(io.BytesIO(archive)) as z:
         assert len(z.namelist())==1315
         assert len(set(z.namelist()))==1315
-        assert z.read("SAM-0001/fo_0000.jpg")==source.read_bytes()
-        assert len([n for n in z.namelist() if n.startswith("_Неопределено/")])==sam_counts["_Неопределено"]
+        assert z.read(f"{title}/SAM-0001/test.jpg")==source.read_bytes()
+        assert len([n for n in z.namelist() if n.startswith(f"{title}/_Неопределено/")])==sam_counts["_Неопределено"]
         assert z.testzip() is None
     partial=_read_zip(downloads.download_results(run,sam="SAM-0001"))
     with zipfile.ZipFile(io.BytesIO(partial)) as z:
         assert len(z.namelist())==sam_counts["SAM-0001"]
-        assert all(n.startswith("SAM-0001/") for n in z.namelist())
+        assert all(n.startswith(f"{title}/SAM-0001/") for n in z.namelist())
     assert hashlib.sha256(source.read_bytes()).hexdigest()==before
     assert (source.stat().st_ino,source.stat().st_dev)==(
         (output/"SAM-0001"/"fo_0000.jpg").stat().st_ino,(output/"SAM-0001"/"fo_0000.jpg").stat().st_dev)
