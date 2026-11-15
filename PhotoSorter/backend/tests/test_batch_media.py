@@ -91,6 +91,37 @@ def test_compatible_files_are_untouched_no_media_queue_and_video_has_poster(thum
     assert response.headers['content-type']=='video/mp4'
 
 
+def test_jpg_with_mpo_contents_keeps_original_and_never_queues_conversion(thumbs,monkeypatch):
+    batch=_batch(thumbs,with_photo=False)
+    monkeypatch.setattr(originals,'DATA_DIR',thumbs)
+    source=BytesIO()
+    Image.new('RGB',(48,32),'red').save(source,format='MPO',save_all=True,
+        append_images=[Image.new('RGB',(48,32),'blue')])
+    mpo=source.getvalue()
+    with Image.open(BytesIO(mpo)) as img:
+        assert img.format=='MPO' and img.n_frames==2
+    try:
+        saved=_import(thumbs,batch,[('IMG_2940.JPG',mpo),('image.JPEG',mpo)],image='jpg')
+        with database.connect() as db:
+            assert all(row['media_batch_id']!=batch for row in work_queue.entries(db))
+        assert batches.get(batch)['photos']==2
+        with database.connect() as db:
+            rows=db.execute("""SELECT media_action,media_output_path FROM uploads
+                               WHERE batch_id=%s""",(batch,)).fetchall()
+        assert rows==[{'media_action':'keep','media_output_path':None}]*2
+        assert all(Path(metadata['path']).read_bytes()==mpo for _,metadata in saved)
+        app=FastAPI()
+        app.include_router(originals.router)
+        with TestClient(app) as client:
+            for tile in batch_api.gallery(str(batch))['photos']:
+                result=client.get(tile['play_url'])
+                assert result.status_code==200 and result.content==mpo
+                assert result.headers['content-type']=='image/jpeg'
+    finally:
+        cleanup.request(batch)
+        assert cleanup.cleanup_one(batch)=='completed'
+
+
 def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,clips,monkeypatch):
     from app.results import repository
     from app.system import model_store

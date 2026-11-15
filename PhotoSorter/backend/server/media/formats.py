@@ -11,6 +11,12 @@ from ..storage.thumbnail_cache import PIXEL_LIMIT
 # Disallow playlist/network demuxers for uploaded, untrusted data.
 VIDEO_CONTAINERS = 'mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,avi,mpeg,mpegts,flv,asf,ogg,mxf,rm,dv'
 PHOTO_FORMATS = {'jpg': 'JPEG', 'png': 'PNG'}
+# Encoder names and accepted input formats are distinct. A JPG can contain
+# an MPF index and extra JPEG images, so Pillow may report MPO for it.
+PHOTO_PASSTHROUGH = {
+    'jpg': (('.jpg', '.jpeg'), ('JPEG', 'MPO')),
+    'png': (('.png',), ('PNG',)),
+}
 VIDEO_CODECS = {'mp4': ('h264', 'aac'), 'webm': ('vp9', 'opus')}
 
 
@@ -95,11 +101,10 @@ def inspect(path, name, media_type, image_target, video_target):
     if media_type and media_type.startswith('video/'):
         video = probe(path)
         return ('keep' if ready_video(path, name, video, video_target) else 'prepare', video.duration)
-    suffix = Path(name).suffix.lower()
-    valid_suffix = suffix in ('.jpg', '.jpeg') if image_target == 'jpg' else suffix == '.png'
-    if valid_suffix:
+    suffixes, formats = PHOTO_PASSTHROUGH[image_target]
+    if Path(name).suffix.lower() in suffixes:
         with Image.open(path) as img:
-            if img.format == PHOTO_FORMATS[image_target]:
+            if img.format in formats:
                 return 'keep', None
     return 'prepare', None
 
