@@ -98,6 +98,7 @@
 .segment button[aria-selected=true],.segment button.active, .segment button[aria-checked=true]{background:var(--panel);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .progress-track{height:7px;background:var(--panel-alt);border-radius:999px;overflow:hidden}
 .progress-fill{display:block;height:100%;background:var(--accent);border-radius:inherit;transition:width .25s}
+.progress-fill.progress-frame-driven,.task-card-progress-fill.progress-frame-driven{transition:none}
 .split{display:grid;grid-template-columns:minmax(0,var(--split-panel-width,440px)) minmax(0,1fr);gap:16px;min-height:450px}
 .split-aside{position:relative;display:flex;flex-direction:column;min-height:0;padding:16px}
 .split-search{margin-bottom:12px;flex:none}

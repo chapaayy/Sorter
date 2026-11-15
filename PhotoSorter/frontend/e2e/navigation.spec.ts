@@ -679,6 +679,67 @@ test('FO cards show live MegaLoc progress and a confirmed stop action',async({pa
   await expect(card.locator('.task-card-status')).toHaveText('Остановка')
 })
 
+test('FO progress animates between confirmed values and never advances on its own',async({page})=>{
+  const start=new Date('2026-11-15T12:00:00Z')
+  await page.emulateMedia({reducedMotion:'no-preference'})
+  await page.clock.install({time:start})
+  await page.clock.pauseAt(new Date(start.getTime()+500))
+  const active={...run,status:'running',progress:{stage_label:'Группировка ФО',overall_percent:3}}
+  const visible={...batch,latest_run:active}
+  await page.route('**/api/batches?*',route=>respond(route,{batches:[visible],total:1}))
+  await page.goto('/fo')
+  const card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
+  const label=card.locator('.task-card-percent')
+  const bar=card.getByRole('progressbar')
+  const readFill=()=>bar.locator('span').evaluate(el=>parseFloat(el.style.width))
+  await expect(label).toHaveText('3%')
+
+  active.progress.overall_percent=8
+  await page.getByRole('button',{name:'Обновить',exact:true}).click()
+  await expect(bar).toHaveAttribute('aria-valuenow','8')
+  await expect(label).toHaveText('3%')
+  await page.clock.runFor(400)
+  await expect(label).toHaveText('5%')
+  expect(await readFill()).toBeGreaterThan(5)
+  expect(await readFill()).toBeLessThan(6)
+  await page.clock.runFor(600)
+  await expect(label).toHaveText('8%')
+  await page.clock.runFor(5000)
+  await expect(label).toHaveText('8%')
+  expect(await readFill()).toBe(8)
+
+  active.progress.overall_percent=34
+  await page.getByRole('button',{name:'Обновить',exact:true}).click()
+  await expect(bar).toHaveAttribute('aria-valuenow','34')
+  await page.clock.runFor(300)
+  active.status='completed'
+  await page.getByRole('button',{name:'Обновить',exact:true}).click()
+  await expect(label).toHaveText('100%')
+  await page.clock.runFor(900)
+  await expect(label).toHaveText('100%')
+})
+
+test('FO progress updates immediately with reduced motion or a new run',async({page})=>{
+  const start=new Date('2026-11-15T12:00:00Z')
+  await page.emulateMedia({reducedMotion:'reduce'})
+  await page.clock.install({time:start})
+  await page.clock.pauseAt(new Date(start.getTime()+500))
+  const active={...run,status:'running',progress:{stage_label:'Группировка ФО',overall_percent:3}}
+  const visible={...batch,latest_run:active}
+  await page.route('**/api/batches?*',route=>respond(route,{batches:[visible],total:1}))
+  await page.goto('/fo')
+  const label=page.locator('.task-card-percent')
+  await expect(label).toHaveText('3%')
+  active.progress.overall_percent=8
+  await page.getByRole('button',{name:'Обновить',exact:true}).click()
+  await expect(label).toHaveText('8%')
+  await page.emulateMedia({reducedMotion:'no-preference'})
+  active.id='new-run'
+  active.progress.overall_percent=10
+  await page.getByRole('button',{name:'Обновить',exact:true}).click()
+  await expect(label).toHaveText('10%')
+})
+
 test('FO card can start once and remove a queued run without deleting history',async({page})=>{
   const draft:Batch={...batch,photos:25,runs:0,latest_run:null,last_result_run_id:null}
   await page.route(/^https?:\/\/[^/]+\/api\/batches(?:\?.*)?$/,

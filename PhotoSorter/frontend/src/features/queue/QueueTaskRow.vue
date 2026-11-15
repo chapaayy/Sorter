@@ -66,6 +66,7 @@ const count=computed(()=>preparing.value?props.task.total_count:props.task.fo_ph
   :icon="preparing?'references':'photos'"
   :status="removal.deleting?'Удаляется':removal.failed?'Ошибка удаления':task.stop_requested&&task.state==='running'?'Остановка':STATE_RU[task.state]"
   :tone="tone" :progress="progress" :stage="stage" :indeterminate="removal.inProgress"
+  :progress-motion-key="task.state==='running'&&!task.stop_requested&&!removal.deleting&&!removal.failed?String(task.seq):null"
   :time-label="removal.deleting||removal.failed?undefined:time.label"
   :time-detail="removal.deleting||removal.failed?undefined:time.detail"
   :active="task.state==='running'&&!removal.deleting&&!removal.failed">

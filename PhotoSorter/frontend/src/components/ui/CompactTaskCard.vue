@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed} from 'vue'
+import {useSmoothProgress} from '../../composables/useSmoothProgress'
 import DeferredImage from '../gallery/DeferredImage.vue'
 import UiIcon from './UiIcon.vue'
 
@@ -13,6 +14,7 @@ const props=withDefaults(defineProps<{
   tone?:Tone
   progress?:number|null
   progressLabel?:string
+  progressMotionKey?:string|null
   indeterminate?:boolean
   stage:string
   timeLabel?:string
@@ -23,6 +25,7 @@ const props=withDefaults(defineProps<{
 const percentage=computed(()=>typeof props.progress==='number' &&
   Number.isFinite(props.progress) && props.progress>=0 && props.progress<=100
   ?Math.round(props.progress):null)
+const shown=useSmoothProgress(()=>percentage.value,()=>props.progressMotionKey??null)
 </script>
 <template>
 <article class="task-card" :class="{'task-card-active':active,'task-card-deleting':tone==='deleting','task-card-no-time':hideTime,['task-card-'+tone]:true}">
@@ -50,10 +53,10 @@ const percentage=computed(()=>typeof props.progress==='number' &&
         :aria-valuemax="percentage!==null?100:undefined"
         :aria-label="percentage!==null||indeterminate?progressLabel??(tone==='deleting'?'Прогресс удаления ':'Общий прогресс ')+title:undefined">
         <span v-if="percentage!==null" class="task-card-progress-fill"
-          :style="{width:percentage+'%'}"/>
+          :class="{'progress-frame-driven':progressMotionKey}" :style="{width:(shown??percentage)+'%'}"/>
         <span v-else-if="indeterminate" class="task-card-progress-fill task-card-progress-moving"/>
       </div>
-      <strong v-if="percentage!==null||tone!=='deleting'" class="task-card-percent">{{percentage===null?'—':percentage+'%'}}</strong>
+      <strong v-if="percentage!==null||tone!=='deleting'" class="task-card-percent" aria-hidden="true">{{shown===null?'—':Math.floor(shown)+'%'}}</strong>
     </div>
     <span class="task-card-stage" :title="stage">{{stage}}</span>
   </div>

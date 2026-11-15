@@ -75,6 +75,7 @@ const stage=computed(()=>{
   :thumbnail-url="batch.cover_thumbnail_url"
   :status="removal.failed?'Ошибка удаления':removal.deleting?'Удаляется':transfer?uploadStatusLabel(transfer.status):state.label"
   :tone="statusTone" :progress="progress" :stage="stage" :indeterminate="removal.inProgress"
+  :progress-motion-key="!transfer&&!removal.deleting&&!removal.failed&&run?.status==='running'?run.id:null"
   :progress-label="transfer?'Прогресс загрузки '+batch.display_name:undefined" :hide-time="!!transfer"
   :time-label="removal.deleting||removal.failed?undefined:timing.label"
   :time-detail="removal.deleting||removal.failed?undefined:timing.detail"

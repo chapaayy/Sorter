@@ -227,6 +227,7 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | Файл | Задача |
 |---|---|
 | `PhotoSorter/frontend/src/components/ui/CompactTaskCard.vue` | Одна горизонтальная карточка ФО/очереди/результатов: фото, статус, прогресс, время, действия |
+| `PhotoSorter/frontend/src/composables/useSmoothProgress.ts` | Синхронная анимация полосы и числа между измерениями активной задачи |
 | `PhotoSorter/frontend/src/styles/task-cards.css` | Адаптивные светлые/тёмные стили карточек, нейтральные цвета обеих тем |
 | `PhotoSorter/frontend/src/utils/queueEstimates.ts` | ETA FIFO из реальных измерений: отдельные скорости ФО и подготовки образцов |
 | `PhotoSorter/frontend/tests/queueEstimates.test.ts` | Очерёдность, отсутствие неподтверждённых ETA, фактическая длительность |

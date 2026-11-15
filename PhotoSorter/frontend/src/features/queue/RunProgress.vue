@@ -2,10 +2,13 @@
 import {computed} from 'vue'
 import type {Run} from '../../types/api'
 import {duration,runLabels,isActive} from '../../utils/format'
+import {useSmoothProgress} from '../../composables/useSmoothProgress'
 const props=defineProps<{run:Run}>()
 const p=computed(()=>props.run.progress||{})
 const stage=computed(()=>p.value.stage_label||p.value.stage||'Ожидание начала')
 const percent=computed(()=>p.value.stage_percent!=null?Math.max(0,Math.min(100,p.value.stage_percent)):null)
+const shown=useSmoothProgress(()=>percent.value,()=>
+  props.run.status==='running'?props.run.id+':'+(p.value.stage||stage.value):null)
 const eta=computed(()=>p.value.eta_status==='measured'&&p.value.estimated_remaining_seconds!=null?duration(p.value.estimated_remaining_seconds):null)
 </script>
 <template>
@@ -17,8 +20,8 @@ const eta=computed(()=>p.value.eta_status==='measured'&&p.value.estimated_remain
   </div>
   <div v-if="run.status==='queued'" class="alert">Задание поставлено в очередь. MegaLoc начинает только после завершения предыдущего запуска.</div>
   <template v-else-if="isActive(run.status)">
-    <div class="row between wrap"><div><strong>{{stage}}</strong><div v-if="p.detail" class="meta" style="margin-top:4px">{{p.detail.split(/[\\/]/).pop()}}</div></div><strong>{{percent!=null?percent.toFixed(1)+'%':'—'}}</strong></div>
-    <div v-if="percent!=null" class="progress-track" role="progressbar" :aria-valuenow="percent" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill" :style="{width:percent+'%'}"/></div>
+    <div class="row between wrap"><div><strong>{{stage}}</strong><div v-if="p.detail" class="meta" style="margin-top:4px">{{p.detail.split(/[\\/]/).pop()}}</div></div><strong aria-hidden="true">{{shown!=null?shown.toFixed(1)+'%':'—'}}</strong></div>
+    <div v-if="percent!=null" class="progress-track" role="progressbar" :aria-label="'Прогресс этапа: '+stage" :aria-valuenow="percent" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill progress-frame-driven" :style="{width:(shown??percent)+'%'}"/></div>
     <div v-else class="meta">Пока нет измерений прогресса этого этапа.</div>
     <div class="row wrap kpis">
       <div><strong>{{p.total!=null?p.current||0:'—'}} / {{p.total??'—'}}</strong>Сделано / всего на этапе</div>
