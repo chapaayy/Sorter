@@ -5,7 +5,7 @@ import {runApi} from '../../api/runs'
 import {batchApi} from '../../api/batches'
 import {usePolling} from '../../composables/usePolling'
 import type {Run,Batch} from '../../types/api'
-import {date,errorText,isActive,isComplete,runLabels} from '../../utils/format'
+import {date,errorText,isActive,isComplete,runLabel} from '../../utils/format'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
@@ -30,7 +30,7 @@ async function refresh(){
   }catch(e){error.value=errorText(e)}
 }
 onMounted(()=>{void refresh()})
-usePolling(refresh,2200)
+usePolling(refresh,()=>isActive(run.value?.status)?1000:2200)
 async function retryArchive(){
   busy.value=true
   try{await runApi.retryArchive(id);await refresh()}
@@ -44,7 +44,7 @@ async function stop(){
 </script>
 <template>
 <div class="row" style="margin-bottom:22px"><RouterLink to="/queue?view=history" class="meta">← История очереди</RouterLink></div>
-<PageHeader eyebrow="ОЧЕРЕДЬ / ПОДРОБНОСТИ" :title="batch?.display_name||'Запуск '+id" :subtitle="'MegaLoc · '+date(run?.started_at)+' · '+(run?runLabels[run.status]||run.status:'Загрузка…')">
+<PageHeader eyebrow="ОЧЕРЕДЬ / ПОДРОБНОСТИ" :title="batch?.display_name||'Запуск '+id" :subtitle="'MegaLoc · '+date(run?.started_at)+' · '+(run?runLabel(run):'Загрузка…')">
   <template #actions>
     <UiButton v-if="(run?.archive_state==='failed'&&['failed','interrupted'].includes(run.status))||archiveHealth?.can_retry"
       :loading="busy" kind="primary" @click="retryArchive">

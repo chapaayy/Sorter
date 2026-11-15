@@ -51,12 +51,15 @@ def test_latest_run_and_saved_prior_results_visible_from_batch(sandbox):
 
 
 def test_running_progress_and_true_queue_position(sandbox):
+    from server.db.repositories import work_queue
     batch=_batch(sandbox)
     later=_batch(sandbox)
     try:
         a=_job(sandbox,batch,"queued")
         b=_job(sandbox,later,"queued")
         with connect() as conn:
+            work_queue.insert_fo(conn,a)
+            work_queue.insert_fo(conn,b)
             conn.execute("""UPDATE jobs SET created_at=now()-interval '5 minutes',
                 snapshot=%s WHERE id=%s""",
                 (Jsonb({"id":a,"status":"queued","progress":{},
@@ -69,6 +72,7 @@ def test_running_progress_and_true_queue_position(sandbox):
         assert queued_a["queue_position"] is not None
         assert queued_b["queue_position"]==queued_a["queue_position"]+1
         with connect() as conn:
+            conn.execute("UPDATE work_queue SET state='running' WHERE fo_run_id=%s",(a,))
             conn.execute("""UPDATE jobs SET status='running',snapshot=%s WHERE id=%s""",
                 (Jsonb({"id":a,"status":"queued","progress":{
                     "stage_label":"Сопоставление SAM","stage_percent":42.1,
@@ -79,6 +83,7 @@ def test_running_progress_and_true_queue_position(sandbox):
         assert running["progress"]["stage_percent"]==42.1
         assert running["progress"]["current"]==12
         assert running["progress"]["total"]==30
+        assert batches.get(later)["latest_run"]["queue_position"]==queued_b["queue_position"]
     finally:
         # These are synthetic snapshots, not jobs executed by a worker.
         # A running fixture must become terminal before cleanup, otherwise

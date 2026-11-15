@@ -7,6 +7,7 @@ from .database import connect,wait_and_initialize,DB_URL
 from .services import heartbeat
 from .db.repositories import work_queue
 from .workers import reference_prepare
+from .workers.warm_megaloc import WarmMegaLoc
 from .jobs import ServerJob
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
@@ -21,27 +22,30 @@ def claim_job():
     with connect() as db:
         return work_queue.claim_next(db)
 
-def _process_task(item):
+def _configure_cpu(kind):
     # Apply the single persisted CPU setting only between FIFO tasks.
     from app.system.performance import set_runtime_threads
     from .services.compute_settings import for_worker
     from .services.worker_cpu_affinity import allocate
     with connect() as db:
-        cpu_limit=for_worker(db,item['kind'])
+        cpu_limit=for_worker(db,kind)
     # Restrict the actual worker process and inherited inference/ZIP threads.
     allocate(cpu_limit)
     set_runtime_threads(cpu_limit)
+
+def _process_task(item,warm):
+    _configure_cpu(item['kind'])
     if item['kind']=='fo_processing':
         info=item['info']
         try:
-            ServerJob(info).run()
+            ServerJob(info,warm_megaloc=warm).run()
         except BaseException as exc:
             with connect() as db:
                 work_queue.fail_fo(db,item['id'])
             raise
         return
     try:
-        result=reference_prepare.run(item['id'])
+        result=reference_prepare.run(item['id'],warm_megaloc=warm)
         logging.info('Reference preparation %s completed: %s',item['id'],result)
     except BaseException as exc:
         reason=f'{type(exc).__name__}: {exc}'[:1000]
@@ -77,6 +81,8 @@ def main():
                 watch_stop=threading.Event()
                 watcher=threading.Thread(target=_leader_watch,args=(leader,watch_stop),daemon=True)
                 watcher.start()
+                warm=WarmMegaLoc()
+                next_warm_check=0.0
                 try:
                     logging.info("MegaLoc leader ready; unified FIFO")
                     while RUN:
@@ -88,10 +94,25 @@ def main():
                         if info:
                             ident=info['id']
                             logging.info('Processing %s',ident)
-                            try:_process_task(info)
+                            try:_process_task(info,warm)
                             except Exception:logging.exception('Unhandled job exception for %s',ident)
-                        else:time.sleep(1)
+                        else:
+                            now=time.monotonic()
+                            if now>=next_warm_check:
+                                next_warm_check=now+30
+                                from app.system.model_store import signature
+                                try:
+                                    fingerprint=signature()
+                                    if fingerprint and not warm.ready_for(fingerprint):
+                                        _configure_cpu('fo_processing')
+                                        warm.get(fingerprint)
+                                        logging.info('MegaLoc loaded and ready for FIFO jobs')
+                                    elif not fingerprint:
+                                        warm.close()
+                                except Exception:logging.exception('Could not pre-load MegaLoc')
+                            time.sleep(.5)
                 finally:
+                    warm.close()
                     watch_stop.set()
                     watcher.join(timeout=6)
                     leader.execute("SELECT pg_advisory_unlock(%s)",(LEADER_KEY,))

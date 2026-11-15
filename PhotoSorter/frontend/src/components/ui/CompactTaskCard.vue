@@ -28,7 +28,7 @@ const percentage=computed(()=>typeof props.progress==='number' &&
 const shown=useSmoothProgress(()=>percentage.value,()=>props.progressMotionKey??null)
 </script>
 <template>
-<article class="task-card" :class="{'task-card-active':active,'task-card-deleting':tone==='deleting','task-card-no-time':hideTime,['task-card-'+tone]:true}">
+<article class="task-card" :class="{'task-card-active':active,'task-card-deleting':tone==='deleting',['task-card-'+tone]:true}">
   <div class="task-card-identity">
     <span class="task-card-number">{{number}}</span>
     <div class="task-card-thumbnail">

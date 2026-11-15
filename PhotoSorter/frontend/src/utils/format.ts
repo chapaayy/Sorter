@@ -16,6 +16,8 @@ export function duration(value?: number | null): string {
   return [h?h+' ч':'',m?m+' мин':'',s%60+' с'].filter(Boolean).join(' ')
 }
 export const runLabels:Record<string,string>={queued:'В очереди',running:'Обработка',stopping:'Остановка',completed:'Завершено',completed_with_errors:'С ошибками',stopped:'Остановлено',failed:'Ошибка',interrupted:'Прервано'}
+export const readyToStart=(run:{status:string;queue_position?:number|null})=>run.status==='queued'&&run.queue_position===1
+export const runLabel=(run:{status:string;queue_position?:number|null})=>readyToStart(run)?'Запуск обработки':runLabels[run.status]||run.status
 export const isActive=(s?:string)=>['queued','running','stopping'].includes(s||'')
 export const isComplete=(s?:string)=>['completed','completed_with_errors'].includes(s||'')
 export const nameFromPath=(p?:string)=>(p||'').split(/[\\/]/).pop()||'Фотография'

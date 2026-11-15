@@ -3,7 +3,7 @@ import {onMounted,ref} from 'vue'
 import {batchApi} from '../../api/batches'
 import {usePolling} from '../../composables/usePolling'
 import type {Run} from '../../types/api'
-import {date,runLabels,isActive,errorText} from '../../utils/format'
+import {date,runLabel,readyToStart,isActive,errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
 const props=defineProps<{batchId:string}>()
 const runs=ref<Run[]>([]),total=ref(0),busy=ref(false),error=ref('')
@@ -37,9 +37,9 @@ usePolling(async()=>{if(runs.value.some(r=>isActive(r.status)))await reload()},3
   <div v-if="!runs.length" class="meta">Для этой партии пока нет запусков.</div>
   <div v-for="run in runs" :key="run.id" class="fo-history-row">
     <div class="fo-history-main">
-      <strong>{{runLabels[run.status]||run.status}}</strong>
+      <strong>{{runLabel(run)}}</strong>
       <span class="meta">{{date(run.actual_started_at||run.created_at||run.started_at)}} · порог {{run.grouping_threshold?.toFixed(2)??'0.50'}} · {{run.source==='automatic'?'автоматически':'вручную'}}</span>
-      <span v-if="run.status==='queued'&&run.queue_position" class="meta">Очередь №{{run.queue_position}}</span>
+      <span v-if="run.status==='queued'&&run.queue_position&&!readyToStart(run)" class="meta">Очередь №{{run.queue_position}}</span>
     </div>
     <div class="row wrap">
       <RouterLink :to="'/queue/runs/'+run.id" class="btn small">Подробности</RouterLink>

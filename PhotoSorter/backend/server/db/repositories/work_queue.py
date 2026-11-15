@@ -19,16 +19,17 @@ def queued_fo_count(db):
         WHERE kind='fo_processing' AND state='queued'
     """).fetchone()["n"]
 
+# Both the snapshot and batch list describe the same FIFO. A running task
+# (including reference preparation) also keeps a newly queued FO waiting.
+QUEUE_ORDER_SQL="""SELECT fo_run_id,
+    row_number() OVER (ORDER BY seq)::integer AS queue_position
+    FROM work_queue WHERE state IN ('queued','running') OR
+      (kind='reference_preparation' AND state IN ('failed','interrupted','blocked'))"""
+
 def position(db,run_id):
-    entry=db.execute("""
-        SELECT seq FROM work_queue WHERE fo_run_id=%s AND state='queued'
-    """,(run_id,)).fetchone()
-    if not entry:return None
-    return db.execute("""
-        SELECT count(*) AS n FROM work_queue
-        WHERE seq<=%s AND (state='queued' OR
-          (kind='reference_preparation' AND state IN ('failed','interrupted','blocked')))
-    """,(entry["seq"],)).fetchone()["n"]
+    row=db.execute("SELECT queue_position FROM ("+QUEUE_ORDER_SQL+") q WHERE fo_run_id=%s",
+                   (run_id,)).fetchone()
+    return row["queue_position"] if row else None
 
 def insert_fo(db,run_id):
     """Caller owns FIFO advisory lock; jobs and queue row commit together."""

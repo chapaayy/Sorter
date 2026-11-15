@@ -1,5 +1,5 @@
-import {onMounted,onUnmounted,ref} from 'vue'
-export function usePolling(fn:()=>Promise<unknown>,interval=5000){
+import {onMounted,onUnmounted,ref,watch} from 'vue'
+export function usePolling(fn:()=>Promise<unknown>,interval:number|(()=>number)=5000){
   const busy=ref(false)
   let timer:ReturnType<typeof setInterval>|undefined
   async function refresh(){
@@ -7,7 +7,13 @@ export function usePolling(fn:()=>Promise<unknown>,interval=5000){
     busy.value=true
     try{await fn()}finally{busy.value=false}
   }
-  onMounted(()=>{timer=setInterval(()=>{void refresh().catch(console.error)},interval)})
+  const delay=()=>typeof interval==='number'?interval:interval()
+  function reset(){
+    if(timer!==undefined)clearInterval(timer)
+    timer=setInterval(()=>{void refresh().catch(console.error)},delay())
+  }
+  onMounted(reset)
+  watch(delay,()=>{if(timer!==undefined)reset()})
   onUnmounted(()=>{if(timer)clearInterval(timer)})
   return {busy,refresh}
 }

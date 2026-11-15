@@ -1,6 +1,6 @@
 import type {Batch,Run} from '../types/api'
 import {canProcessBatch} from './batches'
-import {isActive,runLabels} from './format'
+import {isActive,readyToStart,runLabel} from './format'
 
 export type ProcessingTone='ok'|'danger'|'neutral'
 export interface BatchProcessingPresentation {
@@ -33,11 +33,12 @@ export function batchProcessing(batch:Batch):BatchProcessingPresentation {
   if(batch.delete_state!=='active'){
     label=batch.delete_state==='delete_failed'?'Ошибка удаления':'Удаляется';detail=batch.delete_state==='delete_failed'?'Ошибка удаления партии':'Удаление файлов и результатов'
   }else if(run){
-    label=runLabels[run.status]||'Неизвестный статус'
+    label=runLabel(run)
     if(run.status==='completed')tone='ok'
     if(run.status==='failed'||run.status==='completed_with_errors')tone='danger'
     if(run.status==='queued')
-      detail=run.queue_position!=null?'Очередь MegaLoc · позиция '+run.queue_position:'В очереди MegaLoc'
+      detail=readyToStart(run)?'Подготовка к запуску MegaLoc':
+        run.queue_position!=null?'Очередь MegaLoc · позиция '+run.queue_position:'В очереди MegaLoc'
     else if(run.status==='running'||run.status==='stopping')
       detail=run.progress?.stage_label||run.progress?.stage||'Выполняется MegaLoc'
     else if(run.status==='failed'||run.status==='completed_with_errors')

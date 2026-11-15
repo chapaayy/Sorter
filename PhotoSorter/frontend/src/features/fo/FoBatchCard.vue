@@ -4,7 +4,7 @@ import type {Batch} from '../../types/api'
 import type {TaskEstimate} from '../../utils/queueEstimates'
 import {runTime} from '../../utils/queueEstimates'
 import {batchProcessing,batchThreshold} from '../../utils/batchProcessing'
-import {bytes,date} from '../../utils/format'
+import {bytes,date,readyToStart} from '../../utils/format'
 import {deletionProgress} from '../../utils/deletionProgress'
 import type {UploadRow} from '../../types/uploadQueue'
 import {uploadPercent,uploadStatusLabel} from '../../utils/transferPresentation'
@@ -33,7 +33,7 @@ const statusTone=computed(()=>{
   }
   const status=run.value?.status
   if(status==='running')return 'running'
-  if(status==='queued')return 'queued'
+  if(status==='queued')return run.value&&readyToStart(run.value)?'running':'queued'
   if(status==='completed')return 'success'
   if(status==='completed_with_errors')return 'warning'
   if(status==='failed'||status==='interrupted')return 'danger'
@@ -63,7 +63,7 @@ const stage=computed(()=>{
       ?'Подготовка архива · '+Math.round(p.stage_percent??0)+'%'
       :state.value.stageLabel
   }
-  if(run.value?.status==='queued')return 'Ожидает своей очереди'
+  if(run.value?.status==='queued')return readyToStart(run.value)?state.value.detail:'Ожидает своей очереди'
   if(run.value?.status==='completed')return 'Обработка завершена'
   if(run.value?.status==='completed_with_errors')return 'Завершено с ошибками'
   return state.value.detail
@@ -84,7 +84,7 @@ const stage=computed(()=>{
     <span>{{batch.photos??0}} фото</span>
     <span v-if="batch.media_files">{{batch.media_files}} без сортировки</span>
     <span>{{bytes(batch.size_bytes)}}</span>
-    <span v-if="run?.status==='queued'&&run.queue_position!=null">№{{run.queue_position}} в очереди</span>
+    <span v-if="run?.status==='queued'&&run.queue_position!=null&&!readyToStart(run)">№{{run.queue_position}} в очереди</span>
     <span v-if="run?.models?.megaloc?.groups!=null">{{run.models.megaloc.groups}} групп</span>
     <span v-else>{{date(batch.created_at)}}</span>
     <span v-if="run?.models?.megaloc?.uncertain!=null">Неопределено: {{run.models.megaloc.uncertain}}</span>

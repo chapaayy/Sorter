@@ -7,7 +7,7 @@ import {batchProcessing,batchThreshold} from '../../utils/batchProcessing'
 import type {Batch,Photo} from '../../types/api'
 import {useCursor} from '../../composables/useCursor'
 import {usePolling} from '../../composables/usePolling'
-import {date,bytes,errorText} from '../../utils/format'
+import {date,bytes,errorText,isActive,readyToStart} from '../../utils/format'
 import {useNoticeStore} from '../../stores/notice'
 import {useDeletionStore} from '../../stores/deletion'
 import PageHeader from '../../components/ui/PageHeader.vue'
@@ -45,13 +45,15 @@ usePolling(async()=>{
   if(!batch.value||batch.value.delete_state!=='active')return
   const prior=count.value?.ready||0
   count.value=await batchApi.thumbs(id)
-  batch.value=await batchApi.one(id)
   if(count.value.ready>prior && items.value.length){
     const next=await batchApi.gallery(id)
     const map=new Map(next.photos.map(p=>[p.id,p]))
     items.value=items.value.map(p=>map.get(p.id)||p)
   }
 },4500)
+usePolling(async()=>{
+  if(batch.value?.delete_state==='active')batch.value=await batchApi.one(id)
+},()=>isActive(batch.value?.latest_run?.status)?1000:4500)
 onMounted(async()=>{try{await Promise.all([refresh(),reset()])}finally{initialGallery.value=false}})
 async function onPendingChanged(){await Promise.all([refresh(),reset()])}
 async function saveName(){
@@ -71,7 +73,7 @@ async function startRun(){
   busy.value=true;error.value=''
   try{
     const created=await runApi.start(id,batchThreshold(batch.value))
-    notice.add('MegaLoc добавлен в очередь · '+created.id,'ok')
+    notice.add(readyToStart(created)?'Запуск обработки MegaLoc':'MegaLoc добавлен в очередь','ok')
     await refresh();historyKey.value++
   }catch(e){error.value=errorText(e);await refresh()}finally{busy.value=false}
 }

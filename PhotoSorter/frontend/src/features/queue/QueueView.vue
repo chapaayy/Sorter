@@ -30,20 +30,26 @@ const filteredHistory=computed(()=>history.value.filter(item=>(
 const blocking=computed(()=>active.value.find(hasBlockingFailure))
 const clock=ref(Date.now()),loadingMore=ref(false),initialLoading=ref(true)
 const estimates=computed(()=>estimateQueue(active.value,history.value,clock.value))
-async function refresh(){
+let refreshing=false
+async function refresh(includeHistory=true){
+  if(refreshing)return
+  refreshing=true
   try{
     const [q,h]=await Promise.all([
       workQueueApi.list('active',200),
-      workQueueApi.list('history',100)
+      includeHistory?workQueueApi.list('history',100):null
     ])
+    const updated=tasks.value.some(task=>!q.tasks.some(next=>next.seq===task.seq))
     tasks.value=q.tasks;activeTotal.value=q.total
-    history.value=h.tasks;historyTotal.value=h.total
+    const recent=h??(updated?await workQueueApi.list('history',100):null)
+    if(recent){history.value=recent.tasks;historyTotal.value=recent.total}
     clock.value=Date.now()
     error.value=''
-  }catch(e){error.value=errorText(e)}finally{initialLoading.value=false}
+  }catch(e){error.value=errorText(e)}finally{initialLoading.value=false;refreshing=false}
 }
 onMounted(()=>void refresh())
-usePolling(refresh,4000)
+const hasWork=()=>tasks.value.some(task=>task.state==='running'||task.state==='queued')
+usePolling(()=>refresh(historyMode.value||!hasWork()),()=>!historyMode.value&&hasWork()?1000:4000)
 async function moreHistory(){
   if(loadingMore.value||history.value.length>=historyTotal.value)return
   loadingMore.value=true
@@ -89,7 +95,7 @@ function message(){
 <PageHeader eyebrow="ЗАДАНИЯ" title="Очередь">
   <template #actions>
     <UiButton @click="historyMode=!historyMode">{{historyMode?'Активные задачи':'История · '+historyTotal}}</UiButton>
-    <UiButton @click="refresh">Обновить</UiButton>
+    <UiButton @click="refresh()">Обновить</UiButton>
   </template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:15px">{{error}}</div>
@@ -100,7 +106,7 @@ function message(){
 <template v-if="!historyMode">
   <div v-if="active.length" class="stack" aria-label="Текущие задания">
     <QueueTaskRow v-for="(task,index) in active" :key="task.seq"
-      :task="task" :position="index+1" :estimate="estimates.get(task.seq)"
+      :task="task" :position="index+1" :estimate="estimates.get(task.seq)" :starting="index===0&&task.state==='queued'"
       :busy="busy===task.reference_job_id||busy===task.fo_run_id"
       @action="(t,action)=>confirm={task:t,action}"
       @details="t=>detail=t.reference_job_id"/>

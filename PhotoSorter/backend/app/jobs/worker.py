@@ -33,17 +33,24 @@ def process(job):
     job.save()
     name='megaloc'
     job.active_model=name
-    job.progress(name,'loading',0,1,'Загрузка MegaLoc')
+    warm=getattr(job,'warm_megaloc',None)
+    fingerprint=info.get('model_signature')
+    already_loaded=warm is not None and warm.ready_for(fingerprint)
+    if not already_loaded:
+        job.progress(name,'loading',0,1,'Загрузка MegaLoc')
     started=time.monotonic()
     engine=None
     timings={'scan_seconds':scan_seconds,'validate_fo_seconds':validation_seconds}
     try:
         load_started=time.perf_counter()
-        engine=MegaLocEngine()
+        engine=warm.get(fingerprint) if warm is not None else MegaLocEngine()
         from server.reference_cache import ReferenceCachedMegaLoc
         engine=ReferenceCachedMegaLoc(engine)
         timings['model_load_seconds']=round(time.perf_counter()-load_started,3)
-        job.progress(name,'loading',1,1,'MegaLoc загружена')
+        if already_loaded:
+            job.overall.update(name,'loading',1,1,time.monotonic())
+        else:
+            job.progress(name,'loading',1,1,'MegaLoc загружена')
         job.log('INFO',f'Устройство: {engine.device}',name)
         config=getattr(engine,'performance',None)
         if config is not None:
@@ -89,7 +96,7 @@ def process(job):
         with (job.path/'errors.txt').open('a',encoding='utf8') as file:
             file.write(f'\n=== {name} ===\n{traceback.format_exc()}\n')
     finally:
-        if engine is not None:
+        if engine is not None and warm is None:
             try:engine.unload()
             except Exception as exc:job.log('WARNING',f'Освобождение ресурсов: {exc}',name)
         job.active_model=None

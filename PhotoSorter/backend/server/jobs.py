@@ -146,8 +146,9 @@ def stop(run_id:str):
     return info
 
 class ServerJob(Job):
-    def __init__(self,info):
+    def __init__(self,info,*,warm_megaloc=None):
         super().__init__(info)
+        self.warm_megaloc=warm_megaloc
         self._last_db_stop=0.0
         self._db_stopped=False
     def finalize_results(self):

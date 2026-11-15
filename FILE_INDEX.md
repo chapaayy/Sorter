@@ -34,6 +34,7 @@
 | `backend/server/uploads.py` | Докачка, проверка принадлежности манифесту, финализация с сохранением `.part` до commit и выборочная отмена |
 | `backend/server/jobs.py` | Единое транзакционное создание заданий, API очереди и остановки, проверка состояния ZIP и ZIP-only retry |
 | `backend/server/worker.py` | Однопоточный lifecycle MegaLoc Worker и heartbeat |
+| `backend/server/workers/warm_megaloc.py` | Один экземпляр модели в RAM лидера FIFO, проверка версии и обновление числа CPU-потоков |
 | `backend/server/reference_cache.py` | Индекс и доступ к embeddings образцов |
 | `backend/server/api/routes/site.py` | **Один** Vue сайт на `/`, `/assets/*` и history fallback |
 | `backend/server/api/routes/auth.py` | Login/logout/current user endpoints |

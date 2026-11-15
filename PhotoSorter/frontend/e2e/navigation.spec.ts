@@ -727,6 +727,32 @@ test('FO progress animates between confirmed values and never advances on its ow
   await expect(label).toHaveText('100%')
 })
 
+test('idle FIFO starts directly and uses the same card columns as a completed report',async({page,isMobile})=>{
+  if(!isMobile)await page.setViewportSize({width:1440,height:900})
+  const ready={...run,status:'queued',queue_position:1}
+  const draft={...batch,batch_id:bid+'1',display_name:'Новый выезд',runs:0,latest_run:null as typeof ready|null}
+  await page.route('**/api/batches?*',route=>respond(route,{batches:[
+    {...batch,latest_run:run},draft
+  ],total:2}))
+  await page.route('**/api/runs',route=>{
+    draft.latest_run=ready
+    return respond(route,ready)
+  })
+  await page.goto('/fo')
+  const card=page.getByRole('article',{name:'Фотоотчёт Новый выезд'})
+  await card.getByRole('button',{name:'Обработать',exact:true}).click()
+  await expect(card.locator('.task-card-status')).toHaveText('Запуск обработки')
+  await expect(card.getByText('Ожидает своей очереди')).toHaveCount(0)
+  if(!isMobile){
+    const starts=await page.locator('.task-card-progress-track').evaluateAll(nodes=>
+      nodes.map(node=>node.getBoundingClientRect().x))
+    expect(starts).toHaveLength(2)
+    expect(starts[0]).toBeCloseTo(starts[1]!,1)
+  }
+  ready.status='running'
+  await expect(card.locator('.task-card-status')).toHaveText('Обработка',{timeout:2500})
+})
+
 test('FO progress updates immediately with reduced motion or a new run',async({page})=>{
   const start=new Date('2026-11-15T12:00:00Z')
   await page.emulateMedia({reducedMotion:'reduce'})

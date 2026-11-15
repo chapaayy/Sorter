@@ -6,11 +6,9 @@ jobs.status, not the potentially stale snapshot.status.
 from __future__ import annotations
 
 from ..db.repositories import batches as batch_repo
+from ..db.repositories.work_queue import QUEUE_ORDER_SQL
 
-_RUNS = """WITH queue_order AS (
-    SELECT id, row_number() OVER (ORDER BY created_at,id)::integer AS queue_position
-    FROM jobs WHERE status='queued'
-) """
+_RUNS = "WITH queue_order AS ("+QUEUE_ORDER_SQL+") "
 
 
 def _public(row):
@@ -52,7 +50,7 @@ def latest(db, batch_ids):
         ORDER BY batch_id,created_at DESC,id DESC
     )
     SELECT newest.*,queue_order.queue_position
-    FROM newest LEFT JOIN queue_order ON queue_order.id=newest.id""",
+    FROM newest LEFT JOIN queue_order ON queue_order.fo_run_id=newest.id""",
         (batch_ids,)).fetchall()
     return {row["batch_id"]: _public(row) for row in rows}
 
@@ -76,7 +74,7 @@ def history(db, batch_id, *, limit=20, offset=0):
     rows = db.execute(_RUNS + """ SELECT
         j.id,j.batch_id,j.status,j.snapshot,j.created_at,j.started_at,j.finished_at,
         q.queue_position
-        FROM jobs j LEFT JOIN queue_order q ON q.id=j.id
+        FROM jobs j LEFT JOIN queue_order q ON q.fo_run_id=j.id
         WHERE j.batch_id=%s
         ORDER BY j.created_at DESC,j.id DESC LIMIT %s OFFSET %s""",
         (batch_id,limit,offset)).fetchall()

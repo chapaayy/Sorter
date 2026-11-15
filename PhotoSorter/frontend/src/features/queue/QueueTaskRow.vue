@@ -9,7 +9,7 @@ import {deletionProgress} from '../../utils/deletionProgress'
 import {useDeletionStore} from '../../stores/deletion'
 import CompactTaskCard from '../../components/ui/CompactTaskCard.vue'
 
-const props=defineProps<{task:QueueTask;position?:number;estimate?:TaskEstimate;busy?:boolean}>()
+const props=defineProps<{task:QueueTask;position?:number;estimate?:TaskEstimate;busy?:boolean;starting?:boolean}>()
 const emit=defineEmits<{
  (e:'action',task:QueueTask,kind:'stop'|'retry'|'skip'):void
  (e:'details',task:QueueTask):void
@@ -34,7 +34,7 @@ const progress=computed<number|null>(()=>{
 const stage=computed(()=>{
   if(removal.value.deleting||removal.value.failed)return removal.value.stage
   if(hasBlockingFailure(props.task))return 'Ожидает повторения или пропуска'
-  if(props.task.state==='queued')return 'Ожидает предыдущие задачи'
+  if(props.task.state==='queued')return props.starting?'Подготовка к запуску MegaLoc':'Ожидает предыдущие задачи'
   if(props.task.state==='running'){
     if(props.task.stop_requested)return 'Запрошена остановка'
     if(preparing.value)return 'MegaLoc · подготовка образцов'
@@ -53,7 +53,7 @@ const tone=computed(()=>{
   if(props.task.state==='completed')return 'success'
   if(props.task.state==='completed_with_errors')return 'warning'
   if(props.task.state==='running')return 'running'
-  if(props.task.state==='queued')return 'queued'
+  if(props.task.state==='queued')return props.starting?'running':'queued'
   return 'neutral'
 })
 const time=computed(()=>queueTime(props.task,props.estimate))
@@ -64,7 +64,7 @@ const count=computed(()=>preparing.value?props.task.total_count:props.task.fo_ph
   :title="preparing?'Подготовка образцов':task.batch_name||'Фотоотчёт'"
   :thumbnail-url="preparing?null:task.fo_thumbnail_url"
   :icon="preparing?'references':'photos'"
-  :status="removal.deleting?'Удаляется':removal.failed?'Ошибка удаления':task.stop_requested&&task.state==='running'?'Остановка':STATE_RU[task.state]"
+  :status="removal.deleting?'Удаляется':removal.failed?'Ошибка удаления':task.stop_requested&&task.state==='running'?'Остановка':starting?'Запуск обработки':STATE_RU[task.state]"
   :tone="tone" :progress="progress" :stage="stage" :indeterminate="removal.inProgress"
   :progress-motion-key="task.state==='running'&&!task.stop_requested&&!removal.deleting&&!removal.failed?String(task.seq):null"
   :time-label="removal.deleting||removal.failed?undefined:time.label"

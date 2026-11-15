@@ -53,7 +53,7 @@ def _source_files(db,job_id):
         ORDER BY f.relative_path,f.upload_id
     """,(job_id,)).fetchall()
 
-def _prepare_embeddings(job_id,items,model_signature):
+def _prepare_embeddings(job_id,items,model_signature,warm_megaloc=None):
     """Reuse (SHA-256,signature) cache and instantiate MegaLoc only if missing."""
     unique={}
     for item in items:
@@ -68,7 +68,7 @@ def _prepare_embeddings(job_id,items,model_signature):
         return
     engine=None
     try:
-        engine=ReferenceCachedMegaLoc(MegaLocEngine())
+        engine=ReferenceCachedMegaLoc(warm_megaloc.get(model_signature) if warm_megaloc else MegaLocEngine())
         if engine.fingerprint!=model_signature:
             raise RuntimeError("Сигнатура MegaLoc изменилась во время подготовки")
         processed=0
@@ -87,10 +87,10 @@ def _prepare_embeddings(job_id,items,model_signature):
                 _progress(job_id,min(len(items),processed),len(items))
         _progress(job_id,len(items),len(items))
     finally:
-        if engine is not None:
+        if engine is not None and warm_megaloc is None:
             engine.unload()
 
-def run(job_id):
+def run(job_id,*,warm_megaloc=None):
     """Preparation does not publish anything until all embedding work succeeds."""
     with connect() as db:
         job=db.execute("""
@@ -138,7 +138,10 @@ def run(job_id):
             _record_file_error(job_id,item["upload_id"],reason)
             raise ValueError(reason)
     if actual:
-        _prepare_embeddings(job_id,actual,fp)
+        if warm_megaloc is None:
+            _prepare_embeddings(job_id,actual,fp)
+        else:
+            _prepare_embeddings(job_id,actual,fp,warm_megaloc)
     else:
         _progress(job_id,len(items),len(items))
     # No future job can start before this transaction finishes. Publication

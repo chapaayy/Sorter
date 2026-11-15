@@ -3,7 +3,7 @@ import {computed,onMounted,ref,watch} from 'vue'
 import {batchApi} from '../../api/batches'
 import {runApi} from '../../api/runs'
 import {usePolling} from '../../composables/usePolling'
-import {errorText} from '../../utils/format'
+import {errorText,isActive,readyToStart} from '../../utils/format'
 import type {Batch} from '../../types/api'
 import type {QueueTask} from '../../types/workQueue'
 import {workQueueApi} from '../../api/workQueue'
@@ -88,7 +88,7 @@ watch(()=>uploader.current?.batchId,id=>{if(id&&!batches.value.some(batch=>batch
 watch(()=>uploader.lastCompleted,completion=>{
   if(completion&&'batchId' in completion)void refreshVisible()
 })
-usePolling(refreshVisible,4000)
+usePolling(refreshVisible,()=>batches.value.some(batch=>isActive(batch.latest_run?.status))?1000:4000)
 usePolling(async()=>{
   const ids=new Set([...Object.keys(deletion.requests),
     ...batches.value.filter(b=>b.delete_state==='deleting').map(b=>b.batch_id)])
@@ -123,8 +123,8 @@ async function start(batchId:string,threshold:number){
   if(activeAction.value)return
   activeAction.value=batchId;error.value=''
   try{
-    await runApi.start(batchId,threshold)
-    notice.add('MegaLoc поставлен в очередь','ok')
+    const created=await runApi.start(batchId,threshold)
+    notice.add(readyToStart(created)?'Запуск обработки MegaLoc':'MegaLoc поставлен в очередь','ok')
     await Promise.all([refreshVisible(),refreshQueue()])
   }catch(e){error.value=errorText(e);await refreshVisible()}
   finally{activeAction.value=''}

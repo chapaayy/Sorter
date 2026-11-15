@@ -395,8 +395,8 @@ def test_first_fo_waits_for_earlier_first_reference_preparation(system):
         assert ledger[0]["seq"]<ledger[1]["seq"]
         task=work_queue.claim_next(db)
         assert task["kind"]=="reference_preparation"
-        # Running preparation is no longer a waiting queue position.
-        assert work_queue.position(db,run)==1
+        # An active reference preparation is still ahead of the FO in FIFO.
+        assert work_queue.position(db,run)==2
     assert reference_prepare.run(task["id"])["version"]==2
     with database.connect() as db:
         following=work_queue.claim_next(db)
