@@ -10,6 +10,7 @@ import pytest
 
 from app.photos.scanner import images
 from server import jobs
+from server.database import connect
 from server.api.routes import batches as batch_routes, originals
 from server.services import batches, cleanup, thumbnails, upload_manifest
 from server.services.upload_validation import fo_media_type, original_storage_name, safe_name
@@ -86,10 +87,22 @@ def test_mixed_batch_preserves_download_and_only_indexes_supported_photos(thumbs
         assert exc.value.status_code==404
         with TestClient(app) as client:
             response=client.get(tile['original_url'])
+            preview=client.get(tile['preview_url'],headers={'Range':'bytes=0-7'})
+        assert preview.status_code==206 and preview.content==clip[:8]
+        assert preview.headers['Content-Type']=='video/quicktime'
+        assert preview.headers['Content-Range']==f'bytes 0-7/{len(clip)}'
+        assert preview.headers['X-Content-Type-Options']=='nosniff'
+        assert 'Content-Disposition' not in preview.headers
         assert response.status_code==200 and response.content==clip
         assert response.headers['Content-Disposition'].startswith("attachment; filename*=UTF-8''")
         assert response.headers['Content-Type']=='application/octet-stream'
         assert response.headers['X-Content-Type-Options']=='nosniff'
+        with connect() as conn:
+            conn.execute("UPDATE uploads SET original_media_type='image/svg+xml' WHERE id=%s",(video.upload_id,))
+        unsafe=next(row for row in batch_routes.gallery(str(batch))['photos'] if row['id']==str(video.upload_id))
+        assert unsafe['preview_url'] is None
+        with TestClient(app) as client:
+            assert client.get(tile['preview_url']).status_code==404
     finally:
         cleanup.request(batch);cleanup.cleanup_one(batch)
 

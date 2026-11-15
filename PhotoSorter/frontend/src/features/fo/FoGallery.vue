@@ -18,6 +18,7 @@ import EmptyState from '../../components/ui/EmptyState.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
+import type {ViewerItem} from '../../components/gallery/ImageViewer.vue'
 import PendingUploads from './PendingUploads.vue'
 import BatchProcessingStatus from './BatchProcessingStatus.vue'
 import BatchRunHistory from './BatchRunHistory.vue'
@@ -31,13 +32,22 @@ const deleteWhole=ref(false),deletePhoto=ref<string|null>(null),viewer=ref<numbe
 const stopConfirm=ref(false),showHistory=ref(false),historyKey=ref(0)
 const processing=computed(()=>batch.value?batchProcessing(batch.value):null)
 const {items,cursor,loading,error:galleryError,load,reset}=useCursor<Photo>(next=>batchApi.gallery(id,next))
-const photos=computed(()=>items.value.filter(p=>p.play_url||!p.original_media_type))
-const preview=computed(()=>photos.value.map(p=>({src:p.play_url||p.original_url||'',label:p.name,video:p.media_kind==='video',poster:p.thumbnail_url})))
-function openPhoto(index:number){
-  const id=items.value[index]?.id
-  const position=photos.value.findIndex(p=>p.id===id)
-  if(position>=0)viewer.value=position
-}
+const preview=computed<ViewerItem[]>(()=>items.value.map(p=>{
+  const video=p.media_kind==='video'||!!p.original_media_type?.startsWith('video/')
+  const poster=p.thumbnail_status==='ready'?p.thumbnail_url:null
+  const original=p.preview_url||(!p.original_media_type?p.original_url:null)
+  const prepared=p.play_url||null
+  const preparing=!p.media_error&&batch.value?.delete_state==='active'&&
+    ['queued','running'].includes(batch.value.media_preparation?.state??'')
+  return {
+    src:prepared||original||(!video?poster:null)||'',label:p.name,video,poster,
+    fallbackMessage:p.media_error
+      ?'Не удалось подготовить файл для просмотра.'
+      :preparing?'Полный просмотр будет доступен после перекодирования.'
+      :video?'Браузер не смог воспроизвести этот формат.':'Полноразмерный просмотр этого формата недоступен.',
+    previewOnly:!video&&!prepared&&!original&&!!poster,
+  }
+}))
 const mediaErrors=ref<{id:string;filename:string;media_error:string}[]>([])
 const showMediaErrors=ref(false)
 async function inspectMedia(){
@@ -68,9 +78,10 @@ usePolling(async()=>{
 },4500)
 usePolling(async()=>{
   if(batch.value?.delete_state==='active'){
-    const state=batch.value.media_preparation?.state
+    const media=batch.value.media_preparation
     batch.value=await batchApi.one(id)
-    if(state!==batch.value.media_preparation?.state&&batch.value.media_image_format){
+    const nextMedia=batch.value.media_preparation
+    if((media?.state!==nextMedia?.state||media?.completed_count!==nextMedia?.completed_count)&&batch.value.media_image_format){
       const next=await batchApi.gallery(id,undefined,Math.min(200,Math.max(60,items.value.length)))
       const changed=new Map(next.photos.map(p=>[p.id,p]))
       items.value=items.value.map(p=>changed.get(p.id)||p)
@@ -164,7 +175,7 @@ async function removeBatch(){
 <div v-if="batch&&batch.runs" class="alert" style="margin-bottom:20px">Эта партия уже обрабатывалась. Удаление отдельного ФО заблокировано, чтобы не нарушить существующие результаты.</div>
 <div v-if="galleryError" class="alert error">{{galleryError}}</div>
 <VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({...p,label:p.name}))"
-  :can-delete="!batch?.runs&&batch?.delete_state==='active'&&!['queued','running','failed','interrupted'].includes(batch.media_preparation?.state??'')" @open="openPhoto" @remove="pid=>deletePhoto=pid"/>
+  :can-delete="!batch?.runs&&batch?.delete_state==='active'&&!['queued','running','failed','interrupted'].includes(batch.media_preparation?.state??'')" @open="i=>viewer=i" @remove="pid=>deletePhoto=pid"/>
 <LoadingSkeleton v-else-if="loading||initialGallery" variant="gallery" label="Загружаем фотографии"/>
 <EmptyState v-else-if="!galleryError" title="В этой партии пока нет фото"/>
 <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё фотографии</UiButton></div>

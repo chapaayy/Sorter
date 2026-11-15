@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64,json,uuid
 from datetime import datetime
 from fastapi import HTTPException
+from ...media.preview import INLINE_TYPES
 
 def encode(at,photo_id):
     obj={"at":at.isoformat(),"id":str(photo_id)}
@@ -40,6 +41,8 @@ def page(db,filter_sql,params,*,cursor=None,limit=60):
            "original_media_type":row["original_media_type"],
            "media_kind":("video" if (row["original_media_type"] or "").startswith("video/") else "image") if row["media_action"] else None,
            "media_error":row["media_error"],"duration":row["media_duration"],
+           "preview_url":f'/api/photos/{row["id"]}/preview' if
+               row["kind"]=="fo" and row["finalized"] and row["original_media_type"] in INLINE_TYPES else None,
            "play_url":f'/api/photos/{row["id"]}/prepared' if (row["media_action"]=="keep" or row["media_output_path"]) else None,
            "thumbnail_status":row["thumbnail_status"] or "pending",
            "thumbnail_url":f'/api/thumbnails/{row["id"]}' if row["finalized"] and (row["original_media_type"] is None or row["media_action"]) else None,

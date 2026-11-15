@@ -53,7 +53,7 @@ export interface PendingUploadList { uploads:PendingUpload[];total:number }
 export interface Photo {
   id: string; name: string; bytes: number; created_at: string
   original_media_type?: string | null
-  media_kind?:"video"|"image"|null; play_url?:string|null; media_error?:string|null;duration?:number|null
+  media_kind?:"video"|"image"|null; play_url?:string|null; preview_url?:string|null; media_error?:string|null;duration?:number|null
   thumbnail_status?: 'queued' | 'running' | 'pending' | 'ready' | 'failed'
   thumbnail_url?: string | null; original_url?: string | null
 }

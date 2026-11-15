@@ -50,7 +50,7 @@
 | `backend/server/api/routes/models.py` | Модели, скачивание и состояние |
 | `backend/server/api/routes/results.py` | История прогонов и результаты |
 | `backend/server/api/routes/images.py` | Изображения результатов |
-| `backend/server/api/routes/originals.py` | Оригиналы через operation lease |
+| `backend/server/api/routes/originals.py` | Скачивание оригиналов и inline-просмотр ФО через operation lease |
 | `backend/server/api/routes/thumbnails.py` | WebP превью и queue state |
 | `backend/server/api/routes/downloads.py` | Streaming ZIP, подтверждения, пути внутри ZIP |
 | `backend/server/api/routes/logs.py` | Cursor/log tail, скачивание |
@@ -304,6 +304,7 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 |---|---|
 | `PhotoSorter/backend/server/db/migrations/0029_batch_media.sql` | Профили партии, нормализованные файлы, прогресс в общей FIFO |
 | `PhotoSorter/backend/server/media/formats.py` | Проверка контейнера и дорожек, нормализация фото |
+| `PhotoSorter/backend/server/media/preview.py` | Разрешённые MIME исходных ФО для inline-просмотра |
 | `PhotoSorter/backend/server/media/estimate.py` | Вес файлов и ETA перекодирования всей партии |
 | `PhotoSorter/backend/server/media/video.py` | Перепаковка, кодирование и выбор временных кадров |
 | `PhotoSorter/backend/server/media/sorting.py` | Изоляция кадров от групп фото и одно назначение на видео |

@@ -14,15 +14,13 @@ const emit=defineEmits<{(e:'open',index:number):void;(e:'remove',id:string):void
       <div v-else class="photo-placeholder"
         :class="{'skeleton-shape':!item.original_media_type&&item.thumbnail_status!=='failed'}">
         <span v-if="item.media_error">Ошибка подготовки</span>
-        <span v-else-if="item.original_media_type&&!item.media_kind">{{item.original_media_type.startsWith('video/')?'Видео':'Оригинал без превью'}}<br>Скачать оригинал</span>
+        <span v-else-if="item.original_media_type&&!item.media_kind">{{item.original_media_type.startsWith('video/')?'Видео':'Оригинал без превью'}}</span>
         <span v-else-if="item.thumbnail_status==='failed'">⚠ Ошибка превью</span>
         <span v-else class="visually-hidden">Подготовка превью</span>
       </div>
       <span v-if="item.media_kind==='video'" class="video-badge">▶ Видео<span v-if="item.duration"> · {{Math.round(item.duration)}} с</span></span>
       <div class="photo-caption"><span :title="item.label">{{item.label}}</span><span v-if="showScores&&item.score!=null">{{item.score.toFixed(3)}}</span></div>
-      <a v-if="item.original_media_type&&!item.play_url&&item.original_url" class="photo-select" :href="item.original_url"
-        :aria-label="'Скачать '+item.label" download>Скачать</a>
-      <button v-else-if="item.play_url||!item.original_media_type" class="photo-select" type="button" :aria-label="'Открыть '+item.label" @click="emit('open',index)">Открыть</button>
+      <button class="photo-select" type="button" :aria-label="'Открыть '+item.label" @click="emit('open',index)">Открыть</button>
       <button v-if="canDelete" class="btn small photo-menu" :aria-label="'Удалить '+item.label" @click="emit('remove',item.id)">×</button>
     </article>
   </div>

@@ -398,8 +398,51 @@ test('mixed folder upload keeps sending bytes across pages and only opens its ba
     await expect(indicator).toBeHidden()
     await toast.getByRole('link',{name:'Открыть'}).click()
     await expect(page).toHaveURL(new RegExp('/fo/'+bid+'$'))
-    await expect(page.getByRole('link',{name:'Скачать clip.MOV'})).toHaveAttribute('href','/api/photos/video-id/original')
+    await expect(page.getByRole('link',{name:'Скачать clip.MOV'})).toHaveCount(0)
+    await page.getByRole('button',{name:'Открыть clip.MOV'}).click()
+    await expect(page.getByRole('dialog',{name:'Просмотр видео'})).toContainText('Браузер не смог воспроизвести этот формат.')
   }finally{gate.release();await rm(folder,{recursive:true,force:true})}
+})
+
+test('gallery opens image and video previews without downloading while conversion runs',async({page})=>{
+  const clip='77b1146a-613d-41b9-b8d6-e08c5902b175'
+  const original='/api/photos/'+clip+'/preview',prepared='/api/photos/'+clip+'/prepared'
+  let converted=false,downloads=0
+  page.on('download',()=>downloads++)
+  await page.route('**/api/batches/'+bid,route=>respond(route,{
+    ...batch,runs:0,media_image_format:'jpg',media_video_format:'mp4',
+    media_preparation:{state:converted?'completed':'running',completed_count:converted?2:0,total_count:2,failed_count:0}
+  }))
+  await page.route('**/api/batches/'+bid+'/gallery?*',route=>respond(route,{photos:[
+    {...photo,name:'still.HEIC',original_media_type:'image/heic',thumbnail_status:'ready'},
+    {...photo,id:clip,name:'clip.MOV',original_media_type:'video/quicktime',media_kind:'video',
+      thumbnail_status:'ready',thumbnail_url:'/api/thumbnails/'+clip,
+      preview_url:original,play_url:converted?prepared:null}
+  ],next_cursor:null}))
+  await page.route('**/api/thumbnails/*',route=>route.fulfill({contentType:'image/svg+xml',
+    body:'<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>'}))
+  const hold=holdTransfer()
+  await page.route('**/api/photos/'+clip+'/*',async route=>{
+    await hold.waiting
+    await route.abort().catch(()=>{})
+  })
+  try{
+    await page.goto('/fo/'+bid)
+    await page.getByRole('button',{name:'Открыть still.HEIC'}).click()
+    const still=page.getByRole('dialog',{name:'Просмотр фотографии'})
+    await expect(still.getByRole('img',{name:'still.HEIC'})).toBeVisible()
+    await expect(still).toContainText('Полный просмотр будет доступен после перекодирования.')
+    await still.getByRole('button',{name:'Закрыть просмотр'}).click()
+    await page.getByRole('button',{name:'Открыть clip.MOV'}).click()
+    const video=page.getByRole('dialog',{name:'Просмотр видео'})
+    await expect(video.locator('video')).toHaveAttribute('src',original)
+    await video.locator('video').dispatchEvent('error')
+    await expect(video.getByRole('img',{name:'clip.MOV'})).toBeVisible()
+    await expect(video).toContainText('Полный просмотр будет доступен после перекодирования.')
+    converted=true
+    await expect(video.locator('video')).toHaveAttribute('src',prepared)
+    expect(downloads).toBe(0)
+  }finally{hold.release()}
 })
 
 test('pausing and resuming counts each saved file only once',async({page})=>{

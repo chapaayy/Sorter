@@ -10,6 +10,7 @@ from app.config import DATA_DIR
 from app.photos.reader import EXTS
 from app.photos.labels import check_label
 from ...database import connect
+from ...media.preview import INLINE_TYPES
 from ...storage.paths import owned_file
 from ...services import operations
 
@@ -38,6 +39,26 @@ def prepared(photo_id:uuid.UUID):
     except (ValueError,OSError):
         operations.finish(token)
         raise HTTPException(404,"Файл не готов к просмотру")
+
+@router.get("/{photo_id}/preview")
+def preview(photo_id:uuid.UUID):
+    """Serve eligible originals inline, with Range support for video."""
+    with connect() as db:
+        row=db.execute("""SELECT batch_id,target_path,original_media_type
+             FROM uploads WHERE id=%s AND kind='fo' AND finalized""",(photo_id,)).fetchone()
+    if not row or not row["batch_id"] or not row["target_path"] or row["original_media_type"] not in INLINE_TYPES:
+        raise HTTPException(404,"Файл недоступен для просмотра")
+    token=operations.start(row["batch_id"],"original")
+    try:
+        path=owned_file(Path(row["target_path"]),DATA_DIR/"uploads"/str(row["batch_id"]))
+        if not path.is_file():raise FileNotFoundError()
+        return FileResponse(path,media_type=row["original_media_type"],
+                            background=BackgroundTask(operations.finish,token),
+                            headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
+    except (ValueError,OSError):
+        operations.finish(token)
+        raise HTTPException(404,"Файл недоступен для просмотра")
+
 
 @router.get("/{photo_id}/original")
 def original(photo_id:str):
