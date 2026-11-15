@@ -2,7 +2,7 @@
 
 No fabricated fixed stage percentages or persisted performance cache. Before
 sufficient samples, the UI receives no percentage/ETA; completed runs reach 100%.
-Estimates adapt as the FO/reference/GPU/copy speeds are observed this run.
+Estimates adapt as the FO/reference-read/copy speeds are observed this run.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ STAGE_LABELS = {
     'grouping': 'MegaLoc — сравнение ФО между собой',
     'grouping_merge': 'MegaLoc — формирование групп ФО',
     'grouping_diagnostics': 'MegaLoc — проверка групп ФО',
-    'references': 'MegaLoc — вычисление признаков Образцов',
+    'references': 'MegaLoc — чтение кэша Образцов',
     'matching': 'MegaLoc — сравнение групп с Образцами',
     'saving': 'Сохранение Готовых фоток',
     'export': 'Запись результатов',
@@ -87,6 +87,10 @@ class OverallProgress:
                 return
 
     def _rate(self, phase: Phase, now: float):
+        if phase.stage == 'references':
+            # Published references normally come from cache. Never charge
+            # FO inference per SAM or extrapolate a cache miss over all SAMs.
+            return None
         own = phase.seconds_per_unit(now)
         if own is not None:
             return own
@@ -95,10 +99,8 @@ class OverallProgress:
             found = [p.seconds_per_unit(now) for p in self.phases
                      if p.stage in stage_names and (model is None or p.model == model)]
             return [v for v in found if v is not None and math.isfinite(v) and v > 0]
-        if phase.stage in ('queries','references'):
-            items = rates(('queries','references'),phase.model)
-            if not items:
-                items = rates(('queries','references'))
+        if phase.stage == 'queries':
+            items = rates(('queries',),phase.model)
         elif phase.stage in ('validate_references','validate_queries','saving'):
             items = rates(('validate_references','validate_queries','saving'))
         elif phase.stage in ('grouping','grouping_merge','grouping_diagnostics','matching'):
@@ -125,7 +127,7 @@ class OverallProgress:
         # Only show an overall estimate when some actual neural extraction
         # throughput has been measured. Validation speed cannot predict CUDA.
         neural_sampled = any(p.current >= min(5,p.total) and p.seconds_per_unit(now) is not None
-                             for p in self.phases if p.stage in ('queries','references'))
+                             for p in self.phases if p.stage == 'queries')
         if not neural_sampled:
             return {'overall_percent':None,'estimated_remaining_seconds':None,
                     'eta_status':'collecting'}
@@ -142,6 +144,8 @@ class OverallProgress:
                 estimate = phase.expected_duration(now, self._rate(phase,now))
                 if estimate is None:
                     unestimated = True
+                    if phase.stage == 'references' and phase.started_at is not None:
+                        predicted.append(max(0.0, now-phase.started_at))
                 else:
                     predicted.append(estimate)
         if not predicted:

@@ -66,17 +66,21 @@ def process(job):
              on_export_start=lambda:job.progress(name,'export',0,1,'Запись результатов'))
         job.progress(name,'export',1,1,'Манифест сохранён')
         timings['save_seconds']=round(time.perf_counter()-save_started,3)
+        timings['reference_cache_hits']=engine.reference_cache_hits
+        timings['reference_cache_misses']=engine.reference_cache_misses
+        job.log('INFO',f'Образцы: из кэша — {engine.reference_cache_hits}, '
+                f'потребовали пересчёта — {engine.reference_cache_misses}',name)
         job.log('INFO','Замеры: '+', '.join(f'{key}={value}' for key,value in timings.items()),name)
         seconds=round(time.monotonic()-started,2)
         info['models'][name]={'status':'completed','device':engine.device,
              'seconds':seconds,'processed':len(result),
              'assigned':sum(bool(row.get('top')) for row in result),
              'uncertain':sum(not row.get('top') for row in result),
-             'feature_policy':'recompute_every_run',
+             'feature_policy':'fo_recomputed_reference_cache',
              'performance':timings,
              'grouping':'megaloc_threshold_components_v3',
              'groups':len({r['group_id'] for r in result if r.get('group_id')})}
-        job.log('INFO',f'Готово: {len(result)} ФО за {seconds} с; признаки пересчитаны заново',name)
+        job.log('INFO',f'Готово: {len(result)} ФО за {seconds} с; признаки ФО вычислены для этого запуска',name)
     except JobCancelled:
         raise
     except Exception as exc:

@@ -40,6 +40,8 @@ class ReferenceCachedMegaLoc:
         self.engine=engine
         self.performance=engine.performance
         self.fingerprint=signature()
+        self.reference_cache_hits=0
+        self.reference_cache_misses=0
         if not self.fingerprint:raise RuntimeError('Отсутствует проверяемая версия MegaLoc')
         CACHE_DIR.mkdir(parents=True,exist_ok=True)
 
@@ -67,6 +69,8 @@ class ReferenceCachedMegaLoc:
                         continue
                     missing.append(path)
                 except Exception as exc:cached[path]=(None,exc)
+        self.reference_cache_hits+=sum(error is None for _,error in cached.values())
+        self.reference_cache_misses+=len(missing)
         generated={}
         if missing:
             for path,vector,error in self.engine.extract_many(missing,stop=stop):

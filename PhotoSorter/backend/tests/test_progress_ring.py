@@ -58,6 +58,37 @@ def test_stage_progress_includes_label_and_preserves_disk_write_throttle(monkeyp
     assert saves[-1]['overall_percent'] is None
 
 
+def test_prepared_reference_count_does_not_hold_back_fo_progress():
+    def sample(reference_count):
+        tracker=OverallProgress()
+        tracker.configure(reference_count,75,['megaloc'],0)
+        for model,stage,start,total,end in [
+            (None,'validate_queries',0,75,1),
+            ('megaloc','loading',1,1,3),
+            ('megaloc','queries',3,75,30),
+            ('megaloc','grouping',30,75,31),
+            ('megaloc','grouping_merge',31,1,31),
+            ('megaloc','grouping_diagnostics',31,75,32),
+        ]:
+            tracker.update(model,stage,0,total,start)
+            tracker.update(model,stage,total,total,end)
+        return tracker
+    small=sample(10)
+    large=sample(600)
+    assert small.calculate(32)==large.calculate(32)
+    assert 80 < large.calculate(32)['overall_percent'] < 100
+    large.update('megaloc','references',0,600,32)
+    assert large.calculate(34)['eta_status']=='partial'
+    large.update('megaloc','references',2,600,35)
+    assert large._rate(next(p for p in large.phases if p.stage=='references'),35) is None
+    large.update('megaloc','references',590,600,35)
+    large.update('megaloc','references',600,600,38)
+    phase=next(p for p in large.phases if p.stage=='references')
+    assert phase.expected_duration(38,None)==6
+    assert large.calculate(38)['overall_percent'] < 100
+    assert large.calculate(40,finished=True)['overall_percent']==100
+
+
 def test_grouping_never_uses_phash_or_color_and_records_diagnostics(tmp_path):
     import numpy as np
     from pathlib import Path
