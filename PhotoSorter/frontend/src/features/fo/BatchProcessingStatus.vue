@@ -3,9 +3,11 @@ import {computed} from 'vue'
 import type {Batch} from '../../types/api'
 import {batchProcessing} from '../../utils/batchProcessing'
 import {useSmoothProgress} from '../../composables/useSmoothProgress'
-const props=withDefaults(defineProps<{batch:Batch;compact?:boolean}>(),{compact:false})
+import {uploadStatusLabel} from '../../utils/transferPresentation'
+import type {UploadRow} from '../../types/uploadQueue'
+const props=withDefaults(defineProps<{batch:Batch;compact?:boolean;transfer?:UploadRow}>(),{compact:false})
 const state=computed(()=>batchProcessing(props.batch))
-const showProgress=computed(()=>state.value.run?.status==='running')
+const showProgress=computed(()=>!props.transfer&&state.value.run?.status==='running')
 const percent=computed(()=>state.value.overallPercent??state.value.stagePercent)
 const progressKind=computed(()=>state.value.overallPercent!=null?'Общий прогресс':'Этап')
 const shown=useSmoothProgress(()=>percent.value,()=>{
@@ -18,10 +20,10 @@ const shown=useSmoothProgress(()=>percent.value,()=>{
 <template>
 <div class="fo-processing" :class="{'fo-processing-compact':compact}">
   <div class="row between wrap">
-    <span class="status" :class="state.tone==='ok'?'ok':state.tone==='danger'?'danger':''" data-testid="fo-processing-status">{{state.label}}</span>
+    <span class="status" :class="state.tone==='ok'?'ok':state.tone==='danger'?'danger':''" data-testid="fo-processing-status">{{transfer?uploadStatusLabel(transfer.status):state.label}}</span>
     <span v-if="state.run" class="meta">MegaLoc · {{state.run.grouping_threshold?.toFixed(2)??'0.50'}}</span>
   </div>
-  <p class="fo-processing-detail">{{state.detail}}</p>
+  <p class="fo-processing-detail">{{transfer?'Обработка доступна после сохранения всех файлов партии':state.detail}}</p>
   <template v-if="showProgress">
     <div class="row between fo-processing-progress-label">
       <span class="meta">{{progressKind}} · {{state.stageLabel}}</span>

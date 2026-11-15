@@ -9,6 +9,7 @@ import {useCursor} from '../../composables/useCursor'
 import {usePolling} from '../../composables/usePolling'
 import {date,bytes,errorText,isActive,readyToStart} from '../../utils/format'
 import {useNoticeStore} from '../../stores/notice'
+import {useUploadCenterStore} from '../../stores/uploadCenter'
 import {useDeletionStore} from '../../stores/deletion'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import UiButton from '../../components/ui/UiButton.vue'
@@ -22,6 +23,8 @@ import BatchProcessingStatus from './BatchProcessingStatus.vue'
 import BatchRunHistory from './BatchRunHistory.vue'
 const route=useRoute(),router=useRouter(),notice=useNoticeStore(),deletion=useDeletionStore()
 const id=String(route.params.batchId)
+const uploader=useUploadCenterStore()
+const transfer=computed(()=>uploader.rows.find(row=>row.batchId===id))
 const batch=ref<Batch|null>(null),count=ref<{total:number;ready:number;failed:number}|null>(null)
 const rename=ref(false),newName=ref(''),busy=ref(false),error=ref('')
 const deleteWhole=ref(false),deletePhoto=ref<string|null>(null),viewer=ref<number|null>(null)
@@ -130,7 +133,7 @@ async function removeBatch(){
 <section v-if="batch" class="panel stack" :class="{'deletion-panel':deletion.pending(id)||batch.delete_state==='deleting'}" style="margin-bottom:19px" aria-label="Обработка MegaLoc для партии">
   <div class="row between wrap"><h2 style="margin:0">Обработка MegaLoc</h2><span class="meta">Миниатюры и сортировка — независимые процессы</span></div>
   <div v-if="deletion.pending(id)||batch.delete_state==='deleting'" class="deletion-state">Удаляется · удаление файлов и результатов</div>
-  <BatchProcessingStatus v-else :batch="batch"/>
+  <BatchProcessingStatus v-else :batch="batch" :transfer="transfer"/>
   <div v-if="batch.media_files&&batch.media_image_format" class="alert warning row wrap between">
     <span>Файлов без готовой копии: {{batch.media_files}}. Они не попадут в ZIP.</span>
     <UiButton small @click="inspectMedia">{{showMediaErrors?'Скрыть ошибки':'Показать ошибки'}}</UiButton>
@@ -141,7 +144,7 @@ async function removeBatch(){
   <div class="row wrap fo-batch-actions">
     <UiButton v-if="['failed','interrupted','completed_with_errors'].includes(batch.media_preparation?.state??'')&&!processing?.canStop"
       small :loading="busy" @click="retryMedia">Повторить перекодирование</UiButton>
-    <UiButton v-if="processing?.canStart" kind="primary" small :loading="busy" @click="startRun">{{(batch.runs??0)>0?'Повторить обработку':'Обработать'}}</UiButton>
+    <UiButton v-if="!transfer&&processing?.canStart" kind="primary" small :loading="busy" @click="startRun">{{(batch.runs??0)>0?'Повторить обработку':'Обработать'}}</UiButton>
     <UiButton v-if="processing?.canCancelAuto" small :loading="busy" @click="cancelAuto">Отменить автозапуск</UiButton>
     <UiButton v-if="processing?.canStop" small kind="danger" :loading="busy" @click="stopConfirm=true">
       {{processing?.run?.status==='queued'?'Убрать из очереди':'Остановить'}}
@@ -154,7 +157,7 @@ async function removeBatch(){
 <BatchRunHistory v-if="showHistory&&batch&&(batch.runs??0)>0" :key="id+'-'+historyKey" :batch-id="id" style="margin-bottom:19px"/>
 <PendingUploads v-if="batch?.delete_state==='active'" :batch-id="id" :batch-name="batch.display_name" :disabled="!!batch.runs" @changed="onPendingChanged"/>
 <section v-if="count&&(count.total||!batch?.media_files)" class="panel stack-sm" style="margin-bottom:19px">
-  <div class="row between"><span>Подготовка миниатюр</span><span class="meta">{{count.ready}} / {{count.total}} · {{readyPercent}}%</span></div>
+  <div class="row between"><span>{{transfer?'Миниатюры сохранённых файлов':'Подготовка миниатюр'}}</span><span class="meta">{{count.ready}} / {{count.total}} · {{readyPercent}}%</span></div>
   <div class="progress-track" role="progressbar" :aria-valuenow="readyPercent" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill" :style="{width:readyPercent+'%'}"/></div>
   <div class="meta">{{count.failed?'Не удалось создать '+count.failed+' миниатюр.':''}} Оригиналы доступны независимо от превью.</div>
 </section>

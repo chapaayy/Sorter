@@ -5,6 +5,7 @@ import type {PendingUpload,BatchUploadManifest} from '../../types/api'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
 import {bytes,errorText} from '../../utils/format'
 import {usePolling} from '../../composables/usePolling'
+import {uploadPercent,uploadStatusLabel} from '../../utils/transferPresentation'
 import UiButton from '../../components/ui/UiButton.vue'
 import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
@@ -15,7 +16,9 @@ const items=ref<PendingUpload[]>([]),manifest=ref<BatchUploadManifest|null>(null
 const activeId=ref(''),activeStatus=ref(''),confirmCancel=ref<PendingUpload|null>(null)
 const errors=ref<Record<string,string>>({})
 const uploader=useUploadCenterStore()
-const batchUploading=computed(()=>uploader.isBatchScheduled(props.batchId))
+const transfer=computed(()=>uploader.rows.find(row=>row.batchId===props.batchId))
+const batchUploading=computed(()=>!!transfer.value)
+let loadingRequest=false,refreshAfterLoad=false
 
 async function refreshManifest(){
   // The pending-upload recovery UI must still work if manifest inspection
@@ -24,7 +27,8 @@ async function refreshManifest(){
   catch{manifest.value=null}
 }
 async function load(autoFinish=false){
-  if(activeId.value)return
+  if(activeId.value||batchUploading.value||loadingRequest)return
+  loadingRequest=true
   try{
     const result=await batchApi.pending(props.batchId)
     items.value=result.uploads
@@ -38,7 +42,10 @@ async function load(autoFinish=false){
       }
     }
   }catch(err){error.value='Не удалось проверить незавершённые файлы: '+errorText(err)}
-  finally{loading.value=false}
+  finally{
+    loading.value=false;loadingRequest=false
+    if(refreshAfterLoad){refreshAfterLoad=false;void load()}
+  }
 }
 async function finish(item:PendingUpload,automatic=false){
   if(activeId.value||props.disabled||batchUploading.value)return
@@ -82,16 +89,38 @@ async function cancel(){
 function online(){if(!activeId.value)void load(true)}
 onMounted(()=>{void load(true);window.addEventListener('online',online)})
 onUnmounted(()=>window.removeEventListener('online',online))
-watch(()=>uploader.lastCompleted,async completion=>{
+watch(batchUploading,(current,previous)=>{
+  if(!previous||current)return
+  if(loadingRequest)refreshAfterLoad=true
+  else void load()
+})
+watch(()=>uploader.lastCompleted,completion=>{
   if(!completion||!('batchId' in completion)||completion.batchId!==props.batchId)return
-  await load()
   emit('changed')
 })
-usePolling(async()=>{if((items.value.length||manifest.value?.state==='waiting')&&!activeId.value)await load()},12000)
+usePolling(async()=>{if(!batchUploading.value&&(items.value.length||manifest.value?.state==='waiting'))await load()},12000)
 </script>
 
 <template>
-<section v-if="loading||items.length||manifest?.state==='waiting'||error" class="panel stack" aria-label="Незавершённые загрузки" style="margin-bottom:19px">
+<section v-if="transfer" class="panel stack" aria-label="Загрузка файлов" style="margin-bottom:19px">
+  <div class="panel-header">
+    <div><h2>{{uploadStatusLabel(transfer.status)}}</h2>
+      <p class="meta">{{transfer.completed}} из {{transfer.totalFiles}} файлов сохранено · {{bytes(transfer.sentBytes)}} / {{bytes(transfer.totalBytes)}} · {{uploadPercent(transfer)}}%</p>
+    </div>
+    <UiButton small @click="uploader.showQueue()">Ход загрузки</UiButton>
+  </div>
+  <div class="progress-track" role="progressbar" aria-label="Прогресс загрузки партии"
+    :aria-valuenow="uploadPercent(transfer)" aria-valuemin="0" aria-valuemax="100">
+    <span class="progress-fill" :style="{width:uploadPercent(transfer)+'%'}"/>
+  </div>
+  <p v-if="transfer.status==='running'&&transfer.phase" class="meta">{{transfer.phase}}</p>
+  <div v-for="file in transfer.activeFiles" :key="file.id" class="row between wrap">
+    <strong style="overflow-wrap:anywhere">{{file.name}}</strong>
+    <span class="meta">{{bytes(file.received)}} / {{bytes(file.total)}}</span>
+  </div>
+  <p v-if="transfer.error" class="alert error" role="alert">{{transfer.error}}</p>
+</section>
+<section v-else-if="loading||items.length||manifest?.state==='waiting'||error" class="panel stack" aria-label="Незавершённые загрузки" style="margin-bottom:19px">
   <div class="panel-header">
     <div>
       <h2>Незавершённые загрузки</h2>
@@ -102,17 +131,16 @@ usePolling(async()=>{if((items.value.length||manifest.value?.state==='waiting')&
   <LoadingSkeleton v-if="loading" variant="lines" :count="2" label="Проверяем незавершённые файлы"/>
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
   <div v-if="manifest?.state==='waiting'" class="alert warning">
-    Партия ещё не полная: сервер сохранил {{manifest.finalized}} из {{manifest.expected}} ожидаемых фотографий.
+    Партия ещё не полная: сервер сохранил {{manifest.finalized}} из {{manifest.expected}} ожидаемых файлов.
     <template v-if="manifest.missing">Не начиналась передача {{manifest.missing}} файлов.</template>
     <div style="margin-top:8px">
-      <UiButton v-if="batchUploading" small @click="uploader.showQueue()">Открыть загрузку</UiButton>
-      <UiButton v-else small :disabled="disabled||!!activeId"
+      <UiButton small :disabled="disabled||!!activeId"
         @click="uploader.continueFolder(batchId,batchName)">Продолжить загрузку папки</UiButton>
     </div>
     <div v-for="item in manifest.files.filter(file=>file.state==='not_started'||file.state==='missing_saved').slice(0,10)" :key="item.upload_id" class="meta" style="margin-top:5px;overflow-wrap:anywhere">
       {{item.relative_path}} · {{item.state==='missing_saved'?'оригинал отсутствует на сервере':'ещё не передан'}}
     </div>
-    <div v-if="manifest.files.filter(file=>file.state==='not_started'||file.state==='missing_saved').length>10" class="meta">И другие отсутствующие фотографии…</div>
+    <div v-if="manifest.files.filter(file=>file.state==='not_started'||file.state==='missing_saved').length>10" class="meta">И другие отсутствующие файлы…</div>
   </div>
   <div v-if="items.length" class="alert warning">
     {{items.length}} файлов ещё не завершены. Пока они есть, обработка партии недоступна.
@@ -125,12 +153,11 @@ usePolling(async()=>{if((items.value.length||manifest.value?.state==='waiting')&
         <strong style="overflow-wrap:anywhere">{{item.filename}}</strong>
         <div class="meta">
           {{bytes(item.received)}} / {{bytes(item.size)}} ·
-          {{batchUploading?'партия в очереди загрузок':!item.has_part?'временный файл на сервере отсутствует':item.can_finalize?'всё передано, осталось сохранить':'передача прервана'}}
+          {{!item.has_part?'временный файл на сервере отсутствует':item.can_finalize?'всё передано, осталось сохранить':'передача прервана'}}
         </div>
       </div>
       <div class="row wrap">
-        <UiButton v-if="batchUploading" small @click="uploader.showQueue()">Открыть загрузку</UiButton>
-        <template v-else-if="!activeId&&!batchUploading">
+        <template v-if="!activeId">
           <UiButton v-if="item.can_finalize" small :disabled="disabled" @click="finish(item)">Завершить</UiButton>
           <UiButton v-else-if="item.has_part" small :disabled="disabled" @click="pick(item)">Продолжить</UiButton>
           <UiButton small kind="danger" :disabled="disabled" @click="confirmCancel=item">Отменить</UiButton>

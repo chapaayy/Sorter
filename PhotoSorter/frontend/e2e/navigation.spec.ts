@@ -1516,3 +1516,55 @@ test('conversion is a distinct FIFO row and results open a video player',async({
   await expect(player).toHaveAttribute('src','/api/images/'+rid+'/megaloc/0?kind=copy')
   await expect(player).toHaveAttribute('controls','')
 })
+
+test('report detail shows confirmed video bytes instead of recovery alerts during transfer',async({page})=>{
+  const folder=await mkdtemp(join(tmpdir(),'map-live-mov-'))
+  const chunk=16*1024*1024, size=2*chunk, gate=holdTransfer()
+  let secondChunk=false,done=false,pendingChecks=0,files:any[]=[]
+  try{
+    await writeFile(join(folder,'IMG_6113.MOV'),Buffer.alloc(size))
+    await page.route('**/api/batches',route=>route.request().method()==='POST'
+      ?respond(route,{batch_id:bid,display_name:'Видео'}):route.fallback())
+    await page.route('**/api/batches/'+bid,route=>respond(route,{
+      ...batch,display_name:'Видео',photos:0,videos:done?1:0,runs:0,pending:done?0:1,
+      upload_manifest_state:done?'complete':'waiting',
+    }))
+    await page.route('**/api/batches/'+bid+'/pending',route=>{
+      pendingChecks++
+      return respond(route,{uploads:done?[]:[{id:pid,filename:'IMG_6113.MOV',size,received:0}],total:done?0:1})
+    })
+    await page.route('**/api/batches/'+bid+'/upload-manifest',route=>{
+      if(route.request().method()==='PUT')files=route.request().postDataJSON().files
+      return respond(route,{state:done?'complete':files.length?'waiting':'legacy',pending:done?0:files.length,files})
+    })
+    await page.route('**/api/uploads/**',async route=>{
+      if(route.request().method()==='PATCH'){
+        const offset=Number(route.request().headers()['upload-offset'])
+        if(offset===chunk){secondChunk=true;await gate.waiting}
+        return respond(route,{offset:offset+chunk})
+      }
+      if(route.request().url().endsWith('/finish')){done=true;return respond(route,{path:'saved'})}
+      return respond(route,{offset:0,size,finalized:false})
+    })
+    await page.goto('/fo')
+    await page.getByRole('button',{name:'+ Загрузить папку'}).click()
+    const upload=page.getByRole('dialog',{name:'Загрузить фотографии'})
+    await upload.locator('input[webkitdirectory]').setInputFiles(folder)
+    await upload.getByRole('button',{name:'Загрузить',exact:true}).click()
+    await expect.poll(()=>secondChunk).toBe(true)
+    // Navigate within the SPA, keeping the browser upload alive.
+    const card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
+    await card.getByLabel('Другие действия').click()
+    await card.getByRole('link',{name:'Открыть фотографии'}).click()
+    const panel=page.getByRole('region',{name:'Загрузка файлов',exact:true})
+    await expect(panel.getByRole('progressbar')).toHaveAttribute('aria-valuenow','50')
+    await expect(panel.getByText('IMG_6113.MOV')).toBeVisible()
+    await expect(panel.getByText(/^16 МБ \/ 32 МБ$/)).toBeVisible()
+    await expect(page.getByTestId('fo-processing-status')).toHaveText('Загружается')
+    await expect(page.getByRole('region',{name:'Незавершённые загрузки'})).toHaveCount(0)
+    expect(pendingChecks).toBe(0)
+    gate.release()
+    await expect(panel).toHaveCount(0)
+    await expect(page.getByRole('button',{name:'Обработать',exact:true})).toBeVisible()
+  }finally{gate.release();await rm(folder,{recursive:true,force:true})}
+})

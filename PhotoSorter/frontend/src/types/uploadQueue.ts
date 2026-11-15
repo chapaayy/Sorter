@@ -9,8 +9,9 @@ export type UploadSource=
   |{kind:'references';name:string;review:ReferenceReview;success:string}
 export type UploadCompletion={batchId:string}|{sam?:string}
 export type UploadResult={message:string;completion?:UploadCompletion;action?:{to:string;label:string}}
+export type ActiveUploadFile={id:number;name:string;received:number;total:number}
 export type UploadProgress={
-  phase:string;sentBytes:number;totalBytes:number;completed:number;totalFiles:number;duplicates?:number
+  phase:string;sentBytes:number;totalBytes:number;completed:number;totalFiles:number;duplicates?:number;activeFiles?:ActiveUploadFile[]
 }
 export type UploadContext={
   signal:AbortSignal;parallel:number;report:(progress:UploadProgress)=>void;setBatch:(id:string,name:string)=>void

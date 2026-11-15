@@ -19,7 +19,9 @@ export function createFoTransfer(selection:FolderUpload){
     let amounts=entries.map(()=>0),completed=new Set<number>()
     let firstError='',phase='Подготовка партии…',sentBytes=0
     const totalBytes=entries.reduce((sum,e)=>sum+e.file.size,0)
-    const publish=()=>report({phase,sentBytes,totalBytes,completed:completed.size,totalFiles:entries.length})
+    const active=new Set<number>()
+    const publish=()=>report({phase,sentBytes,totalBytes,completed:completed.size,totalFiles:entries.length,
+      activeFiles:[...active].map(id=>({id,name:entries[id]!.file.name,received:amounts[id]!,total:entries[id]!.file.size}))})
     const update=(idx:number,n:number)=>{
       sentBytes+=n-amounts[idx]!
       amounts[idx]=n;publish()
@@ -74,6 +76,7 @@ export function createFoTransfer(selection:FolderUpload){
         const idx=pending[position]!
         const entry=entries[idx]
         if(!entry)return
+        active.add(idx);publish()
         await uploadOne({kind:'fo',batchId:batchId},entry,signal,n=>{
           update(idx,n)
         },state=>{
@@ -84,12 +87,14 @@ export function createFoTransfer(selection:FolderUpload){
             :'Передача файлов'
           publish()
         },manifestIds?.[idx])
-        reconnecting.delete(idx)
+        active.delete(idx);reconnecting.delete(idx)
         phase=reconnecting.size?'Ожидание соединения':'Передача файлов'
         completed.add(idx);update(idx,entry.file.size)
       },{
         haltAfterFailuresWithoutSuccess:Math.min(3,parallel),
         onFailure:failure=>{
+          const idx=pending[failure.index]!
+          active.delete(idx);reconnecting.delete(idx);publish()
           if(firstError)return
           const file=entries[pending[failure.index]!]?.file.name||'Неизвестный файл'
           const code=failure.error instanceof ApiError&&failure.error.status
@@ -125,7 +130,8 @@ export function createFoTransfer(selection:FolderUpload){
 export async function transferRecovery({batchId,item,file}:Extract<UploadSource,{kind:'recovery'}>['source'],
   {signal,report}:UploadContext):Promise<UploadResult>{
   let sentBytes=item.received,phase='Проверяем оригинал…'
-  const publish=()=>report({phase,sentBytes,totalBytes:item.size,completed:0,totalFiles:1})
+  const publish=()=>report({phase,sentBytes,totalBytes:item.size,completed:0,totalFiles:1,
+    activeFiles:[{id:0,name:item.filename,received:sentBytes,total:item.size}]})
   publish()
   await resumePendingUpload(item.id,{kind:'fo',batchId},{file,relative:file.name},item,signal,
     count=>{sentBytes=count;publish()},
