@@ -29,6 +29,7 @@
 |---|---|
 | `backend/server/main.py` | FastAPI assembly, auth middleware, lifespan, health |
 | `backend/server/auth.py` | Пароль владельца из .env, сессии с хешированными токенами, проверка Origin |
+| `backend/server/db/migrations/0028_owner_session_rotation.sql` | Соль и маркер смены пароля для сохранения сессий при обычном рестарте |
 | `backend/server/database.py` | PostgreSQL connect, initial schema and migrations |
 | `backend/server/uploads.py` | Докачка, проверка принадлежности манифесту, финализация с сохранением `.part` до commit и выборочная отмена |
 | `backend/server/jobs.py` | Единое транзакционное создание заданий, API очереди и остановки, проверка состояния ZIP и ZIP-only retry |

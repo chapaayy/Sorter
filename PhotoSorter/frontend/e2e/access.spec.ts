@@ -5,6 +5,59 @@ const run='20261114T170000-0123456789ab'
 const item={id:'00000000-0000-4000-8000-000000000001',email,comment:'Я из отдела рекламы. Нужны готовые фотоотчёты.',
   status:'pending',created_at:'2026-11-14T17:00:00Z',decided_at:null}
 
+test('login and registration use the saved MAP theme',async({page})=>{
+  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{detail:'Необходим вход'}}))
+  await page.addInitScript(()=>localStorage.setItem('ps.theme',location.pathname==='/login'?'dark':'light'))
+  await page.emulateMedia({colorScheme:'light'})
+  await page.goto('/login')
+  const surface=page.locator('.auth-page')
+  await expect(surface).toHaveCSS('background-color','rgb(16, 16, 16)')
+  await expect(page.locator('body')).toHaveCSS('background-color','rgb(16, 16, 16)')
+  await page.emulateMedia({colorScheme:'dark'})
+  await page.goto('/register')
+  await expect(surface).toHaveCSS('background-color','rgb(250, 250, 250)')
+  await expect(page.locator('body')).toHaveCSS('background-color','rgb(250, 250, 250)')
+})
+
+test('a cookie restores the same page after reload and temporary session-check failure',async({page})=>{
+  const cookie='photosorter_session=test-token'
+  let unavailable=false,expired=false
+  await page.route(url=>url.pathname.startsWith('/api/'),async route=>{
+    const path=new URL(route.request().url()).pathname
+    if(path==='/api/auth/login')return route.fulfill({
+      headers:{'set-cookie':cookie+'; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800'},
+      json:{username:email}
+    })
+    if(path==='/api/auth/me'){
+      if(unavailable)return route.fulfill({status:503,json:{detail:'Временно недоступно'}})
+      if(!expired&&(await route.request().headerValue('cookie'))?.includes(cookie))
+        return route.fulfill({json:{username:email}})
+      return route.fulfill({status:401,json:{detail:'Необходим вход'}})
+    }
+    if(path==='/api/results/catalog')return route.fulfill({json:{items:[],has_more:false}})
+    return route.fulfill({status:404,json:{detail:'Не найдено'}})
+  })
+  await page.goto('/results')
+  await expect(page).toHaveURL(/\/login\?next=/)
+  await page.getByLabel('Электронная почта или логин').fill(email)
+  await page.locator('input[autocomplete="current-password"]').fill(password)
+  await page.getByRole('button',{name:'Продолжить',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'Результаты'})).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading',{name:'Результаты'})).toBeVisible()
+  unavailable=true
+  await page.reload()
+  await expect(page.getByRole('alert')).toContainText('Не удалось проверить сессию')
+  await expect(page).toHaveURL(/\/results$/)
+  await expect(page.getByRole('heading',{name:'Войти в MAP'})).toHaveCount(0)
+  unavailable=false
+  await page.getByRole('button',{name:'Повторить',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'Результаты'})).toBeVisible()
+  expired=true
+  await page.reload()
+  await expect(page.getByRole('heading',{name:'Войти в MAP'})).toBeVisible()
+})
+
 test('password caption transitions on focus and holds position with a value',async({page})=>{
   await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{detail:'Необходим вход'}}))
   await page.emulateMedia({reducedMotion:'no-preference'})

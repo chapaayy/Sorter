@@ -71,7 +71,12 @@ def test_owner_password_comes_from_env_and_rotation_revokes_sessions(owner_db, m
 
     with TestClient(app, base_url=ORIGIN) as client:
         assert sign_in(client, OLD).status_code == 401
-        assert sign_in(client, CURRENT).status_code == 200
+        signed=sign_in(client, CURRENT)
+        assert signed.status_code == 200
+        cookie=signed.headers["set-cookie"].lower()
+        assert all(flag in cookie for flag in ("httponly","secure","samesite=strict","max-age=604800"))
+        assert client.get("/api/auth/me").json() == {"username": "admin"}
+        auth.bootstrap_admin()  # normal API restart with unchanged configuration
         assert client.get("/api/auth/me").json() == {"username": "admin"}
         monkeypatch.setenv("ADMIN_PASSWORD", ROTATED)
         auth.bootstrap_admin()
@@ -79,3 +84,5 @@ def test_owner_password_comes_from_env_and_rotation_revokes_sessions(owner_db, m
         assert sign_in(client, CURRENT).status_code == 401
         assert sign_in(client, ROTATED).status_code == 200
         assert client.get("/api/auth/me").status_code == 200
+        assert client.post("/api/auth/logout",headers={"Origin": ORIGIN}).status_code == 200
+        assert client.get("/api/auth/me").status_code == 401

@@ -22,11 +22,19 @@ def bootstrap_admin():
     if not 16 <= len(password) <= 256:
         raise RuntimeError('Set ADMIN_PASSWORD in .env (16–256 characters)')
     with connect() as db:
-        db.execute("""INSERT INTO users(username,access_role) VALUES ('admin','owner')
-            ON CONFLICT (username) DO UPDATE SET access_role='owner'""")
-        # One API process serves sessions. Invalidate on boot so a rotation never
-        # leaves live owner cookies and no password verifier needs to be persisted.
-        db.execute("DELETE FROM sessions USING users WHERE sessions.user_id=users.id AND users.username='admin'")
+        owner_id=db.execute("""INSERT INTO users(username,access_role) VALUES ('admin','owner')
+            ON CONFLICT (username) DO UPDATE SET access_role='owner' RETURNING id""").fetchone()['id']
+        marker=db.execute("SELECT salt,fingerprint FROM owner_session_credential WHERE user_id=%s",
+                          (owner_id,)).fetchone()
+        if marker and hmac.compare_digest(marker['fingerprint'],hash_password(password,bytes.fromhex(marker['salt']))):
+            return
+        # Existing, unmarked sessions cannot be tied to a particular password.
+        # Revoke them on first upgrade, then revoke only on rotation.
+        salt=secrets.token_bytes(16)
+        db.execute("""INSERT INTO owner_session_credential(user_id,salt,fingerprint) VALUES (%s,%s,%s)
+            ON CONFLICT (user_id) DO UPDATE SET salt=EXCLUDED.salt,fingerprint=EXCLUDED.fingerprint""",
+            (owner_id,salt.hex(),hash_password(password,salt)))
+        db.execute("DELETE FROM sessions WHERE user_id=%s",(owner_id,))
 
 
 def login(username: str, password: str, client_key: str = "") -> str:
@@ -38,7 +46,7 @@ def login(username: str, password: str, client_key: str = "") -> str:
         user=db.execute('SELECT * FROM users WHERE username=%s',(username,)).fetchone()
         if username == 'admin':
             configured = os.environ.get('ADMIN_PASSWORD', '')
-            # Compare fixed-length digests in memory only, never store the owner password or digest.
+            # Login compares fixed-length digests only in memory and uses .env as its source of truth.
             matches = hmac.compare_digest(hashlib.sha256(password.encode()).digest(),
                                           hashlib.sha256(configured.encode()).digest())
             valid = 16 <= len(configured) <= 256 and matches

@@ -4,6 +4,7 @@ import {useRoute,useRouter,RouterView} from 'vue-router'
 import {useSessionStore} from '../stores/session'
 import {useThemeStore} from '../stores/theme'
 import Shell from '../components/layout/Shell.vue'
+import UiButton from '../components/ui/UiButton.vue'
 import ToastStack from '../components/ui/ToastStack.vue'
 const session=useSessionStore()
 useThemeStore()
@@ -13,12 +14,19 @@ async function gate(){
   if(!session.user && !route.meta.public)await router.replace({name:'login',query:{next:route.fullPath}})
   if(session.user && (route.meta.public || (!session.isOwner && !route.meta.viewer)))await router.replace(session.home)
 }
-onMounted(async()=>{await session.check();await gate()})
+async function restoreSession(){await session.check();await gate()}
+onMounted(restoreSession)
 watch(()=>route.fullPath,()=>{void gate()})
 </script>
 <template>
-  <div v-if="!session.checked" class="auth-loading">MAP</div>
-  <RouterView v-else-if="route.meta.public"/>
-  <Shell v-else-if="session.user&&(session.isOwner||route.meta.viewer)"><RouterView/></Shell>
+  <main v-if="session.checkFailed" class="auth-loading">
+    <div class="stack">
+      <p role="alert">Не удалось проверить сессию. Проверьте соединение и повторите попытку.</p>
+      <UiButton kind="primary" @click="restoreSession">Повторить</UiButton>
+    </div>
+  </main>
+  <div v-else-if="!session.checked" class="auth-loading" role="status" aria-label="Проверяем сессию">MAP</div>
+  <RouterView v-else-if="route.meta.public&&!session.user"/>
+  <Shell v-else-if="!route.meta.public&&session.user&&(session.isOwner||route.meta.viewer)"><RouterView/></Shell>
   <ToastStack/>
 </template>

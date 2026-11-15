@@ -18,7 +18,7 @@ export async function api<T>(path:string,options:RequestInit={}):Promise<T>{
     let detail='Ошибка сервера ('+response.status+')'
     try{const data=await response.json() as {detail?:unknown};if(typeof data.detail==='string')detail=data.detail;else if(data.detail)detail=JSON.stringify(data.detail)}
     catch{ /* non-JSON */ }
-    if(response.status===401)unauthorized?.()
+    if(response.status===401&&!path.startsWith('/auth/'))unauthorized?.()
     throw new ApiError(response.status,detail)
   }
   if(response.status===204)return undefined as T
