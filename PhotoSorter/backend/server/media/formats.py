@@ -22,6 +22,8 @@ class Video:
     pixel_format: str
     audio: str | None
     duration: float | None
+    pixels: int = 2073600
+    fps: float = 30.0
 
 
 def _time(value, default=None):
@@ -35,7 +37,7 @@ def _time(value, default=None):
 def probe(path: Path) -> Video:
     result = subprocess.run(['ffprobe', '-v', 'error', '-protocol_whitelist', 'file',
         '-format_whitelist', VIDEO_CONTAINERS,
-        '-show_entries', 'format=format_name,duration:format_tags=major_brand:stream=codec_type,codec_name,pix_fmt,width,height,duration:stream_disposition=attached_pic',
+        '-show_entries', 'format=format_name,duration:format_tags=major_brand:stream=codec_type,codec_name,pix_fmt,width,height,duration,avg_frame_rate:stream_disposition=attached_pic',
         '-of', 'json', str(path)], capture_output=True, check=True, timeout=15)
     data = json.loads(result.stdout)
     streams = data.get('streams', [])
@@ -48,9 +50,14 @@ def probe(path: Path) -> Video:
     audio = next((s for s in streams if s.get('codec_type') == 'audio'), None)
     fmt = data.get('format', {})
     duration = _time(video.get('duration'), _time(fmt.get('duration')))
+    try:
+        n,d=video.get("avg_frame_rate","0/0").split("/")
+        fps=float(n)/float(d)
+        if not math.isfinite(fps) or fps<=0:fps=30.0
+    except (ValueError,ZeroDivisionError):fps=30.0
     return Video(fmt.get('format_name', ''), fmt.get('tags', {}).get('major_brand', '').strip(),
                  video.get('codec_name', ''), video.get('pix_fmt', ''), audio.get('codec_name', '') if audio else None,
-                 duration if duration and duration > 0 else None)
+                 duration if duration and duration > 0 else None,video["width"]*video["height"],fps)
 
 
 def compatible_streams(video: Video, target: str):

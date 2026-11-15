@@ -65,7 +65,9 @@ def _serialize(row,counters=None):
 def _media_states(db,ids):
     rows=db.execute("""SELECT DISTINCT ON (w.media_batch_id) w.media_batch_id,w.state,
         w.media_total_count AS total_count,w.media_completed_count AS completed_count,
-        w.media_failed_count AS failed_count,w.media_error AS error FROM work_queue w
+        w.media_failed_count AS failed_count,w.media_error AS error,
+        w.media_progress_percent AS progress_percent,w.media_eta_seconds AS eta_seconds,
+        w.media_current_file AS current_file FROM work_queue w
         WHERE w.media_batch_id=ANY(%s) ORDER BY w.media_batch_id,w.seq DESC""",(ids,)).fetchall()
     return {r.pop("media_batch_id"):r for r in rows}
 

@@ -2,7 +2,7 @@
 import {computed} from 'vue'
 import type {Batch} from '../../types/api'
 import type {TaskEstimate} from '../../utils/queueEstimates'
-import {runTime} from '../../utils/queueEstimates'
+import {approxDuration,runTime} from '../../utils/queueEstimates'
 import {batchProcessing,batchThreshold} from '../../utils/batchProcessing'
 import {bytes,date,readyToStart} from '../../utils/format'
 import {deletionProgress} from '../../utils/deletionProgress'
@@ -19,7 +19,12 @@ const emit=defineEmits<{
 }>()
 const state=computed(()=>batchProcessing(props.batch))
 const run=computed(()=>state.value.run)
-const timing=computed(()=>runTime(run.value,props.estimate))
+const timing=computed(()=>{
+  const media=props.batch.media_preparation
+  return media?.state==='running'
+    ?{label:approxDuration(media.eta_seconds??null),detail:media.eta_seconds==null?'Время уточняется':'Осталось'}
+    :runTime(run.value,props.estimate)
+})
 const removal=computed(()=>deletionProgress(props.batch.delete_state,props.batch.deletion_progress,props.deleting))
 const transfer=computed(()=>props.batch.delete_state==='active'&&!removal.value.deleting?props.upload:undefined)
 const statusTone=computed(()=>{
@@ -48,7 +53,7 @@ const progress=computed(()=>{
   if(transfer.value)return transfer.value.status==='waiting'?null:uploadPercent(transfer.value)
   const media=props.batch.media_preparation
   if(media?.state==='queued')return 0
-  if(media?.state==='running')return 100*media.completed_count/media.total_count
+  if(media?.state==='running')return media.progress_percent??null
   if(run.value?.status==='queued')return 0
   if(run.value?.status==='completed')return 100
   return run.value?.status==='running'||run.value?.status==='completed_with_errors'

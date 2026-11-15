@@ -36,7 +36,7 @@ export function batchProcessing(batch:Batch):BatchProcessingPresentation {
     const p=batch.media_preparation!
     label=p.state==='queued'?'Перекодирование в очереди':p.state==='running'?'Перекодирование файлов':'Ошибка перекодирования'
     tone=p.state==='failed'||p.state==='interrupted'?'danger':'neutral'
-    detail=p.error||p.completed_count+' из '+p.total_count+' файлов'
+    detail=p.error||p.completed_count+' из '+p.total_count+' файлов'+(p.current_file?' · '+p.current_file:'')
   }else if(run){
     label=runLabel(run)
     if(run.status==='completed')tone='ok'

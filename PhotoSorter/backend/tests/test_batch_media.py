@@ -189,7 +189,9 @@ def test_frame_sampling_last_frame_and_alternative_video_format(tmp_path,clips):
         index.seek(0)
         assert video._pick_indices(index)==list(range(0,15,2))
     webm=tmp_path/'alt.webm'
-    assert video.encode(mov,webm,'webm').codec=='vp9'
+    progress=[]
+    assert video.encode(mov,webm,'webm',progress=progress.append,cpus=4).codec=='vp9'
+    assert any(seconds>0 for seconds in progress)
     assert formats.inspect(webm,'alt.webm','video/webm','png','webm')[0]=='keep'
 
 

@@ -7,6 +7,9 @@ export interface QueueTask {
   fo_run_id:string|null
   reference_job_id:string|null
   media_batch_id?:string|null
+  media_progress_percent?:number|null
+  media_eta_seconds?:number|null
+  media_current_file?:string|null
   session_id:string|null
   state:QueueStatus
   created_at:string

@@ -19,7 +19,7 @@ export function elapsedSeconds(start?:string|null,end?:string|null,now=Date.now(
 /** Approximate times are rounded UP, never shown as measured facts. */
 export function approxDuration(seconds:number|null):string{
   if(!valid(seconds))return '—'
-  if(seconds<60)return '≈ 1 мин'
+  if(seconds<60)return '≈ '+Math.max(1,Math.ceil(seconds))+' с'
   const minutes=Math.ceil(seconds/60)
   return minutes<60?'≈ '+minutes+' мин':'≈ '+Math.floor(minutes/60)+' ч'+
     (minutes%60?' '+minutes%60+' мин':'')
@@ -63,7 +63,7 @@ function liveRemaining(task:QueueTask,rates:Record<QueueKind,number|null>,now:nu
     const eta=task.fo_progress?.estimated_remaining_seconds
     return valid(eta)?eta:null
   }
-  if(task.kind==='media_preparation')return null // Mixed durations and codecs are not comparable per file.
+  if(task.kind==='media_preparation')return valid(task.media_eta_seconds)?task.media_eta_seconds:null
   const elapsed=elapsedSeconds(task.started_at,null,now)
   const count=countOf(task),done=task.completed_count
   if(elapsed===null||count===null)return null

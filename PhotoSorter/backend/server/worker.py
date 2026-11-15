@@ -30,13 +30,14 @@ def _configure_cpu(kind):
     with connect() as db:
         cpu_limit=for_worker(db,kind)
     # Restrict the actual worker process and inherited inference/ZIP threads.
-    allocate(cpu_limit)
+    assigned=allocate(cpu_limit)
     set_runtime_threads(cpu_limit)
+    return len(assigned) or cpu_limit
 
 def _process_task(item,warm):
     if item['kind']=='media_preparation':
-        _configure_cpu(item['kind'])
-        return media_prepare.run(item,stopping=lambda:not RUN)
+        cpus=_configure_cpu(item['kind'])
+        return media_prepare.run(item,stopping=lambda:not RUN,cpus=cpus)
     _configure_cpu(item['kind'])
     if item['kind']=='fo_processing':
         info=item['info']

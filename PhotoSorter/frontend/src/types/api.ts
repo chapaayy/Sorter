@@ -9,6 +9,7 @@ export interface MediaProfile {image_format:'jpg'|'png';video_format:'mp4'|'webm
 export interface MediaPreparation {
   state:'queued'|'running'|'interrupted'|'completed'|'completed_with_errors'|'failed'|'stopped'
   total_count:number;completed_count:number;failed_count:number;error?:string|null
+  progress_percent?:number|null;eta_seconds?:number|null;current_file?:string|null
 }
 export interface Batch {
   batch_id: string; display_name: string; created_at: string; upload_state: string

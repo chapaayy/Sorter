@@ -25,7 +25,8 @@ const progress=computed<number|null>(()=>{
   const task=props.task
   if(task.state==='completed')return 100
   if(task.state==='queued')return 0
-  if(preparing.value||media.value){
+  if(media.value)return task.media_progress_percent??null
+  if(preparing.value){
     return task.total_count&&task.total_count>0
       ?Math.round(100*(task.completed_count||0)/task.total_count):null
   }
@@ -37,7 +38,8 @@ const stage=computed(()=>{
   if(media.value){
     const task=props.task
     if(task.state==='queued')return 'Перекодирование файлов · в очереди'
-    if(task.state==='running')return 'Перекодирование файлов · '+(task.completed_count??0)+' из '+task.total_count
+    if(task.state==='running')return 'Перекодирование файлов · '+(task.completed_count??0)+' из '+task.total_count+
+      (task.media_current_file?' · '+task.media_current_file:'')
     return task.error||'Перекодирование файлов завершено'
   }
   if(hasBlockingFailure(props.task))return 'Ожидает повторения или пропуска'

@@ -1500,12 +1500,15 @@ test('conversion is a distinct FIFO row and results open a video player',async({
       seq:27,kind:'media_preparation',media_batch_id:bid,fo_run_id:null,reference_job_id:null,
       batch_id:bid,batch_name:'Смешанная папка',state:'running',
       completed_count:1,total_count:4,failed_count:0,
+      media_progress_percent:12,media_eta_seconds:36,media_current_file:'IMG_6113.MOV',
       started_at:'2026-11-05T06:05:00Z',created_at:'2026-11-05T06:00:00Z',
     }]}:{tasks:[],total:0})
   })
   await page.goto('/queue')
   await expect(page.getByText('Перекодирование файлов',{exact:true})).toBeVisible()
-  await expect(page.getByText('Перекодирование файлов · 1 из 4')).toBeVisible()
+  await expect(page.getByText('Перекодирование файлов · 1 из 4 · IMG_6113.MOV')).toBeVisible()
+  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow','12')
+  await expect(page.getByText('≈ 36 с')).toBeVisible()
   await page.route('**/api/results/'+rid+'/photos?**',route=>respond(route,{photos:[{
     ...output,filename:'Клип.mp4',media_kind:'video',duration:8,
     image_url:'/api/images/'+rid+'/megaloc/0?kind=copy',

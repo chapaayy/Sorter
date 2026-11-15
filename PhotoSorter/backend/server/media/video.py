@@ -1,4 +1,5 @@
 """CPU-bounded local FFmpeg normalization and time-based frame sampling."""
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -7,9 +8,29 @@ import time
 from .formats import VIDEO_CONTAINERS, compatible_streams, probe
 
 
-def _run(args, *, stop=None, timeout=120):
-    with tempfile.TemporaryFile() as errors:
-        with subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=errors) as process:
+def thread_budget(cpus):
+    cpus=max(1,int(cpus))
+    decode=1 if cpus<4 else min(4,max(2,cpus//3))
+    return decode,max(1,cpus-decode)
+
+
+def _read_progress(stream, offset, partial, callback):
+    data=os.pread(stream.fileno(),65536,offset)
+    if not data:return offset,partial
+    lines=(partial+data).split(b'\n')
+    for line in lines[:-1]:
+        if line.startswith(b'out_time_us='):
+            try:seconds=int(line[len(b'out_time_us='):])/1_000_000
+            except ValueError:continue
+            if seconds>=0:callback(seconds)
+    return offset+len(data),lines[-1]
+
+
+def _run(args, *, stop=None, timeout=120, progress=None):
+    with tempfile.TemporaryFile() as errors,tempfile.TemporaryFile() as output:
+        offset,partial=0,b''
+        with subprocess.Popen(args, stdin=subprocess.DEVNULL,
+                              stdout=output if progress else subprocess.DEVNULL, stderr=errors) as process:
             deadline = time.monotonic() + timeout
             try:
                 while process.poll() is None:
@@ -17,40 +38,45 @@ def _run(args, *, stop=None, timeout=120):
                         raise InterruptedError('Обработка видео остановлена')
                     if time.monotonic() > deadline:
                         raise TimeoutError('Превышено время обработки видео')
+                    if progress:
+                        offset,partial=_read_progress(output,offset,partial,progress)
                     time.sleep(.1)
                 if process.returncode:
                     raise ValueError('FFmpeg не смог прочитать или обработать видео')
+                if progress:_read_progress(output,offset,partial,progress)
             finally:
                 if process.poll() is None:
                     process.kill()
                     process.wait()
 
 
-def _base():
+def _base(decode_threads=1):
     return ['ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
             '-protocol_whitelist', 'file', '-format_whitelist', VIDEO_CONTAINERS,
-            '-filter_threads', '1', '-threads', '1']
+            '-filter_threads', '1', '-threads', str(decode_threads)]
 
 
-def encode(source, out, target, *, stop=None):
-    meta = probe(source)
+def encode(source, out, target, *, stop=None, progress=None, meta=None, cpus=2):
+    meta = meta or probe(source)
+    decode_threads,encode_threads=thread_budget(cpus)
     copy_video, copy_audio = compatible_streams(meta, target)
-    args = [*_base(), '-i', str(source), '-map', '0:V:0', '-map', '0:a:0?',
+    args = [*_base(decode_threads), '-i', str(source), '-map', '0:V:0', '-map', '0:a:0?',
             '-map_metadata', '-1', '-map_chapters', '-1']
     if copy_video:
         args += ['-c:v', 'copy']
     elif target == 'mp4':
         args += ['-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p',
-                 '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', '-threads:v', '2']
+                 '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', '-threads:v', str(encode_threads)]
     else:
         args += ['-c:v', 'libvpx-vp9', '-crf', '30', '-b:v', '0', '-deadline', 'good',
-                 '-cpu-used', '4', '-pix_fmt', 'yuv420p', '-threads:v', '2']
+                 '-cpu-used', '4', '-pix_fmt', 'yuv420p', '-threads:v', str(encode_threads)]
     args += ['-c:a', 'copy' if copy_audio else 'aac' if target == 'mp4' else 'libopus']
     if meta.audio and not copy_audio:
         args += ['-ac', '2', '-b:a', '160k']
     if target == 'mp4':
         args += ['-movflags', '+faststart']
-    _run([*args, str(out)], timeout=3600, stop=stop)
+    if progress:args[1:1]=['-progress','pipe:1','-nostats','-stats_period','0.5']
+    _run([*args, str(out)], timeout=3600, stop=stop, progress=progress)
     return probe(out)
 
 

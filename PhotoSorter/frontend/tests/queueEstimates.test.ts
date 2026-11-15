@@ -61,6 +61,14 @@ describe('measured FIFO time projections',()=>{
     expect(value.get(2)?.startInSeconds).toBeNull()
     expect(value.get(2)?.finishInSeconds).toBeNull()
   })
+  it('uses remaining seconds for the whole conversion in FIFO',()=>{
+    const current={...entry(1,'media_preparation','running',2),media_eta_seconds:36}
+    const next=entry(2,'fo_processing','queued',100)
+    const map=estimateQueue([current,next],[historyFO(3,200)],now)
+    expect(map.get(1)?.remainingSeconds).toBe(36)
+    expect(queueTime(current,map.get(1))).toEqual({label:'≈ 36 с',detail:'Осталось'})
+    expect(map.get(2)?.startInSeconds).toBe(36)
+  })
   it('blocks all downstream time estimates after failed preparation',()=>{
     const failed=entry(1,'reference_preparation','failed',10)
     const waiting=entry(2,'fo_processing','queued',100)

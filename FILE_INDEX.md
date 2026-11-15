@@ -304,6 +304,7 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 |---|---|
 | `PhotoSorter/backend/server/db/migrations/0029_batch_media.sql` | Профили партии, нормализованные файлы, прогресс в общей FIFO |
 | `PhotoSorter/backend/server/media/formats.py` | Проверка контейнера и дорожек, нормализация фото |
+| `PhotoSorter/backend/server/media/estimate.py` | Вес файлов и ETA перекодирования всей партии |
 | `PhotoSorter/backend/server/media/video.py` | Перепаковка, кодирование и выбор временных кадров |
 | `PhotoSorter/backend/server/media/sorting.py` | Изоляция кадров от групп фото и одно назначение на видео |
 | `PhotoSorter/backend/server/services/media_preparation.py` | Постановка и повтор перекодирования |
