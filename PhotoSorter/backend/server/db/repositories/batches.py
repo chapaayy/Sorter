@@ -27,8 +27,12 @@ def insert(db,batch_id,name,request_id=None):
                (batch_id,name,request_id))
 
 def count_photos_and_runs(db,batch_id):
-    counter=db.execute("""SELECT count(*) FILTER (WHERE finalized AND original_media_type IS NULL) AS photos,
-       count(*) FILTER (WHERE finalized AND original_media_type IS NOT NULL) AS media_files,
+    counter=db.execute("""SELECT count(*) FILTER (WHERE finalized AND ((media_action IS NULL AND original_media_type IS NULL)
+         OR ((media_action='keep' OR media_output_path IS NOT NULL) AND
+             coalesce(original_media_type,'') NOT LIKE 'video/%%'))) AS photos,
+       count(*) FILTER (WHERE finalized AND original_media_type LIKE 'video/%%'
+         AND (media_action='keep' OR media_output_path IS NOT NULL)) AS videos,
+       count(*) FILTER (WHERE finalized AND ((media_action IS NULL AND original_media_type IS NOT NULL) OR media_error IS NOT NULL)) AS media_files,
        coalesce(sum(declared_size) FILTER (WHERE finalized),0) AS size_bytes,
        count(*) FILTER (WHERE NOT finalized) AS pending
        FROM uploads WHERE kind='fo' AND batch_id=%s""",(batch_id,)).fetchone()
@@ -63,7 +67,7 @@ def has_operations(db,batch_id):
                            (batch_id,)).fetchone())
 
 def photo_row(db,batch_id,photo_id):
-    return db.execute("""SELECT id,target_path FROM uploads
+    return db.execute("""SELECT id,target_path,media_output_path FROM uploads
         WHERE id=%s AND batch_id=%s AND kind='fo' FOR UPDATE""",
         (photo_id,batch_id)).fetchone()
 

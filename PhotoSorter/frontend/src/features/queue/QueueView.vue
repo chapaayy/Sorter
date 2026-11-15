@@ -25,7 +25,7 @@ const detail=ref<string|null>(null)
 const confirm=ref<{task:QueueTask;action:'stop'|'retry'|'skip'}|null>(null)
 const active=computed(()=>[...tasks.value].sort((a,b)=>a.seq-b.seq))
 const filteredHistory=computed(()=>history.value.filter(item=>(
-  (item.batch_name||'')+' '+item.seq+' '+(item.kind==='reference_preparation'?'образцы':'фотографии')
+  (item.batch_name||'')+' '+item.seq+' '+(item.kind==='reference_preparation'?'образцы':item.kind==='media_preparation'?'перекодирование файлов':'фотографии')
 ).toLowerCase().includes(search.value.toLowerCase())))
 const blocking=computed(()=>active.value.find(hasBlockingFailure))
 const clock=ref(Date.now()),loadingMore=ref(false),initialLoading=ref(true)

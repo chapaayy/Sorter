@@ -26,6 +26,7 @@ def page(db,filter_sql,params,*,cursor=None,limit=60):
     extra=" AND (u.created_at,u.id)>(%s,%s)" if seek else ""
     rows=db.execute(f"""SELECT u.id,u.filename,u.checksum,u.declared_size,u.created_at,
         u.kind,u.batch_id,u.sam,u.finalized,u.original_media_type,
+        u.media_action,u.media_output_path,u.media_error,u.media_duration,
         t.state AS thumbnail_status,t.last_error AS thumbnail_error
       FROM uploads u LEFT JOIN thumbnail_tasks t ON t.upload_id=u.id
       WHERE {filter_sql}{extra}
@@ -37,7 +38,10 @@ def page(db,filter_sql,params,*,cursor=None,limit=60):
         results.append({"id":str(row["id"]),"name":row["filename"],
            "bytes":row["declared_size"],"created_at":row["created_at"],
            "original_media_type":row["original_media_type"],
+           "media_kind":("video" if (row["original_media_type"] or "").startswith("video/") else "image") if row["media_action"] else None,
+           "media_error":row["media_error"],"duration":row["media_duration"],
+           "play_url":f'/api/photos/{row["id"]}/prepared' if (row["media_action"]=="keep" or row["media_output_path"]) else None,
            "thumbnail_status":row["thumbnail_status"] or "pending",
-           "thumbnail_url":f'/api/thumbnails/{row["id"]}' if row["finalized"] and row["original_media_type"] is None else None,
+           "thumbnail_url":f'/api/thumbnails/{row["id"]}' if row["finalized"] and (row["original_media_type"] is None or row["media_action"]) else None,
            "original_url":f'/api/photos/{row["id"]}/original' if row["finalized"] else None})
     return {"photos":results,"next_cursor":next_cursor}

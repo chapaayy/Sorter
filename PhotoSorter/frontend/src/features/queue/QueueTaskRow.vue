@@ -18,13 +18,14 @@ const deletion=useDeletionStore()
 const removal=computed(()=>deletionProgress(props.task.batch_delete_state,props.task.batch_deletion_progress,
   !!props.task.batch_id&&deletion.pending(props.task.batch_id)))
 const preparing=computed(()=>isPrep(props.task))
-const canStop=computed(()=>props.task.state==='running'||props.task.state==='queued')
+const media=computed(()=>props.task.kind==='media_preparation')
+const canStop=computed(()=>!media.value&&(props.task.state==='running'||props.task.state==='queued'))
 const progress=computed<number|null>(()=>{
   if(removal.value.deleting||removal.value.failed)return removal.value.percent
   const task=props.task
   if(task.state==='completed')return 100
   if(task.state==='queued')return 0
-  if(preparing.value){
+  if(preparing.value||media.value){
     return task.total_count&&task.total_count>0
       ?Math.round(100*(task.completed_count||0)/task.total_count):null
   }
@@ -33,6 +34,12 @@ const progress=computed<number|null>(()=>{
 })
 const stage=computed(()=>{
   if(removal.value.deleting||removal.value.failed)return removal.value.stage
+  if(media.value){
+    const task=props.task
+    if(task.state==='queued')return 'Перекодирование файлов · в очереди'
+    if(task.state==='running')return 'Перекодирование файлов · '+(task.completed_count??0)+' из '+task.total_count
+    return task.error||'Перекодирование файлов завершено'
+  }
   if(hasBlockingFailure(props.task))return 'Ожидает повторения или пропуска'
   if(props.task.state==='queued')return props.starting?'Подготовка к запуску MegaLoc':'Ожидает предыдущие задачи'
   if(props.task.state==='running'){
@@ -57,11 +64,11 @@ const tone=computed(()=>{
   return 'neutral'
 })
 const time=computed(()=>queueTime(props.task,props.estimate))
-const count=computed(()=>preparing.value?props.task.total_count:props.task.fo_photo_count)
+const count=computed(()=>preparing.value||media.value?props.task.total_count:props.task.fo_photo_count)
 </script>
 <template>
 <CompactTaskCard :number="position??task.seq" class="queue-task-row"
-  :title="preparing?'Подготовка образцов':task.batch_name||'Фотоотчёт'"
+  :title="preparing?'Подготовка образцов':media?'Перекодирование файлов':task.batch_name||'Фотоотчёт'"
   :thumbnail-url="preparing?null:task.fo_thumbnail_url"
   :icon="preparing?'references':'photos'"
   :status="removal.deleting?'Удаляется':removal.failed?'Ошибка удаления':task.stop_requested&&task.state==='running'?'Остановка':starting?'Запуск обработки':STATE_RU[task.state]"
@@ -71,8 +78,8 @@ const count=computed(()=>preparing.value?props.task.total_count:props.task.fo_ph
   :time-detail="removal.deleting||removal.failed?undefined:time.detail"
   :active="task.state==='running'&&!removal.deleting&&!removal.failed">
   <template #meta>
-    <span>{{preparing?'Образцы':'ФО'}}</span>
-    <span v-if="count!=null">{{count}} фото</span>
+    <span>{{preparing?'Образцы':media?task.batch_name:'ФО'}}</span>
+    <span v-if="count!=null">{{count}} {{media?"файлов":"фото"}}</span>
     <span v-if="preparing&&task.failed_count">Ошибок: {{task.failed_count}}</span>
     <span v-if="task.state!=='queued'&&task.state!=='running'">{{date(task.created_at)}}</span>
   </template>
@@ -82,11 +89,13 @@ const count=computed(()=>preparing.value?props.task.total_count:props.task.fo_ph
       title="Остановить задачу" @click="emit('action',task,'stop')">■</button>
     <button v-if="preparing" type="button" class="task-card-action"
       @click="emit('details',task)">Подробности</button>
+    <RouterLink v-else-if="media&&task.batch_id" :to="'/fo/'+task.batch_id" class="task-card-action">Открыть ФО</RouterLink>
     <RouterLink v-else-if="task.fo_run_id" :to="'/queue/runs/'+task.fo_run_id"
       class="task-card-action">Обработка</RouterLink>
   </template>
   <template #menu>
     <button v-if="preparing" type="button" @click="emit('details',task)">Открыть подробности</button>
+    <RouterLink v-else-if="media&&task.batch_id" :to="'/fo/'+task.batch_id" class="task-card-action">Открыть ФО</RouterLink>
     <RouterLink v-else-if="task.fo_run_id" :to="'/queue/runs/'+task.fo_run_id">Ход обработки</RouterLink>
     <button v-if="hasBlockingFailure(task)" type="button" :disabled="busy"
       @click="emit('action',task,'retry')">Повторить подготовку</button>

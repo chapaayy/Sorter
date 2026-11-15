@@ -93,7 +93,7 @@ def test_mixed_batch_preserves_download_and_only_indexes_supported_photos(thumbs
     finally:
         cleanup.request(batch);cleanup.cleanup_one(batch)
 
-def test_video_only_batch_cannot_schedule_megaloc(thumbs):
+def test_legacy_video_only_batch_cannot_schedule_megaloc(thumbs):
     batch=_batch(thumbs,with_photo=False)
     clip=_ftyp(b'qt  ')
     video=File(uuid.uuid4(),'321/clip.mov',len(clip))

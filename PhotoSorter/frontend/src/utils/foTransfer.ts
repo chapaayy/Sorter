@@ -64,7 +64,7 @@ export function createFoTransfer(selection:FolderUpload){
           upload_id:expectedUploadId(target,e),relative_path:e.relative,
           filename:e.file.name,size:e.file.size
         }))
-        await request(()=>batchApi.registerManifest(batchId,plan,autoProcess,threshold))
+        await request(()=>batchApi.registerManifest(batchId,plan,autoProcess,threshold,selection.profile))
         manifestIds=plan.map(e=>e.upload_id)
       }
       const reconnecting=new Set<number>()
@@ -112,8 +112,8 @@ export function createFoTransfer(selection:FolderUpload){
           throw new Error('Сервер ожидает ещё '+confirmed.pending+' файлов. Продолжите загрузку из карточки ФО.')
       }
       return {message:autoProcess
-        ?'Все файлы партии сохранены. Автообработка доступна для поддерживаемых фотографий.'
-        :'Все файлы партии сохранены. Миниатюры создаются для поддерживаемых фото.',
+        ?'Все файлы партии сохранены. Сортировка запустится после подготовки.'
+        :'Все файлы партии сохранены. Превью и нужные форматы готовятся автоматически.',
         completion:{batchId},action:{to:'/fo/'+batchId,label:'Открыть'}}
     }catch(e){
       if(signal.aborted)throw e

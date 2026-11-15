@@ -1,3 +1,5 @@
 # Server-only API, PostgreSQL, streaming ZIP archives.
 psycopg[binary]>=3.2,<4
 zipstream-ng>=1.8,<2
+
+pillow-heif==0.20.0

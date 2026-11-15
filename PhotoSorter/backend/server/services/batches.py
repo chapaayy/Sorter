@@ -53,12 +53,21 @@ def _serialize(row,counters=None):
             "delete_after_at","deleted_at")
     data={"batch_id":str(row["id"])}
     for field in fields:data[field]=row[field]
+    data["media_image_format"]=row.get("media_image_format")
+    data["media_video_format"]=row.get("media_video_format")
     data["deletion_progress"]=row.get("deletion_progress")
     # Each batch has the same counter contract, even with no photos/runs.
-    data.update({"photos":0,"media_files":0,"size_bytes":0,"pending":0,"runs":0,
+    data.update({"photos":0,"videos":0,"media_files":0,"size_bytes":0,"pending":0,"runs":0,
                  "latest_run":None,"last_result_run_id":None,"cover_thumbnail_url":None})
     if counters:data.update(counters)
     return data
+
+def _media_states(db,ids):
+    rows=db.execute("""SELECT DISTINCT ON (w.media_batch_id) w.media_batch_id,w.state,
+        w.media_total_count AS total_count,w.media_completed_count AS completed_count,
+        w.media_failed_count AS failed_count,w.media_error AS error FROM work_queue w
+        WHERE w.media_batch_id=ANY(%s) ORDER BY w.media_batch_id,w.seq DESC""",(ids,)).fetchall()
+    return {r.pop("media_batch_id"):r for r in rows}
 
 def get(batch_id):
     batch_id=uid(batch_id)
@@ -66,6 +75,7 @@ def get(batch_id):
         row=repository.get(db,batch_id,include_deletion=True)
         if not row:raise HTTPException(404,"Партия не найдена")
         counters=repository.count_photos_and_runs(db,batch_id)
+        counters["media_preparation"]=_media_states(db,[batch_id]).get(batch_id)
         counters["latest_run"]=batch_runs.latest(db,[batch_id]).get(batch_id)
         counters["last_result_run_id"]=batch_runs.last_results(db,[batch_id]).get(batch_id)
     return _serialize(row,counters)
@@ -77,8 +87,13 @@ def list_all(limit=100,offset=0):
         aggregates={}
         if identifiers:
             stats=db.execute("""SELECT b.id,
-              count(u.id) FILTER(WHERE u.kind='fo' AND u.finalized AND u.original_media_type IS NULL) AS photos,
-              count(u.id) FILTER(WHERE u.kind='fo' AND u.finalized AND u.original_media_type IS NOT NULL) AS media_files,
+              count(u.id) FILTER(WHERE u.kind='fo' AND u.finalized AND
+                ((u.media_action IS NULL AND u.original_media_type IS NULL) OR
+                 (u.media_action='keep' AND coalesce(u.original_media_type,'') NOT LIKE 'video/%%') OR
+                 (u.media_output_path IS NOT NULL AND coalesce(u.original_media_type,'') NOT LIKE 'video/%%'))) AS photos,
+              count(u.id) FILTER(WHERE u.kind='fo' AND u.finalized AND
+                u.original_media_type LIKE 'video/%%' AND (u.media_action='keep' OR u.media_output_path IS NOT NULL)) AS videos,
+              count(u.id) FILTER(WHERE u.kind='fo' AND u.finalized AND ((u.media_action IS NULL AND u.original_media_type IS NOT NULL) OR u.media_error IS NOT NULL)) AS media_files,
               coalesce(sum(u.declared_size) FILTER(WHERE u.kind='fo' AND u.finalized),0) AS size_bytes,
               count(u.id) FILTER(WHERE u.kind='fo' AND NOT u.finalized) AS pending
               FROM batches b LEFT JOIN uploads u ON u.batch_id=b.id
@@ -99,10 +114,12 @@ def list_all(limit=100,offset=0):
                     "/api/thumbnails/"+str(cover["id"]))
             most_recent=batch_runs.latest(db,identifiers)
             results=batch_runs.last_results(db,identifiers)
+            media=_media_states(db,identifiers)
             for identifier in identifiers:
                 counters=aggregates.setdefault(identifier,{})
                 counters["latest_run"]=most_recent.get(identifier)
                 counters["last_result_run_id"]=results.get(identifier)
+                counters["media_preparation"]=media.get(identifier)
     return {"batches":[_serialize(row,aggregates.get(row["id"],{"photos":0,"pending":0,"size_bytes":0,"runs":0}))
                        for row in rows],"total":total}
 
@@ -172,7 +189,10 @@ def remove_unprocessed_photo(batch_id,photo_id):
     try:photo_id=uuid.UUID(str(photo_id))
     except (ValueError,TypeError):raise HTTPException(404,"ФО не найдено")
     with connect() as db:
+        from .media_preparation import block_processing
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
         _require_active(db,batch_id)
+        block_processing(db,batch_id)
         if repository.has_runs(db,batch_id):
             raise HTTPException(409,"После запуска обработки удаление отдельного ФО запрещено")
         if repository.has_operations(db,batch_id):
@@ -186,6 +206,8 @@ def remove_unprocessed_photo(batch_id,photo_id):
         else:
             path=owned_file(DATA_DIR/"incoming"/f"{photo_id}.part",DATA_DIR/"incoming")
             path.unlink(missing_ok=True)
+        if item.get("media_output_path"):
+            owned_file(item["media_output_path"],batch_dir(batch_id)).unlink(missing_ok=True)
         repository.delete_photo_row(db,photo_id)
         # Deleting a registered original invalidates proof of complete upload.
         db.execute("""UPDATE batches SET upload_manifest_state='waiting',

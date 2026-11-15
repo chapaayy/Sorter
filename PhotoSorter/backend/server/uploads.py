@@ -1,5 +1,6 @@
 """FO-only resumable upload API; references use /api/reference-imports exclusively."""
 from __future__ import annotations
+import subprocess
 import asyncio
 import hashlib
 import os
@@ -209,6 +210,17 @@ def _finalize_sync(upload_id:str):
         raise HTTPException(422,'SHA-256 не совпадает')
     media_type=fo_media_type(part,row['filename'])
     with connect() as db:
+        profile=db.execute("""SELECT media_image_format,media_video_format FROM batches
+                              WHERE id=%s""",(row['batch_id'],)).fetchone()
+    action=duration=media_error=None
+    if profile and profile['media_image_format']:
+        from .media.formats import inspect
+        try:
+            action,duration=inspect(part,row['filename'],media_type,
+                profile['media_image_format'],profile['media_video_format'])
+        except (OSError,ValueError,subprocess.SubprocessError):
+            action='prepare'
+    with connect() as db:
         db.execute('SELECT pg_advisory_xact_lock(723409133)')
         batch=db.execute("""SELECT delete_state FROM batches
             WHERE id=%s FOR UPDATE""",(row['batch_id'],)).fetchone()
@@ -223,7 +235,11 @@ def _finalize_sync(upload_id:str):
             return {'path':current['target_path'],'already_finalized':True}
         base=UPLOADS_DIR/str(row['batch_id'])
         base.mkdir(parents=True,exist_ok=True)
-        target=base/original_storage_name(digest,row['filename'],media_type)
+        storage_name=original_storage_name(digest,row['filename'],media_type)
+        if action is not None:
+            # Stable per-upload identity even with identical bytes in subfolders.
+            storage_name=str(row['id'])+'_'+storage_name
+        target=base/storage_name
         if target.exists():
             with target.open('rb') as stream:
                 old=hashlib.file_digest(stream,'sha256').hexdigest()
@@ -233,9 +249,10 @@ def _finalize_sync(upload_id:str):
             os.link(part,target)
         target.chmod(0o444)
         db.execute("""UPDATE uploads SET finalized=true,received=declared_size,
-            checksum=%s,target_path=%s,original_media_type=%s WHERE id=%s""",
-            (digest,str(target),media_type,row['id']))
-        if media_type is None:
+            checksum=%s,target_path=%s,original_media_type=%s,media_action=%s,
+            media_duration=%s,media_error=%s WHERE id=%s""",
+            (digest,str(target),media_type,action,duration,media_error,row['id']))
+        if media_type is None or action is not None:
             thumbnails.enqueue(db,row['id'],digest)
         complete=upload_manifest.reconcile_locked(db,row['batch_id'])
         if complete:

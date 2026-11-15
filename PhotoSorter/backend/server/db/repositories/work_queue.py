@@ -44,7 +44,7 @@ def insert_fo(db,run_id):
 
 def entries(db):
     return db.execute("""
-        SELECT seq,kind,fo_run_id,reference_job_id,state,created_at,
+        SELECT seq,kind,fo_run_id,reference_job_id,media_batch_id,state,created_at,
                started_at,finished_at FROM work_queue ORDER BY seq
     """).fetchall()
 
@@ -57,13 +57,16 @@ def claim_next(db):
     """).fetchone():
         return None
     row=db.execute("""
-        SELECT seq,kind,fo_run_id,reference_job_id,state FROM work_queue
+        SELECT seq,kind,fo_run_id,reference_job_id,media_batch_id,state FROM work_queue
         WHERE state='queued' OR
           (kind='reference_preparation' AND state IN ('failed','interrupted','blocked'))
         ORDER BY seq FOR UPDATE LIMIT 1
     """).fetchone()
     if row is None or row["state"]!="queued":
         return None
+    if row["kind"]=="media_preparation":
+        db.execute("UPDATE work_queue SET state='running',started_at=now() WHERE seq=%s",(row["seq"],))
+        return {"kind":"media_preparation","id":row["media_batch_id"],"seq":row["seq"]}
     if row["kind"]=="reference_preparation":
         prep=db.execute("""
             SELECT id,session_id,state FROM reference_preparation_jobs
@@ -177,7 +180,9 @@ def mark_interrupted(db):
         FROM reference_preparation_jobs p WHERE p.session_id=s.id
           AND p.state='interrupted' AND s.preparation_state='running'
     """)
+    db.execute("DELETE FROM batch_operations WHERE kind='media_prepare'")
     db.execute("""
-        UPDATE work_queue SET state='interrupted',finished_at=now()
+        UPDATE work_queue SET state='interrupted',finished_at=now(),
+            media_error=CASE WHEN kind='media_preparation' THEN 'Воркер остановился во время перекодирования' END
         WHERE state='running'
     """)

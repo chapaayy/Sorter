@@ -40,9 +40,9 @@ function median(values:number[]):number|null{
 }
 /** Historical per-photo throughput; FO and reference CPU tasks never share rates. */
 export function historicalRates(history:readonly QueueTask[]):Record<QueueKind,number|null>{
-  const rates:Record<QueueKind,number[]>={fo_processing:[],reference_preparation:[]}
+  const rates:Record<QueueKind,number[]>={fo_processing:[],reference_preparation:[],media_preparation:[]}
   for(const job of history){
-    if(job.state!=='completed')continue
+    if(job.state!=='completed'||job.kind==='media_preparation')continue
     const count=countOf(job),elapsed=elapsedSeconds(job.started_at,job.finished_at)
     if(count&&elapsed!==null&&elapsed>0){
       const unit=elapsed/count
@@ -50,7 +50,7 @@ export function historicalRates(history:readonly QueueTask[]):Record<QueueKind,n
     }
   }
   return {fo_processing:median(rates.fo_processing.slice(0,30)),
-    reference_preparation:median(rates.reference_preparation.slice(0,30))}
+    reference_preparation:median(rates.reference_preparation.slice(0,30)),media_preparation:null}
 }
 function durationFromHistory(task:QueueTask,rates:Record<QueueKind,number|null>):number|null{
   const count=countOf(task),rate=rates[task.kind]
@@ -63,6 +63,7 @@ function liveRemaining(task:QueueTask,rates:Record<QueueKind,number|null>,now:nu
     const eta=task.fo_progress?.estimated_remaining_seconds
     return valid(eta)?eta:null
   }
+  if(task.kind==='media_preparation')return null // Mixed durations and codecs are not comparable per file.
   const elapsed=elapsedSeconds(task.started_at,null,now)
   const count=countOf(task),done=task.completed_count
   if(elapsed===null||count===null)return null

@@ -69,7 +69,7 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 
 ## Основные сценарии
 
-**Заявки на доступ:** `features/auth` → `api/routes/access_requests.py` → `services/access_requests.py` → репозиторий заявок и миграция 0024. Владелец выбирает готовые запуски в `features/settings/users`; одобрение создаёт аккаунт и разрешения в одной транзакции. `security/access_policy.py` ограничивает каталог, фото и ZIP конкретными разрешёнными запусками.
+**Заявки на доступ:** `features/auth` → `api/routes/access_requests.py` → `services/access_requests.py` → репозиторий заявок и миграция 0024. Владелец выбирает готовые запуски в `features/admin/users`; одобрение создаёт аккаунт и разрешения в одной транзакции. `security/access_policy.py` ограничивает каталог, фото и ZIP конкретными разрешёнными запусками.
 
 **Образцы:** Vue `ReferenceDirectoryImporter` → проверка папок → `POST /api/references/import/preview` для сверки города, номера и адреса. Затем оба сценария, импорт папки и добавление фото через `ReferencePhotoUploader`, сравнивают SHA-256 c опубликованной библиотекой через `POST /api/reference-imports/compare`. `ReferenceImportReview` показывает новые фото и дубли. После подтверждения новые файлы передаются через `referenceTransfer.ts` и `/api/reference-imports`, сервер проверяет их и создаёт задачу только при наличии новых образцов. Адрес хранится отдельно в `reference_constructions`. [Инструкция](docs/REFERENCE_IMPORT.md).
 
@@ -228,3 +228,7 @@ Shell
 `ReferenceLibrary.vue` → `CreateConstructionDialog.vue` → `api/routes/references.py` → `services/construction_catalog.py` → `reference_constructions`. Пустой каталог независим от текущей версии признаков. Фото в индивидуальные конструкции по-прежнему идут через `referenceTransfer.ts` → `reference_imports` → единую очередь подготовки → `reference_publication`, а массовый импорт сохраняет старую строгую валидацию.
 
 `stores/deletion.ts` + серверный `batches.delete_state` → `FoBatchCard.vue`, `QueueTaskRow.vue`, `ResultsList.vue` → единый `CompactTaskCard.vue` со статусным outline. Для `deleting` фон красный; для `delete_failed` только красная обводка. ZIP не выделен отдельным статусом.
+
+### Смешанные ФО
+
+Импорт сохраняет профиль JPG/PNG и MP4/WebM в неизменяемом манифесте. Проверка в `server/media/formats.py` отмечает оригиналы, нуждающиеся в нормализации. `services/media_preparation.py` ставит отдельный `media_preparation` в общую FIFO только после последнего файла. `workers/media_prepare.py` атомарно публикует копии, не запуская MegaLoc и не изменяя оригиналы. `media/sorting.py` передаёт видео в MegaLoc временными кадрами, держит их вне фотогрупп и сворачивает до одного результата на исходное видео. Выбранные форматы и имена использует текущий ZIP; галереи открывают разрешённые видео через Range.

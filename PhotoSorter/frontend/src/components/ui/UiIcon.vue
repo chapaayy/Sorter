@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{name:'photos'|'references'|'processing'|'queue'|'results'|'logs'|'settings'|'menu'|'sidebar-collapse'|'sidebar-expand'|'eye'|'eye-off';size?:number}>()
+defineProps<{name:'photos'|'references'|'processing'|'queue'|'results'|'logs'|'settings'|'users'|'menu'|'sidebar-collapse'|'sidebar-expand'|'eye'|'eye-off';size?:number}>()
 </script>
 
 <template>
@@ -28,6 +28,9 @@ defineProps<{name:'photos'|'references'|'processing'|'queue'|'results'|'logs'|'s
     </template>
     <template v-else-if="name==='logs'">
       <rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/>
+    </template>
+    <template v-else-if="name==='users'">
+      <circle cx="10" cy="8" r="3"/><path d="M4 20v-2a6 6 0 0 1 12 0v2M17 5a3 3 0 0 1 0 6m1 3a5 5 0 0 1 2 4v2"/>
     </template>
     <template v-else-if="name==='settings'">
       <path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.64 5.64l1.42 1.42m9.88 9.88 1.42 1.42M18.36 5.64l-1.42 1.42M7.06 16.94l-1.42 1.42"/>

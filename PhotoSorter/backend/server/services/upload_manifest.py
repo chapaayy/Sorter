@@ -41,7 +41,8 @@ def _validated(files):
     return sorted(result, key=lambda row: (row[1], str(row[0])))
 
 
-def register(batch_id, files, *, auto_process=False, grouping_threshold=0.50):
+def register(batch_id, files, *, auto_process=False, grouping_threshold=0.50,
+             image_format=None, video_format=None):
     """Register exactly once; identical POSTs are safe after a lost response."""
     batch_id = batch_service.uid(batch_id)
     expected = _validated(files)
@@ -51,14 +52,15 @@ def register(batch_id, files, *, auto_process=False, grouping_threshold=0.50):
     )
     signature = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     with connect() as db:
-        batch = db.execute("""SELECT delete_state, upload_manifest_signature
+        batch = db.execute("""SELECT delete_state, upload_manifest_signature,media_image_format,media_video_format
             FROM batches WHERE id=%s FOR UPDATE""", (batch_id,)).fetchone()
         if not batch:
             raise HTTPException(404, "Партия не найдена")
         if batch["delete_state"] != "active":
             raise HTTPException(409, "Партия удаляется или удалена")
         if batch["upload_manifest_signature"] is not None:
-            if batch["upload_manifest_signature"] != signature:
+            if (batch["upload_manifest_signature"] != signature or
+                (batch["media_image_format"],batch["media_video_format"]) != (image_format,video_format)):
                 raise HTTPException(409, "Состав партии отличается от зарегистрированного манифеста")
         else:
             if db.execute("SELECT 1 FROM uploads WHERE batch_id=%s LIMIT 1", (batch_id,)).fetchone():
@@ -74,8 +76,8 @@ def register(batch_id, files, *, auto_process=False, grouping_threshold=0.50):
                 upload_manifest_state='waiting', upload_manifest_completed_at=NULL,
                 auto_process_state=%s,auto_process_threshold=%s,
                 auto_process_run_id=NULL,auto_process_error=NULL,
-                upload_state='open' WHERE id=%s""",
-                (signature,'waiting' if auto_process else None,grouping_threshold,batch_id))
+                media_image_format=%s,media_video_format=%s,upload_state='open' WHERE id=%s""",
+                (signature,'waiting' if auto_process else None,grouping_threshold,image_format,video_format,batch_id))
     return status(batch_id)
 
 
@@ -129,6 +131,8 @@ def reconcile_locked(db, batch_id):
         # repeated finish requests, a refresh, or maintenance reconciliation.
         from .library_notices import record_completed_fo
         record_completed_fo(db,batch_id)
+        from .media_preparation import schedule_locked
+        schedule_locked(db,batch_id)
     return complete
 
 
@@ -158,6 +162,8 @@ def status(batch_id):
                      Path(row["target_path"]).is_symlink() or
                      Path(row["target_path"]).stat().st_size != row["declared_size"]
                      for row in rows))):
+            from ..db.repositories.work_queue import LOCK
+            db.execute("SELECT pg_advisory_xact_lock(%s)",(LOCK,))
             db.execute("SELECT 1 FROM batches WHERE id=%s FOR UPDATE", (batch_id,))
             reconcile_locked(db, batch_id)
             from ..db.repositories.batches import refresh_upload_state

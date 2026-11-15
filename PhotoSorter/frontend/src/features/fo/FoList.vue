@@ -88,7 +88,7 @@ watch(()=>uploader.current?.batchId,id=>{if(id&&!batches.value.some(batch=>batch
 watch(()=>uploader.lastCompleted,completion=>{
   if(completion&&'batchId' in completion)void refreshVisible()
 })
-usePolling(refreshVisible,()=>batches.value.some(batch=>isActive(batch.latest_run?.status))?1000:4000)
+usePolling(refreshVisible,()=>batches.value.some(batch=>isActive(batch.latest_run?.status)||['queued','running'].includes(batch.media_preparation?.state??''))?1000:4000)
 usePolling(async()=>{
   const ids=new Set([...Object.keys(deletion.requests),
     ...batches.value.filter(b=>b.delete_state==='deleting').map(b=>b.batch_id)])

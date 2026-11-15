@@ -6,7 +6,6 @@ import MegaLocSettings from './MegaLocSettings.vue'
 import PerformanceSettings from './PerformanceSettings.vue'
 import StorageSettings from './StorageSettings.vue'
 import SystemSettings from './SystemSettings.vue'
-import AccessRequests from './users/AccessRequests.vue'
 import AboutSettings from './AboutSettings.vue'
 </script>
 
@@ -19,7 +18,6 @@ import AboutSettings from './AboutSettings.vue'
     <section aria-label="Производительность"><PerformanceSettings/></section>
     <section aria-label="Хранилище"><StorageSettings/></section>
     <section aria-label="Система"><SystemSettings/></section>
-    <section aria-label="Пользователи"><AccessRequests/></section>
     <AboutSettings/>
   </div>
 </template>

@@ -14,6 +14,7 @@ const links=[
   {to:'/queue',label:'Очередь',icon:'queue'},
   {to:'/results',label:'Результаты',icon:'results'},
   {to:'/logs',label:'Логи',icon:'logs'},
+  {to:'/admin',label:'Администрирование',icon:'users'},
   {to:'/settings',label:'Настройки',icon:'settings'}
 ] as const
 const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фотоотчёты'
@@ -37,7 +38,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
       </div>
       <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav class="nav-links" aria-label="Разделы">
-        <RouterLink v-for="link in links.filter(item=>session.isOwner?item.to!=='/settings':item.to==='/results')" :key="link.to" :to="link.to"
+        <RouterLink v-for="link in links.filter(item=>session.isOwner?!['/settings','/admin'].includes(item.to):item.to==='/results')" :key="link.to" :to="link.to"
           class="nav-link" :aria-label="link.label"
           :title="sidebar.collapsed?link.label:undefined">
           <span class="nav-icon" aria-hidden="true"><UiIcon :name="link.icon"/></span>
@@ -45,7 +46,11 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
         </RouterLink>
       </nav>
       <div class="sidebar-bottom">
-        <nav v-if="session.isOwner" class="nav-links" aria-label="Настройки">
+        <nav v-if="session.isOwner" class="nav-links" aria-label="Управление">
+          <RouterLink to="/admin" class="nav-link" aria-label="Администрирование" :title="sidebar.collapsed?'Администрирование':undefined">
+            <span class="nav-icon" aria-hidden="true"><UiIcon name="users"/></span>
+            <span class="nav-text">Администрирование</span>
+          </RouterLink>
           <RouterLink to="/settings" class="nav-link" aria-label="Настройки"
             :title="sidebar.collapsed?'Настройки':undefined">
             <span class="nav-icon" aria-hidden="true"><UiIcon name="settings"/></span>

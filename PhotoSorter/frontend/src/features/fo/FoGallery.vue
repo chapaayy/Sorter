@@ -28,12 +28,24 @@ const deleteWhole=ref(false),deletePhoto=ref<string|null>(null),viewer=ref<numbe
 const stopConfirm=ref(false),showHistory=ref(false),historyKey=ref(0)
 const processing=computed(()=>batch.value?batchProcessing(batch.value):null)
 const {items,cursor,loading,error:galleryError,load,reset}=useCursor<Photo>(next=>batchApi.gallery(id,next))
-const photos=computed(()=>items.value.filter(p=>!p.original_media_type))
-const preview=computed(()=>photos.value.map(p=>({src:p.original_url||'',label:p.name})))
+const photos=computed(()=>items.value.filter(p=>p.play_url||!p.original_media_type))
+const preview=computed(()=>photos.value.map(p=>({src:p.play_url||p.original_url||'',label:p.name,video:p.media_kind==='video',poster:p.thumbnail_url})))
 function openPhoto(index:number){
   const id=items.value[index]?.id
   const position=photos.value.findIndex(p=>p.id===id)
   if(position>=0)viewer.value=position
+}
+const mediaErrors=ref<{id:string;filename:string;media_error:string}[]>([])
+const showMediaErrors=ref(false)
+async function inspectMedia(){
+  if(showMediaErrors.value){showMediaErrors.value=false;return}
+  try{mediaErrors.value=(await batchApi.mediaErrors(id)).files;showMediaErrors.value=true}
+  catch(e){error.value=errorText(e)}
+}
+async function retryMedia(){
+  busy.value=true
+  try{await batchApi.retryMedia(id);showMediaErrors.value=false;await refresh()}
+  catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
 const initialGallery=ref(true)
 const readyPercent=computed(()=>count.value?.total?Math.round(count.value.ready/count.value.total*100):0)
@@ -52,8 +64,16 @@ usePolling(async()=>{
   }
 },4500)
 usePolling(async()=>{
-  if(batch.value?.delete_state==='active')batch.value=await batchApi.one(id)
-},()=>isActive(batch.value?.latest_run?.status)?1000:4500)
+  if(batch.value?.delete_state==='active'){
+    const state=batch.value.media_preparation?.state
+    batch.value=await batchApi.one(id)
+    if(state!==batch.value.media_preparation?.state&&batch.value.media_image_format){
+      const next=await batchApi.gallery(id,undefined,Math.min(200,Math.max(60,items.value.length)))
+      const changed=new Map(next.photos.map(p=>[p.id,p]))
+      items.value=items.value.map(p=>changed.get(p.id)||p)
+    }
+  }
+},()=>isActive(batch.value?.latest_run?.status)||['queued','running'].includes(batch.value?.media_preparation?.state??'')?1000:4500)
 onMounted(async()=>{try{await Promise.all([refresh(),reset()])}finally{initialGallery.value=false}})
 async function onPendingChanged(){await Promise.all([refresh(),reset()])}
 async function saveName(){
@@ -103,7 +123,7 @@ async function removeBatch(){
 </script>
 <template>
 <div class="row" style="margin-bottom:22px"><RouterLink to="/fo" class="meta">← Все фотоотчёты</RouterLink></div>
-<PageHeader :title="batch?.display_name||'Галерея партии'" :subtitle="batch?date(batch.created_at)+' · '+(batch.photos??'—')+' фото'+(batch.media_files?' · '+batch.media_files+' без сортировки':'')+' · '+bytes(batch.size_bytes):'Загрузка…'" eyebrow="ФО / ПАРТИЯ">
+<PageHeader :title="batch?.display_name||'Галерея партии'" :subtitle="batch?date(batch.created_at)+' · '+(batch.photos??'—')+' фото'+(batch.videos?' · '+batch.videos+' видео':'')+(batch.media_files?' · '+batch.media_files+(batch.media_image_format?' ошибок подготовки':' без сортировки'):'')+' · '+bytes(batch.size_bytes):'Загрузка…'" eyebrow="ФО / ПАРТИЯ">
   <template #actions><UiButton @click="newName=batch?.display_name||'';rename=true">Переименовать</UiButton><UiButton kind="danger" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert">{{error}}</div>
@@ -111,7 +131,16 @@ async function removeBatch(){
   <div class="row between wrap"><h2 style="margin:0">Обработка MegaLoc</h2><span class="meta">Миниатюры и сортировка — независимые процессы</span></div>
   <div v-if="deletion.pending(id)||batch.delete_state==='deleting'" class="deletion-state">Удаляется · удаление файлов и результатов</div>
   <BatchProcessingStatus v-else :batch="batch"/>
+  <div v-if="batch.media_files&&batch.media_image_format" class="alert warning row wrap between">
+    <span>Файлов без готовой копии: {{batch.media_files}}. Они не попадут в ZIP.</span>
+    <UiButton small @click="inspectMedia">{{showMediaErrors?'Скрыть ошибки':'Показать ошибки'}}</UiButton>
+  </div>
+  <ul v-if="showMediaErrors" class="meta">
+    <li v-for="file in mediaErrors" :key="file.id">{{file.filename}} — {{file.media_error}}</li>
+  </ul>
   <div class="row wrap fo-batch-actions">
+    <UiButton v-if="['failed','interrupted','completed_with_errors'].includes(batch.media_preparation?.state??'')&&!processing?.canStop"
+      small :loading="busy" @click="retryMedia">Повторить перекодирование</UiButton>
     <UiButton v-if="processing?.canStart" kind="primary" small :loading="busy" @click="startRun">{{(batch.runs??0)>0?'Повторить обработку':'Обработать'}}</UiButton>
     <UiButton v-if="processing?.canCancelAuto" small :loading="busy" @click="cancelAuto">Отменить автозапуск</UiButton>
     <UiButton v-if="processing?.canStop" small kind="danger" :loading="busy" @click="stopConfirm=true">
@@ -131,8 +160,8 @@ async function removeBatch(){
 </section>
 <div v-if="batch&&batch.runs" class="alert" style="margin-bottom:20px">Эта партия уже обрабатывалась. Удаление отдельного ФО заблокировано, чтобы не нарушить существующие результаты.</div>
 <div v-if="galleryError" class="alert error">{{galleryError}}</div>
-<VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({id:p.id,label:p.name,thumbnail_url:p.thumbnail_url,original_url:p.original_url,thumbnail_status:p.thumbnail_status,original_media_type:p.original_media_type}))"
-  :can-delete="!batch?.runs&&batch?.delete_state==='active'" @open="openPhoto" @remove="pid=>deletePhoto=pid"/>
+<VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({...p,label:p.name}))"
+  :can-delete="!batch?.runs&&batch?.delete_state==='active'&&!['queued','running','failed','interrupted'].includes(batch.media_preparation?.state??'')" @open="openPhoto" @remove="pid=>deletePhoto=pid"/>
 <LoadingSkeleton v-else-if="loading||initialGallery" variant="gallery" label="Загружаем фотографии"/>
 <EmptyState v-else-if="!galleryError" title="В этой партии пока нет фото"/>
 <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё фотографии</UiButton></div>

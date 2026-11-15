@@ -91,7 +91,7 @@ def build(db,run_id,batch_id,title,rows,sam=None):
         if not source.is_file():
             raise FileNotFoundError("Отсутствует готовая фотография: "+source.name)
         query=row.get("query")
-        name=originals.get(query) or Path(query or source.name).name
+        name=row.get("export_name") or originals.get(query) or Path(query or source.name).name
         groups[row["assigned_sam"]].append((source,portable_name(name,"Фото"+source.suffix,file=True)))
     files=[]
     for label,photos in groups.items():

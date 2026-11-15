@@ -1,10 +1,10 @@
-import type {PendingUpload} from './api'
+import type {PendingUpload,MediaProfile} from './api'
 import type {ReferenceReview} from './referenceTransfer'
 import type {UploadEntry} from '../utils/upload'
 
 export type RecoverySource={batchId:string;item:PendingUpload;file:File}
 export type UploadSource=
-  |{kind:'fo';name:string;entries:readonly UploadEntry[];autoProcess:boolean;threshold:number;resumeBatchId?:string}
+  |{kind:'fo';name:string;entries:readonly UploadEntry[];autoProcess:boolean;threshold:number;profile?:MediaProfile;resumeBatchId?:string}
   |{kind:'recovery';source:RecoverySource}
   |{kind:'references';name:string;review:ReferenceReview;success:string}
 export type UploadCompletion={batchId:string}|{sam?:string}

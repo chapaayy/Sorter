@@ -151,6 +151,8 @@ test('owner can read the comment and approve after confirmation',async({page})=>
   await page.goto('/settings')
   await expect(page.getByRole('heading',{name:'О сервисе MAP'})).toBeVisible()
   await expect(page.getByText('Match, Assign, Package',{exact:true})).toBeVisible()
+  await page.goto('/admin')
+  await expect(page.getByRole('heading',{name:'Администрирование'})).toBeVisible()
   await expect(page.getByText(item.comment)).toBeVisible()
   await page.getByRole('button',{name:'Одобрить',exact:true}).click()
   const dialog=page.getByRole('dialog',{name:'Выдать доступ к результатам'})

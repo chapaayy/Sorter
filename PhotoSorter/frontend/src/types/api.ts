@@ -5,16 +5,22 @@ export interface DeletionProgress {
   done:number
   total:number|null
 }
+export interface MediaProfile {image_format:'jpg'|'png';video_format:'mp4'|'webm'}
+export interface MediaPreparation {
+  state:'queued'|'running'|'interrupted'|'completed'|'completed_with_errors'|'failed'|'stopped'
+  total_count:number;completed_count:number;failed_count:number;error?:string|null
+}
 export interface Batch {
   batch_id: string; display_name: string; created_at: string; upload_state: string
   thumbnail_state: string; delete_state: string; deleted_at?: string | null
   deletion_progress?:DeletionProgress|null
   download_confirmed_at?: string | null; confirmed_run_id?: string | null
-  delete_after_at?: string | null; photos?: number; media_files?: number; size_bytes?: number; runs?: number; pending?: number
+  delete_after_at?: string | null; photos?: number; videos?:number; media_files?: number; size_bytes?: number; runs?: number; pending?: number
   upload_manifest_state?: 'waiting'|'complete'|null;upload_manifest_completed_at?: string|null
   auto_process_state?: 'waiting'|'queued'|'cancelled'|'manual'|null
   auto_process_run_id?: string|null; auto_process_error?: string|null
   auto_process_threshold?: number
+  media_image_format?:MediaProfile["image_format"]|null; media_preparation?:MediaPreparation|null
   latest_run?:Run|null;last_result_run_id?:string|null;cover_thumbnail_url?:string|null
 }
 export interface UploadManifestFile {upload_id:string;relative_path:string;filename:string;size:number}
@@ -46,6 +52,7 @@ export interface PendingUploadList { uploads:PendingUpload[];total:number }
 export interface Photo {
   id: string; name: string; bytes: number; created_at: string
   original_media_type?: string | null
+  media_kind?:"video"|"image"|null; play_url?:string|null; media_error?:string|null;duration?:number|null
   thumbnail_status?: 'queued' | 'running' | 'pending' | 'ready' | 'failed'
   thumbnail_url?: string | null; original_url?: string | null
 }
@@ -69,6 +76,7 @@ export interface Run {
 export interface ResultPhoto {
   index: number; assigned_sam?: string; group_id?: string
   score?: number | null; verdict?: string; reason?: string
+  media_kind?:"video"|"image"|null; filename?:string|null;duration?:number|null
   thumbnail_url?: string | null; image_url: string
 }
 export interface Retention {

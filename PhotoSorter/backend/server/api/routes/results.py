@@ -71,6 +71,10 @@ def photos(run_id:str,sam:str|None=None,group:str|None=None,
         items.append({"index":row["index"],"assigned_sam":row.get("assigned_sam"),
             "group_id":row.get("group_id"),"score":row.get("score"),
             "verdict":row.get("verdict"),"reason":row.get("reason"),
-            "thumbnail_url":f"/api/thumbnails/{upload_id}" if upload_id else None,
-            "image_url":f'/api/images/{run_id}/megaloc/{row["index"]}?kind={"copy" if published is not None else "query"}'})
+            "filename":row.get("export_name"),"media_kind":row.get("media_kind"),
+            "duration":row.get("duration"),
+            "thumbnail_url":(f'/api/images/{run_id}/megaloc/{row["index"]}?kind=poster' if row.get("media_kind")=="video"
+                             else f"/api/thumbnails/{upload_id or row.get('upload_id')}" if
+                             (published is None and (upload_id or row.get("upload_id"))) else None),
+            "image_url":f'/api/images/{run_id}/megaloc/{row["index"]}?kind={"copy" if published is not None or row.get("media_kind") else "query"}'})
     return {"photos":items,"next_cursor":result["next_cursor"]}

@@ -1,5 +1,5 @@
 import {api,post,patch,del,query} from './client'
-import type {Batch,DeletionProgress,Photo,CursorPage,Retention,PendingUploadList,BatchUploadManifest,UploadManifestFile,Run} from '../types/api'
+import type {Batch,DeletionProgress,Photo,CursorPage,Retention,PendingUploadList,BatchUploadManifest,UploadManifestFile,Run,MediaProfile} from '../types/api'
 export const batchApi={
   list:(limit=100,offset=0)=>api<{batches:Batch[];total:number}>('/batches'+query({limit,offset})),
   one:(id:string)=>api<Batch>('/batches/'+encodeURIComponent(id)),
@@ -7,10 +7,12 @@ export const batchApi={
     '/batches/'+encodeURIComponent(id)+'/runs'+query({limit,offset})),
   pending:(id:string)=>api<PendingUploadList>('/batches/'+encodeURIComponent(id)+'/pending'),
   manifest:(id:string)=>api<BatchUploadManifest>('/batches/'+encodeURIComponent(id)+'/upload-manifest'),
-  registerManifest:(id:string,files:UploadManifestFile[],autoProcess=false,threshold=.50)=>
+  registerManifest:(id:string,files:UploadManifestFile[],autoProcess=false,threshold=.50,profile?:MediaProfile)=>
     api<BatchUploadManifest>('/batches/'+encodeURIComponent(id)+'/upload-manifest',{
-      method:'PUT',body:JSON.stringify({files,auto_process:autoProcess,grouping_threshold:threshold})
+      method:'PUT',body:JSON.stringify({files,...profile,auto_process:autoProcess,grouping_threshold:threshold})
     }),
+  retryMedia:(id:string)=>post<unknown>('/batches/'+encodeURIComponent(id)+'/media/retry',{}),
+  mediaErrors:(id:string)=>api<{files:{id:string;filename:string;media_error:string}[]}>('/batches/'+encodeURIComponent(id)+'/media/errors'),
   cancelAutomatic:(id:string)=>post<{batch_id:string;auto_process_state:string}>(
     '/batches/'+encodeURIComponent(id)+'/auto-processing/cancel',{}),
   finishPending:(uploadId:string)=>api<{path:string;already_finalized?:boolean}>('/uploads/'+encodeURIComponent(uploadId)+'/finish',{method:'POST'}),

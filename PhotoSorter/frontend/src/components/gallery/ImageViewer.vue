@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {ref,computed,watch,onMounted,onUnmounted,nextTick} from 'vue'
 import DeferredImage from './DeferredImage.vue'
-export interface ViewerItem{src:string;label:string;score?:number|null}
+export interface ViewerItem{src:string;label:string;score?:number|null;video?:boolean;poster?:string|null}
 const props=defineProps<{items:ViewerItem[];initial:number}>()
 const emit=defineEmits<{(e:'close'):void}>()
 const index=ref(props.initial),zoom=ref(false),closeButton=ref<HTMLButtonElement|null>(null)
@@ -10,6 +10,7 @@ let touchX=0,focusBefore:HTMLElement|null=null
 function move(dir:number){index.value=(index.value+dir+props.items.length)%props.items.length;zoom.value=false}
 function key(e:KeyboardEvent){
   if(e.key==='Escape')emit('close')
+  if(e.target instanceof HTMLVideoElement)return
   if(e.key==='ArrowLeft'){e.preventDefault();move(-1)}
   if(e.key==='ArrowRight'){e.preventDefault();move(1)}
 }
@@ -21,16 +22,18 @@ onUnmounted(()=>{document.removeEventListener('keydown',key);document.body.style
 </script>
 <template>
 <Teleport to="body"><div class="viewer-overlay">
-  <section class="viewer" role="dialog" aria-modal="true" aria-label="Просмотр фотографии">
+  <section class="viewer" role="dialog" aria-modal="true" :aria-label="current?.video?'Просмотр видео':'Просмотр фотографии'">
     <div class="viewer-tools">
       <span class="meta">{{index+1}} / {{items.length}} · {{current?.label}} <span v-if="current?.score!=null">· score {{current.score.toFixed(3)}}</span></span>
       <div class="row">
-        <button class="btn small" @click="zoom=!zoom">{{zoom?'Уменьшить':'Увеличить'}}</button>
+        <button v-if="!current?.video" class="btn small" @click="zoom=!zoom">{{zoom?'Уменьшить':'Увеличить'}}</button>
         <button ref="closeButton" class="btn icon" aria-label="Закрыть просмотр" @click="emit('close')">×</button>
       </div>
     </div>
     <div class="viewer-main" @touchstart.passive="start" @touchend.passive="end" @dblclick="zoom=!zoom">
-      <DeferredImage v-if="current?.src" :key="current.src" :src="current.src" :alt="current.label" :class="{zoomed:zoom}">
+      <video v-if="current?.video" :key="current.src" :src="current.src" :poster="current.poster??undefined"
+        controls playsinline preload="metadata" class="viewer-video"/>
+      <DeferredImage v-else-if="current?.src" :key="current.src" :src="current.src" :alt="current.label" :class="{zoomed:zoom}">
         <template #error><span class="meta">Не удалось открыть фотографию</span></template>
       </DeferredImage>
     </div>
@@ -42,3 +45,7 @@ onUnmounted(()=>{document.removeEventListener('keydown',key);document.body.style
   </section>
 </div></Teleport>
 </template>
+
+<style scoped>
+.viewer-video{display:block;max-width:100%;max-height:72vh;margin:auto;object-fit:contain}
+</style>

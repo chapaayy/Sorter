@@ -33,8 +33,8 @@ const list=computed(()=>Object.entries(mode.value==='sam'?sams.value:groups.valu
   .map(([key,count])=>({id:key,label:mode.value==='sam'?displaySam(key):key,count})))
 const {items,cursor,loading,error:pageError,load,reset}=useCursor<ResultPhoto>(next=>
   resultApi.photos(id,{[mode.value==='sam'?'sam':'group']:selected.value,cursor:next,limit:60}))
-const tiles=computed(()=>items.value.map(p=>({id:String(p.index),label:'ФО №'+(p.index+1),thumbnail_url:session.isOwner?p.thumbnail_url:p.image_url,original_url:p.image_url,score:p.score})))
-const previews=computed(()=>items.value.map(p=>({src:p.image_url,label:'ФО №'+(p.index+1)+' · '+displaySam(p.assigned_sam||''),score:p.score})))
+const tiles=computed(()=>items.value.map(p=>({id:String(p.index),label:p.filename||'ФО №'+(p.index+1),thumbnail_url:session.isOwner||p.media_kind==='video'?p.thumbnail_url:p.image_url,original_url:p.image_url,play_url:p.image_url,score:p.score,media_kind:p.media_kind,duration:p.duration})))
+const previews=computed(()=>items.value.map(p=>({src:p.image_url,label:(p.filename||'ФО №'+(p.index+1))+' · '+displaySam(p.assigned_sam||''),score:p.score,video:p.media_kind==='video',poster:p.thumbnail_url})))
 const total=computed(()=>Object.values(sams.value).reduce((x,y)=>x+y,0))
 function changeMode(value:'sam'|'group'){
   if(mode.value===value)return
@@ -125,7 +125,7 @@ async function deleteBatch(){
     <button role="tab" :aria-selected="mode==='sam'" @click="changeMode('sam')">По конструкциям</button>
     <button role="tab" :aria-selected="mode==='group'" @click="changeMode('group')">По группам ФО</button>
   </div>
-  <span class="meta">Оценки показаны только для отдельных ФО, из manifest MegaLoc.</span>
+  <span class="meta">Оценки MegaLoc показывают сходство с Образцами.</span>
 </div>
 <div v-if="list.length" class="split">
   <GroupPicker v-model="selected" :items="list" :placeholder="mode==='sam'?'Поиск номера или адреса…':'Поиск группы…'" resizable/>

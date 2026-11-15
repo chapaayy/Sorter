@@ -11,12 +11,18 @@ LOGGER=logging.getLogger(__name__)
 
 def _has_sortable_photos(db,batch_id):
     return db.execute("""SELECT 1 FROM uploads WHERE batch_id=%s AND kind='fo'
-        AND finalized AND original_media_type IS NULL LIMIT 1""",(batch_id,)).fetchone() is not None
+        AND finalized AND ((media_action IS NULL AND original_media_type IS NULL)
+         OR media_action='keep' OR media_output_path IS NOT NULL) LIMIT 1""",(batch_id,)).fetchone() is not None
 
 def _cancel_if_originals_only(db,batch_id):
     if _has_sortable_photos(db,batch_id):return False
+    if db.execute("SELECT 1 FROM batches WHERE id=%s AND media_image_format IS NOT NULL",(batch_id,)).fetchone():
+        db.execute("""UPDATE batches SET auto_process_error='Нет подготовленных файлов. Повторите перекодирование.'
+            WHERE id=%s AND auto_process_error IS DISTINCT FROM 'Нет подготовленных файлов. Повторите перекодирование.'""",
+            (batch_id,))
+        return True
     db.execute("""UPDATE batches SET auto_process_state='cancelled',
-        auto_process_error='Нет фотографий, поддерживаемых MegaLoc' WHERE id=%s""",(batch_id,))
+        auto_process_error='Нет готовых к сортировке фотографий или видео' WHERE id=%s""",(batch_id,))
     return True
 
 def settings():
@@ -93,6 +99,9 @@ def schedule_ready(limit:int=10):
                     db.execute("""UPDATE batches SET auto_process_error=%s
                         WHERE id=%s""",("Проверка ФО выявила недостающие файлы",batch_id))
                     continue
+                from .media_preparation import block_processing
+                try: block_processing(db,batch_id)
+                except HTTPException:continue
                 if _cancel_if_originals_only(db,batch_id):continue
                 try:
                     result=jobs._enqueue_locked(db, jobs.NewRun(
@@ -126,6 +135,9 @@ def enqueue_on_manifest_completion(db,batch_id):
          batch["upload_manifest_state"]!="complete" or
          batch["delete_state"]!="active"):
         return None
+    from .media_preparation import block_processing
+    try: block_processing(db,batch_id)
+    except HTTPException:return None
     if _cancel_if_originals_only(db,batch_id):return None
     try:
         with db.transaction():

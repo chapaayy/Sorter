@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import math
 
 STAGE_LABELS = {
+    'media_inputs': 'Подготовка входных файлов · кадры из видео',
     'validate_references': 'Проверка Образцов',
     'validate_queries': 'Проверка входящих ФО',
     'loading': 'Загрузка модели',

@@ -1371,7 +1371,7 @@ test('website transfer queue stays FIFO across two FO folders and references',as
 test('settings are stacked and the theme cards preview the actual palettes',async({page})=>{
   await page.goto('/settings')
   const sections=page.locator('.settings-layout > section')
-  await expect(sections).toHaveCount(8)
+  await expect(sections).toHaveCount(7)
   await expect(sections.first().getByRole('heading',{name:'Оформление'})).toBeVisible()
   await expect(sections.nth(1).getByRole('heading',{name:'Загрузка файлов'})).toBeVisible()
   await expect(sections.last().getByRole('heading',{name:'О сервисе MAP'})).toBeVisible()
@@ -1451,4 +1451,67 @@ test('reference gallery keeps the construction visible while photo tiles load',a
     await expect(page.getByText('Не удалось загрузить превью')).toBeVisible()
     await expect(page.locator('.photo-item .deferred-image-fill')).toHaveCount(0)
   }finally{library.release();gallery.release();thumb.release()}
+})
+
+test('administration lives outside Settings and is unavailable to viewers',async({page})=>{
+  await page.goto('/settings')
+  await expect(page.getByRole('heading',{name:'Настройки',exact:true})).toBeVisible()
+  await expect(page.getByRole('region',{name:'Пользователи'})).toHaveCount(0)
+  const drawer=page.getByRole('button',{name:'Открыть меню'})
+  if(await drawer.isVisible())await drawer.click()
+  await page.getByRole('link',{name:'Администрирование'}).click()
+  await expect(page.getByRole('heading',{name:'Администрирование'})).toBeVisible()
+  await expect(page.getByRole('region',{name:'Пользователи'})).toBeVisible()
+  await page.route('**/api/auth/me',route=>respond(route,{username:'viewer@example.com'}))
+  await page.goto('/admin')
+  await expect(page).toHaveURL(/\/results$/)
+  await expect(page.getByRole('link',{name:'Администрирование'})).toHaveCount(0)
+})
+
+test('mixed import defaults to JPG and MP4 and accepts an output profile',async({page})=>{
+  await page.goto('/fo')
+  await page.getByRole('button',{name:/Загрузить папку/}).click()
+  const folder=await mkdtemp(join(tmpdir(),'sorter-media-import-'))
+  try{
+    await writeFile(join(folder,'picture.png'),Buffer.from('test PNG data'))
+    await writeFile(join(folder,'clip.mov'),Buffer.from('test MOV data'))
+    await page.locator('input[type=file][webkitdirectory]').setInputFiles(folder)
+    const photos=page.getByLabel('Фото на выходе'),videos=page.getByLabel('Видео на выходе')
+    await expect(photos).toHaveValue('jpg')
+    await expect(videos).toHaveValue('mp4')
+    await photos.selectOption('png')
+    await videos.selectOption('webm')
+    await page.route('**/api/batches',route=>respond(route,{batch_id:bid,display_name:'Смешанная папка'}))
+    await page.route('**/api/batches/'+bid+'/upload-manifest',route=>respond(route,{state:'legacy',files:[]}))
+    const submitted=page.waitForRequest(r=>r.method()==='PUT'&&r.url().includes('/upload-manifest'))
+    await page.getByRole('button',{name:'Загрузить',exact:true}).click()
+    const body=(await submitted).postDataJSON()
+    expect(body.image_format).toBe('png')
+    expect(body.video_format).toBe('webm')
+    expect(body.files.map((f:{filename:string})=>f.filename).sort()).toEqual(['clip.mov','picture.png'])
+  }finally{await rm(folder,{recursive:true,force:true})}
+})
+
+test('conversion is a distinct FIFO row and results open a video player',async({page})=>{
+  await page.route('**/api/work-queue?**',route=>{
+    const url=new URL(route.request().url())
+    return respond(route,url.searchParams.get('scope')==='active'?{total:1,tasks:[{
+      seq:27,kind:'media_preparation',media_batch_id:bid,fo_run_id:null,reference_job_id:null,
+      batch_id:bid,batch_name:'Смешанная папка',state:'running',
+      completed_count:1,total_count:4,failed_count:0,
+      started_at:'2026-11-05T06:05:00Z',created_at:'2026-11-05T06:00:00Z',
+    }]}:{tasks:[],total:0})
+  })
+  await page.goto('/queue')
+  await expect(page.getByText('Перекодирование файлов',{exact:true})).toBeVisible()
+  await expect(page.getByText('Перекодирование файлов · 1 из 4')).toBeVisible()
+  await page.route('**/api/results/'+rid+'/photos?**',route=>respond(route,{photos:[{
+    ...output,filename:'Клип.mp4',media_kind:'video',duration:8,
+    image_url:'/api/images/'+rid+'/megaloc/0?kind=copy',
+  }],next_cursor:null}))
+  await page.goto('/results/'+rid)
+  await page.getByRole('button',{name:'Открыть Клип.mp4'}).click()
+  const player=page.getByRole('dialog',{name:'Просмотр видео'}).locator('video')
+  await expect(player).toHaveAttribute('src','/api/images/'+rid+'/megaloc/0?kind=copy')
+  await expect(player).toHaveAttribute('controls','')
 })

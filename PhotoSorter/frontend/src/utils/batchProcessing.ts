@@ -32,6 +32,11 @@ export function batchProcessing(batch:Batch):BatchProcessingPresentation {
   let detail='MegaLoc ещё не запускался'
   if(batch.delete_state!=='active'){
     label=batch.delete_state==='delete_failed'?'Ошибка удаления':'Удаляется';detail=batch.delete_state==='delete_failed'?'Ошибка удаления партии':'Удаление файлов и результатов'
+  }else if(['queued','running','failed','interrupted'].includes(batch.media_preparation?.state??'')){
+    const p=batch.media_preparation!
+    label=p.state==='queued'?'Перекодирование в очереди':p.state==='running'?'Перекодирование файлов':'Ошибка перекодирования'
+    tone=p.state==='failed'||p.state==='interrupted'?'danger':'neutral'
+    detail=p.error||p.completed_count+' из '+p.total_count+' файлов'
   }else if(run){
     label=runLabel(run)
     if(run.status==='completed')tone='ok'
@@ -49,7 +54,7 @@ export function batchProcessing(batch:Batch):BatchProcessingPresentation {
   }else if(batch.upload_manifest_state==='waiting'||(batch.pending??0)>0){
     label='Загрузка не завершена'
     detail='Нужны все исходные файлы партии'
-  }else if((batch.photos??0)===0&&batch.media_files){
+  }else if(((batch.photos??0)+(batch.videos??0))===0&&batch.media_files){
     label='Только оригиналы'
     detail='Нет фотографий в форматах, которые поддерживает MegaLoc'
   }else if(batch.auto_process_state==='waiting'){
@@ -58,7 +63,7 @@ export function batchProcessing(batch:Batch):BatchProcessingPresentation {
   }else if((batch.runs??0)>0){
     label='Есть история запусков'
     detail='Откройте историю обработок партии'
-  }else if((batch.photos??0)===0){
+  }else if(((batch.photos??0)+(batch.videos??0))===0){
     label='Нет фотографий'
     detail='Загрузите исходную папку ФО'
   }else{

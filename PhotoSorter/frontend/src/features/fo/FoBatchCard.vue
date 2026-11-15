@@ -31,6 +31,10 @@ const statusTone=computed(()=>{
     if(transfer.value.status==='failed')return 'danger'
     return 'neutral'
   }
+  const media=props.batch.media_preparation?.state
+  if(media==='running')return 'running'
+  if(media==='queued')return 'queued'
+  if(media==='failed'||media==='interrupted')return 'danger'
   const status=run.value?.status
   if(status==='running')return 'running'
   if(status==='queued')return run.value&&readyToStart(run.value)?'running':'queued'
@@ -42,6 +46,9 @@ const statusTone=computed(()=>{
 const progress=computed(()=>{
   if(removal.value.deleting||removal.value.failed)return removal.value.percent
   if(transfer.value)return transfer.value.status==='waiting'?null:uploadPercent(transfer.value)
+  const media=props.batch.media_preparation
+  if(media?.state==='queued')return 0
+  if(media?.state==='running')return 100*media.completed_count/media.total_count
   if(run.value?.status==='queued')return 0
   if(run.value?.status==='completed')return 100
   return run.value?.status==='running'||run.value?.status==='completed_with_errors'
@@ -79,9 +86,10 @@ const stage=computed(()=>{
   :progress-label="transfer?'Прогресс загрузки '+batch.display_name:undefined" :hide-time="!!transfer"
   :time-label="removal.deleting||removal.failed?undefined:timing.label"
   :time-detail="removal.deleting||removal.failed?undefined:timing.detail"
-  :active="transfer?transfer.status==='running':run?.status==='running'&&!removal.deleting&&!removal.failed">
+  :active="transfer?transfer.status==='running':(run?.status==='running'||batch.media_preparation?.state==='running')&&!removal.deleting&&!removal.failed">
   <template #meta>
     <span>{{batch.photos??0}} фото</span>
+    <span v-if="batch.videos">{{batch.videos}} видео</span>
     <span v-if="batch.media_files">{{batch.media_files}} без сортировки</span>
     <span>{{bytes(batch.size_bytes)}}</span>
     <span v-if="run?.status==='queued'&&run.queue_position!=null&&!readyToStart(run)">№{{run.queue_position}} в очереди</span>

@@ -51,7 +51,7 @@ class Job:
             finalize=getattr(self,'finalize_results',None)
             if finalize is not None:
                 finalize()
-            self.info['status']='completed'
+            self.info['status']='completed_with_errors' if self.info.get('media_errors') else 'completed'
         except (InterruptedError,JobCancelled):
             self.info['status']='stopped';self.log('WARNING','Обработка остановлена, готовые результаты сохранены')
         except Exception as exc:

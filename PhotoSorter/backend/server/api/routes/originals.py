@@ -4,7 +4,8 @@ import asyncio,mimetypes,time,uuid
 from pathlib import Path
 from urllib.parse import quote
 from fastapi import APIRouter,HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse,FileResponse
+from starlette.background import BackgroundTask
 from app.config import DATA_DIR
 from app.photos.reader import EXTS
 from app.photos.labels import check_label
@@ -13,6 +14,30 @@ from ...storage.paths import owned_file
 from ...services import operations
 
 router=APIRouter(prefix="/api/photos",tags=["photos"])
+
+@router.get("/{photo_id}/prepared")
+def prepared(photo_id:uuid.UUID):
+    from ...services.media_preparation import playable
+    with connect() as db:
+        row=db.execute("""SELECT u.batch_id,u.target_path,u.media_output_path,u.media_action,
+            u.original_media_type,b.media_image_format,b.media_video_format
+            FROM uploads u JOIN batches b ON b.id=u.batch_id
+            WHERE u.id=%s AND u.kind='fo' AND u.finalized""",(photo_id,)).fetchone()
+    if not row:raise HTTPException(404,"Файл не найден")
+    token=operations.start(row['batch_id'],'original')
+    try:
+        path=playable(row,DATA_DIR/'uploads'/str(row['batch_id']))
+        if not path.is_file():raise FileNotFoundError()
+        video=(row['original_media_type'] or '').startswith('video/')
+        mime=(
+            ('video/webm' if row['media_video_format']=='webm' else 'video/mp4')
+            if video else ('image/png' if row['media_image_format']=='png' else 'image/jpeg')
+        )
+        return FileResponse(path,media_type=mime,background=BackgroundTask(operations.finish,token),
+                            headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
+    except (ValueError,OSError):
+        operations.finish(token)
+        raise HTTPException(404,"Файл не готов к просмотру")
 
 @router.get("/{photo_id}/original")
 def original(photo_id:str):

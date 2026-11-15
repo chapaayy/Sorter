@@ -43,6 +43,8 @@ def fo_media_type(path:Path,name:str)->str|None:
     except (OSError,subprocess.SubprocessError) as exc:
         raise HTTPException(503,'Не удалось определить тип мультимедиа') from exc
     mime=result.stdout.strip()
+    if mime in ('application/ogg','application/x-matroska','application/mxf','application/vnd.rn-realmedia'):
+        mime='video/'+mime.split('/',1)[1]
     if not mime.startswith(('image/','video/')):
         if Path(name).suffix.lower() in EXTS:
             raise HTTPException(422,'Файл не является корректным изображением: '+repr(name))

@@ -43,6 +43,8 @@ def request(batch_id, *, only_if_due=False):
         db.execute("""UPDATE work_queue w SET state='stopped',finished_at=now()
             FROM jobs j WHERE w.fo_run_id=j.id AND j.batch_id=%s
             AND w.state='queued' AND j.status='stopped'""",(batch_id,))
+        db.execute("""UPDATE work_queue SET state='stopped',finished_at=now()
+            WHERE media_batch_id=%s AND state='queued'""",(batch_id,))
         db.execute("""INSERT INTO cleanup_tasks(batch_id,state,progress) VALUES (%s,'pending',%s)
             ON CONFLICT(batch_id) DO UPDATE SET state='pending',error=NULL,
             progress=EXCLUDED.progress,updated_at=now()""",(batch_id,_progress("queued")))
@@ -108,7 +110,9 @@ def cleanup_one(batch_id):
                 status IN ('queued','running','stopping') LIMIT 1""",(batch_id,)).fetchone()
             leases=db.execute("SELECT 1 FROM batch_operations WHERE batch_id=%s LIMIT 1",
                               (batch_id,)).fetchone()
-            if active or leases:
+            preparing=db.execute("""SELECT 1 FROM work_queue WHERE media_batch_id=%s
+                AND state='running'""",(batch_id,)).fetchone()
+            if active or leases or preparing:
                 _save_progress(db,batch_id,_progress("stopping_jobs" if active else "waiting_operations"))
                 db.commit()
                 return "waiting"
@@ -124,6 +128,7 @@ def cleanup_one(batch_id):
                 report("database",total-1,total)
                 # Repeatable: if previous run deleted paths and crashed, this is harmless.
                 db.execute("DELETE FROM download_confirmations WHERE batch_id=%s",(batch_id,))
+                db.execute("DELETE FROM work_queue WHERE media_batch_id=%s",(batch_id,))
                 db.execute("DELETE FROM uploads WHERE batch_id=%s",(batch_id,))
                 db.execute("DELETE FROM jobs WHERE batch_id=%s",(batch_id,))
                 db.execute("""UPDATE batches SET delete_state='deleted',deleted_at=now(),

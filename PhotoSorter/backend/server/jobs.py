@@ -65,8 +65,11 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
         AND status IN ('queued','running','stopping') LIMIT 1""",
         (data.batch_id,)).fetchone():
         raise HTTPException(409,"Эта партия уже стоит в очереди или обрабатывается")
+    from .services.media_preparation import block_processing
+    block_processing(db,data.batch_id)
     count=db.execute("""SELECT count(*) AS n FROM uploads
-        WHERE kind='fo' AND finalized AND original_media_type IS NULL AND batch_id=%s""",
+        WHERE kind='fo' AND finalized AND ((media_action IS NULL AND original_media_type IS NULL)
+        OR media_action='keep' OR media_output_path IS NOT NULL) AND batch_id=%s""",
         (data.batch_id,)).fetchone()["n"]
     pending=db.execute("""SELECT count(*) AS n FROM uploads
         WHERE kind='fo' AND batch_id=%s AND NOT finalized""",
@@ -78,7 +81,7 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
         WHERE s.id=1
     """).fetchone()["n"]
     if count<1:
-        raise HTTPException(422,"В партии нет фотографий в формате, который поддерживает MegaLoc")
+        raise HTTPException(422,"В партии нет фотографий в формате, который поддерживает MegaLoc, или подготовленного видео")
     if refs<1:
         # The very first library preparation may already be ahead of this FO
         # in FIFO. Claim will pin V2 only after the prior preparation publishes.
@@ -96,6 +99,8 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
           "output":str(DATA_DIR/"outputs"),"batch_id":str(data.batch_id),
           "selected_models":["megaloc"],"grouping_threshold":data.grouping_threshold,
           "models":{},"progress":{},"enqueued_at":now.isoformat(),
+          "has_media_profile":bool(db.execute("SELECT media_image_format FROM batches WHERE id=%s",
+              (data.batch_id,)).fetchone()['media_image_format']),
           "started_at":now.isoformat(),"source":source}
     db.execute("""UPDATE batches SET download_confirmed_at=NULL,
         delete_after_at=NULL,confirmed_run_id=NULL,upload_state='sealed'

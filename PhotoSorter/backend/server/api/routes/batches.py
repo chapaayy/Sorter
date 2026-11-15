@@ -1,6 +1,7 @@
 """Batch list/detail/update, safe deletion and explicit archive confirmation."""
 from __future__ import annotations
 import uuid
+from typing import Literal
 from fastapi import APIRouter,HTTPException
 from pydantic import BaseModel,Field
 from ...services import batches,cleanup,retention,upload_manifest,auto_processing,batch_runs
@@ -26,6 +27,8 @@ class ManifestFile(BaseModel):
 
 class BatchManifest(BaseModel):
     files:list[ManifestFile]=Field(min_length=1,max_length=20000)
+    image_format:Literal["jpg","png"]|None=None
+    video_format:Literal["mp4","webm"]|None=None
     auto_process:bool=False
     grouping_threshold:float=Field(default=.50,ge=.50,le=.99,allow_inf_nan=False)
 
@@ -40,8 +43,20 @@ def list_batches(limit:int=100,offset:int=0):
 
 @router.put("/{batch_id}/upload-manifest")
 def register_manifest(batch_id:str,payload:BatchManifest):
+    if (payload.image_format is None) != (payload.video_format is None):
+        raise HTTPException(422,"Выберите форматы для фото и видео")
     return upload_manifest.register(batch_id,payload.files,
-        auto_process=payload.auto_process,grouping_threshold=payload.grouping_threshold)
+        image_format=payload.image_format,video_format=payload.video_format,auto_process=payload.auto_process,grouping_threshold=payload.grouping_threshold)
+
+@router.post("/{batch_id}/media/retry",status_code=202)
+def retry_media(batch_id:uuid.UUID):
+    from ...services.media_preparation import retry
+    return retry(batch_id)
+
+@router.get("/{batch_id}/media/errors")
+def media_errors(batch_id:uuid.UUID):
+    from ...services.media_preparation import file_errors
+    return file_errors(batch_id)
 
 @router.get("/{batch_id}/upload-manifest")
 def manifest(batch_id:str):

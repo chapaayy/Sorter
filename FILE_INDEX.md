@@ -43,7 +43,7 @@
 | `backend/server/security/access_policy.py` | Политика доступа владельца и зрителя к конкретным результатам |
 | `backend/server/db/migrations/0024_access_requests.sql` | Роли, заявки и привязка доступа к запускам |
 | `frontend/src/features/auth/` | Общая форма входа, регистрации и их стили |
-| `frontend/src/features/settings/users/` | Очередь заявок и выбор доступных результатов |
+| `frontend/src/features/admin/users/` | Очередь заявок и выбор доступных результатов |
 | `backend/server/api/routes/batches.py` | Партии, серверный манифест, отмена ожидаемой автообработки, незавершённые загрузки и безопасное удаление |
 | `backend/server/api/routes/references.py` | Галерея, проверка пакета, адрес конструкции и удаление образцов |
 | `backend/server/api/routes/models.py` | Модели, скачивание и состояние |
@@ -296,3 +296,15 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | `PhotoSorter/frontend/src/utils/deletionProgress.ts` | Фазы и проценты удаления по серверному снимку, отдельно от MegaLoc |
 | `PhotoSorter/frontend/src/components/ui/CompactTaskCard.vue` | Общий компонент статусных карточек, красная заливка удаления |
 | `PhotoSorter/frontend/src/styles/task-cards.css` | Палитра обводок и красная заливка удаления |
+
+### Смешанные ФО
+
+| Путь | Назначение |
+|---|---|
+| `PhotoSorter/backend/server/db/migrations/0029_batch_media.sql` | Профили партии, нормализованные файлы, прогресс в общей FIFO |
+| `PhotoSorter/backend/server/media/formats.py` | Проверка контейнера и дорожек, нормализация фото |
+| `PhotoSorter/backend/server/media/video.py` | Перепаковка, кодирование и выбор временных кадров |
+| `PhotoSorter/backend/server/media/sorting.py` | Изоляция кадров от групп фото и одно назначение на видео |
+| `PhotoSorter/backend/server/services/media_preparation.py` | Постановка и повтор перекодирования |
+| `PhotoSorter/backend/server/workers/media_prepare.py` | Выполнение под существующей блокировкой FIFO |
+| `PhotoSorter/frontend/src/features/admin/AdminView.vue` | Отдельная вкладка для управления пользователями |

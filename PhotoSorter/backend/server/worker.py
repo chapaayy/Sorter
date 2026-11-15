@@ -6,7 +6,7 @@ from psycopg.rows import dict_row
 from .database import connect,wait_and_initialize,DB_URL
 from .services import heartbeat
 from .db.repositories import work_queue
-from .workers import reference_prepare
+from .workers import reference_prepare,media_prepare
 from .workers.warm_megaloc import WarmMegaLoc
 from .jobs import ServerJob
 
@@ -34,6 +34,9 @@ def _configure_cpu(kind):
     set_runtime_threads(cpu_limit)
 
 def _process_task(item,warm):
+    if item['kind']=='media_preparation':
+        _configure_cpu(item['kind'])
+        return media_prepare.run(item,stopping=lambda:not RUN)
     _configure_cpu(item['kind'])
     if item['kind']=='fo_processing':
         info=item['info']

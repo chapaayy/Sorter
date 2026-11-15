@@ -28,7 +28,8 @@ def claim():
             lease_until=NULL,updated_at=now()
             WHERE state='running' AND lease_until<now() AND attempts>=%s""",
             (MAX_ATTEMPTS,))
-        row=db.execute("""SELECT t.upload_id,t.checksum,t.version,u.kind,u.batch_id,u.sam,u.target_path
+        row=db.execute("""SELECT t.upload_id,t.checksum,t.version,u.kind,u.batch_id,u.sam,u.target_path,
+                 u.media_action,u.original_media_type
           FROM thumbnail_tasks t JOIN uploads u ON u.id=t.upload_id
           WHERE u.finalized AND (t.state='queued' OR
             (t.state='running' AND t.lease_until<now()))
@@ -50,6 +51,8 @@ def _image_source(task):
 
 def render(source:Path,destination:Path):
     """Bounded EXIF-correct 480px WebP, published atomically in same filesystem."""
+    from ..media.formats import register_heif
+    register_heif()
     Image.MAX_IMAGE_PIXELS=cache.PIXEL_LIMIT
     destination.parent.mkdir(parents=True,exist_ok=True)
     fd,name=tempfile.mkstemp(prefix=".thumb-",suffix=".webp.tmp",dir=destination.parent)
@@ -97,7 +100,14 @@ def complete(task):
         output=cache.location(task["checksum"],task["version"])
         if not output.is_file():
             source=_image_source(task)
-            render(source,output)
+            if (task.get("original_media_type") or "").startswith("video/"):
+                from ..media.video import poster
+                with tempfile.TemporaryDirectory() as tmp:
+                    frame=Path(tmp)/'poster.jpg'
+                    poster(source,frame)
+                    render(frame,output)
+            else:
+                render(source,output)
         with connect() as db:
             # Task may have been deleted with its parent batch/reference.
             db.execute("""UPDATE thumbnail_tasks SET state='ready',lease_until=NULL,
@@ -122,7 +132,7 @@ def _refresh_batch(db,batch_id):
     if not batch_id:return
     db.execute("""UPDATE batches SET thumbnail_state=CASE
       WHEN EXISTS (SELECT 1 FROM uploads u LEFT JOIN thumbnail_tasks t ON t.upload_id=u.id
-        WHERE u.batch_id=%s AND u.finalized AND u.original_media_type IS NULL AND
+        WHERE u.batch_id=%s AND u.finalized AND (u.original_media_type IS NULL OR u.media_action IS NOT NULL) AND
         (t.state IS NULL OR t.state<>'ready')) THEN 'pending'
       ELSE 'ready' END WHERE id=%s""",(batch_id,batch_id))
 
@@ -132,7 +142,7 @@ def counts(batch_id):
            count(*) FILTER(WHERE t.state='ready') AS ready,
            count(*) FILTER(WHERE t.state='failed') AS failed
            FROM uploads u LEFT JOIN thumbnail_tasks t ON t.upload_id=u.id
-           WHERE u.kind='fo' AND u.finalized AND u.original_media_type IS NULL AND u.batch_id=%s""",(batch_id,)).fetchone()
+           WHERE u.kind='fo' AND u.finalized AND (u.original_media_type IS NULL OR u.media_action IS NOT NULL) AND u.batch_id=%s""",(batch_id,)).fetchone()
     return row
 
 def gc_unowned(limit=100,grace_seconds=86400):
