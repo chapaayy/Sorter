@@ -126,7 +126,7 @@
 | `frontend/src/components/layout/Shell.vue` | Шесть вкладок; сворачиваемая desktop-панель и mobile drawer |
 | `frontend/src/components/ui/` | Buttons, confirmation, empty state, toast, карточки |
 | `frontend/src/components/gallery/` | Lazy/virtual thumbnails и ImageViewer |
-| `frontend/src/components/split/GroupPicker.vue` | Двухпанельный выбор: однострочные подписи, счётчики, tooltip, регулируемая ширина с сохранением в браузере; мобильная версия |
+| `frontend/src/components/split/GroupPicker.vue` | Двухпанельный выбор: однострочные подписи, счётчики, tooltip, мобильная версия; ручная ширина с сохранением только для результатов |
 | `frontend/src/features/auth/LoginView.vue` | Логин |
 | `frontend/src/features/fo/` | Список и галерея ФО, загрузка, восстановление и встроенные состояния MegaLoc |
 | `frontend/src/features/fo/FoBatchCard.vue` | Компактная карточка партии, текущий прогресс передачи, ссылки и доступные действия MegaLoc |

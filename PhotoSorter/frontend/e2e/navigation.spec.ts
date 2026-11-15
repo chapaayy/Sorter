@@ -404,7 +404,7 @@ test('resuming an individual FO does not abort on internal navigation',async({pa
 })
 test('construction list remains one line with ellipsis and a separate count',async({page,isMobile})=>{
   test.skip(isMobile,'Desktop split list only')
-  const longName='SAM 0001 — Московское шоссе, 19 километр, улица Очень Длинная, дом 28А корпус 7'
+  const longName='SAM 0001 — Московское шоссе, 19 километр, улица Очень Длинная, дом 28А корпус 7, северная сторона, напротив торгового центра, рядом с выездом на эстакаду'
   await page.route('**/api/references',route=>respond(route,{
     sam:[{sam:'SAM 0001',display_name:longName,photos:7},
          {sam:'SAM 0002',display_name:'SAM 0002 — Гагарина 64',photos:12}],
@@ -454,32 +454,42 @@ test('saved desktop collapse does not affect the mobile navigation drawer',async
   await expect(page.getByRole('heading',{name:'Настройки',exact:true})).toBeVisible()
 })
 
-test('desktop construction list can be resized and the width survives refresh',async({page,isMobile})=>{
+test('desktop references use the maximum responsive width without a resize handle',async({page,isMobile})=>{
   test.skip(isMobile,'Mobile uses the standard picker')
-  await page.goto('/references')
-  const aside=page.locator('.split-aside')
+  await page.setViewportSize({width:1600,height:900})
+  await page.addInitScript(()=>localStorage.setItem('ps.group-picker.width','250'))
+  const library=holdTransfer()
+  await page.route('**/api/references',async route=>{
+    await library.waiting
+    return respond(route,{sam:[{sam:'SAM-0001',photos:1}],total:1})
+  })
+  try{
+    await page.goto('/references',{waitUntil:'domcontentloaded'})
+    await expect(page.locator('.skeleton-split .split-aside')).toHaveCSS('width','720px')
+    library.release()
+    const aside=page.locator('aside.split-aside')
+    await expect(aside).toHaveCSS('width','720px')
+    await expect(page.locator('.split-resize-handle')).toHaveCount(0)
+    await page.setViewportSize({width:1050,height:900})
+    const layout=await aside.evaluate(el=>({
+      list:el.getBoundingClientRect().width,split:el.parentElement!.clientWidth
+    }))
+    expect(layout.list).toBeCloseTo(layout.split-380,0)
+    expect(layout.list).toBeLessThan(720)
+    await page.setViewportSize({width:1600,height:900})
+    await expect(aside).toHaveCSS('width','720px')
+  }finally{library.release()}
+})
+
+test('result galleries still allow desktop panel resizing',async({page,isMobile})=>{
+  test.skip(isMobile,'Mobile uses the standard picker')
+  await page.goto('/results/'+rid)
   const grip=page.getByRole('separator',{name:'Изменить ширину списка конструкций'})
   await expect(grip).toBeVisible()
+  const aside=page.locator('aside.split-aside')
   const before=await aside.evaluate(el=>el.getBoundingClientRect().width)
-  const box=await grip.boundingBox()
-  expect(box).not.toBeNull()
-  if(!box)throw Error('Resize grip is missing')
-  await page.mouse.move(box.x+box.width/2,box.y+box.height/2)
-  await page.mouse.down()
-  await page.mouse.move(box.x+box.width/2+120,box.y+box.height/2,{steps:6})
-  await page.mouse.up()
-  const after=await aside.evaluate(el=>el.getBoundingClientRect().width)
-  expect(after).toBeGreaterThan(before+50)
-  const saved=await page.evaluate(()=>localStorage.getItem('ps.group-picker.width'))
-  expect(saved).toBe(String(Math.round(after)))
-  await page.reload()
-  await expect(aside).toBeVisible()
-  const restored=await aside.evaluate(el=>el.getBoundingClientRect().width)
-  expect(Math.abs(restored-after)).toBeLessThan(2)
-  await grip.focus()
-  await page.keyboard.press('ArrowLeft')
-  const narrower=await aside.evaluate(el=>el.getBoundingClientRect().width)
-  expect(narrower).toBeLessThan(restored)
+  await grip.press('ArrowLeft')
+  expect(await aside.evaluate(el=>el.getBoundingClientRect().width)).toBe(before-40)
 })
 
 test('incomplete photo batch remains blocked in FO, not via a second launch form',async({page})=>{

@@ -129,7 +129,7 @@ async function deleteBatch(){
   <span class="meta">Оценки показаны только для отдельных ФО, из manifest MegaLoc.</span>
 </div>
 <div v-if="list.length" class="split">
-  <GroupPicker v-model="selected" :items="list" :placeholder="mode==='sam'?'Поиск номера или адреса…':'Поиск группы…'"/>
+  <GroupPicker v-model="selected" :items="list" :placeholder="mode==='sam'?'Поиск номера или адреса…':'Поиск группы…'" resizable/>
   <section class="panel split-main">
     <div class="panel-header">
       <div><h2>{{mode==='sam'?displaySam(selected):selected}}</h2><span class="meta">{{list.find(x=>x.id===selected)?.count||0}} ФО</span></div>

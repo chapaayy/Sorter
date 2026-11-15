@@ -6,7 +6,8 @@
     padding-bottom:16px;overflow:hidden;width:100%}
   .reference-library-view{min-height:0;flex:1;display:flex;flex-direction:column}
   .reference-library-view .page-head,.reference-library-view .toolbar{flex:none}
-  .reference-library-view .split{min-height:0;flex:1;overflow:hidden;align-items:stretch}
+  .reference-library-view .split{min-height:0;flex:1;overflow:hidden;align-items:stretch;
+    grid-template-columns:clamp(250px,calc(100% - 380px),720px) minmax(0,1fr)}
   .reference-library-view .split-aside{min-height:0;overflow:visible}
   .reference-library-view .split-list{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain}
   .reference-library-view .split-main{min-height:0;overflow:hidden;padding:0;display:flex;flex-direction:column}

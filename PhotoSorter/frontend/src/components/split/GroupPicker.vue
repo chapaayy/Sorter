@@ -3,7 +3,7 @@ import {computed,onMounted,onUnmounted,ref} from 'vue'
 import UiSelect from '../ui/UiSelect.vue'
 
 export interface GroupItem{id:string;label:string;count:number}
-const props=defineProps<{items:GroupItem[];modelValue:string;placeholder?:string}>()
+const props=defineProps<{items:GroupItem[];modelValue:string;placeholder?:string;resizable?:boolean}>()
 const emit=defineEmits<{(e:'update:modelValue',value:string):void}>()
 
 const search=ref('')
@@ -55,6 +55,7 @@ function onResizeKey(event:KeyboardEvent){
   }
 }
 onMounted(()=>{
+  if(!props.resizable)return
   container=aside.value?.closest('.split') as HTMLElement|null
   let saved=440
   try{
@@ -96,7 +97,7 @@ onUnmounted(()=>{
       </button>
       <p v-if="!filtered.length" class="meta">Ничего не найдено</p>
     </nav>
-    <button type="button" class="split-resize-handle"
+    <button v-if="resizable" type="button" class="split-resize-handle"
       role="separator" aria-orientation="vertical"
       aria-label="Изменить ширину списка конструкций"
       :aria-valuenow="width" :aria-valuemin="MIN_WIDTH" :aria-valuemax="maximumWidth()"
