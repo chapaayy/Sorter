@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import {onMounted,onUnmounted,ref} from 'vue'
 import {resultApi,type PublishedResult} from '../../../api/results'
-import {accessRequests} from '../../../api/accessRequests'
+import type { NewUser } from '../../../api/adminUsers'
 import {date,errorText} from '../../../utils/format'
 import UiButton from '../../../components/ui/UiButton.vue'
-const props=defineProps<{email:string;busy:boolean;editId?:string}>()
-const emit=defineEmits<{approve:[ids:string[]];cancel:[]}>()
+const props=defineProps<{email?:string;busy:boolean;loadGrants?:()=>Promise<{items:PublishedResult[]}>;creating?:boolean;submitError?:string}>()
+const emit=defineEmits<{approve:[ids:string[]];create:[payload:NewUser];cancel:[]}>()
+const email=ref(''),password=ref(''),confirmation=ref(''),formError=ref('')
 const items=ref<PublishedResult[]>([]),chosen=ref<string[]>([]),loading=ref(false),more=ref(false),error=ref('')
 const initialized=ref(false),offset=ref(0)
 const box=ref<HTMLElement|null>(null)
@@ -14,8 +15,8 @@ async function load(){
   if(loading.value)return
   loading.value=true;error.value=''
   try{
-    if(!initialized.value&&props.editId){
-      const data=await accessRequests.grants(props.editId)
+    if(!initialized.value&&props.loadGrants){
+      const data=await props.loadGrants()
       chosen.value=data.items.map(item=>item.id)
       items.value=data.items
     }
@@ -25,6 +26,13 @@ async function load(){
     items.value.push(...data.items.filter(item=>!existing.has(item.id)));more.value=data.has_more
     initialized.value=true
   }catch(e){error.value=errorText(e)}finally{loading.value=false}
+}
+function submit(){
+  if(props.busy||loading.value||!initialized.value)return
+  if(!props.creating){emit('approve',chosen.value);return}
+  formError.value=''
+  if(password.value!==confirmation.value){formError.value='Пароли не совпадают.';return}
+  emit('create',{email:email.value.trim(),password:password.value,confirmation:confirmation.value,run_ids:chosen.value})
 }
 function key(event:KeyboardEvent){
   if(event.key==='Escape'&&!props.busy)emit('cancel')
@@ -48,9 +56,16 @@ onUnmounted(()=>{
 </script>
 <template>
   <Teleport to="body"><div class="modal-overlay" @click.self="!busy&&emit('cancel')">
-    <section ref="box" tabindex="-1" class="modal stack" role="dialog" aria-modal="true" aria-labelledby="approve-title">
-      <h2 id="approve-title">Выдать доступ к результатам</h2>
-      <p>Выберите, какие отчёты сможет смотреть и скачивать <strong>{{email}}</strong>.</p>
+    <form ref="box" tabindex="-1" class="modal stack" role="dialog" aria-modal="true" aria-labelledby="approve-title" @submit.prevent="submit">
+      <h2 id="approve-title">{{creating?'Создать пользователя':'Выдать доступ к результатам'}}</h2>
+      <div v-if="creating" class="stack-sm">
+        <label class="field">Электронная почта<input v-model="email" type="email" autocomplete="off" required maxlength="254" :disabled="busy"/></label>
+        <label class="field">Начальный пароль<input v-model="password" type="password" autocomplete="new-password" required minlength="12" maxlength="256" :disabled="busy"/></label>
+        <label class="field">Повторите пароль<input v-model="confirmation" type="password" autocomplete="new-password" required minlength="12" maxlength="256" :disabled="busy"/></label>
+        <p class="meta">Пароль от 12 символов. Аккаунт будет активен сразу, письмо не отправляется.</p>
+      </div>
+      <p v-if="submitError||formError" class="alert error" role="alert">{{formError||submitError}}</p>
+      <p>Выберите, какие отчёты сможет смотреть и скачивать <strong>{{props.email||'пользователь'}}</strong>.</p>
       <p v-if="error" class="alert error" role="alert">{{error}}</p>
       <div class="grant-options">
         <label v-for="item in items" :key="item.id" class="row">
@@ -63,9 +78,9 @@ onUnmounted(()=>{
       <UiButton v-if="more||loading||error" small :loading="loading" :disabled="busy" @click="load()">{{error?'Повторить':'Показать ещё'}}</UiButton>
       <div class="modal-actions">
         <UiButton :disabled="busy" @click="emit('cancel')">Отмена</UiButton>
-        <UiButton kind="primary" :loading="busy" :disabled="!initialized||loading" @click="emit('approve',chosen)">{{editId?'Сохранить':'Одобрить'}}</UiButton>
+        <UiButton kind="primary" :loading="busy" type="submit" :disabled="!initialized||loading">{{creating?'Создать':loadGrants?'Сохранить':'Одобрить'}}</UiButton>
       </div>
-    </section>
+    </form>
   </div></Teleport>
 </template>
 <style scoped>

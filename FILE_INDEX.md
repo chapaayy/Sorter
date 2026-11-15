@@ -43,7 +43,8 @@
 | `backend/server/security/access_policy.py` | Политика доступа владельца и зрителя к конкретным результатам |
 | `backend/server/db/migrations/0024_access_requests.sql` | Роли, заявки и привязка доступа к запускам |
 | `frontend/src/features/auth/` | Общая форма входа, регистрации и их стили |
-| `frontend/src/features/admin/users/` | Очередь заявок и выбор доступных результатов |
+| `frontend/src/features/admin/users/` | Аккаунты, очередь заявок и выбор доступных результатов |
+| `backend/server/api/routes/admin_users.py`, `backend/server/services/admin_users.py` | Прямое создание зрителей, список аккаунтов и редактирование доступов |
 | `backend/server/api/routes/batches.py` | Партии, серверный манифест, отмена ожидаемой автообработки, незавершённые загрузки и безопасное удаление |
 | `backend/server/api/routes/references.py` | Галерея, проверка пакета, адрес конструкции и удаление образцов |
 | `backend/server/api/routes/models.py` | Модели, скачивание и состояние |

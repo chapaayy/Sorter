@@ -69,7 +69,7 @@ Caddy (:80/:443) ──────► FastAPI (api:8000, один процес�
 
 ## Основные сценарии
 
-**Заявки на доступ:** `features/auth` → `api/routes/access_requests.py` → `services/access_requests.py` → репозиторий заявок и миграция 0024. Владелец выбирает готовые запуски в `features/admin/users`; одобрение создаёт аккаунт и разрешения в одной транзакции. `security/access_policy.py` ограничивает каталог, фото и ZIP конкретными разрешёнными запусками.
+**Заявки на доступ:** `features/auth` → `api/routes/access_requests.py` → `services/access_requests.py` → репозиторий заявок и миграция 0024. Владелец выбирает готовые запуски в `features/admin/users`; одобрение создаёт аккаунт и разрешения в одной транзакции. Прямое создание и управление доступом из списка аккаунтов идут через `api/routes/admin_users.py` → `services/admin_users.py`, с теми же таблицами пользователей и разрешений. `security/access_policy.py` ограничивает каталог, фото и ZIP конкретными разрешёнными запусками.
 
 **Образцы:** Vue `ReferenceDirectoryImporter` → проверка папок → `POST /api/references/import/preview` для сверки города, номера и адреса. Затем оба сценария, импорт папки и добавление фото через `ReferencePhotoUploader`, сравнивают SHA-256 c опубликованной библиотекой через `POST /api/reference-imports/compare`. `ReferenceImportReview` показывает новые фото и дубли. После подтверждения новые файлы передаются через `referenceTransfer.ts` и `/api/reference-imports`, сервер проверяет их и создаёт задачу только при наличии новых образцов. Адрес хранится отдельно в `reference_constructions`. [Инструкция](docs/REFERENCE_IMPORT.md).
 

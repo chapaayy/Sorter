@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import LoadingSkeleton from '../../../components/ui/LoadingSkeleton.vue'
-import {onMounted,ref} from 'vue'
+import {onMounted,ref,watch} from 'vue'
 import {accessRequests,type AccessRequest,type RequestStatus} from '../../../api/accessRequests'
 import {date,errorText} from '../../../utils/format'
 import UiButton from '../../../components/ui/UiButton.vue'
 import ConfirmDialog from '../../../components/ui/ConfirmDialog.vue'
 import ApproveAccessDialog from './ApproveAccessDialog.vue'
 import {useNoticeStore} from '../../../stores/notice'
+const props=defineProps<{refreshKey?:number}>()
+const emit=defineEmits<{approved:[]}>()
 const tabs=[{id:'pending',label:'На рассмотрении'},{id:'approved',label:'Одобренные'},{id:'rejected',label:'Отклонённые'}] as const
 const tab=ref<RequestStatus>('pending'),items=ref<AccessRequest[]>([]),more=ref(false)
 const loading=ref(false),busy=ref(false),error=ref('')
@@ -35,11 +37,13 @@ async function decide(runIds:string[]=[]){
     if(edit)await accessRequests.save(item.id,runIds)
     else await accessRequests.decide(item.id,approved,runIds)
     selected.value=null
+    if(approved&&!edit)emit('approved')
     notice.add(edit?'Доступ обновлён':approved?'Заявка одобрена':'Заявка отклонена','ok')
     await load()
   }catch(e){selected.value=null;error.value=errorText(e)}finally{busy.value=false}
 }
 onMounted(()=>{void load()})
+watch(()=>props.refreshKey,()=>{void load()})
 </script>
 
 <template>
@@ -66,7 +70,7 @@ onMounted(()=>{void load()})
     <p v-else-if="!items.length&&!error" class="meta">Заявок пока нет.</p>
     <UiButton v-if="more" small :disabled="loading" @click="load(true)">Показать ещё</UiButton>
   </section>
-  <ApproveAccessDialog v-if="selected?.approved" :email="selected.item.email" :busy="busy" :edit-id="selected.edit?selected.item.id:undefined"
+  <ApproveAccessDialog v-if="selected?.approved" :email="selected.item.email" :busy="busy" :load-grants="selected.edit?()=>accessRequests.grants(selected!.item.id):undefined"
     @approve="decide" @cancel="selected=null"/>
   <ConfirmDialog v-else-if="selected" title="Отклонить заявку?"
     :message="selected.item.email+' не получит доступ к MAP.'"

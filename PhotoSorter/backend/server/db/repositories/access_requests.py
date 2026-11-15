@@ -20,10 +20,10 @@ def pending_for_update(db, request_id):
     return db.execute("SELECT * FROM access_requests WHERE id=%s FOR UPDATE", (request_id,)).fetchone()
 
 
-def create_viewer(db, application):
+def create_viewer(db, email, salt, verifier):
     return db.execute("""INSERT INTO users(username,password_salt,password_hash,access_role)
-        VALUES (%s,%s,%s,'viewer') ON CONFLICT(username) DO NOTHING RETURNING id""",
-        (application["email"], application["password_salt"], application["password_hash"])).fetchone()
+        VALUES (%s,%s,%s,'viewer') ON CONFLICT(username) DO NOTHING RETURNING id,username AS email,created_at""",
+        (email, salt, verifier)).fetchone()
 
 
 def grant_results(db, user_id, run_ids):
@@ -54,3 +54,24 @@ def decide(db, request_id, status):
     return db.execute(f"""UPDATE access_requests SET status=%s,decided_at=now(),
         password_salt=NULL,password_hash=NULL WHERE id=%s RETURNING {PUBLIC_FIELDS}""",
         (status, request_id)).fetchone()
+
+
+def list_users(db, limit, offset):
+    return db.execute("""SELECT id,username AS email,created_at FROM users
+        WHERE access_role='viewer' ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s""",
+        (limit, offset)).fetchall()
+
+
+def user_email(db, user_id):
+    row = db.execute("SELECT username FROM users WHERE id=%s AND access_role='viewer'",
+                     (user_id,)).fetchone()
+    return row["username"] if row else None
+
+
+def lock_email(db, email):
+    db.execute("SELECT pg_advisory_xact_lock(723409143,hashtext(%s))", (email,))
+
+
+def pending_by_email(db, email):
+    return db.execute("SELECT id FROM access_requests WHERE email=%s AND status='pending' FOR UPDATE",
+                      (email,)).fetchone()

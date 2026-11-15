@@ -14,7 +14,7 @@ from server import auth, database
 from server.api.routes import access_requests, downloads, images, results
 from server.main import app
 from server.security.login_throttle import LoginThrottle
-from server.services import access_requests as moderation
+from server.services import access_requests as moderation, admin_users
 
 ORIGIN = "https://sorter.example.test"
 OWNER = "disposable_admin_password"
@@ -38,7 +38,7 @@ def isolated(monkeypatch):
     with psycopg.connect(database.DB_URL, autocommit=True) as root:
         root.execute(f"CREATE SCHEMA {schema}")
         try:
-            for module in (auth, database, moderation, results, downloads):
+            for module in (auth, database, moderation, admin_users, results, downloads):
                 monkeypatch.setattr(module, "connect", connect)
             monkeypatch.setattr(auth, "limiter", LoginThrottle())
             monkeypatch.setattr(access_requests, "submissions", LoginThrottle())
@@ -175,3 +175,59 @@ def test_concurrent_decisions_cannot_create_two_accounts(isolated):
         assert sorted(pool.map(approve, range(2))) == [200,409]
     with isolated() as db:
         assert db.execute("SELECT count(*) AS n FROM users WHERE username=%s",(EMAIL,)).fetchone()["n"] == 1
+
+
+def test_owner_can_create_active_account_and_change_its_grants(isolated):
+    owner, viewer, guest = client(), client(), client()
+    add_run(isolated, RUN, "completed")
+    add_run(isolated, HIDDEN, "completed")
+    endpoint = "/api/admin/users"
+    body = {"email":"  Viewer@EXAMPLE.TEST ","password":PASSWORD,
+            "confirmation":PASSWORD,"run_ids":[RUN]}
+    assert guest.post(endpoint,json=body).status_code == 401
+    assert login(owner,"admin",OWNER).status_code == 200
+    assert owner.post(endpoint,json=body,headers={"Origin":"https://other.test"}).status_code == 403
+    assert owner.post(endpoint,json={**body,"run_ids":[RUN.replace("b","0")]}).status_code == 409
+    assert login(viewer).status_code == 401
+    invalid = owner.post(endpoint,json={**body,"password":"short-test"})
+    assert invalid.status_code == 422 and "short-test" not in invalid.text
+    assert owner.post(endpoint,json={**body,"confirmation":"wrong"}).status_code == 422
+
+    response = owner.post(endpoint,json=body)
+    assert response.status_code == 201
+    record = response.json()
+    assert set(record) == {"id","email","created_at"} and record["email"] == EMAIL
+    assert owner.get(endpoint).json() == {"items":[record],"has_more":False}
+    assert owner.post(endpoint,json=body).status_code == 409
+    assert login(viewer).status_code == 200
+    assert viewer.get(endpoint).status_code == 403
+    assert viewer.post(endpoint,json=body).status_code == 403
+    path = f"{endpoint}/{record['id']}/grants"
+    assert viewer.put(path,json={"run_ids":[HIDDEN]}).status_code == 403
+    assert [x["id"] for x in viewer.get("/api/results/catalog").json()["items"]] == [RUN]
+    assert viewer.get(f"/api/results/{HIDDEN}").status_code == 404
+    assert owner.put(path,json={"run_ids":[HIDDEN]}).status_code == 200
+    assert [x["id"] for x in viewer.get("/api/results/catalog").json()["items"]] == [HIDDEN]
+    assert owner.put(path,json={"run_ids":[]}).json() == {"items":[]}
+    assert viewer.get("/api/results/catalog").json()["items"] == []
+    with isolated() as db:
+        user = db.execute("SELECT password_hash,access_role FROM users WHERE username=%s",(EMAIL,)).fetchone()
+        assert user["password_hash"] != PASSWORD and user["access_role"] == "viewer"
+        assert db.execute("SELECT count(*) AS n FROM access_requests").fetchone()["n"] == 0
+
+
+def test_direct_account_creation_resolves_existing_request_without_using_its_password(isolated):
+    owner, viewer = client(), client()
+    assert apply(viewer).status_code == 202
+    assert login(owner,"admin",OWNER).status_code == 200
+    password = PASSWORD + "_set_by_owner"
+    created = owner.post("/api/admin/users",json={
+        "email": EMAIL,"password":password,"confirmation":password,"run_ids":[],
+    })
+    assert created.status_code == 201
+    assert login(viewer).status_code == 401
+    assert login(viewer,password=password).status_code == 200
+    assert owner.get("/api/admin/access-requests?status=pending").json()["items"] == []
+    with isolated() as db:
+        request = db.execute("SELECT status,password_hash FROM access_requests").fetchone()
+        assert request == {"status":"approved","password_hash":None}

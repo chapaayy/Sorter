@@ -23,6 +23,7 @@ async function mock(page:Page){
     if(p==='/api/auth/me')return respond(route,{username:'admin'})
     if(p==='/api/auth/login')return respond(route,{username:'admin'})
     if(p==='/api/auth/logout')return respond(route,{ok:true})
+    if(p==='/api/admin/users')return respond(route,{items:[],has_more:false})
     if(p==='/api/admin/access-requests')return respond(route,{items:[],has_more:false})
     if(p==='/api/batches')return respond(route,{batches:[batch],total:1})
     if(p==='/api/batches/'+bid)return respond(route,batch)

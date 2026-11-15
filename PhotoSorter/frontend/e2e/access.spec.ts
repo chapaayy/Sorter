@@ -128,6 +128,7 @@ test('pill fields, password toggle and registration feedback',async({page})=>{
 
 test('owner can read the comment and approve after confirmation',async({page})=>{
   await page.route('**/api/auth/me',route=>route.fulfill({json:{username:'admin'}}))
+  await page.route('**/api/admin/users?**',route=>route.fulfill({json:{items:[],has_more:false}}))
   let decided=false
   await page.route('**/api/results/catalog**',route=>route.fulfill({
     json:{items:[{id:run,display_name:'Готовый отчёт',status:'completed'}],has_more:false}
@@ -189,4 +190,50 @@ test('approved viewer lands in Results and sees no edit controls',async({page})=
   await expect(page.getByRole('button',{name:/Скачать всю сортировку/})).toBeEnabled()
   await expect(page.getByRole('button',{name:'Удалить всю партию'})).toHaveCount(0)
   expect(unexpected).toEqual([])
+})
+
+test('owner creates a viewer directly and can revoke its selected reports',async({page})=>{
+  await page.route('**/api/auth/me',route=>route.fulfill({json:{username:'admin'}}))
+  await page.route('**/api/admin/access-requests?**',route=>route.fulfill({json:{items:[],has_more:false}}))
+  const report={id:run,display_name:'Готовый отчёт',status:'completed'}
+  await page.route('**/api/results/catalog?**',route=>route.fulfill({json:{items:[report],has_more:false}}))
+  const user={id:2,email,created_at:'2026-11-15T12:00:00Z'}
+  let created=false,grants=[report]
+  await page.route(/\/api\/admin\/users(?:\?.*)?$/,route=>{
+    if(route.request().method()==='POST'){
+      expect(route.request().postDataJSON()).toEqual({email,password,confirmation:password,run_ids:[run]})
+      created=true
+      return route.fulfill({status:201,json:user})
+    }
+    return route.fulfill({json:{items:created?[user]:[],has_more:false}})
+  })
+  await page.route('**/api/admin/users/2/grants',route=>{
+    if(route.request().method()==='PUT'){
+      expect(route.request().postDataJSON()).toEqual({run_ids:[]})
+      grants=[]
+    }
+    return route.fulfill({json:{items:grants}})
+  })
+  await page.goto('/admin')
+  await page.getByRole('button',{name:'Создать пользователя'}).click()
+  const create=page.getByRole('dialog',{name:'Создать пользователя'})
+  await create.getByLabel('Электронная почта').fill(email)
+  await create.getByLabel('Начальный пароль').fill(password)
+  await create.getByLabel('Повторите пароль').fill(password+'-typo')
+  await create.getByRole('checkbox',{name:/Готовый отчёт/}).check()
+  await create.getByRole('button',{name:'Создать',exact:true}).click()
+  await expect(create.getByRole('alert')).toHaveText('Пароли не совпадают.')
+  expect(created).toBe(false)
+  await create.getByLabel('Повторите пароль').fill(password)
+  await create.getByRole('button',{name:'Создать',exact:true}).click()
+  await expect(create).toHaveCount(0)
+  const accounts=page.getByRole('region',{name:'Аккаунты'})
+  await expect(accounts.getByText(email,{exact:true})).toBeVisible()
+  await accounts.getByRole('button',{name:'Изменить доступ'}).click()
+  const edit=page.getByRole('dialog',{name:'Выдать доступ к результатам'})
+  const option=edit.getByRole('checkbox',{name:/Готовый отчёт/})
+  await expect(option).toBeChecked()
+  await option.uncheck()
+  await edit.getByRole('button',{name:'Сохранить'}).click()
+  await expect(edit).toHaveCount(0)
 })

@@ -17,7 +17,7 @@ from .api.routes.work_queue import router as work_queue_router
 from .api.routes.library_notices import router as library_notices_router
 from .jobs import router as jobs_router
 from .security.access_policy import authorize
-from .api.routes import access_requests,auth,batches,downloads,images,logs,models,results,site,storage,thumbnails,references,originals,system,processing_settings
+from .api.routes import access_requests,admin_users,auth,batches,downloads,images,logs,models,results,site,storage,thumbnails,references,originals,system,processing_settings
 
 @asynccontextmanager
 async def lifespan(app):
@@ -33,7 +33,7 @@ PUBLIC_ENDPOINTS = {("GET", "/api/health"), ("POST", "/api/auth/login"), ("POST"
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError):
-    if request.url.path in ("/api/auth/login", "/api/auth/register"):
+    if request.url.path in ("/api/auth/login", "/api/auth/register", "/api/admin/users"):
         return JSONResponse({"detail": "Проверьте поля формы и длину пароля."}, status_code=422)
     return await request_validation_exception_handler(request, exc)
 
@@ -56,7 +56,7 @@ async def private_api(request:Request,call_next):
 @app.get("/api/health")
 def health():return {"status":"ok","version":"0.1.0-beta.1"}
 
-for router in (auth.router,access_requests.router,batches.router,uploads_router,reference_imports_router,work_queue_router,library_notices_router,jobs_router,
+for router in (auth.router,access_requests.router,admin_users.router,batches.router,uploads_router,reference_imports_router,work_queue_router,library_notices_router,jobs_router,
                models.router,results.router,images.router,downloads.router,
                logs.router,storage.router,thumbnails.router,references.router,originals.router,system.router,processing_settings.router,site.router):
     app.include_router(router)

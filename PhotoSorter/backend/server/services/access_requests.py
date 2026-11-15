@@ -9,12 +9,19 @@ from ..db.repositories import access_requests as repository
 EMAIL = re.compile(r"[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+")
 
 
-def submit(email, password, confirmation, comment):
-    email, comment = email.strip().lower(), comment.strip()
-    if len(email) > 254 or not EMAIL.fullmatch(email):
+def credentials(email, password, confirmation):
+    email = email.strip().lower()
+    if len(email) > 254 or "\x00" in email or not EMAIL.fullmatch(email):
         raise HTTPException(422, "Укажите корректный адрес электронной почты")
     if password != confirmation:
         raise HTTPException(422, "Пароли не совпадают")
+    if not 12 <= len(password) <= 256 or "\x00" in password:
+        raise HTTPException(422, "Пароль должен содержать от 12 до 256 символов")
+    return email
+
+
+def submit(email, password, confirmation, comment):
+    email, comment = credentials(email, password, confirmation), comment.strip()
     if not comment:
         raise HTTPException(422, "Расскажите, кто вы и к каким результатам нужен доступ")
     if any("\x00" in value for value in (email, comment)):
@@ -22,6 +29,7 @@ def submit(email, password, confirmation, comment):
     salt = secrets.token_bytes(16)
     verifier = hash_password(password, salt)
     with connect() as db:
+        repository.lock_email(db, email)
         repository.create(db, email, comment, salt.hex(), verifier)
 
 
@@ -52,7 +60,8 @@ def decide(request_id, approved, run_ids=()):
             raise HTTPException(409, "Заявка уже рассмотрена")
         if approved:
             chosen = available_results(db, run_ids)
-            user = repository.create_viewer(db, application)
+            user = repository.create_viewer(db, application["email"],
+                                            application["password_salt"], application["password_hash"])
             if user is None:
                 raise HTTPException(409, "Аккаунт с этой почтой уже существует")
             if chosen:
