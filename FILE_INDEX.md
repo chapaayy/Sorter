@@ -72,6 +72,7 @@
 | `backend/server/services/cleanup.py` | Удаление только owned files через доверенные UUID |
 | `backend/server/storage/batch_cleanup.py` | Удаление файлов партии по фактическим операциям, без обхода символических ссылок |
 | `backend/server/db/migrations/0026_cleanup_progress.sql` | Аддитивное поле прогресса фонового удаления |
+| `backend/server/db/migrations/0027_batch_creation_names.sql` | UUID попытки создания ФО и индекс видимых имён для выдачи суффиксов |
 | `backend/server/services/temp_cleanup.py` | Устаревшие незавершённые передачи |
 | `backend/server/services/thumbnails.py` | WebP queue и кеширование превью |
 | `backend/server/services/thumbnail_gc.py` | Сборка вызовов очистки WebP cache |
@@ -241,7 +242,7 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | `PhotoSorter/frontend/src/components/upload/FoUploadDialog.vue` | Окно выбора папки ФО, уведомление об изменениях образцов |
 | `PhotoSorter/frontend/src/components/upload/ReferenceUploadDialog.vue` | Окно создания конструкции с импортом папки и добавление фото в выбранную конструкцию |
 | `PhotoSorter/frontend/src/stores/uploadCenter.ts` | Очередь передачи ФО и образцов в пределах вкладки, управление одной активной передачей |
-| `PhotoSorter/frontend/src/utils/foTransfer.ts` | Передача папки ФО и докачка одного оригинала через серверные манифесты |
+| `PhotoSorter/frontend/src/utils/foTransfer.ts` | Отдельный импорт папки ФО, явная докачка партии по ID и докачка оригинала |
 | `PhotoSorter/frontend/src/styles/upload-dialog.css` | Модалка и фоновый индикатор |
 | `PhotoSorter/frontend/src/styles/reference-layout.css` | Два независимых scroll-контейнера образцов |
 | `PhotoSorter/frontend/src/components/ui/EmptyState.vue` | Единая надпись для пустых списков, очереди, истории и галерей |

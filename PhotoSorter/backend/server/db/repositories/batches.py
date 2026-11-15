@@ -1,6 +1,8 @@
 """PostgreSQL persistence of batch and photo metadata (no filesystem side effects)."""
 from __future__ import annotations
 
+_NAME_ALLOCATION_LOCK=723409142
+
 def get(db, batch_id, *, for_update=False, include_deletion=False):
     if include_deletion:
         return db.execute("""SELECT b.*,c.progress AS deletion_progress FROM batches b
@@ -8,8 +10,21 @@ def get(db, batch_id, *, for_update=False, include_deletion=False):
     suffix=" FOR UPDATE" if for_update else ""
     return db.execute("SELECT * FROM batches WHERE id=%s"+suffix,(batch_id,)).fetchone()
 
-def insert(db,batch_id,name):
-    db.execute("INSERT INTO batches(id,display_name) VALUES (%s,%s)",(batch_id,name))
+def lock_names(db):
+    db.execute("SELECT pg_advisory_xact_lock(%s)",(_NAME_ALLOCATION_LOCK,))
+
+def by_creation_request(db,request_id):
+    return db.execute("""SELECT id,display_name FROM batches
+        WHERE creation_request_id=%s""",(request_id,)).fetchone()
+
+def name_taken(db,name,exclude_id=None):
+    return db.execute("""SELECT 1 FROM batches
+        WHERE delete_state <> 'deleted' AND lower(display_name)=lower(%s)
+          AND id IS DISTINCT FROM %s LIMIT 1""",(name,exclude_id)).fetchone() is not None
+
+def insert(db,batch_id,name,request_id=None):
+    db.execute("INSERT INTO batches(id,display_name,creation_request_id) VALUES (%s,%s,%s)",
+               (batch_id,name,request_id))
 
 def count_photos_and_runs(db,batch_id):
     counter=db.execute("""SELECT count(*) FILTER (WHERE finalized AND original_media_type IS NULL) AS photos,

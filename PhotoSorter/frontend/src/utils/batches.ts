@@ -5,8 +5,3 @@ export function canProcessBatch(batch:Batch):boolean{
   return batch.delete_state==='active' && (batch.photos??0)>0 && (batch.pending??0)===0 &&
     (batch.upload_manifest_state==null||batch.upload_manifest_state==='complete')
 }
-
-// Older responses omitted the 'runs' key on never-processed batches.
-export function canResumeUpload(batch:Batch):boolean{
-  return batch.delete_state==='active' && (batch.runs??0)===0
-}

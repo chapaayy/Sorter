@@ -19,15 +19,30 @@ def _require_active(db,batch_id,lock="FOR UPDATE"):
     if row["delete_state"]!="active":raise HTTPException(409,"Партия удаляется или удалена")
     return row
 
-def create(display_name=None):
+def _available_name(db,base,exclude_id=None):
+    name=base
+    number=2
+    while repository.name_taken(db,name,exclude_id):
+        suffix=" "+str(number)
+        name=base[:120-len(suffix)].rstrip()+suffix
+        number+=1
+    return name
+
+def create(display_name=None,creation_request_id=None):
     name=(display_name or "").strip()
     if len(name)>120:raise HTTPException(422,"Название слишком длинное")
-    batch_id=uuid.uuid4()
     if not name:
         from datetime import datetime,timezone
         name="Фотоотчёт "+datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M")
     with connect() as db:
-        repository.insert(db,batch_id,name)
+        repository.lock_names(db)
+        if creation_request_id is not None:
+            existing=repository.by_creation_request(db,creation_request_id)
+            if existing:
+                return {"batch_id":str(existing["id"]),"display_name":existing["display_name"]}
+        batch_id=uuid.uuid4()
+        name=_available_name(db,name)
+        repository.insert(db,batch_id,name,creation_request_id)
     return {"batch_id":str(batch_id),"display_name":name}
 
 def _serialize(row,counters=None):
@@ -140,8 +155,9 @@ def rename(batch_id,name):
     name=name.strip()
     if not name or len(name)>120:raise HTTPException(422,"Название: от 1 до 120 символов")
     with connect() as db:
+        repository.lock_names(db)
         _require_active(db,batch_id)
-        repository.set_name(db,batch_id,name)
+        repository.set_name(db,batch_id,_available_name(db,name,batch_id))
     return get(batch_id)
 
 def photos(batch_id,limit=100,offset=0):

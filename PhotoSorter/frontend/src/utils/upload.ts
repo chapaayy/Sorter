@@ -22,7 +22,7 @@ function key(t:UploadTarget,entry:UploadEntry){
 }
 function saved(k:string){try{return localStorage.getItem(k)}catch{return null}}
 function remember(k:string,value:string|null){try{if(value)localStorage.setItem(k,value);else localStorage.removeItem(k)}catch{}}
-function newUploadId():string{
+export function newUploadId():string{
   if(typeof crypto==='undefined')throw new Error('Для защищённой передачи нужен HTTPS')
   if(typeof crypto.randomUUID==='function')return crypto.randomUUID()
   const data=crypto.getRandomValues(new Uint8Array(16))

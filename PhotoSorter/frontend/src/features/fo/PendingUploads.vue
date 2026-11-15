@@ -9,7 +9,7 @@ import UiButton from '../../components/ui/UiButton.vue'
 import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 
-const props=defineProps<{batchId:string;disabled?:boolean}>()
+const props=defineProps<{batchId:string;batchName:string;disabled?:boolean}>()
 const emit=defineEmits<{(e:'changed'):void}>()
 const items=ref<PendingUpload[]>([]),manifest=ref<BatchUploadManifest|null>(null),loading=ref(true),error=ref('')
 const activeId=ref(''),activeStatus=ref(''),confirmCancel=ref<PendingUpload|null>(null)
@@ -104,7 +104,11 @@ usePolling(async()=>{if((items.value.length||manifest.value?.state==='waiting')&
   <div v-if="manifest?.state==='waiting'" class="alert warning">
     Партия ещё не полная: сервер сохранил {{manifest.finalized}} из {{manifest.expected}} ожидаемых фотографий.
     <template v-if="manifest.missing">Не начиналась передача {{manifest.missing}} файлов.</template>
-    Выберите ту же папку в загрузчике ФО для продолжения.
+    <div style="margin-top:8px">
+      <UiButton v-if="batchUploading" small @click="uploader.showQueue()">Открыть загрузку</UiButton>
+      <UiButton v-else small :disabled="disabled||!!activeId"
+        @click="uploader.continueFolder(batchId,batchName)">Продолжить загрузку папки</UiButton>
+    </div>
     <div v-for="item in manifest.files.filter(file=>file.state==='not_started'||file.state==='missing_saved').slice(0,10)" :key="item.upload_id" class="meta" style="margin-top:5px;overflow-wrap:anywhere">
       {{item.relative_path}} · {{item.state==='missing_saved'?'оригинал отсутствует на сервере':'ещё не передан'}}
     </div>

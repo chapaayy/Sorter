@@ -26,7 +26,7 @@ onUnmounted(()=>{
       <strong>{{upload.current.status==='running'?uploadPercent(upload.current)+'%':uploadStatusLabel(upload.current.status)}}</strong>
     </button>
   </div>
-  <FoUploadDialog v-if="upload.form?.mode==='fo'" :key="upload.form.id"/>
+  <FoUploadDialog v-if="upload.form?.mode==='fo'" :key="upload.form.id" :target="upload.form.target"/>
   <ReferenceUploadDialog v-else-if="upload.form" :key="upload.form.id"
     :mode="upload.form.mode" :sam="upload.form.sam" :sam-label="upload.form.samLabel"/>
   <UploadQueueDialog v-if="upload.queueOpen"/>

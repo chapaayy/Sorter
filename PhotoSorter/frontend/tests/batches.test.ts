@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest'
 import type {Batch} from '../src/types/api'
-import {canProcessBatch,canResumeUpload} from '../src/utils/batches'
+import {canProcessBatch} from '../src/utils/batches'
 
 function batch(overrides:Partial<Batch>={}):Batch{
   return {
@@ -14,12 +14,10 @@ function batch(overrides:Partial<Batch>={}):Batch{
 describe('batch eligibility with empty history and deleted tombstones',()=>{
   it('offers a newly uploaded batch even if old API omitted runs',()=>{
     expect(canProcessBatch(batch({runs:undefined}))).toBe(true)
-    expect(canResumeUpload(batch({runs:undefined}))).toBe(true)
-    expect(canResumeUpload(batch({runs:0}))).toBe(true)
+    expect(canProcessBatch(batch({runs:0}))).toBe(true)
   })
-  it('allows reprocessing finished batches, but not resuming their original upload',()=>{
+  it('allows reprocessing finished batches',()=>{
     expect(canProcessBatch(batch({runs:1}))).toBe(true)
-    expect(canResumeUpload(batch({runs:1}))).toBe(false)
   })
   it('does not offer unfinished, empty or deleting batches',()=>{
     expect(canProcessBatch(batch({pending:1}))).toBe(false)
@@ -27,6 +25,6 @@ describe('batch eligibility with empty history and deleted tombstones',()=>{
     expect(canProcessBatch(batch({upload_manifest_state:'complete',pending:0}))).toBe(true)
     expect(canProcessBatch(batch({photos:0}))).toBe(false)
     expect(canProcessBatch(batch({delete_state:'deleting'}))).toBe(false)
-    expect(canResumeUpload(batch({delete_state:'deleted'}))).toBe(false)
+    expect(canProcessBatch(batch({delete_state:'deleted'}))).toBe(false)
   })
 })

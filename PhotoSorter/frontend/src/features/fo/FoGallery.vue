@@ -121,7 +121,7 @@ async function removeBatch(){
   </div>
 </section>
 <BatchRunHistory v-if="showHistory&&batch&&(batch.runs??0)>0" :key="id+'-'+historyKey" :batch-id="id" style="margin-bottom:19px"/>
-<PendingUploads v-if="batch?.delete_state==='active'" :batch-id="id" :disabled="!!batch?.runs" @changed="onPendingChanged"/>
+<PendingUploads v-if="batch?.delete_state==='active'" :batch-id="id" :batch-name="batch.display_name" :disabled="!!batch.runs" @changed="onPendingChanged"/>
 <section v-if="count&&(count.total||!batch?.media_files)" class="panel stack-sm" style="margin-bottom:19px">
   <div class="row between"><span>Подготовка миниатюр</span><span class="meta">{{count.ready}} / {{count.total}} · {{readyPercent}}%</span></div>
   <div class="progress-track" role="progressbar" :aria-valuenow="readyPercent" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill" :style="{width:readyPercent+'%'}"/></div>

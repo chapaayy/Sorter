@@ -1,7 +1,6 @@
 import {batchApi} from '../api/batches'
 import {ApiError} from '../api/client'
-import {canResumeUpload} from './batches'
-import {uploadOne,expectedUploadId,resumePendingUpload} from './upload'
+import {uploadOne,expectedUploadId,newUploadId,resumePendingUpload} from './upload'
 import {withUploadRetry} from './uploadRetry'
 import {runUploadQueue} from './uploadQueue'
 import {errorText} from './format'
@@ -9,21 +8,12 @@ import type {BatchUploadManifest,UploadManifestFile} from '../types/api'
 import type {UploadContext,UploadResult,UploadSource} from '../types/uploadQueue'
 
 type FolderUpload=Extract<UploadSource,{kind:'fo'}>
-type Folder=Pick<FolderUpload,'name'|'entries'>
-function folderKey({name,entries}:Folder){
-  return 'ps.folder:'+name+':'+entries.length+':'+entries.reduce((sum,e)=>sum+e.file.size,0)
-}
-export function readFolderBatch(folder:Folder){
-  try{return localStorage.getItem(folderKey(folder))}catch{return null}
-}
-function saveFolderBatch(folder:Folder,id:string){
-  try{localStorage.setItem(folderKey(folder),id)}catch{/* Private mode */}
-}
 
 export function createFoTransfer(selection:FolderUpload){
   const {entries,name}=selection
-  // Keep the exact same batch ID on retry, once the server has assigned it.
-  let batchId=''
+  // A deliberate new import gets its own request ID, even if the files and
+  // title match. Retrying this transfer must not create a second batch.
+  let batchId=selection.resumeBatchId||'',batchName=name,creationRequestId=''
   return async function transfer({signal,parallel,report,setBatch}:UploadContext):Promise<UploadResult>{
     let {autoProcess,threshold}=selection
     let amounts=entries.map(()=>0),completed=new Set<number>()
@@ -45,30 +35,19 @@ export function createFoTransfer(selection:FolderUpload){
           return match?.filename===e.file.name && match.size===e.file.size
         })
       }
-      const saved=readFolderBatch(selection)
-      if(saved&&!batchId){
-        const old=await request(()=>batchApi.one(saved)).catch(err=>{
-          if(err instanceof ApiError&&err.status===404)return null
-          throw err
-        })
-        if(old&&canResumeUpload(old)){
-          if(old.upload_manifest_state){
-            const previous=await request(()=>batchApi.manifest(saved))
-            if(matches(previous))batchId=saved
-          }else batchId=saved
-        }
-      }
       if(!batchId){
-        signal.throwIfAborted()
-        const created=await batchApi.create(name)
-        batchId=created.batch_id;saveFolderBatch(selection,batchId)
+        creationRequestId||=newUploadId()
+        const created=await request(()=>batchApi.create(name,creationRequestId,signal))
+        batchId=created.batch_id;batchName=created.display_name
       }
-      setBatch(batchId)
+      setBatch(batchId,batchName)
       phase='Проверка состава папки…';publish()
       let manifestIds:string[]|null=null
       const current=await request(()=>batchApi.manifest(batchId))
+      if(selection.resumeBatchId&&current.state==='legacy')
+        throw new Error('У этой партии нет манифеста. Продолжите передачу отдельных файлов в её карточке.')
       if(current.state!=='legacy'){
-        if(!matches(current))throw new Error('Выбранная папка не совпадает с манифестом партии. Создайте новую партию.')
+        if(!matches(current))throw new Error('Состав папки не совпадает с манифестом. Выберите исходную папку этого ФО.')
         autoProcess=current.auto_process_state==='waiting'||current.auto_process_state==='queued'
         threshold=current.auto_process_threshold??.50
         const byPath=new Map(current.files.map(file=>[file.relative_path,file]))
@@ -80,19 +59,13 @@ export function createFoTransfer(selection:FolderUpload){
         sentBytes=amounts.reduce((sum,n)=>sum+n,0)
         publish()
       }else{
-        const batch=await request(()=>batchApi.one(batchId))
-        if((batch.photos??0)===0&&(batch.pending??0)===0&&(batch.runs??0)===0){
-          const target={kind:'fo' as const,batchId:batchId}
-          const plan:UploadManifestFile[]=entries.map(e=>({
-            upload_id:expectedUploadId(target,e),relative_path:e.relative,
-            filename:e.file.name,size:e.file.size
-          }))
-          await request(()=>batchApi.registerManifest(batchId,plan,
-            autoProcess,threshold))
-
-          manifestIds=plan.map(e=>e.upload_id)
-        }
-        // Existing partially uploaded legacy batches remain on their old flow.
+        const target={kind:'fo' as const,batchId}
+        const plan:UploadManifestFile[]=entries.map(e=>({
+          upload_id:expectedUploadId(target,e),relative_path:e.relative,
+          filename:e.file.name,size:e.file.size
+        }))
+        await request(()=>batchApi.registerManifest(batchId,plan,autoProcess,threshold))
+        manifestIds=plan.map(e=>e.upload_id)
       }
       const reconnecting=new Set<number>()
       phase='Передача файлов';publish()
@@ -136,7 +109,7 @@ export function createFoTransfer(selection:FolderUpload){
         phase='Проверка полноты партии…';publish()
         const confirmed=await request(()=>batchApi.manifest(batchId))
         if(confirmed.state!=='complete')
-          throw new Error('Сервер ожидает ещё '+confirmed.pending+' файлов. Выберите эту папку для продолжения.')
+          throw new Error('Сервер ожидает ещё '+confirmed.pending+' файлов. Продолжите загрузку из карточки ФО.')
       }
       return {message:autoProcess
         ?'Все файлы партии сохранены. Автообработка доступна для поддерживаемых фотографий.'

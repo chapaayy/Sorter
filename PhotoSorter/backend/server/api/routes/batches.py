@@ -12,6 +12,7 @@ router=APIRouter(prefix="/api/batches",tags=["batches"])
 
 class NewBatch(BaseModel):
     display_name:str|None=Field(default=None,max_length=120)
+    creation_request_id:uuid.UUID|None=None
 class RenameBatch(BaseModel):
     display_name:str=Field(min_length=1,max_length=120)
 class ConfirmDownload(BaseModel):
@@ -30,7 +31,7 @@ class BatchManifest(BaseModel):
 
 @router.post("")
 def create(payload:NewBatch|None=None):
-    return batches.create(payload.display_name if payload else None)
+    return batches.create(payload.display_name,payload.creation_request_id) if payload else batches.create()
 
 @router.get("")
 def list_batches(limit:int=100,offset:int=0):

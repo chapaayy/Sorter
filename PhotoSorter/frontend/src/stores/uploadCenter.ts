@@ -7,7 +7,9 @@ import {useNoticeStore} from './notice'
 import {useUploadSettingsStore} from './uploadSettings'
 import type {RecoverySource,UploadCompletion,UploadContext,UploadResult,UploadRow,UploadSource} from '../types/uploadQueue'
 
-type Form={mode:'fo'|'construction'|'single';id:number;sam:string;samLabel:string}
+type Form=
+  |{mode:'fo';id:number;target?:{id:string;name:string}}
+  |{mode:'construction'|'single';id:number;sam:string;samLabel:string}
 type Runner=(context:UploadContext)=>Promise<UploadResult>
 
 /** One transfer at a time per tab, with no connection to the MegaLoc scheduler. */
@@ -22,7 +24,13 @@ export const useUploadCenterStore=defineStore('upload-center',()=>{
 
   function launch(mode:Form['mode'],sam='',samLabel=''){
     queueOpen.value=false
-    form.value={mode,sam,samLabel,id:++serial}
+    const id=++serial
+    form.value=mode==='fo'?{mode,id}:{mode,id,sam,samLabel}
+  }
+  function continueFolder(id:string,name:string){
+    if(isBatchScheduled(id)){showQueue();return}
+    queueOpen.value=false
+    form.value={mode:'fo',id:++serial,target:{id,name}}
   }
   function closeForm(){form.value=null}
   function showQueue(){closeForm();queueOpen.value=true}
@@ -32,7 +40,8 @@ export const useUploadCenterStore=defineStore('upload-center',()=>{
   }
   function complete(completion:UploadCompletion){lastCompleted.value=completion}
   function enqueue(source:UploadSource){
-    if(source.kind==='recovery'&&isBatchScheduled(source.source.batchId)){
+    const target=source.kind==='recovery'?source.source.batchId:source.kind==='fo'?source.resumeBatchId:undefined
+    if(target&&isBatchScheduled(target)){
       showQueue()
       return
     }
@@ -41,7 +50,7 @@ export const useUploadCenterStore=defineStore('upload-center',()=>{
     let row:UploadRow
     if(source.kind==='fo'){
       const totalBytes=source.entries.reduce((sum,e)=>sum+e.file.size,0)
-      row={...base,kind:'fo',name:source.name,totalBytes,totalFiles:source.entries.length}
+      row={...base,kind:'fo',name:source.name,totalBytes,totalFiles:source.entries.length,batchId:target}
       runners.set(id,createFoTransfer(source))
     }else if(source.kind==='references'){
       row={...base,kind:'references',name:source.name,totalBytes:source.review.totalBytes,totalFiles:source.review.newFiles.length}
@@ -74,7 +83,7 @@ export const useUploadCenterStore=defineStore('upload-center',()=>{
       const result=await run({
         signal:active.controller.signal,parallel:settings.parallelUploads,
         report:progress=>{if(attempt===active&&!active.controller.signal.aborted)Object.assign(row,progress)},
-        setBatch:id=>{if(attempt===active)row.batchId=id}
+        setBatch:(id,name)=>{if(attempt===active){row.batchId=id;row.name=name}}
       })
       if(attempt!==active||active.cancelled)return
       discard(row.id)
@@ -123,6 +132,6 @@ export const useUploadCenterStore=defineStore('upload-center',()=>{
     runners.clear()
     rows.value=[];form.value=null;queueOpen.value=false;lastCompleted.value=null
   }
-  return {form,queueOpen,rows,current,lastCompleted,launch,closeForm,showQueue,closeQueue,complete,
+  return {form,queueOpen,rows,current,lastCompleted,launch,continueFolder,closeForm,showQueue,closeQueue,complete,
     enqueue,resume,isBatchScheduled,pause,continueUpload,cancel,reset}
 })

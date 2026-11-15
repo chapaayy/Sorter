@@ -227,6 +227,107 @@ test('FO file selection closes without creating an upload',async({page})=>{
   await expect(dialog).toBeVisible()
 })
 
+test('folder imports ignore old name-based recovery and show the name assigned by the server',async({page})=>{
+  const root=await mkdtemp(join(tmpdir(),'map-import-name-'))
+  const folder=join(root,'Самара')
+  const original=Buffer.from('one photo')
+  const gate=holdTransfer()
+  const newId='a6d1a203-23d4-420b-a1c6-87c0f1100223'
+  const requests:{display_name:string;creation_request_id:string}[]=[]
+  let files:any[]=[],finished=false
+  try{
+    await mkdir(folder)
+    await writeFile(join(folder,'one.jpg'),original)
+    await page.addInitScript(({key,id})=>localStorage.setItem(key,id),{key:'ps.folder:Самара:1:'+original.length,id:bid})
+    await page.route('**/api/batches/'+bid,route=>respond(route,{...batch,runs:0,upload_manifest_state:'complete'}))
+    await page.route('**/api/batches/'+bid+'/upload-manifest',route=>respond(route,{
+      state:'complete',pending:0,files:[{upload_id:pid,relative_path:'Самара/one.jpg',
+        filename:'one.jpg',size:original.length,state:'finalized',received:original.length}]
+    }))
+    await page.route('**/api/batches',route=>{
+      if(route.request().method()!=='POST')return route.fallback()
+      requests.push(route.request().postDataJSON())
+      if(requests.length===1)return route.fulfill({status:503,body:''})
+      return respond(route,{batch_id:newId,display_name:'Выезд 2'})
+    })
+    await page.route('**/api/batches/'+newId+'/upload-manifest',route=>{
+      if(route.request().method()==='PUT')files=route.request().postDataJSON().files
+      return respond(route,{state:finished?'complete':files.length?'waiting':'legacy',files,pending:finished?0:1})
+    })
+    await page.route('**/api/uploads/**',async route=>{
+      if(route.request().method()==='PATCH'){
+        await gate.waiting
+        return respond(route,{offset:original.length})
+      }
+      if(route.request().url().endsWith('/finish')){finished=true;return respond(route,{path:'saved'})}
+      return respond(route,{offset:0,size:original.length,finalized:false})
+    })
+    await page.goto('/fo')
+    await page.getByRole('button',{name:'+ Загрузить папку'}).click()
+    const form=page.getByRole('dialog',{name:'Загрузить фотографии'})
+    await form.locator('input[webkitdirectory]').setInputFiles(folder)
+    const name=form.getByLabel('Название фотоотчёта')
+    await expect(name).toHaveValue('Самара')
+    await name.fill('  ')
+    await expect(form.getByRole('button',{name:'Загрузить',exact:true})).toBeDisabled()
+    await name.fill('Выезд')
+    await form.getByRole('button',{name:'Загрузить',exact:true}).click()
+    await expect(page.locator('.upload-floating')).toContainText('ФО · Выезд 2')
+    expect(requests).toHaveLength(2)
+    expect(requests[1]).toEqual(requests[0])
+    expect(requests[0]!.display_name).toBe('Выезд')
+    expect(requests[0]!.creation_request_id).toMatch(/^[\da-f-]{36}$/)
+    await expect.poll(()=>files.length).toBe(1)
+    expect(files[0].relative_path).toBe('Самара/one.jpg')
+    gate.release()
+    await expect(page.locator('.toast').filter({hasText:'Все файлы партии сохранены'})
+      .getByRole('link',{name:'Открыть'})).toHaveAttribute('href','/fo/'+newId)
+  }finally{gate.release();await rm(root,{recursive:true,force:true})}
+})
+
+test('resuming from a report uses its existing manifest and sends only the missing file',async({page})=>{
+  const root=await mkdtemp(join(tmpdir(),'map-resume-folder-'))
+  const folder=join(root,'Камера')
+  const source=Buffer.from('photo')
+  const registered=[['saved-id','saved.jpg'],['missing-id','missing.jpg']].map(([upload_id,filename])=>({
+    upload_id,filename,relative_path:'Камера/'+filename,size:source.length
+  }))
+  let done=false,creates=0
+  const sent:string[]=[]
+  try{
+    await mkdir(folder)
+    await Promise.all(registered.map(file=>writeFile(join(folder,file.filename!),source)))
+    await page.route('**/api/batches',route=>{
+      if(route.request().method()!=='POST')return route.fallback()
+      creates++
+      return route.fulfill({status:409,body:''})
+    })
+    await page.route('**/api/batches/'+bid,route=>respond(route,{...batch,runs:0,upload_manifest_state:done?'complete':'waiting'}))
+    await page.route('**/api/batches/'+bid+'/upload-manifest',route=>respond(route,{
+      state:done?'complete':'waiting',expected:2,finalized:done?2:1,missing:done?0:1,pending:done?0:1,
+      files:registered.map((file,i)=>({...file,state:i===0||done?'finalized':'not_started',received:i===0||done?source.length:0}))
+    }))
+    await page.route('**/api/uploads/**',route=>{
+      const path=new URL(route.request().url()).pathname
+      if(route.request().method()==='PATCH'){
+        sent.push(path)
+        return respond(route,{offset:source.length})
+      }
+      if(path.endsWith('/finish')){done=true;return respond(route,{path:'saved'})}
+      return respond(route,{offset:0,size:source.length,finalized:false})
+    })
+    await page.goto('/fo/'+bid)
+    await page.getByRole('button',{name:'Продолжить загрузку папки'}).click()
+    const form=page.getByRole('dialog',{name:'Продолжить загрузку ФО'})
+    await form.locator('input[webkitdirectory]').setInputFiles(folder)
+    await expect(form.getByLabel('Название фотоотчёта')).toHaveCount(0)
+    await form.getByRole('button',{name:'Продолжить',exact:true}).click()
+    await expect(page.getByText(/Все файлы партии сохранены/)).toBeVisible()
+    expect(creates).toBe(0)
+    expect(sent).toEqual(['/api/uploads/missing-id'])
+  }finally{await rm(root,{recursive:true,force:true})}
+})
+
 test('mixed folder upload keeps sending bytes across pages and only opens its batch on click',async({page})=>{
   const folder=await mkdtemp(join(tmpdir(),'map-fo-'))
   const source=Buffer.from('test photo for FO upload')
@@ -236,7 +337,7 @@ test('mixed folder upload keeps sending bytes across pages and only opens its ba
   try{
     await Promise.all(names.map(name=>writeFile(join(folder,name),source)))
     await page.route('**/api/batches',route=>route.request().method()==='POST'
-      ?respond(route,{batch_id:bid}):route.fallback())
+      ?respond(route,{batch_id:bid,display_name:route.request().postDataJSON().display_name}):route.fallback())
     await page.route('**/api/batches/'+bid,route=>respond(route,{...batch,photos:0,pending:0,runs:0}))
     await page.route('**/api/batches/'+bid+'/upload-manifest',route=>{
       if(route.request().method()==='PUT')files=route.request().postDataJSON().files
@@ -302,7 +403,7 @@ test('pausing and resuming counts each saved file only once',async({page})=>{
   try{
     for(const name of ['first.jpg','second.jpg'])await writeFile(join(folder,name),source)
     await page.route('**/api/batches',route=>route.request().method()==='POST'
-      ?respond(route,{batch_id:bid}):route.fallback())
+      ?respond(route,{batch_id:bid,display_name:route.request().postDataJSON().display_name}):route.fallback())
     await page.route('**/api/batches?*',route=>respond(route,{batches:[
       {...batch,display_name:'Тест загрузки',runs:0,upload_manifest_state:finalized.size===2?'complete':'waiting'},
       {...batch,batch_id:'a6d1a203-23d4-420b-a1c6-87c0f1100223',display_name:'Тест загрузки',upload_manifest_state:'waiting'}
@@ -1070,7 +1171,7 @@ test('website transfer queue stays FIFO across two FO folders and references',as
       created.push(name)
       const id=name==='321'?bid:secondId
       byId.set(id,{files:[],done:new Set()})
-      return respond(route,{batch_id:id})
+      return respond(route,{batch_id:id,display_name:name})
     })
     for(const id of [bid,secondId]){
       await page.route('**/api/batches/'+id,route=>respond(route,{...batch,batch_id:id,photos:0,pending:0,runs:0}))
