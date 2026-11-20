@@ -312,3 +312,5 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | `PhotoSorter/backend/server/services/media_preparation.py` | Постановка и повтор перекодирования |
 | `PhotoSorter/backend/server/workers/media_prepare.py` | Выполнение под существующей блокировкой FIFO |
 | `PhotoSorter/frontend/src/features/admin/AdminView.vue` | Отдельная вкладка для управления пользователями |
+
+- `PhotoSorter/backend/server/services/reference_archives.py` — безопасная выгрузка опубликованных образцов по папкам конструкций в атомарный кэшируемый ZIP; API `/api/references/export`.

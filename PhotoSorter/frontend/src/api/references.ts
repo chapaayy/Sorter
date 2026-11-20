@@ -15,6 +15,7 @@ export const referenceApi={
   changeAddress:(sam:string,address:string)=>patch<{sam:string;address:string;name:string}>(
     '/references/constructions/'+encodeURIComponent(sam)+'/address',{address}),
   list:()=>api<{sam:SamCount[];total:number}>('/references'),
+  downloadAll:()=>'/api/references/export',
   gallery:(sam:string,cursor?:string|null,limit=60)=>api<CursorPage<Photo>>('/references/'+encodeURIComponent(sam)+'/photos'+query({cursor,limit})),
   files:()=>api<{files:ReferenceFile[]}>('/references/files'),
   remove:(id:string)=>del<{deleted:boolean}>('/references/files/'+id),

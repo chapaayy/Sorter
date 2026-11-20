@@ -57,6 +57,12 @@ async function saveAddress(){
     notice.add('Адрес изменён. Номер конструкции и её образцы не затронуты.','ok')
   }catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
+function downloadAll(){
+  const anchor=document.createElement('a')
+  anchor.href=referenceApi.downloadAll()
+  document.body.append(anchor)
+  anchor.click();anchor.remove()
+}
 function openUpload(mode:'single'){
   uploader.launch(mode,selected.value,selectedEntry.value?.display_name||selected.value)
 }
@@ -74,7 +80,10 @@ async function removeSam(){
 <template>
 <div class="reference-library-view">
 <PageHeader eyebrow="БИБЛИОТЕКА КОНСТРУКЦИЙ" title="Образцы">
-  <template #actions><UiButton kind="primary" @click="uploader.launch('construction')">+ Создать конструкцию</UiButton></template>
+  <template #actions>
+  <UiButton :disabled="listLoading||!list.some(s=>s.photos>0)" @click="downloadAll">↓ Скачать все образцы ZIP</UiButton>
+  <UiButton kind="primary" @click="uploader.launch('construction')">+ Создать конструкцию</UiButton>
+</template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
 <div class="toolbar">

@@ -45,6 +45,7 @@ describe('typed API contracts',()=>{
   })
   it('constructs same-origin archive URL without source paths',()=>{
     expect(resultApi.download('20261105T000000-abcdef123456','SAM-0001')).toBe('/api/download/20261105T000000-abcdef123456?sam=SAM-0001')
+    expect(referenceApi.downloadAll()).toBe('/api/references/export')
   })
   it('requests cursor pages and log tail from the correct routes',async()=>{
     const urls:string[]=[]
