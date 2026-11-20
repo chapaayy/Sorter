@@ -13,9 +13,10 @@ export const runApi={
     '/runs/'+encodeURIComponent(id)+'/archive/status'),
   models:()=>api<ModelInfo>('/models'),
   autoSettings:()=>api<ProcessingSettings>('/processing-settings'),
-  saveAutoSettings:(enabled:boolean,threshold:number)=>api<ProcessingSettings>(
+  saveAutoSettings:(enabled:boolean,threshold:number,minMatchScore?:number)=>api<ProcessingSettings>(
     '/processing-settings',{method:'PATCH',body:JSON.stringify({
-      auto_process_new_batches:enabled,grouping_threshold:threshold
+      auto_process_new_batches:enabled,grouping_threshold:threshold,
+      ...(minMatchScore===undefined?{}:{min_match_score:minMatchScore})
     })}),
   cpuSettings:()=>api<CpuSettings>('/processing-settings/cpu'),
   saveCpuThreads:(threads:number)=>api<CpuSettings>(

@@ -27,6 +27,18 @@ describe('typed API contracts',()=>{
     expect(call[1].method).toBe('PATCH')
     expect(JSON.parse(String(call[1].body))).toEqual({auto_process_new_batches:false,grouping_threshold:.50})
   })
+  it('persists the additional reference score gate without confusing the grouping cutoff',async()=>{
+    const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      auto_process_new_batches:false,grouping_threshold:.50,min_match_score:.200
+    }),{status:200,headers:{'content-type':'application/json'}}))
+    vi.stubGlobal('fetch',fetch)
+    await runApi.saveAutoSettings(false,.50,.200)
+    const call=fetch.mock.calls[0]
+    expect(call[0]).toBe('/api/processing-settings')
+    expect(JSON.parse(String(call[1].body))).toEqual({
+      auto_process_new_batches:false,grouping_threshold:.50,min_match_score:.200
+    })
+  })
   it('uses backward-compatible filtered run lists for live and historical views',async()=>{
     const urls:string[]=[]
     vi.stubGlobal('fetch',vi.fn().mockImplementation(async(url:string)=>{

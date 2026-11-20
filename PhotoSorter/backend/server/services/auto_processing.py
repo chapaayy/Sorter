@@ -27,17 +27,19 @@ def _cancel_if_originals_only(db,batch_id):
 
 def settings():
     with connect() as db:
-        row=db.execute("""SELECT auto_process_new_batches,grouping_threshold
-            FROM processing_settings WHERE id=1""").fetchone()
+        row=db.execute("""SELECT auto_process_new_batches,grouping_threshold,
+            min_match_score FROM processing_settings WHERE id=1""").fetchone()
     return {"auto_process_new_batches":row["auto_process_new_batches"],
-            "grouping_threshold":row["grouping_threshold"],"model":"megaloc"}
+            "grouping_threshold":row["grouping_threshold"],
+            "min_match_score":row["min_match_score"],"model":"megaloc"}
 
 
-def update_settings(*,enabled:bool,threshold:float):
+def update_settings(*,enabled:bool,threshold:float,min_match_score:float|None=None):
     with connect() as db:
         db.execute("""UPDATE processing_settings SET
-            auto_process_new_batches=%s,grouping_threshold=%s,updated_at=now()
-            WHERE id=1""",(enabled,threshold))
+            auto_process_new_batches=%s,grouping_threshold=%s,
+            min_match_score=COALESCE(%s,min_match_score),updated_at=now()
+            WHERE id=1""",(enabled,threshold,min_match_score))
     return settings()
 
 

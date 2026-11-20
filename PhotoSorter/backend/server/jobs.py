@@ -93,11 +93,19 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
         """).fetchone()
         if not has_prior_prep:
             raise HTTPException(422,"Сначала загрузите образцы конструкций")
+    # Freeze the *global* matching cutoff at enqueue, for manual and automatic
+    # runs alike. Already queued, active and historical runs never change.
+    score_setting=db.execute("""
+        SELECT min_match_score FROM processing_settings WHERE id=1
+    """).fetchone()
+    if score_setting is None:
+        raise HTTPException(409,"Настройки обработки не инициализированы")
     now=datetime.now(timezone.utc)
     run_id=now.strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:12]
     info={"id":run_id,"status":"queued","new_photos":str(DATA_DIR/"uploads"/str(data.batch_id)),
           "output":str(DATA_DIR/"outputs"),"batch_id":str(data.batch_id),
           "selected_models":["megaloc"],"grouping_threshold":data.grouping_threshold,
+          "min_match_score":float(score_setting["min_match_score"]),
           "models":{},"progress":{},"enqueued_at":now.isoformat(),
           "has_media_profile":bool(db.execute("SELECT media_image_format FROM batches WHERE id=%s",
               (data.batch_id,)).fetchone()['media_image_format']),

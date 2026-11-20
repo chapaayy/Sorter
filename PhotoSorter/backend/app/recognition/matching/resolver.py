@@ -65,6 +65,9 @@ def resolve_groups(paths: list[Path], groups: list[PhotoGroup], label_names: lis
                                  'assigned' if accepted else 'conflict'),
                 'group_score_method': 'mean_best_per_sam',
                 'individual_sam': individual_top[0]['label'] if individual_top else None,
+                # Read-only per-photo score against the SAM picked by the group.
+                # This diagnostic does NOT change group voting or MegaLoc math.
+                'assigned_sam_score': round(float(sam_scores[i, winner]), 6),
             }
             if not accepted:
                 rows[i]['reason'] = 'Противоречивые результаты внутри группы ФО'

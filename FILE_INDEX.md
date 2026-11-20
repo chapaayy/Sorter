@@ -317,3 +317,9 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 
 - `PhotoSorter/backend/server/services/construction_relabel.py` — безопасное атомарное переименование и смена типа/номера/кода с новой версией образцов; без перемещения фотографий.
 - `PhotoSorter/frontend/src/features/references/EditConstructionDialog.vue` — единая форма изменения данных обычных и индивидуальных конструкций.
+
+
+- `PhotoSorter/backend/app/results/match_filter.py` — необязательный постфильтр результата MegaLoc по индивидуальному сходству ФО с выбранной конструкцией, без изменения группировки.
+- `PhotoSorter/backend/server/db/migrations/0031_reference_match_cutoff.sql` — настройка `processing_settings.min_match_score` с нулевым default.
+- `PhotoSorter/backend/tests/test_reference_match_cutoff.py` — граничные значения, фильтрация внутри группы, видео, settings, закрепление порога в задачах.
+

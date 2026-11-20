@@ -8,6 +8,8 @@ router=APIRouter(prefix="/api/processing-settings",tags=["processing"])
 class ProcessingSettings(BaseModel):
     auto_process_new_batches:bool
     grouping_threshold:float=Field(ge=.50,le=.99,allow_inf_nan=False)
+    # Optional for previously deployed clients that only save auto/grouping.
+    min_match_score:float|None=Field(default=None,ge=0,le=1,allow_inf_nan=False)
 
 @router.get("")
 def read_settings():
@@ -16,7 +18,8 @@ def read_settings():
 @router.patch("")
 def save_settings(payload:ProcessingSettings):
     return auto_processing.update_settings(
-        enabled=payload.auto_process_new_batches,threshold=payload.grouping_threshold)
+        enabled=payload.auto_process_new_batches,threshold=payload.grouping_threshold,
+        min_match_score=payload.min_match_score)
 
 class CpuSettings(BaseModel):
     threads:int=Field(ge=1,le=32)

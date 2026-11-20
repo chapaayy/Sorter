@@ -41,7 +41,8 @@ def save_model(info,model,rows,query_stamps=None,progress=None,on_export_start=N
                 (query_stamps or {}).get(row['query']) if query_stamps is not None else None)
             # Manifests always reference published paths, not staging ones.
             published=output/file.relative_to(staging)
-            stored.append({**row,'assigned_sam':sam,'score':winner.get('score') if winner else None,
+            stored.append({**row,'assigned_sam':sam,
+                'score':row.get('match_score',winner.get('score') if winner else None),
                 'reference':winner.get('reference') if winner else None,'copy':str(published)})
             if progress:progress(i,len(rows),Path(row['query']).name)
         if on_export_start:on_export_start()

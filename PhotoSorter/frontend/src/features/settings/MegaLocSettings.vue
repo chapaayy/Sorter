@@ -9,13 +9,13 @@ import type {ModelInfo} from '../../types/api'
 import UiButton from '../../components/ui/UiButton.vue'
 
 const notice=useNoticeStore()
-const autoEnabled=ref(false),threshold=ref(.50),autoBusy=ref(false),autoReady=ref(false)
+const autoEnabled=ref(false),threshold=ref(.50),minScore=ref(0),autoBusy=ref(false),autoReady=ref(false)
 const initialLoading=ref(true)
 const model=ref<ModelInfo|null>(null),modelBusy=ref(false),error=ref('')
 async function refresh(){
   try{
     const [a,m]=await Promise.all([runApi.autoSettings(),runApi.models()])
-    if(!autoBusy.value){autoEnabled.value=a.auto_process_new_batches;threshold.value=a.grouping_threshold}
+    if(!autoBusy.value){autoEnabled.value=a.auto_process_new_batches;threshold.value=a.grouping_threshold;minScore.value=a.min_match_score}
     model.value=m;autoReady.value=true;error.value=''
   }catch(e){error.value=errorText(e)}finally{initialLoading.value=false}
 }
@@ -25,8 +25,8 @@ async function saveAuto(){
   if(!autoReady.value||autoBusy.value)return
   autoBusy.value=true
   try{
-    const next=await runApi.saveAutoSettings(autoEnabled.value,threshold.value)
-    autoEnabled.value=next.auto_process_new_batches;threshold.value=next.grouping_threshold
+    const next=await runApi.saveAutoSettings(autoEnabled.value,threshold.value,minScore.value)
+    autoEnabled.value=next.auto_process_new_batches;threshold.value=next.grouping_threshold;minScore.value=next.min_match_score
     notice.add('Параметры автообработки сохранены','ok')
   }catch(e){error.value=errorText(e)}finally{autoBusy.value=false}
 }
@@ -66,7 +66,29 @@ async function install(){
       <input v-model.number="threshold" type="range" min=".50" max=".99" step=".01"
         :disabled="!autoReady||autoBusy" @change="saveAuto"/>
     </label>
-    <p class="meta">Новые партии используют эти значения. Существующие задания не изменяются.</p>
+    <p class="meta">Порог группировки влияет только на связь ФО между собой. Для автоматических новых партий он берётся из этих настроек.</p>
+    </template>
+  </section>
+  <section class="panel stack">
+    <h2>Минимальное сходство с образцами</h2>
+    <LoadingSkeleton v-if="initialLoading" variant="lines" :count="2" label="Загружаем настройки качества"/>
+    <template v-else-if="autoReady">
+      <div class="row between wrap" style="gap:16px">
+        <div>
+          <strong>{{minScore===0?'Фильтр отключён':'Порог: '+minScore.toFixed(3)}}</strong>
+          <p class="meta" style="margin-top:6px">От 0.000 до 1.000 · 0.000 — не отсеивать</p>
+        </div>
+        <label class="field" style="width:130px">Значение
+          <input v-model.number="minScore" type="number" min="0" max="1" step="0.001"
+            :disabled="autoBusy" @change="saveAuto" aria-label="Минимальное сходство с образцами"/>
+        </label>
+      </div>
+      <input v-model.number="minScore" type="range" min="0" max="1" step=".001"
+        :disabled="autoBusy" @change="saveAuto" aria-label="Настроить порог сходства с образцами"/>
+      <p class="meta">Например, при 0.200 фотография с оценкой 0.097 попадёт в «Неопределено»,
+        а с оценкой 0.234 — останется. Проверяется каждая ФО отдельно, даже внутри одной группы.</p>
+      <p class="meta">Порог действует на новые ручные и автоматические запуски. Уже обрабатываемые и готовые результаты не меняются.
+        Группировка и расчёт MegaLoc остаются прежними.</p>
     </template>
   </section>
 

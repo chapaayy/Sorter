@@ -9,6 +9,7 @@ from ..recognition.pipeline import match_grouped_megaloc
 from ..recognition.errors import JobCancelled
 from ..photos.scanner import images, validate
 from ..results.repository import save_model
+from ..results.match_filter import apply_min_match_score
 
 def process(job):
     if job.info.get('has_media_profile'):
@@ -82,6 +83,14 @@ def _process(job,media):
             rows=media.collapse(rows)
             info['media_errors']=media.errors
         if not rows:raise ValueError('Нет готовых файлов для результата')
+        # Classification gate only: MegaLoc inference and FO grouping are complete.
+        # Old runs without this snapshot parameter keep the historical behavior.
+        minimum=float(info.get('min_match_score') or 0.0)
+        rows=apply_min_match_score(rows,minimum)
+        filtered=sum(bool(row.get('match_rejected')) for row in rows)
+        if minimum>0:
+            job.log('INFO',f'Минимальное сходство с образцами: {minimum:.3f}; '
+                    f'в Неопределено по порогу: {filtered}',name)
         job.progress(name,'saving',0,len(rows),'Сохранение готовых файлов')
         save_started=time.perf_counter()
         result=save_model(info,name,rows,query_stamps=stamps,
@@ -98,6 +107,7 @@ def _process(job,media):
         info['models'][name]={'status':'completed','device':engine.device,
              'seconds':seconds,'processed':len(result),
              'assigned':sum(bool(row.get('top')) for row in result),
+             'filtered':filtered,
              'uncertain':sum(not row.get('top') for row in result),
              'feature_policy':'fo_recomputed_reference_cache',
              'performance':timings,

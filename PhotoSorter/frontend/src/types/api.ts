@@ -36,7 +36,7 @@ export interface WorkloadSettings {
 }
 export interface CpuSettings {threads:number;max_threads:number;applies:string;docker_quota_changes:boolean}
 export interface ProcessingSettings {
-  model:'megaloc';auto_process_new_batches:boolean;grouping_threshold:number
+  model:'megaloc';auto_process_new_batches:boolean;grouping_threshold:number;min_match_score:number
 }
 export interface BatchUploadManifest {
   state:'legacy'|'waiting'|'complete';completed_at?:string|null
@@ -70,7 +70,7 @@ export interface Run {
   id: string; batch_id: string; status: string; created_at?: string
   started_at?: string
   actual_started_at?: string; finished_at?: string; actual_finished_at?: string
-  grouping_threshold?: number; selected_models?: string[];source?:'manual'|'automatic'
+  grouping_threshold?: number; min_match_score?:number;selected_models?: string[];source?:'manual'|'automatic'
   queue_position?: number | null; models?: Record<string, { status?: string; count?: number; processed?:number; assigned?:number; uncertain?:number; groups?: number }>
   progress?: RunProgress; error?: string; archive_state?:'preparing'|'ready'|'failed'
 }

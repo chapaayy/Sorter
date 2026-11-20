@@ -63,7 +63,14 @@ async function stop(){
 <LoadingSkeleton v-else-if="!error" class="panel" variant="lines" label="Загружаем запуск"/>
 <div v-if="run" class="panel stack" style="margin-top:20px">
   <h2>Параметры и действия</h2>
-  <div class="grid3"><div><span class="label">Модель</span><strong>MegaLoc</strong></div><div><span class="label">Порог группировки</span><strong>{{run.grouping_threshold?.toFixed(2)||'0.50'}}</strong></div><div><span class="label">Идентификатор запуска</span><code class="meta">{{run.id}}</code></div></div>
+  <div class="grid3">
+    <div><span class="label">Модель</span><strong>MegaLoc</strong></div>
+    <div><span class="label">Порог группировки</span><strong>{{run.grouping_threshold?.toFixed(2)||'0.50'}}</strong></div>
+    <div><span class="label">Минимальное сходство с образцами</span>
+      <strong>{{run.min_match_score?run.min_match_score.toFixed(3):'Отключено'}}</strong>
+    </div>
+    <div><span class="label">Идентификатор запуска</span><code class="meta">{{run.id}}</code></div>
+  </div>
   <div class="row wrap"><RouterLink :to="'/logs?run='+id" class="btn">Открыть журнал запуска</RouterLink><RouterLink :to="'/fo/'+run.batch_id" class="btn">Открыть партию ФО</RouterLink></div>
 </div>
 <ConfirmDialog v-if="confirmStop&&run"
