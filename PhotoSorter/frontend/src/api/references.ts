@@ -9,8 +9,11 @@ export type NewConstruction =
   |{kind:'standard';city_code:string;number:string;address:string}
   |{kind:'custom';name:string}
 export interface CreatedConstruction{sam:string;display_name:string;kind:'standard'|'custom';photos:number}
+export interface UpdatedConstruction{sam:string;previous_sam:string;display_name:string;kind:'standard'|'custom';changed:boolean;version?:number;city_code?:string|null;construction_number?:string|null;address?:string|null}
 export const referenceApi={
   createConstruction:(value:NewConstruction)=>post<CreatedConstruction>('/references/constructions',value),
+  updateConstruction:(sam:string,value:NewConstruction)=>patch<UpdatedConstruction>(
+    '/references/constructions/'+encodeURIComponent(sam),value),
   importPreview:(folders:string[])=>post<ImportPlan>('/references/import/preview',{folders}),
   changeAddress:(sam:string,address:string)=>patch<{sam:string;address:string;name:string}>(
     '/references/constructions/'+encodeURIComponent(sam)+'/address',{address}),
@@ -19,7 +22,6 @@ export const referenceApi={
   gallery:(sam:string,cursor?:string|null,limit=60)=>api<CursorPage<Photo>>('/references/'+encodeURIComponent(sam)+'/photos'+query({cursor,limit})),
   files:()=>api<{files:ReferenceFile[]}>('/references/files'),
   remove:(id:string)=>del<{deleted:boolean}>('/references/files/'+id),
-  renameSam:(sam:string,name:string)=>patch<{sam:string}>('/references/sam/'+encodeURIComponent(sam),{new_sam:name}),
   deleteSam:(sam:string)=>del<{deleted:boolean}>('/references/sam/'+encodeURIComponent(sam)),
   cache:()=>api<{total:number;cached:number;current_signature?:string|null}>('/references/cache/status')
 }

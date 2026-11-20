@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from ...services import reference_archives
 from pydantic import BaseModel,Field
 from ...services import references as reference_service
-from ...services import construction_catalog
+from ...services import construction_catalog,construction_relabel
 from app.photos.labels import check_label
 from ...database import connect
 from ...db.repositories.pagination import page
@@ -34,6 +34,11 @@ class NewConstruction(BaseModel):
 @router.post('/constructions',status_code=201)
 def create_construction(payload:NewConstruction):
     return construction_catalog.create(payload.kind,city_code=payload.city_code,
+        number=payload.number,address=payload.address,name=payload.name)
+
+@router.patch("/constructions/{sam}")
+def edit_construction(sam:str,payload:NewConstruction):
+    return construction_relabel.update(sam,payload.kind,city_code=payload.city_code,
         number=payload.number,address=payload.address,name=payload.name)
 
 class ChangeAddress(BaseModel):

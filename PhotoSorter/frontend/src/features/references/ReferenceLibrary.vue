@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue'
-import {referenceApi} from '../../api/references'
+import {referenceApi,type UpdatedConstruction} from '../../api/references'
 import {useCursor} from '../../composables/useCursor'
 import {usePolling} from '../../composables/usePolling'
 import {useNoticeStore} from '../../stores/notice'
@@ -15,7 +15,8 @@ import GroupPicker from '../../components/split/GroupPicker.vue'
 import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.vue'
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
-const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),addressDraft=ref(''),
+import EditConstructionDialog from './EditConstructionDialog.vue'
+const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),
   error=ref(''),busy=ref(false),viewer=ref<number|null>(null),
   deletePhoto=ref<string|null>(null),deleteSam=ref(false)
 
@@ -48,14 +49,13 @@ async function dropOne(){
   try{await referenceApi.remove(deletePhoto.value);deletePhoto.value=null;await refresh();await reset();notice.add('Образец удалён','ok')}
   catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
-async function saveAddress(){
-  busy.value=true
-  try{
-    await referenceApi.changeAddress(selected.value,addressDraft.value)
-    editing.value=false
-    await refresh()
-    notice.add('Адрес изменён. Номер конструкции и её образцы не затронуты.','ok')
-  }catch(e){error.value=errorText(e)}finally{busy.value=false}
+async function savedConstruction(updated:UpdatedConstruction){
+  editing.value=false
+  selected.value=updated.sam
+  await refresh()
+  notice.add(updated.previous_sam===updated.sam
+    ?'Данные конструкции обновлены'
+    :'Конструкция переименована. Образцы сохранены.','ok')
 }
 function downloadAll(){
   const anchor=document.createElement('a')
@@ -96,8 +96,7 @@ async function removeSam(){
       <span class="meta">{{selectedEntry?.photos||0}} образцов</span></div>
       <div class="row wrap">
         <UiButton small  @click="openUpload('single')">+ Добавить фото</UiButton>
-        <UiButton v-if="selectedEntry?.address!=null" small 
-          @click="addressDraft=selectedEntry.address||'';editing=true">Изменить адрес</UiButton>
+        <UiButton small @click="editing=true">Изменить конструкцию</UiButton>
         <UiButton kind="danger" small  @click="deleteSam=true">Удалить конструкцию</UiButton>
       </div>
     </div>
@@ -115,12 +114,7 @@ async function removeSam(){
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
 <ConfirmDialog v-if="deletePhoto" title="Удалить Образец?" message="Удаление создаст новую опубликованную версию после завершения очереди. Старые результаты ФО сохранятся." danger confirm-label="Удалить Образец" :busy="busy" @cancel="deletePhoto=null" @confirm="dropOne"/>
 <ConfirmDialog v-if="deleteSam" title="Безвозвратно удалить конструкцию?" :message="'Все эталонные фото '+selected+' будут удалены из общей библиотеки. Это не удаляет партии ФО.'" :required-text="selected" danger confirm-label="Удалить SAM" :busy="busy" @cancel="deleteSam=false" @confirm="removeSam"/>
-<div v-if="editing" class="modal-overlay" @click.self="editing=false">
-  <form class="modal stack" @submit.prevent="saveAddress">
-    <h2>Изменить адрес</h2><p>Номер {{selected}} и все фотографии останутся прежними.</p>
-    <label class="field">Адрес конструкции<input v-model="addressDraft" required maxlength="120"/></label>
-    <div class="modal-actions"><UiButton @click="editing=false">Отмена</UiButton><UiButton kind="primary" type="submit" :loading="busy">Сохранить</UiButton></div>
-  </form>
-</div>
+<EditConstructionDialog v-if="editing&&selectedEntry" :key="selectedEntry.sam"
+  :entry="selectedEntry" @dismiss="editing=false" @saved="savedConstruction"/>
 </div>
 </template>

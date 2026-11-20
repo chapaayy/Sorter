@@ -125,6 +125,8 @@ def register_manifest(session_id,files):
     expected=_manifest(files)
     signature=_signature(expected)
     with connect() as db:
+        # Serialize manifest registration with catalog relabels and FIFO claims.
+        db.execute("SELECT pg_advisory_xact_lock(723409133)")
         session=repository.session(db,session_id,lock=True)
         if not session:
             raise HTTPException(404,"Сессия загрузки образцов не найдена")

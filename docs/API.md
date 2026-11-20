@@ -18,7 +18,8 @@
 | PUT | `/uploads/direct/{upload_id}` | быстрый single request, fallback PATCH |
 | POST | `/uploads/{upload_id}/finish` | final SHA/Pillow validation |
 | GET | `/references`, `/references/files` | список конструкций (`sam`, `display_name`, `address`, `city_code`, `construction_number`, `photos`) и файлов |
-| GET | `/references/export` | ZIP всех образцов текущей опубликованной версии, по папкам конструкций; только владелец. Первый запрос создаёт проверенный архив на диске, повторный использует кэш, поддерживаются Range/206. | 
+| GET | `/references/export` | ZIP всех образцов текущей опубликованной версии, по папкам конструкций; только владелец. Первый запрос создаёт проверенный архив на диске, повторный использует кэш, поддерживаются Range/206. |
+| PATCH | `/references/constructions/{sam}` | Владелец: полная замена метаданных конструкций по `{kind:'standard',city_code,number,address}` или `{kind:'custom',name}`. Новый `sam` и прежний `previous_sam` в ответе. Адрес обновляется без версии; смена SAM публикует новую immutable библиотеку, отклоняется при активной FIFO, незавершённой загрузке и конфликте имени (409). | 
 | DELETE | `/references/files/{reference_id}` | защищённое удаление общего образца |
 | GET/POST | `/runs` | история / enqueue (всё ещё одна текущая job; очередь этапа 2) |
 | GET | `/runs/{run_id}` | progress |

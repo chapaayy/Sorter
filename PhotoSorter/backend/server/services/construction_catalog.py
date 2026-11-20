@@ -1,4 +1,4 @@
-"""Validate construction keys and manage published construction addresses."""
+"""Validate construction keys and manage catalog metadata and identity."""
 from __future__ import annotations
 
 from fastapi import HTTPException
@@ -77,7 +77,7 @@ def change_address(sam: str, address: str) -> dict:
             "name":f"{updated['sam']} — {updated['address']}"}
 
 
-def create(kind: str, *, city_code: str | None = None,
+def describe(kind: str, *, city_code: str | None = None,
            number: str | None = None, address: str | None = None,
            name: str | None = None) -> dict:
     """Create an EMPTY catalog entry; photo recognition changes only after FIFO preparation."""
@@ -108,6 +108,17 @@ def create(kind: str, *, city_code: str | None = None,
         values=(sam,None,None,None,"custom")
     else:
         raise HTTPException(422,"Неизвестный тип конструкции")
+    return {"sam":sam,"display_name":title,"kind":kind,
+            "city_code":values[1],"construction_number":values[2],"address":values[3]}
+
+
+def create(kind: str, *, city_code: str | None = None,
+           number: str | None = None, address: str | None = None,
+           name: str | None = None) -> dict:
+    """Create an EMPTY catalog entry; recognition changes only after FIFO preparation."""
+    item=describe(kind,city_code=city_code,number=number,address=address,name=name)
+    sam=item["sam"]
+    values=(sam,item["city_code"],item["construction_number"],item["address"],kind)
     with connect() as db:
         db.execute("SELECT pg_advisory_xact_lock(%s)",(_EDIT_LOCK,))
         if db.execute("SELECT 1 FROM reference_constructions WHERE sam=%s",(sam,)).fetchone() or \
@@ -116,5 +127,4 @@ def create(kind: str, *, city_code: str | None = None,
         db.execute("""INSERT INTO reference_constructions
             (sam,city_code,construction_number,address,kind)
             VALUES (%s,%s,%s,%s,%s)""",values)
-    return {"sam":sam,"display_name":title,"kind":kind,"photos":0,
-            "city_code":values[1],"construction_number":values[2],"address":values[3]}
+    return {**item,"photos":0}

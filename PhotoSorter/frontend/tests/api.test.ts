@@ -43,6 +43,17 @@ describe('typed API contracts',()=>{
     expect(urls[1]).toContain('offset=60')
     expect(urls[2]).not.toContain('scope=')
   })
+  it('edits all construction fields through an encoded PATCH route',async()=>{
+    const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      sam:'TLT 0042',previous_sam:'SAM 0001',changed:true,kind:'standard'
+    }),{status:200,headers:{'content-type':'application/json'}}))
+    vi.stubGlobal('fetch',fetch)
+    const payload={kind:'standard' as const,city_code:'TLT',number:'0042',address:'Мира 9'}
+    await referenceApi.updateConstruction('SAM 0001',payload)
+    expect(fetch.mock.calls[0]?.[0]).toBe('/api/references/constructions/SAM%200001')
+    expect(fetch.mock.calls[0]?.[1]?.method).toBe('PATCH')
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(payload)
+  })
   it('constructs same-origin archive URL without source paths',()=>{
     expect(resultApi.download('20261105T000000-abcdef123456','SAM-0001')).toBe('/api/download/20261105T000000-abcdef123456?sam=SAM-0001')
     expect(referenceApi.downloadAll()).toBe('/api/references/export')

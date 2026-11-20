@@ -6,7 +6,6 @@ from urllib.parse import quote
 from fastapi import APIRouter,HTTPException
 from app.config import DATA_DIR
 from app.photos.reader import EXTS
-from app.photos.labels import check_label
 from ...database import connect
 from ...media.preview import INLINE_TYPES
 from ...storage.paths import owned_file
@@ -78,7 +77,8 @@ def original(photo_id:str):
         if row["kind"]=="fo":
             root=DATA_DIR/"uploads"/str(row["batch_id"])
         else:
-            root=DATA_DIR/"references"/check_label(row["sam"])
+            # Renaming updates the UUID gallery index, not the immutable hardlink path.
+            root=DATA_DIR/"references"
         path=owned_file(Path(row["target_path"]),root)
         attachment=row["kind"]=="fo" and row["original_media_type"] is not None
         if not path.is_file() or (not attachment and path.suffix.lower() not in EXTS):

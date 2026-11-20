@@ -314,3 +314,6 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 | `PhotoSorter/frontend/src/features/admin/AdminView.vue` | Отдельная вкладка для управления пользователями |
 
 - `PhotoSorter/backend/server/services/reference_archives.py` — безопасная выгрузка опубликованных образцов по папкам конструкций в атомарный кэшируемый ZIP; API `/api/references/export`.
+
+- `PhotoSorter/backend/server/services/construction_relabel.py` — безопасное атомарное переименование и смена типа/номера/кода с новой версией образцов; без перемещения фотографий.
+- `PhotoSorter/frontend/src/features/references/EditConstructionDialog.vue` — единая форма изменения данных обычных и индивидуальных конструкций.
