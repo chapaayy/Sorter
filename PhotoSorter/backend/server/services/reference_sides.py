@@ -4,13 +4,12 @@ The shared FIFO claim lock freezes side labels into each claimed FO snapshot.
 This metadata update never changes reference bytes, version IDs or embeddings.
 """
 from __future__ import annotations
-import re
 import unicodedata
 from fastapi import HTTPException
 from app.photos.labels import check_label
 from ..database import connect
 
-_BAD_NAME = re.compile(r'[<>:"/\\|?*\\x00-\\x1f]')
+_FORBIDDEN = '<>:"/\\\\|?*'
 
 
 def normalize_side(value: str | None) -> str | None:
@@ -20,7 +19,7 @@ def normalize_side(value: str | None) -> str | None:
     if name.casefold().startswith("сторона "):
         name = name[8:].strip()
     if (not name or len(name) > 60 or name in (".", "..")
-            or _BAD_NAME.search(name) or name.casefold() == "неназначена сторона"):
+            or any(ord(c)<32 or c in _FORBIDDEN for c in name) or name.casefold() == "неназначена сторона"):
         raise HTTPException(422, "Название стороны: от 1 до 60 символов, без символов пути")
     return unicodedata.normalize("NFC", name)
 

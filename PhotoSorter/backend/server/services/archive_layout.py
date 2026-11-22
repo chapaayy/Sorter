@@ -105,7 +105,7 @@ def build(db,run_id,batch_id,title,rows,sam=None):
         groups[(kind,row['assigned_sam'],side_folder)].append((source,portable_name(name,'Фото'+source.suffix,file=True)))
     files=[]
     for (kind,label,side_folder),media in groups.items():
-        directory=root+'/'+('Видео/' if kind=='video' else '')+archives.archive_member(directories[label],folder_date,side_folder)
+        directory=root+'/'+('Видео/' if kind=='video' else '')+archives.archive_member(directories[label],folder_date)+'/'+side_folder
         for (source,_),name in zip(media,_unique([name for _,name in media],file=True)):
             files.append((source,directory+'/'+name))
     return ArchivePlan(root,files)
