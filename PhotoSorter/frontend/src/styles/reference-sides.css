@@ -5,16 +5,26 @@
   display:flex;align-items:center;justify-content:space-between;gap:10px}
 .reference-side-heading > div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .reference-side-heading-unassigned{border-color:color-mix(in srgb,var(--danger) 40%,var(--border))}
-.reference-sides-toolbar{position:sticky;top:0;z-index:10;display:flex;gap:9px;align-items:center;
-  flex-wrap:wrap;background:var(--panel);border:1px solid var(--border);border-radius:10px;
-  padding:10px 12px;margin-bottom:14px;box-shadow:var(--shadow)}
-.reference-sides-toolbar input{min-width:140px;flex:1;max-width:270px}
+/* Selection actions dock below the scrolling gallery; existing thumbnails keep their position. */
+.reference-library-view .split-main{position:relative}
+.reference-select-mode-toggle{min-width:99px}
+.reference-sides-toolbar{position:relative;flex:none;z-index:15;margin:0 16px 12px;
+  display:flex;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap;
+  background:var(--panel);border:1px solid var(--border);border-radius:11px;
+  padding:10px 12px;box-shadow:0 4px 18px #0002}
+.reference-selection-count{white-space:nowrap;font-size:13px;margin-right:5px}
+.reference-library-view .reference-gallery-selecting{padding-bottom:16px}
 .photo-item.photo-unassigned{border-color:color-mix(in srgb,var(--danger) 60%,var(--border))}
 .photo-item.photo-chosen{outline:2px solid var(--accent);outline-offset:-2px}
-.photo-side-select{position:absolute;left:7px;top:7px;z-index:4;min-width:28px;height:28px;
-  border-radius:7px;border:1px solid var(--border);background:var(--panel);
-  color:var(--text);font-weight:700;cursor:pointer}
-.photo-item.photo-chosen .photo-side-select{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
-@media(max-width:700px){.reference-side-heading{padding:8px}
-  .reference-sides-toolbar{position:static}
-  .reference-sides-toolbar input{max-width:none;width:100%}}
+.photo-item.photo-select-mode .photo-select{cursor:pointer}
+.photo-item.photo-select-mode:hover{border-color:var(--accent)}
+.photo-item.photo-chosen::after{
+  content:'✓';position:absolute;left:8px;top:8px;z-index:1;pointer-events:none;
+  display:grid;place-items:center;width:27px;height:27px;border-radius:7px;
+  background:var(--accent);color:var(--on-accent);font-weight:700;box-shadow:0 2px 8px #0003}
+@media(max-width:700px){
+  .reference-side-heading{padding:8px}
+  .reference-sides-toolbar{position:fixed;left:12px;right:12px;bottom:12px;
+    margin:0;justify-content:center}
+  .reference-library-view .reference-gallery-selecting{padding-bottom:120px}
+}

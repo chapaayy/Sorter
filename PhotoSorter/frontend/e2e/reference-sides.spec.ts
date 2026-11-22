@@ -47,13 +47,29 @@ test('reference sides: select, assign, group, preview and queued deletion',async
   await expect(page.getByText('Неназначена сторона')).toBeVisible()
   await expect(page.getByText('Сторона А',{exact:true})).toBeVisible()
   await expect(page.locator('.photo-item.photo-unassigned')).toHaveCount(1)
+  const before=await page.getByRole('button',{name:'Открыть IMG_001.jpg'}).boundingBox()
+  await expect(page.getByRole('button',{name:'Выбрать IMG_001.jpg'})).toHaveCount(0)
+  await page.getByRole('button',{name:'Выделить',exact:true}).click()
+  const after=await page.getByRole('button',{name:'Выбрать IMG_001.jpg'}).boundingBox()
+  expect(before?.y).toBeCloseTo(after?.y??0,0)
+  await expect(page.getByRole('toolbar',{name:'Работа с выделенными образцами'})).toBeVisible()
   await page.getByRole('button',{name:'Выбрать IMG_001.jpg'}).click()
   await expect(page.getByText('Выбрано: 1')).toBeVisible()
-  await page.getByRole('textbox',{name:'Название стороны'}).fill('Б')
+  await page.getByRole('button',{name:'Снять выделение'}).click()
+  await expect(page.getByText('Выбрано: 0')).toBeVisible()
+  await page.getByRole('button',{name:'Выделить все'}).click()
+  await expect(page.getByText('Выбрано: 2')).toBeVisible()
+  await page.getByRole('button',{name:'Выбрать IMG_002.jpg'}).click()
+  await expect(page.getByText('Выбрано: 1')).toBeVisible()
   await page.getByRole('button',{name:'Назначить сторону'}).click()
+  const dialog=page.getByRole('dialog',{name:'Назначить сторону'})
+  await dialog.getByRole('combobox',{name:'Название стороны'}).fill('Б')
+  await dialog.getByRole('button',{name:'Назначить',exact:true}).click()
   await expect.poll(()=>updateCount).toBe(1)
   await expect(page.getByText('Сторона Б',{exact:true})).toBeVisible()
   await expect(page.locator('.photo-item.photo-unassigned')).toHaveCount(0)
+  await page.getByRole('button',{name:'Готово',exact:true}).click()
+  await expect(page.getByRole('toolbar',{name:'Работа с выделенными образцами'})).toHaveCount(0)
   await page.getByRole('button',{name:'Открыть IMG_001.jpg'}).click()
   const viewer=page.getByRole('dialog',{name:'Просмотр фотографии'})
   await expect(viewer).toBeVisible()
@@ -65,4 +81,43 @@ test('reference sides: select, assign, group, preview and queued deletion',async
   await page.getByRole('alertdialog').getByRole('button',{name:'Удалить Образец'}).click()
   await expect.poll(()=>queued).toBe(true)
   await expect(page.getByText('Удаление поставлено в очередь')).toBeVisible()
+})
+
+// Select all must include the unscrolled pages, not only the first 60 tiles.
+test('select all reaches subsequent reference gallery pages',async({page})=>{
+  const makePhoto=(index:number)=>({
+    id:'reference-'+index,name:'IMG_'+String(index).padStart(4,'0')+'.jpg',
+    bytes:1024,created_at:'2026-11-22T07:00:00Z',
+    thumbnail_status:'pending',side:null
+  })
+  const first=Array.from({length:60},(_,index)=>makePhoto(index+1))
+  const rest=[makePhoto(61),makePhoto(62)]
+  let nextPageRequests=0
+  await page.route(/^https?:\/\/[^/]+\/api\//,async route=>{
+    const pathname=decodeURIComponent(new URL(route.request().url()).pathname)
+    const url=new URL(route.request().url())
+    const json=(body:unknown)=>route.fulfill({
+      status:200,contentType:'application/json',body:JSON.stringify(body)})
+    if(pathname==='/api/auth/me')return json({username:'admin'})
+    if(pathname==='/api/references')return json({
+      sam:[{sam,photos:62,display_name:'SAM 0001 — Победы 12'}],total:62})
+    if(pathname==='/api/references/'+sam+'/photos'){
+      if(url.searchParams.get('cursor')){
+        nextPageRequests++
+        return json({photos:rest,next_cursor:null})
+      }
+      return json({photos:first,next_cursor:'second-page'})
+    }
+    if(pathname==='/api/reference-library/status')return json({baseline_state:'ready'})
+    if(pathname==='/api/reference-library/events')return json({events:[]})
+    return json({})
+  })
+  await page.goto('/references')
+  await expect(page.getByText('Неназначена сторона')).toBeVisible()
+  await page.getByRole('button',{name:'Выделить',exact:true}).click()
+  await page.getByRole('button',{name:'Выделить все'}).click()
+  await expect(page.getByText('Выбрано: 62')).toBeVisible()
+  expect(nextPageRequests).toBeGreaterThanOrEqual(1)
+  await page.getByRole('button',{name:'Снять выделение'}).click()
+  await expect(page.getByText('Выбрано: 0')).toBeVisible()
 })
