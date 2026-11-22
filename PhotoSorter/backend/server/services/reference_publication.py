@@ -95,5 +95,8 @@ def snapshot(db,version_id):
     entries=repository.members(db,version_id)
     for member in entries:
         verify_member(member)
+    from .reference_sides import active_sides
+    sides=active_sides(db,[m["reference_id"] for m in entries])
     return [{"path":m["target_path"],"sam":m["sam"],"hash":m["source_hash"],
-             "id":str(m["reference_id"])} for m in entries]
+             "id":str(m["reference_id"]),"side":sides.get(str(m["reference_id"]))}
+            for m in entries]

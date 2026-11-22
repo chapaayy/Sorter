@@ -100,10 +100,12 @@ def build(db,run_id,batch_id,title,rows,sam=None):
         query=row.get('query')
         name=row.get('export_name') or originals.get(query) or Path(query or source.name).name
         kind='video' if row.get('media_kind')=='video' else 'image'
-        groups[(kind,row['assigned_sam'])].append((source,portable_name(name,'Фото'+source.suffix,file=True)))
+        side=row.get('side')
+        side_folder=portable_name('Сторона '+side,'Неназначена сторона') if side else 'Неназначена сторона'
+        groups[(kind,row['assigned_sam'],side_folder)].append((source,portable_name(name,'Фото'+source.suffix,file=True)))
     files=[]
-    for (kind,label),media in groups.items():
-        directory=root+'/'+('Видео/' if kind=='video' else '')+archives.archive_member(directories[label],folder_date)
+    for (kind,label,side_folder),media in groups.items():
+        directory=root+'/'+('Видео/' if kind=='video' else '')+archives.archive_member(directories[label],folder_date,side_folder)
         for (source,_),name in zip(media,_unique([name for _,name in media],file=True)):
             files.append((source,directory+'/'+name))
     return ArchivePlan(root,files)

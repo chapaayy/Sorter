@@ -87,6 +87,14 @@ def _process(job,media):
         # Old runs without this snapshot parameter keep the historical behavior.
         minimum=float(info.get('min_match_score') or 0.0)
         rows=apply_min_match_score(rows,minimum)
+        # Group/SAM assignment is unchanged. A winning reference path only
+        # contributes the optional side label pinned when this run started.
+        sides={member['path']:(member['sam'],member.get('side'))
+               for member in info['reference_members']}
+        for row in rows:
+            winner=(row.get('top') or [{}])[0]
+            matched=sides.get(winner.get('reference'))
+            row['side']=matched[1] if matched and matched[0]==winner.get('label') else None
         filtered=sum(bool(row.get('match_rejected')) for row in rows)
         if minimum>0:
             job.log('INFO',f'Минимальное сходство с образцами: {minimum:.3f}; '
