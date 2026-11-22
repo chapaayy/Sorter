@@ -55,8 +55,8 @@ def register(batch_id, files, *, auto_process=False, grouping_threshold=0.50,
     signature = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     with connect() as db:
         codes=regions.selected(db,selected_regions) if auto_process else None
-        batch = db.execute("""SELECT delete_state, upload_manifest_signature,media_image_format,media_video_format
-            FROM batches WHERE id=%s FOR UPDATE""", (batch_id,)).fetchone()
+        batch = db.execute("""SELECT delete_state, upload_manifest_signature,media_image_format,media_video_format,
+                auto_process_regions FROM batches WHERE id=%s FOR UPDATE""", (batch_id,)).fetchone()
         if not batch:
             raise HTTPException(404, "Партия не найдена")
         if batch["delete_state"] != "active":
@@ -78,7 +78,7 @@ def register(batch_id, files, *, auto_process=False, grouping_threshold=0.50,
                     [(batch_id, *item) for item in expected])
             db.execute("""UPDATE batches SET upload_manifest_signature=%s,
                 upload_manifest_state='waiting', upload_manifest_completed_at=NULL,
-                auto_process_state=%s,auto_process_threshold=%s,
+                auto_process_state=%s,auto_process_threshold=%s,auto_process_regions=%s,
                 auto_process_run_id=NULL,auto_process_error=NULL,
                 media_image_format=%s,media_video_format=%s,upload_state='open' WHERE id=%s""",
                 (signature,'waiting' if auto_process else None,grouping_threshold,
