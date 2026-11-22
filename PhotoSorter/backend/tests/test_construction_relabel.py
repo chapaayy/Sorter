@@ -100,6 +100,8 @@ def test_rename_rejected_when_upload_manifest_active(system):
 
 
 def test_switch_between_custom_and_standard_without_reupload(system):
+    from server.services import regions
+    regions.register("MSK")
     ref_id, _ = add_published_reference(system)
     first=construction_relabel.update("SAM 0001","custom",name="LED у склада")
     assert first["sam"]=="LED у склада"
