@@ -27,6 +27,7 @@ def _public(row):
         "grouping_threshold": snapshot.get("grouping_threshold"),
         "source": snapshot.get("source", "manual"),
         "selected_models": snapshot.get("selected_models", ["megaloc"]),
+        "selected_regions": snapshot.get("selected_regions"),
         "progress": progress if isinstance(progress, dict) else {},
         "error": snapshot.get("error"),
         "archive_state": snapshot.get("archive_state"),
