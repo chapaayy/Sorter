@@ -20,8 +20,10 @@ export const referenceApi={
   list:()=>api<{sam:SamCount[];total:number}>('/references'),
   downloadAll:()=>'/api/references/export',
   gallery:(sam:string,cursor?:string|null,limit=60)=>api<CursorPage<Photo>>('/references/'+encodeURIComponent(sam)+'/photos'+query({cursor,limit})),
+  setSides:(sam:string,photoIds:string[],side:string|null)=>patch<{updated:number;side:string|null}>(
+    '/references/'+encodeURIComponent(sam)+'/sides',{photo_ids:photoIds,side}),
   files:()=>api<{files:ReferenceFile[]}>('/references/files'),
-  remove:(id:string)=>del<{deleted:boolean}>('/references/files/'+id),
-  deleteSam:(sam:string)=>del<{deleted:boolean}>('/references/sam/'+encodeURIComponent(sam)),
+  remove:(id:string)=>del<{deleted?:boolean;queued?:boolean;task_id?:string}>('/references/files/'+id),
+  deleteSam:(sam:string)=>del<{deleted?:boolean;queued?:boolean;task_id?:string}>('/references/sam/'+encodeURIComponent(sam)),
   cache:()=>api<{total:number;cached:number;current_signature?:string|null}>('/references/cache/status')
 }

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import DeferredImage from './DeferredImage.vue'
-export interface Tile{id:string;label:string;thumbnail_url?:string|null;original_url?:string|null;thumbnail_status?:string;original_media_type?:string|null;score?:number|null;media_kind?:"video"|"image"|null;play_url?:string|null;media_error?:string|null;duration?:number|null}
-defineProps<{items:Tile[];canDelete?:boolean;showScores?:boolean}>()
-const emit=defineEmits<{(e:'open',index:number):void;(e:'remove',id:string):void}>()
+export interface Tile{id:string;label:string;side?:string|null;thumbnail_url?:string|null;original_url?:string|null;thumbnail_status?:string;original_media_type?:string|null;score?:number|null;media_kind?:"video"|"image"|null;play_url?:string|null;media_error?:string|null;duration?:number|null}
+defineProps<{items:Tile[];canDelete?:boolean;showScores?:boolean;
+  selectable?:boolean;selectedIds?:ReadonlySet<string>;showSideStatus?:boolean}>()
+const emit=defineEmits<{(e:'open',index:number):void;(e:'remove',id:string):void;(e:'toggle',id:string):void}>()
 </script>
 <template>
   <div class="photo-grid">
-    <article v-for="(item,index) in items" :key="item.id" class="photo-item">
+    <article v-for="(item,index) in items" :key="item.id" class="photo-item"
+      :class="{'photo-unassigned':showSideStatus&&!item.side,'photo-chosen':selectedIds?.has(item.id)}">
       <DeferredImage v-if="item.thumbnail_url&&(!item.thumbnail_status||item.thumbnail_status==='ready')"
         :key="item.thumbnail_url" :src="item.thumbnail_url" :alt="item.label" class="photo-thumb" lazy>
         <template #error><div class="photo-load-error">Не удалось загрузить превью</div></template>
@@ -21,6 +23,9 @@ const emit=defineEmits<{(e:'open',index:number):void;(e:'remove',id:string):void
       <span v-if="item.media_kind==='video'" class="video-badge">▶ Видео<span v-if="item.duration"> · {{Math.round(item.duration)}} с</span></span>
       <div class="photo-caption"><span :title="item.label">{{item.label}}</span><span v-if="showScores&&item.score!=null">{{item.score.toFixed(3)}}</span></div>
       <button class="photo-select" type="button" :aria-label="'Открыть '+item.label" @click="emit('open',index)">Открыть</button>
+      <button v-if="selectable" type="button" class="photo-side-select"
+        :aria-label="'Выбрать '+item.label" :aria-pressed="selectedIds?.has(item.id)??false"
+        @click.stop="emit('toggle',item.id)">{{selectedIds?.has(item.id)?'✓':'+'}}</button>
       <button v-if="canDelete" class="btn small photo-menu" :aria-label="'Удалить '+item.label" @click="emit('remove',item.id)">×</button>
     </article>
   </div>

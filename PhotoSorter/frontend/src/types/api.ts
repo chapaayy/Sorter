@@ -51,7 +51,7 @@ export interface PendingUpload {
 }
 export interface PendingUploadList { uploads:PendingUpload[];total:number }
 export interface Photo {
-  id: string; name: string; bytes: number; created_at: string
+  id: string; name: string; bytes: number; created_at: string; side?:string|null
   original_media_type?: string | null
   media_kind?:"video"|"image"|null; play_url?:string|null; preview_url?:string|null; media_error?:string|null;duration?:number|null
   thumbnail_status?: 'queued' | 'running' | 'pending' | 'ready' | 'failed'
@@ -75,7 +75,7 @@ export interface Run {
   progress?: RunProgress; error?: string; archive_state?:'preparing'|'ready'|'failed'
 }
 export interface ResultPhoto {
-  index: number; assigned_sam?: string; group_id?: string
+  index: number; assigned_sam?: string; group_id?: string;side?:string|null
   score?: number | null; verdict?: string; reason?: string
   media_kind?:"video"|"image"|null; filename?:string|null;duration?:number|null
   thumbnail_url?: string | null; image_url: string
