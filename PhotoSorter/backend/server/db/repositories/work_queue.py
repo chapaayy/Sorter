@@ -112,10 +112,18 @@ def claim_next(db):
         raise RuntimeError("Reference library not initialized")
     if current["model_signature"] and current["model_signature"]!=fp:
         raise RuntimeError("Reference vectors require preparation with current MegaLoc")
-    pinned=reference_publication.snapshot(db,current["id"])
-    if not pinned:
-        raise RuntimeError("Published reference library is empty")
     info=dict(fo["snapshot"])
+    from ...services import regions
+    pinned=regions.filter_members(reference_publication.snapshot(db,current["id"]),
+                                  info.get("selected_regions"))
+    if not pinned:
+        info["status"]="failed"
+        info["error"]="В выбранных регионах нет опубликованных образцов"
+        db.execute("""UPDATE jobs SET status='failed',finished_at=now(),
+          updated_at=now(),snapshot=%s WHERE id=%s""",(Jsonb(info),fo["id"]))
+        db.execute("""UPDATE work_queue SET state='failed',finished_at=now()
+          WHERE seq=%s""",(row["seq"],))
+        return None
     info.update({"status":"running",
         "actual_started_at":datetime.now(timezone.utc).isoformat(),
         "reference_version":current["version_number"],
