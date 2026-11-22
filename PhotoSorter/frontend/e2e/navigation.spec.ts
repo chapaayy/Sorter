@@ -848,7 +848,11 @@ test('FO card can start once and remove a queued run without deleting history',a
   await page.getByRole('alertdialog').getByRole('button',{name:'Убрать из очереди'}).click()
   await expect.poll(()=>stopped).toBe(1)
   await expect(card.locator('.task-card-status')).toHaveText('Остановлено')
-  await expect(card.getByRole('button',{name:'Повторить'})).toBeVisible()
+  await expect(card.getByRole('button',{name:'Повторить',exact:true})).toHaveCount(0)
+  await card.getByLabel('Другие действия').click()
+  await card.getByRole('button',{name:'Повторить обработку'}).click()
+  await expect.poll(()=>started).toBe(2)
+  await expect(card.getByText('№3 в очереди')).toBeVisible()
 })
 
 test('failed retry preserves prior successful results and paged batch history',async({page})=>{
@@ -1676,4 +1680,28 @@ test('ZIP retention is compact and the extend action is preserved',async({page,i
   await bar.getByRole('button',{name:'Продлить хранение'}).click()
   await expect(bar).toContainText('20.03.2027')
   expect(extended).toBe(true)
+})
+
+test('completed FO has Results as main action and retry only in Other actions',async({page})=>{
+  const completed={...batch,runs:1,latest_run:run,last_result_run_id:rid}
+  let started=0
+  await page.route(/^https?:\\/\\/[^/]+\\/api\\/batches(?:\\?.*)?$/,route=>
+    respond(route,{batches:[completed],total:1}))
+  await page.route('**/api/runs',route=>{
+    if(route.request().method()==='POST'){
+      started++
+      completed.latest_run={...run,status:'queued',queue_position:2}
+      completed.runs++
+      return respond(route,completed.latest_run)
+    }
+    return respond(route,{runs:[run],total:1})
+  })
+  await page.goto('/fo')
+  const card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
+  await expect(card.getByRole('link',{name:'Результат',exact:true})).toHaveAttribute('href','/results/'+rid)
+  await expect(card.locator('.task-card-actions > .task-card-action').getByText('Повторить')).toHaveCount(0)
+  await card.getByLabel('Другие действия').click()
+  await card.getByRole('button',{name:'Повторить обработку'}).click()
+  await expect.poll(()=>started).toBe(1)
+  await expect(card.getByRole('button',{name:'Убрать из очереди'})).toBeVisible()
 })

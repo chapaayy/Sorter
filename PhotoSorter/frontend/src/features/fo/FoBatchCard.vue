@@ -108,9 +108,9 @@ const stage=computed(()=>{
       :disabled="busy" :title="run.status==='queued'?'Убрать из очереди':'Остановить обработку'"
       :aria-label="run.status==='queued'?'Убрать из очереди':'Остановить обработку'"
       @click="emit('stop',run.id)">■</button>
-    <button v-else-if="state.canStart" type="button" class="task-card-action task-card-action-primary"
+    <button v-else-if="state.canStart&&(batch.runs??0)===0" type="button" class="task-card-action task-card-action-primary"
       :disabled="busy" @click="emit('start',batch.batch_id,batchThreshold(batch))">
-      {{(batch.runs??0)>0?'Повторить':'Обработать'}}
+      Обработать
     </button>
     <RouterLink v-else-if="state.resultId" class="task-card-action task-card-action-primary"
       :to="'/results/'+state.resultId">Результат</RouterLink>
@@ -122,6 +122,8 @@ const stage=computed(()=>{
     <RouterLink v-if="state.resultId" :to="'/results/'+state.resultId">
       {{run?.id===state.resultId?'Открыть результаты':'Прошлые результаты'}}
     </RouterLink>
+    <button v-if="state.canStart&&!transfer&&(batch.runs??0)>0" type="button" :disabled="busy"
+      @click="emit('start',batch.batch_id,batchThreshold(batch))">Повторить обработку</button>
     <button v-if="state.canCancelAuto&&!transfer" type="button" :disabled="busy"
       @click="emit('cancelAuto',batch.batch_id)">Отменить автозапуск</button>
   </template>
