@@ -76,6 +76,7 @@ def update(sam: str, kind: str, *, city_code=None, number=None,
             db.execute("""
                 UPDATE uploads SET sam=%s WHERE kind='reference' AND sam=%s
             """, (target,sam))
+            db.execute("UPDATE reference_photo_sides SET sam=%s WHERE sam=%s",(target,sam))
             members = [dict(item) for item in reference_versions.members(db,version["id"])]
             for item in members:
                 if item["sam"] == sam:
