@@ -4,24 +4,23 @@ The shared FIFO claim lock freezes side labels into each claimed FO snapshot.
 This metadata update never changes reference bytes, version IDs or embeddings.
 """
 from __future__ import annotations
-import unicodedata
 from fastapi import HTTPException
 from app.photos.labels import check_label
 from ..database import connect
 
-_FORBIDDEN = '<>:"/\\\\|?*'
+# Latin letters only. Cyrillic labels from earlier versions are normalized
+# by migration 0035; existing unrelated names remain untouched until reassigned.
+SIDES = frozenset(f"{letter}{suffix}" for letter in ("A", "B")
+                  for suffix in ("", "1", "2", "3"))
 
 
 def normalize_side(value: str | None) -> str | None:
     if value is None:
         return None
-    name = " ".join(value.strip().split())
-    if name.casefold().startswith("сторона "):
-        name = name[8:].strip()
-    if (not name or len(name) > 60 or name in (".", "..") or name.endswith(".")
-            or any(ord(c)<32 or c in _FORBIDDEN for c in name) or name.casefold() == "неназначена сторона"):
-        raise HTTPException(422, "Название стороны: от 1 до 60 символов, без символов пути")
-    return unicodedata.normalize("NFC", name)
+    side = value.strip().upper()
+    if side not in SIDES:
+        raise HTTPException(422, "Допустимые стороны: A, A1–A3, B, B1–B3")
+    return side
 
 
 def active_sides(db, ids: list) -> dict[str, str]:

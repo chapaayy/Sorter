@@ -13,7 +13,7 @@ const photos=[
 ]
 
 test('reference sides: select, assign, group, preview and queued deletion',async({page})=>{
-  const sides=new Map<string,string|null>([[id1,null],[id2,'А']])
+  const sides=new Map<string,string|null>([[id1,null],[id2,'A']])
   let updateCount=0,queued=false
   await page.route(/^https?:\/\/[^/]+\/api\//,async route=>{
     const url=new URL(route.request().url())
@@ -45,7 +45,7 @@ test('reference sides: select, assign, group, preview and queued deletion',async
   })
   await page.goto('/references')
   await expect(page.getByText('Неназначена сторона')).toBeVisible()
-  await expect(page.getByText('Сторона А',{exact:true})).toBeVisible()
+  await expect(page.getByText('Сторона A',{exact:true})).toBeVisible()
   await expect(page.locator('.photo-item.photo-unassigned')).toHaveCount(1)
   const before=await page.getByRole('button',{name:'Открыть IMG_001.jpg'}).boundingBox()
   await expect(page.getByRole('button',{name:'Выбрать IMG_001.jpg'})).toHaveCount(0)
@@ -63,10 +63,15 @@ test('reference sides: select, assign, group, preview and queued deletion',async
   await expect(page.getByText('Выбрано: 1')).toBeVisible()
   await page.getByRole('button',{name:'Назначить сторону'}).click()
   const dialog=page.getByRole('dialog',{name:'Назначить сторону'})
-  await dialog.getByRole('combobox',{name:'Название стороны'}).fill('Б')
+  await expect(dialog.getByRole('textbox')).toHaveCount(0)
+  await expect(dialog.getByRole('button',{name:'Сторона P'})).toHaveCount(0)
+  await expect(dialog.getByRole('button',{name:/^Сторона (A|B)[1-3]?$/})).toHaveCount(8)
+  await expect(dialog.getByRole('button',{name:'Назначить',exact:true})).toBeDisabled()
+  await dialog.getByRole('button',{name:'Сторона B2',exact:true}).click()
+  await expect(dialog.getByRole('button',{name:'Сторона B2'})).toHaveAttribute('aria-pressed','true')
   await dialog.getByRole('button',{name:'Назначить',exact:true}).click()
   await expect.poll(()=>updateCount).toBe(1)
-  await expect(page.getByText('Сторона Б',{exact:true})).toBeVisible()
+  await expect(page.getByText('Сторона B2',{exact:true})).toBeVisible()
   await expect(page.locator('.photo-item.photo-unassigned')).toHaveCount(0)
   await page.getByRole('button',{name:'Готово',exact:true}).click()
   await expect(page.getByRole('toolbar',{name:'Работа с выделенными образцами'})).toHaveCount(0)

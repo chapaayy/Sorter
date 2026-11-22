@@ -33,15 +33,15 @@ def test_reference_side_assignment_freezes_at_fo_claim(system):
     ident,_=add_published_reference(system)
     with database.connect() as db:
         version=reference_versions.current(db)["id"]
-    assert reference_sides.assign("SAM 0001",[ident],"А")=={"updated":1,"side":"А"}
-    assert api.gallery("SAM 0001")["photos"][0]["side"]=="А"
+    assert reference_sides.assign("SAM 0001",[ident],"A")=={"updated":1,"side":"A"}
+    assert api.gallery("SAM 0001")["photos"][0]["side"]=="A"
     first=add_fo()
     with database.connect() as db:
         claimed=work_queue.claim_next(db)
         assert claimed["id"]==first
-        assert claimed["info"]["reference_members"][0]["side"]=="А"
-    assert reference_sides.assign("SAM 0001",[ident],"Б")["side"]=="Б"
-    assert claimed["info"]["reference_members"][0]["side"]=="А"
+        assert claimed["info"]["reference_members"][0]["side"]=="A"
+    assert reference_sides.assign("SAM 0001",[ident],"B3")["side"]=="B3"
+    assert claimed["info"]["reference_members"][0]["side"]=="A"
     with database.connect() as db:
         assert reference_versions.current(db)["id"]==version
     finish_fo(first)
@@ -49,7 +49,7 @@ def test_reference_side_assignment_freezes_at_fo_claim(system):
     with database.connect() as db:
         claimed=work_queue.claim_next(db)
         assert claimed["id"]==second
-        assert claimed["info"]["reference_members"][0]["side"]=="Б"
+        assert claimed["info"]["reference_members"][0]["side"]=="B3"
     finish_fo(second)
     reference_sides.assign("SAM 0001",[ident],None)
     assert api.gallery("SAM 0001")["photos"][0]["side"] is None
@@ -57,15 +57,19 @@ def test_reference_side_assignment_freezes_at_fo_claim(system):
 
 def test_side_validation_and_cross_construction_ids(system):
     ident,_=add_published_reference(system)
-    for bad in ("..","A/B","А\\Б","x:evil","А.","Неназначена сторона",""):
+    for bad in ("..","A/B","А","Б","А1","B4","A0","P","P1","C",
+                "x:evil","А.","Неназначена сторона",""):
         with pytest.raises(HTTPException) as error:
             reference_sides.assign("SAM 0001",[ident],bad)
         assert error.value.status_code==422
+    for allowed in ("A", "A1", "A2", "A3", "B", "B1", "B2", "B3"):
+        assert reference_sides.assign("SAM 0001",[ident],allowed)["side"]==allowed
+    assert reference_sides.assign("SAM 0001",[ident],"b2")["side"]=="B2"
     with pytest.raises(HTTPException) as error:
-        reference_sides.assign("SAM 0002",[ident],"А")
+        reference_sides.assign("SAM 0002",[ident],"A")
     assert error.value.status_code==409
     with pytest.raises(HTTPException) as error:
-        reference_sides.assign("SAM 0001",[uuid.uuid4()],"А")
+        reference_sides.assign("SAM 0001",[uuid.uuid4()],"A")
     assert error.value.status_code==409
 
 

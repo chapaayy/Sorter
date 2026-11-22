@@ -242,7 +242,6 @@ async function removeSam(){
 <EmptyState v-else-if="!error" title="Пока нет образцов"/>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
 <AssignSideDialog v-if="sideDialog" :count="chosen.length" :busy="busy"
-  :available="sideGroups.filter(group=>group.side).map(group=>group.side)"
   @assign="side=>setSide(side)" @clear="setSide(null)" @cancel="sideDialog=false"/>
 <ConfirmDialog v-if="deletePhoto" title="Удалить Образец?" message="Образец будет удалён сразу или после текущих задач в очереди. Старые результаты ФО сохранятся." danger confirm-label="Удалить Образец" :busy="busy" @cancel="deletePhoto=null" @confirm="dropOne"/>
 <ConfirmDialog v-if="deleteSam" title="Безвозвратно удалить конструкцию?" :message="'Все эталонные фото '+selected+' будут удалены из общей библиотеки. Это не удаляет партии ФО.'" :required-text="selected" danger confirm-label="Удалить SAM" :busy="busy" @cancel="deleteSam=false" @confirm="removeSam"/>
