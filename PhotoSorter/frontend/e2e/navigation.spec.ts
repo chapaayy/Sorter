@@ -1685,7 +1685,7 @@ test('ZIP retention is compact and the extend action is preserved',async({page,i
 test('completed FO has Results as main action and retry only in Other actions',async({page})=>{
   const completed={...batch,runs:1,latest_run:run,last_result_run_id:rid}
   let started=0
-  await page.route(/^https?:\\/\\/[^/]+\\/api\\/batches(?:\\?.*)?$/,route=>
+  await page.route(/^https?:\/\/[^/]+\/api\//,async route=>{
     respond(route,{batches:[completed],total:1}))
   await page.route('**/api/runs',route=>{
     if(route.request().method()==='POST'){
