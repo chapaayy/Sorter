@@ -94,6 +94,8 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
       - name: Reference selection smoke in Chromium
         run: npx playwright test e2e/reference-sides.spec.ts --project=chromium-desktop
+      - name: Region selection smoke in Chromium
+        run: npx playwright test e2e/regions.spec.ts --project=chromium-desktop
       - name: UI smoke in Chromium and WebKit desktop/mobile
         run: npm run test:e2e
       - uses: actions/upload-artifact@v4
