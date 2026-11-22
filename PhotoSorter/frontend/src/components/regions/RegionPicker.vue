@@ -54,16 +54,16 @@ async function create(){
       </div>
       <div class="region-add">
         <button v-if="!adding" type="button" @click="adding=true">+ Добавить регион</button>
-        <form v-else @submit.prevent="create">
+        <div v-else class="region-creation">
           <label class="field">Новый код (2–5 латинских букв)
             <input v-model="code" maxlength="5" minlength="2" pattern="[A-Z]{2,5}"
-              @input="code=code.toUpperCase()" placeholder="SZR" required/>
+              @input="code=code.toUpperCase()" placeholder="SZR" required @keydown.enter.prevent="create"/>
           </label>
           <div class="row wrap">
-            <UiButton type="submit" small kind="primary" :loading="busy">Добавить</UiButton>
+            <UiButton small kind="primary" :loading="busy" @click="create">Добавить</UiButton>
             <UiButton small :disabled="busy" @click="adding=false;error=''">Отмена</UiButton>
           </div>
-        </form>
+        </div>
         <div v-if="error" class="alert error" role="alert">{{error}}</div>
       </div>
     </div>
@@ -86,6 +86,6 @@ async function create(){
 .region-list button:hover,.region-list button[aria-selected=true]{background:var(--panel-alt)}
 .region-add{border-top:1px solid var(--border-subtle);padding-top:10px}
 .region-add>button{border:0;background:none;color:var(--accent);font-weight:600;cursor:pointer}
-.region-add form{display:grid;gap:8px}
+.region-creation{display:grid;gap:8px}
 .region-add input{max-width:200px}
 </style>
