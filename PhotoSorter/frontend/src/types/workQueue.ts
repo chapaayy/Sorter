@@ -29,6 +29,7 @@ export interface QueueTask {
   batch_deletion_progress?:DeletionProgress|null
   fo_source:string|null
   fo_progress?:RunProgress|null
+  fo_selected_regions?:string[]|null
   fo_photo_count?:number|null
   fo_thumbnail_url?:string|null
 }

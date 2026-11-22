@@ -38,7 +38,8 @@ usePolling(async()=>{if(runs.value.some(r=>isActive(r.status)))await reload()},3
   <div v-for="run in runs" :key="run.id" class="fo-history-row">
     <div class="fo-history-main">
       <strong>{{runLabel(run)}}</strong>
-      <span class="meta">{{date(run.actual_started_at||run.created_at||run.started_at)}} · порог {{run.grouping_threshold?.toFixed(2)??'0.50'}} · {{run.source==='automatic'?'автоматически':'вручную'}}</span>
+      <span class="meta">{{date(run.actual_started_at||run.created_at||run.started_at)}} · порог {{run.grouping_threshold?.toFixed(2)??'0.50'}} · {{run.source==='automatic'?'автоматически':'вручную'}} ·
+        {{run.selected_regions?.length?run.selected_regions.join(', '):'Все регионы'}}</span>
       <span v-if="run.status==='queued'&&run.queue_position&&!readyToStart(run)" class="meta">Очередь №{{run.queue_position}}</span>
     </div>
     <div class="row wrap">

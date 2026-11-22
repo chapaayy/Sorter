@@ -65,6 +65,7 @@ async function stop(){
   <h2>Параметры и действия</h2>
   <div class="grid3">
     <div><span class="label">Модель</span><strong>MegaLoc</strong></div>
+    <div><span class="label">Регионы</span><strong>{{run.selected_regions?.length?run.selected_regions.join(', '):'Все регионы'}}</strong></div>
     <div><span class="label">Порог группировки</span><strong>{{run.grouping_threshold?.toFixed(2)||'0.50'}}</strong></div>
     <div><span class="label">Минимальное сходство с образцами</span>
       <strong>{{run.min_match_score?run.min_match_score.toFixed(3):'Отключено'}}</strong>
