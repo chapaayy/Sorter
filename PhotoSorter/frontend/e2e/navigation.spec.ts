@@ -1,4 +1,4 @@
-import {test,expect,Page} from '@playwright/test'
+import {test,expect,Page,Locator} from '@playwright/test'
 import {mkdtemp,mkdir,rm,writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
@@ -12,7 +12,7 @@ const photo={id:pid,name:'screen_001.jpg',bytes:1024,created_at:'2026-11-05T06:0
 const output={index:0,assigned_sam:'SAM-0001',group_id:'G0001',score:.921,thumbnail_url:'/api/thumbnails/'+pid,image_url:'/api/images/'+rid+'/megaloc/0?kind=query'}
 function respond(route:any,data:unknown){return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)})}
 async function mock(page:Page){
-  const defaults={auto_process_new_batches:false,grouping_threshold:.50,model:'megaloc'}
+  const defaults={auto_process_new_batches:false,grouping_threshold:.50,min_match_score:0,model:'megaloc'}
   const retention={enabled:true,value:2,unit:'months'}
   const workloads={mode:'manual',fo_threads:6,reference_threads:6,max_threads:7,
     total_cpus:8,model_cpus:6,system_cpus:2,max_model_cpus:7,
@@ -23,6 +23,12 @@ async function mock(page:Page){
     if(p==='/api/auth/me')return respond(route,{username:'admin'})
     if(p==='/api/auth/login')return respond(route,{username:'admin'})
     if(p==='/api/auth/logout')return respond(route,{ok:true})
+    if(p==='/api/regions'){
+      if(method==='POST')return respond(route,{code:route.request().postDataJSON().code})
+      return respond(route,{regions:[
+        {code:'SAM',constructions:12},{code:'MSK',constructions:5},{code:'TLT',constructions:6}
+      ]})
+    }
     if(p==='/api/admin/users')return respond(route,{items:[],has_more:false})
     if(p==='/api/admin/access-requests')return respond(route,{items:[],has_more:false})
     if(p==='/api/batches')return respond(route,{batches:[batch],total:1})
@@ -78,6 +84,18 @@ async function mock(page:Page){
     if(p.includes('/api/thumbnails/'))return route.fulfill({status:202,contentType:'application/json',body:'{"detail":"pending"}'})
     return route.fulfill({status:404,contentType:'application/json',body:JSON.stringify({detail:'Unexpected test API: '+p})})
   })
+}
+async function uploadFo(form:Locator){
+  // New uploads require a report date. The legacy transfer scenarios use
+  // processing date; date-entry validation is tested independently.
+  await form.getByRole('checkbox',{name:'Использовать дату обработки'}).check()
+  await form.getByRole('button',{name:'Загрузить',exact:true}).click()
+}
+async function confirmRegionStart(page:Page){
+  const dialog=page.getByRole('dialog',{name:'Выбор регионов для обработки'})
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button',{name:'SAM'}).click()
+  await dialog.getByRole('button',{name:'Обработать',exact:true}).click()
 }
 async function openQueue(page:Page){
   const drawer=page.getByRole('button',{name:'Открыть меню'})
@@ -281,7 +299,7 @@ test('folder imports ignore old name-based recovery and show the name assigned b
     await name.fill('  ')
     await expect(form.getByRole('button',{name:'Загрузить',exact:true})).toBeDisabled()
     await name.fill('Выезд')
-    await form.getByRole('button',{name:'Загрузить',exact:true}).click()
+    await uploadFo(form)
     await expect(page.locator('.upload-floating')).toContainText('ФО · Выезд 2')
     expect(requests).toHaveLength(2)
     expect(requests[1]).toEqual(requests[0])
@@ -371,7 +389,7 @@ test('mixed folder upload keeps sending bytes across pages and only opens its ba
     await page.getByRole('button',{name:'+ Загрузить папку'}).click()
     const dialog=page.getByRole('dialog',{name:'Загрузить фотографии'})
     await dialog.locator('input[webkitdirectory]').setInputFiles(folder)
-    await dialog.getByRole('button',{name:'Загрузить',exact:true}).click()
+    await uploadFo(dialog)
     await expect.poll(()=>sending).toBe(true)
     await expect(dialog).toBeHidden()
     const drawer=page.getByRole('button',{name:'Открыть меню'})
@@ -438,7 +456,7 @@ test('gallery opens image and video previews without downloading while conversio
     const video=page.getByRole('dialog',{name:'Просмотр видео'})
     await expect(video.locator('video')).toHaveAttribute('src',original)
     await video.locator('video').dispatchEvent('error')
-    await expect(video.getByRole('img',{name:'clip.MOV'})).toBeVisible()
+    await expect(video.getByRole('status')).toContainText('Полный просмотр будет доступен после перекодирования.')
     await expect(video).toContainText('Полный просмотр будет доступен после перекодирования.')
     converted=true
     await expect(video.locator('video')).toHaveAttribute('src',prepared)
@@ -488,7 +506,7 @@ test('pausing and resuming counts each saved file only once',async({page})=>{
     await page.getByRole('button',{name:'+ Загрузить папку'}).click()
     const dialog=page.getByRole('dialog',{name:'Загрузить фотографии'})
     await dialog.locator('input[webkitdirectory]').setInputFiles(folder)
-    await dialog.getByRole('button',{name:'Загрузить',exact:true}).click()
+    await uploadFo(dialog)
     await expect.poll(()=>secondAttempts).toBe(1)
     const cards=page.getByRole('article',{name:'Фотоотчёт Тест загрузки',exact:true})
     const card=cards.first()
@@ -635,15 +653,17 @@ test('desktop references use the maximum responsive width without a resize handl
   }finally{library.release()}
 })
 
-test('result galleries still allow desktop panel resizing',async({page,isMobile})=>{
+test('result galleries use a stable panel and group search on desktop',async({page,isMobile})=>{
   test.skip(isMobile,'Mobile uses the standard picker')
   await page.goto('/results/'+rid)
-  const grip=page.getByRole('separator',{name:'Изменить ширину списка конструкций'})
-  await expect(grip).toBeVisible()
   const aside=page.locator('aside.split-aside')
+  await expect(aside).toBeVisible()
   const before=await aside.evaluate(el=>el.getBoundingClientRect().width)
-  await grip.press('ArrowLeft')
-  expect(await aside.evaluate(el=>el.getBoundingClientRect().width)).toBe(before-40)
+  await expect(page.getByRole('separator',{name:'Изменить ширину списка конструкций'})).toHaveCount(0)
+  const filter=aside.getByRole('textbox',{name:'Поиск групп'})
+  await filter.fill('Нет такой конструкции')
+  await expect(aside.getByText('Ничего не найдено')).toBeVisible()
+  expect(await aside.evaluate(el=>el.getBoundingClientRect().width)).toBeCloseTo(before)
 })
 
 test('incomplete photo batch remains blocked in FO, not via a second launch form',async({page})=>{
@@ -786,6 +806,7 @@ test('idle FIFO starts directly and uses the same card columns as a completed re
   await page.goto('/fo')
   const card=page.getByRole('article',{name:'Фотоотчёт Новый выезд'})
   await card.getByRole('button',{name:'Обработать',exact:true}).click()
+  await confirmRegionStart(page)
   await expect(card.locator('.task-card-status')).toHaveText('Запуск обработки')
   await expect(card.getByText('Ожидает своей очереди')).toHaveCount(0)
   if(!isMobile){
@@ -842,6 +863,7 @@ test('FO card can start once and remove a queued run without deleting history',a
   const card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
   await expect(card.locator('.task-card-status')).toHaveText('Не обработано')
   await card.getByRole('button',{name:'Обработать'}).click()
+  await confirmRegionStart(page)
   await expect.poll(()=>started).toBe(1)
   await expect(card.getByText('№3 в очереди')).toBeVisible()
   await card.getByRole('button',{name:'Убрать из очереди'}).click()
@@ -851,6 +873,7 @@ test('FO card can start once and remove a queued run without deleting history',a
   await expect(card.getByRole('button',{name:'Повторить',exact:true})).toHaveCount(0)
   await card.getByLabel('Другие действия').click()
   await card.getByRole('button',{name:'Повторить обработку'}).click()
+  await confirmRegionStart(page)
   await expect.poll(()=>started).toBe(2)
   await expect(card.getByText('№3 в очереди')).toBeVisible()
 })
@@ -977,7 +1000,7 @@ for(const mode of ['single','folder'] as const)test('staged reference '+mode+' u
   const gate=holdTransfer()
   const sam=mode==='single'?'SAM-0001':'SAM 0004'
   await page.route('**/api/references/import/preview',route=>respond(route,{
-    errors:[],entries:[{sam,folder:'SAM 0004 — Гагарина 64',existing:false}]
+    errors:[],new_regions:[],entries:[{sam,folder:'SAM 0004 — Гагарина 64',existing:false}]
   }))
   await page.route('**/api/reference-library/status',route=>respond(route,status))
   await page.route(/^https?:\/\/[^/]+\/api\/runs(?:\?.*)?$/,route=>
@@ -1074,7 +1097,7 @@ for(const mode of ['single','folder'] as const)test('staged reference '+mode+' u
 test('reference folder with only duplicates never starts transfer or creates a job',async({page})=>{
   let checked=0,writes=0
   await page.route('**/api/references/import/preview',route=>respond(route,{
-    errors:[],entries:[{sam:'SAM 0004',folder:'SAM 0004 — Гагарина 64',existing:true}]
+    errors:[],new_regions:[],entries:[{sam:'SAM 0004',folder:'SAM 0004 — Гагарина 64',existing:true}]
   }))
   await page.route('**/api/reference-imports{,/**}',route=>{
     const path=new URL(route.request().url()).pathname
@@ -1215,10 +1238,11 @@ test('construction creation keeps standard, custom and folder import tabs in one
   const dialog=page.getByRole('dialog',{name:'Создать конструкцию'})
   await expect(dialog).toBeVisible()
   await expect(dialog.getByRole('tab',{name:'Обычная'})).toHaveAttribute('aria-selected','true')
-  const cityInput=dialog.getByRole('textbox',{name:'Код города'})
-  await expect(cityInput).toHaveValue('SAM')
-  await cityInput.fill('msk')
-  await expect(cityInput).toHaveValue('MSK')
+  const picker=dialog.getByRole('button',{name:/^SAM/})
+  await expect(picker).toBeVisible()
+  await picker.click()
+  await dialog.getByRole('option',{name:/^MSK/}).click()
+  await expect(dialog.getByRole('button',{name:/^MSK/})).toBeVisible()
   await dialog.getByRole('textbox',{name:'Номер конструкции'}).fill('0004')
   await dialog.getByRole('textbox',{name:'Адрес конструкции'}).fill('Гагарина 64')
   await expect(dialog.getByText('MSK 0004 — Гагарина 64')).toBeVisible()
@@ -1371,7 +1395,7 @@ test('website transfer queue stays FIFO across two FO folders and references',as
       await page.getByRole('button',{name:'+ Загрузить папку'}).click()
       const form=page.getByRole('dialog',{name:'Загрузить фотографии'})
       await form.locator('input[webkitdirectory]').setInputFiles(join(root,name))
-      await form.getByRole('button',{name:'Загрузить',exact:true}).click()
+      await uploadFo(form)
       await expect(form).toBeHidden()
     }
     const indicator=page.locator('.upload-floating')
@@ -1533,7 +1557,7 @@ test('mixed import defaults to JPG and MP4 and accepts an output profile',async(
     await page.route('**/api/batches',route=>respond(route,{batch_id:bid,display_name:'Смешанная папка'}))
     await page.route('**/api/batches/'+bid+'/upload-manifest',route=>respond(route,{state:'legacy',files:[]}))
     const submitted=page.waitForRequest(r=>r.method()==='PUT'&&r.url().includes('/upload-manifest'))
-    await page.getByRole('button',{name:'Загрузить',exact:true}).click()
+    await uploadFo(page.getByRole('dialog',{name:'Загрузить фотографии'}))
     const body=(await submitted).postDataJSON()
     expect(body.image_format).toBe('png')
     expect(body.video_format).toBe('webm')
@@ -1601,7 +1625,7 @@ test('report detail shows confirmed video bytes instead of recovery alerts durin
     await page.getByRole('button',{name:'+ Загрузить папку'}).click()
     const upload=page.getByRole('dialog',{name:'Загрузить фотографии'})
     await upload.locator('input[webkitdirectory]').setInputFiles(folder)
-    await upload.getByRole('button',{name:'Загрузить',exact:true}).click()
+    await uploadFo(upload)
     await expect.poll(()=>secondChunk).toBe(true)
     // Navigate within the SPA, keeping the browser upload alive.
     const card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
@@ -1702,6 +1726,7 @@ test('completed FO has Results as main action and retry only in Other actions',a
   await expect(card.locator('.task-card-actions > .task-card-action').getByText('Повторить')).toHaveCount(0)
   await card.getByLabel('Другие действия').click()
   await card.getByRole('button',{name:'Повторить обработку'}).click()
+  await confirmRegionStart(page)
   await expect.poll(()=>started).toBe(1)
   await expect(card.getByRole('button',{name:'Убрать из очереди'})).toBeVisible()
 })
