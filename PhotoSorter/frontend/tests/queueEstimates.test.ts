@@ -27,6 +27,70 @@ const historyPrep=(seq:number,seconds:number,count=10)=>{
   return task
 }
 describe('measured FIFO time projections',()=>{
+  it('shows historical full-run ETA when backend projection is partial',()=>{
+    const current=entry(1,'fo_processing','running',150)
+    current.started_at=new Date(now-60_000).toISOString()
+    current.fo_progress={stage:'queries',current:10,total:150,
+      stage_items_per_second:2,estimated_remaining_seconds:null,eta_status:'partial'}
+    const map=estimateQueue([current],[historyFO(10,300,150)],now)
+    expect(map.get(1)).toMatchObject({
+      remainingSeconds:240,finishInSeconds:240,basis:'history'
+    })
+    expect(queueTime(current,map.get(1))).toEqual({
+      label:'≈ 4 мин',detail:'По прошлым ФО'
+    })
+  })
+  it('shows an honest stage ETA when no whole-run measurement exists',()=>{
+    const current=entry(1,'fo_processing','running',647)
+    current.started_at=new Date(now-120_000).toISOString()
+    current.fo_progress={stage:'queries',current:20,total:647,
+      stage_items_per_second:1.5,estimated_remaining_seconds:null,
+      eta_status:'partial'}
+    const queued=entry(2,'fo_processing','queued',100)
+    const map=estimateQueue([current,queued],[],now)
+    expect(map.get(1)?.basis).toBe('stage')
+    expect(map.get(1)?.remainingSeconds).toBeCloseTo(418,5)
+    expect(map.get(1)?.finishInSeconds).toBeNull()
+    expect(queueTime(current,map.get(1))).toEqual({
+      label:'≈ 7 мин',detail:'До конца этапа'
+    })
+    expect(map.get(2)?.startInSeconds).toBeNull()
+    expect(map.get(2)?.finishInSeconds).toBeNull()
+    expect(runTime({id:'r',batch_id:'b',status:'running',
+      progress:current.fo_progress}).detail).toBe('До конца этапа')
+  })
+  it('does not show a stage rate before enough samples or a zero rate',()=>{
+    const current=entry(1,'fo_processing','running',100)
+    current.started_at=new Date(now-1000).toISOString()
+    current.fo_progress={stage:'queries',current:2,total:100,stage_items_per_second:12}
+    let map=estimateQueue([current],[],now)
+    expect(map.get(1)?.remainingSeconds).toBeNull()
+    current.fo_progress={stage:'queries',current:10,total:100,stage_items_per_second:0}
+    map=estimateQueue([current],[],now)
+    expect(map.get(1)?.remainingSeconds).toBeNull()
+  })
+  it('keeps authoritative backend run ETA ahead of historical and stage rates',()=>{
+    const current=entry(1,'fo_processing','running',150)
+    current.started_at=new Date(now-60_000).toISOString()
+    current.fo_progress={stage:'queries',current:20,total:150,
+      stage_items_per_second:.01,estimated_remaining_seconds:95,eta_status:'measured'}
+    const map=estimateQueue([current],[historyFO(10,600,150)],now)
+    expect(map.get(1)?.remainingSeconds).toBe(95)
+    expect(map.get(1)?.basis).toBe('measured')
+    expect(map.get(1)?.finishInSeconds).toBe(95)
+    expect(queueTime(current,map.get(1)).detail).toBe('Осталось')
+  })
+  it('refuses an optimistic history ETA shorter than the measured current stage',()=>{
+    const current=entry(1,'fo_processing','running',100)
+    current.started_at=new Date(now-10_000).toISOString()
+    current.fo_progress={stage:'queries',current:5,total:100,
+      stage_items_per_second:1,estimated_remaining_seconds:null}
+    const map=estimateQueue([current],[historyFO(10,30,100)],now)
+    expect(map.get(1)?.basis).toBe('stage')
+    expect(map.get(1)?.remainingSeconds).toBe(95)
+    expect(map.get(1)?.finishInSeconds).toBeNull()
+  })
+
   it('does not fabricate future ETA before any measured examples exist',()=>{
     const active=[entry(1,'fo_processing','queued',100),
       entry(2,'reference_preparation','queued',50)]
@@ -53,13 +117,15 @@ describe('measured FIFO time projections',()=>{
     expect(queueTime(second,map.get(2)).label).toBe('≈ 6 мин')
     expect(queueTime(second,map.get(2)).detail).toBe('Старт ≈ 2 мин')
   })
-  it('does not invent estimates when the running task has no ETA',()=>{
+  it('falls back to historical whole-run time when there is no backend ETA',()=>{
     const first=entry(1,'fo_processing','running',100)
     first.started_at=new Date(now-120000).toISOString()
     const queued=entry(2,'fo_processing','queued',100)
     const value=estimateQueue([first,queued],[historyFO(3,200)],now)
-    expect(value.get(2)?.startInSeconds).toBeNull()
-    expect(value.get(2)?.finishInSeconds).toBeNull()
+    expect(value.get(1)?.basis).toBe('history')
+    expect(value.get(1)?.remainingSeconds).toBe(80)
+    expect(value.get(2)?.startInSeconds).toBe(80)
+    expect(value.get(2)?.finishInSeconds).toBe(280)
   })
   it('uses remaining seconds for the whole conversion in FIFO',()=>{
     const current={...entry(1,'media_preparation','running',2),media_eta_seconds:36}

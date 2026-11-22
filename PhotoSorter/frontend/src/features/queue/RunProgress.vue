@@ -3,13 +3,19 @@ import {computed} from 'vue'
 import type {Run} from '../../types/api'
 import {duration,runLabel,readyToStart,isActive} from '../../utils/format'
 import {useSmoothProgress} from '../../composables/useSmoothProgress'
+import {stageRemaining} from '../../utils/queueEstimates'
 const props=defineProps<{run:Run}>()
 const p=computed(()=>props.run.progress||{})
 const stage=computed(()=>p.value.stage_label||p.value.stage||'Ожидание начала')
 const percent=computed(()=>p.value.stage_percent!=null?Math.max(0,Math.min(100,p.value.stage_percent)):null)
 const shown=useSmoothProgress(()=>percent.value,()=>
   props.run.status==='running'?props.run.id+':'+(p.value.stage||stage.value):null)
-const eta=computed(()=>p.value.eta_status==='measured'&&p.value.estimated_remaining_seconds!=null?duration(p.value.estimated_remaining_seconds):null)
+const eta=computed(()=>{
+  if(p.value.eta_status==='measured'&&p.value.estimated_remaining_seconds!=null)
+    return {time:duration(p.value.estimated_remaining_seconds),label:'Прогноз до конца'}
+  const stage=stageRemaining(p.value)
+  return stage!==null?{time:duration(stage),label:'До конца этапа'}:null
+})
 </script>
 <template>
 <section class="panel stack" aria-live="polite">
@@ -27,7 +33,7 @@ const eta=computed(()=>p.value.eta_status==='measured'&&p.value.estimated_remain
       <div><strong>{{p.total!=null?p.current||0:'—'}} / {{p.total??'—'}}</strong>Сделано / всего на этапе</div>
       <div><strong>{{p.stage_items_per_second!=null?p.stage_items_per_second.toFixed(2):'—'}}</strong>Ед./сек, измерено</div>
       <div><strong>{{duration(p.elapsed_seconds)}}</strong>Время выполнения</div>
-      <div><strong>{{eta||'—'}}</strong>{{eta?'Прогноз до конца':'ETA пока нет'}}</div>
+      <div><strong>{{eta?.time||'—'}}</strong>{{eta?.label||'ETA пока нет'}}</div>
     </div>
     <div v-if="p.overall_percent!=null" class="meta">Общая оценка: {{p.overall_percent.toFixed(1)}}% · {{p.eta_status==='measured'?'на основании реальных измерений':'предварительно'}}</div>
   </template>
