@@ -17,8 +17,9 @@ export const batchApi={
     '/batches/'+encodeURIComponent(id)+'/auto-processing/cancel',{}),
   finishPending:(uploadId:string)=>api<{path:string;already_finalized?:boolean}>('/uploads/'+encodeURIComponent(uploadId)+'/finish',{method:'POST'}),
   cancelPending:(uploadId:string)=>del<{cancelled:boolean}>('/uploads/'+encodeURIComponent(uploadId)),
-  create:(name:string,requestId:string,signal:AbortSignal)=>api<{batch_id:string;display_name:string}>('/batches',{
-    method:'POST',signal,body:JSON.stringify({display_name:name,creation_request_id:requestId})
+  create:(name:string,requestId:string,signal:AbortSignal,reportDateMode:'manual'|'processing'='processing',reportDate:string|null=null)=>api<{batch_id:string;display_name:string}>('/batches',{
+    method:'POST',signal,body:JSON.stringify({display_name:name,creation_request_id:requestId,
+      report_date_mode:reportDateMode,report_date:reportDate})
   }),
   rename:(id:string,name:string)=>patch<Batch>('/batches/'+id,{display_name:name}),
   gallery:(id:string,cursor?:string|null,limit=60)=>api<CursorPage<Photo>>('/batches/'+id+'/gallery'+query({cursor,limit})),

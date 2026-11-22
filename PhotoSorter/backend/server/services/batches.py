@@ -28,9 +28,11 @@ def _available_name(db,base,exclude_id=None):
         number+=1
     return name
 
-def create(display_name=None,creation_request_id=None):
+def create(display_name=None,creation_request_id=None,report_date_mode='processing',report_date=None):
     name=(display_name or "").strip()
     if len(name)>120:raise HTTPException(422,"Название слишком длинное")
+    if (report_date_mode=='manual') != (report_date is not None):
+        raise HTTPException(422,'Для ручной даты необходимо указать дату фотоотчёта')
     if not name:
         from datetime import datetime,timezone
         name="Фотоотчёт "+datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M")
@@ -39,14 +41,16 @@ def create(display_name=None,creation_request_id=None):
         if creation_request_id is not None:
             existing=repository.by_creation_request(db,creation_request_id)
             if existing:
+                if (existing['report_date_mode'],existing['report_date']) != (report_date_mode,report_date):
+                    raise HTTPException(409,'Дата повторной загрузки не совпадает с созданной партией')
                 return {"batch_id":str(existing["id"]),"display_name":existing["display_name"]}
         batch_id=uuid.uuid4()
         name=_available_name(db,name)
-        repository.insert(db,batch_id,name,creation_request_id)
+        repository.insert(db,batch_id,name,creation_request_id,report_date_mode,report_date)
     return {"batch_id":str(batch_id),"display_name":name}
 
 def _serialize(row,counters=None):
-    fields=("display_name","created_at","upload_state","thumbnail_state",
+    fields=("display_name","created_at","report_date_mode","report_date","upload_state","thumbnail_state",
             "delete_state","download_confirmed_at","confirmed_run_id",
             "upload_manifest_state","upload_manifest_completed_at",
             "auto_process_state","auto_process_threshold","auto_process_run_id","auto_process_error",

@@ -94,6 +94,7 @@ async function deleteBatch(){
 }
 </script>
 <template>
+<div class="reference-library-view results-detail-view">
 <div class="row" style="margin-bottom:22px"><RouterLink class="meta" to="/results">← Все результаты</RouterLink></div>
 <PageHeader eyebrow="РЕЗУЛЬТАТЫ / MEGALOC" :title="batch?.display_name||published?.display_name||'Результат запуска'" :subtitle="total+' ФО · '+Object.keys(groups).length+' групп ФО'+(run?' · '+date(run.started_at):'')">
   <template #actions><UiButton kind="primary" :disabled="!(published||(run&&isComplete(run.status)&&!archiveMissing))" @click="download()">↓ Скачать всю сортировку ZIP</UiButton><UiButton v-if="session.isOwner" kind="danger" :disabled="!batch" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
@@ -128,21 +129,24 @@ async function deleteBatch(){
   <span class="meta">Оценки MegaLoc показывают сходство с Образцами.</span>
 </div>
 <div v-if="list.length" class="split">
-  <GroupPicker v-model="selected" :items="list" :placeholder="mode==='sam'?'Поиск номера или адреса…':'Поиск группы…'" resizable/>
+  <GroupPicker v-model="selected" :items="list" :placeholder="mode==='sam'?'Поиск номера или адреса…':'Поиск группы…'"/>
   <section class="panel split-main">
-    <div class="panel-header">
+    <div class="panel-header reference-detail-header">
       <div><h2>{{mode==='sam'?displaySam(selected):selected}}</h2><span class="meta">{{list.find(x=>x.id===selected)?.count||0}} ФО</span></div>
       <UiButton v-if="mode==='sam'" small @click="download(selected)">↓ Скачать конструкцию</UiButton>
     </div>
+    <div class="reference-library-gallery-scroll">
     <div v-if="pageError" class="alert error" role="alert">{{pageError}}</div>
     <VirtualThumbnailGrid v-if="items.length" :items="tiles" :show-scores="true" @open="i=>viewer=i"/>
     <LoadingSkeleton v-else-if="loading" variant="gallery" label="Загружаем фотографии результата"/>
     <EmptyState v-else-if="!pageError" title="Фотографий здесь нет"/>
     <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё</UiButton></div>
+    </div>
   </section>
 </div>
 <LoadingSkeleton v-else-if="initialLoading" variant="split" label="Загружаем результат"/>
 <EmptyState v-else-if="!error&&(run||published)" :title="session.isOwner?'Результаты ещё не опубликованы':'Фотографий в этом результате нет'"/>
 <ImageViewer v-if="viewer!==null" :items="previews" :initial="viewer" @close="viewer=null"/>
 <ConfirmDialog v-if="deleteWhole&&batch" title="Удалить ВСЮ партию безвозвратно?" :message="'Удалятся оригинальные ФО, все запуски, готовые результаты, миниатюры, временные файлы и логи партии «'+batch.display_name+'». Общая библиотека SAM останется.'" :required-text="batch.display_name" danger confirm-label="Удалить всю партию" :busy="busy" @confirm="deleteBatch" @cancel="deleteWhole=false"/>
+</div>
 </template>

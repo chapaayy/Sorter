@@ -1,6 +1,8 @@
 """New folder imports are isolated by ID, including concurrent requests and retries."""
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
+from datetime import date
+import pytest
 
 from server.api.routes.batches import NewBatch, create
 from server.database import connect
@@ -65,3 +67,25 @@ def test_names_stay_at_most_120_chars_and_rename_respects_existing_names(sandbox
     finally:
         cleanup.request(second["batch_id"])
         cleanup.cleanup_one(second["batch_id"])
+
+
+def test_report_date_is_validated_and_persisted(sandbox):
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        NewBatch(report_date_mode='manual')
+    with pytest.raises(ValidationError):
+        NewBatch(report_date_mode='processing',report_date=date(2026,11,20))
+    request_id=uuid4()
+    payload=NewBatch(display_name='Report date test '+uuid4().hex,
+        creation_request_id=request_id,report_date_mode='manual',report_date=date(2026,11,20))
+    created=create(payload)
+    try:
+        saved=batches.get(created['batch_id'])
+        assert saved['report_date_mode']=='manual'
+        assert saved['report_date']==date(2026,11,20)
+        assert create(payload)==created
+        with pytest.raises(Exception,match='Дата повторной загрузки'):
+            create(NewBatch(display_name=payload.display_name,creation_request_id=request_id,
+                report_date_mode='processing'))
+    finally:
+        cleanup.request(created['batch_id']);cleanup.cleanup_one(created['batch_id'])

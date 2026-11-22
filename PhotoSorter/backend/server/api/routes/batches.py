@@ -1,9 +1,10 @@
 """Batch list/detail/update, safe deletion and explicit archive confirmation."""
 from __future__ import annotations
+from datetime import date
 import uuid
 from typing import Literal
 from fastapi import APIRouter,HTTPException
-from pydantic import BaseModel,Field
+from pydantic import BaseModel,Field,model_validator
 from ...services import batches,cleanup,retention,upload_manifest,auto_processing,batch_runs
 from ...database import connect
 from ...services.upload_validation import MAX_FO_BYTES
@@ -14,6 +15,14 @@ router=APIRouter(prefix="/api/batches",tags=["batches"])
 class NewBatch(BaseModel):
     display_name:str|None=Field(default=None,max_length=120)
     creation_request_id:uuid.UUID|None=None
+    report_date_mode:Literal['manual','processing']='processing'
+    report_date:date|None=None
+
+    @model_validator(mode='after')
+    def validate_report_date(self):
+        if (self.report_date_mode=='manual') != (self.report_date is not None):
+            raise ValueError('Выберите дату фотоотчёта либо дату обработки')
+        return self
 class RenameBatch(BaseModel):
     display_name:str=Field(min_length=1,max_length=120)
 class ConfirmDownload(BaseModel):
@@ -34,7 +43,8 @@ class BatchManifest(BaseModel):
 
 @router.post("")
 def create(payload:NewBatch|None=None):
-    return batches.create(payload.display_name,payload.creation_request_id) if payload else batches.create()
+    return batches.create(payload.display_name,payload.creation_request_id,
+        payload.report_date_mode,payload.report_date) if payload else batches.create()
 
 @router.get("")
 def list_batches(limit:int=100,offset:int=0):

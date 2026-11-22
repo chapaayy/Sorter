@@ -198,6 +198,8 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     with zipfile.ZipFile(archive) as zipped:
         assert {Path(name).name for name in zipped.namelist()}=={'Альфа.jpg','Клип.mp4','Совместимый.JPG'}
         mp4=next(name for name in zipped.namelist() if name.endswith('.mp4'))
+        assert '/Видео/SAM 0001' in mp4
+        assert any('/SAM 0001' in name and '/Видео/' not in name and name.endswith(('.jpg','.JPG')) for name in zipped.namelist())
         normalized=thumbs/'downloaded.mp4'
         normalized.write_bytes(zipped.read(mp4))
         assert formats.probe(normalized).codec=='h264'

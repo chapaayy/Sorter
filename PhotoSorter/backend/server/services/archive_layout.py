@@ -70,6 +70,13 @@ class ArchivePlan:
 
 
 def build(db,run_id,batch_id,title,rows,sam=None):
+    report=db.execute("""SELECT CASE WHEN b.report_date_mode='manual' THEN b.report_date
+        ELSE (COALESCE(j.started_at,j.created_at) AT TIME ZONE 'Europe/Samara')::date
+        END AS archive_date FROM jobs j JOIN batches b ON b.id=j.batch_id
+        WHERE j.id=%s AND b.id=%s""",(run_id,batch_id)).fetchone()
+    if not report or report['archive_date'] is None:
+        raise ValueError('Дата фотоотчёта не найдена')
+    folder_date=report['archive_date'].isoformat()
     filtered=[row for row in rows if sam is None or row["assigned_sam"]==sam]
     labels=list(dict.fromkeys(row["assigned_sam"] for row in filtered))
     constructions=db.execute("""SELECT sam,kind,address FROM reference_constructions
@@ -87,14 +94,16 @@ def build(db,run_id,batch_id,title,rows,sam=None):
     outputs=owned_directory(run/"megaloc",run)
     groups=defaultdict(list)
     for row in filtered:
-        source=owned_file(Path(row["copy"]),outputs)
+        source=owned_file(Path(row['copy']),outputs)
         if not source.is_file():
-            raise FileNotFoundError("Отсутствует готовая фотография: "+source.name)
-        query=row.get("query")
-        name=row.get("export_name") or originals.get(query) or Path(query or source.name).name
-        groups[row["assigned_sam"]].append((source,portable_name(name,"Фото"+source.suffix,file=True)))
+            raise FileNotFoundError('Отсутствует готовый файл: '+source.name)
+        query=row.get('query')
+        name=row.get('export_name') or originals.get(query) or Path(query or source.name).name
+        kind='video' if row.get('media_kind')=='video' else 'image'
+        groups[(kind,row['assigned_sam'])].append((source,portable_name(name,'Фото'+source.suffix,file=True)))
     files=[]
-    for label,photos in groups.items():
-        for (source,_),name in zip(photos,_unique([name for _,name in photos],file=True)):
-            files.append((source,root+"/"+archives.archive_member(directories[label],name)))
+    for (kind,label),media in groups.items():
+        directory=root+'/'+('Видео/' if kind=='video' else '')+archives.archive_member(directories[label],folder_date)
+        for (source,_),name in zip(media,_unique([name for _,name in media],file=True)):
+            files.append((source,directory+'/'+name))
     return ArchivePlan(root,files)

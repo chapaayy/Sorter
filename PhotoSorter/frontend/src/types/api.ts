@@ -12,7 +12,7 @@ export interface MediaPreparation {
   progress_percent?:number|null;eta_seconds?:number|null;current_file?:string|null
 }
 export interface Batch {
-  batch_id: string; display_name: string; created_at: string; upload_state: string
+  batch_id: string; display_name: string; created_at: string; report_date_mode?:'manual'|'processing';report_date?:string|null; upload_state: string
   thumbnail_state: string; delete_state: string; deleted_at?: string | null
   deletion_progress?:DeletionProgress|null
   download_confirmed_at?: string | null; confirmed_run_id?: string | null

@@ -39,7 +39,7 @@ export function createFoTransfer(selection:FolderUpload){
       }
       if(!batchId){
         creationRequestId||=newUploadId()
-        const created=await request(()=>batchApi.create(name,creationRequestId,signal))
+        const created=await request(()=>batchApi.create(name,creationRequestId,signal,selection.reportDateMode,selection.reportDate))
         batchId=created.batch_id;batchName=created.display_name
       }
       setBatch(batchId,batchName)

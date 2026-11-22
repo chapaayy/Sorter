@@ -13,6 +13,8 @@ const props=defineProps<{target?:{id:string;name:string}}>()
 const entries=ref<UploadEntry[]>([]),name=ref(''),error=ref('')
 const source=ref<File[]>([]),unknown=ref(0),includeUnknown=ref(false)
 const autoProcess=ref(false),autoThreshold=ref(.50)
+const reportDate=ref(''),useProcessingDate=ref(false)
+const validReportDate=computed(()=>useProcessingDate.value||/^\d{4}-\d{2}-\d{2}$/.test(reportDate.value))
 const chosenAuto=ref(false)
 const imageFormat=ref<MediaProfile['image_format']>('jpg'),videoFormat=ref<MediaProfile['video_format']>('mp4')
 const total=computed(()=>entries.value.reduce((sum,e)=>sum+e.file.size,0))
@@ -46,10 +48,12 @@ function applySelection(){
 }
 watch(includeUnknown,applySelection)
 function submit(){
-  if(!entries.value.length||(!props.target&&!validName.value))return
+  if(!entries.value.length||(!props.target&&(!validName.value||!validReportDate.value)))return
   upload.enqueue({kind:'fo',name:props.target?.name||name.value.trim(),entries:[...entries.value],
     autoProcess:autoProcess.value,threshold:autoThreshold.value,resumeBatchId:props.target?.id,
-    profile:{image_format:imageFormat.value,video_format:videoFormat.value}})
+    profile:{image_format:imageFormat.value,video_format:videoFormat.value},
+    reportDateMode:useProcessingDate.value?'processing':'manual',
+    reportDate:useProcessingDate.value?null:reportDate.value})
 }
 </script>
 <template>
@@ -70,6 +74,13 @@ function submit(){
     <input v-model="name" maxlength="120" required aria-describedby="fo-upload-name-hint"/>
   </label>
   <p v-if="entries.length&&!target" id="fo-upload-name-hint" class="meta">Если такое название уже есть, добавим номер. Файлы будут загружены в отдельный фотоотчёт.</p>
+  <label v-if="entries.length&&!target" class="field">Дата фотоотчёта
+    <input v-model="reportDate" type="date" :disabled="useProcessingDate" :required="!useProcessingDate" aria-label="Дата фотоотчёта"/>
+  </label>
+  <label v-if="entries.length&&!target" class="row wrap">
+    <input v-model="useProcessingDate" type="checkbox"/>
+    <span>Использовать дату обработки</span>
+  </label>
   <div v-if="entries.length&&!target" class="row wrap" aria-label="Форматы готовых файлов">
     <label class="field">Фото на выходе<select v-model="imageFormat"><option value="jpg">JPG</option><option value="png">PNG</option></select></label>
     <label class="field">Видео на выходе<select v-model="videoFormat"><option value="mp4">MP4</option><option value="webm">WebM</option></select></label>
@@ -77,7 +88,7 @@ function submit(){
   <p v-if="entries.length&&!target" class="meta">Перекодируются только несовместимые файлы. Оригиналы останутся на сервере.</p>
   <div v-if="entries.length" class="row wrap between">
     <span class="meta">{{entries.length.toLocaleString('ru-RU')}} файлов · {{bytes(total)}}</span>
-    <UiButton kind="primary" type="submit" :disabled="!target&&!validName">{{target?'Продолжить':'Загрузить'}}</UiButton>
+    <UiButton kind="primary" type="submit" :disabled="!target&&(!validName||!validReportDate)">{{target?'Продолжить':'Загрузить'}}</UiButton>
   </div>
   <label v-if="entries.length&&!target" class="row wrap" style="gap:10px;align-items:center">
     <input v-model="autoProcess" type="checkbox" @change="chosenAuto=true"

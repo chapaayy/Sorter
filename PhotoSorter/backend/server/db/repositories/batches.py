@@ -14,7 +14,7 @@ def lock_names(db):
     db.execute("SELECT pg_advisory_xact_lock(%s)",(_NAME_ALLOCATION_LOCK,))
 
 def by_creation_request(db,request_id):
-    return db.execute("""SELECT id,display_name FROM batches
+    return db.execute("""SELECT id,display_name,report_date_mode,report_date FROM batches
         WHERE creation_request_id=%s""",(request_id,)).fetchone()
 
 def name_taken(db,name,exclude_id=None):
@@ -22,9 +22,10 @@ def name_taken(db,name,exclude_id=None):
         WHERE delete_state <> 'deleted' AND lower(display_name)=lower(%s)
           AND id IS DISTINCT FROM %s LIMIT 1""",(name,exclude_id)).fetchone() is not None
 
-def insert(db,batch_id,name,request_id=None):
-    db.execute("INSERT INTO batches(id,display_name,creation_request_id) VALUES (%s,%s,%s)",
-               (batch_id,name,request_id))
+def insert(db,batch_id,name,request_id=None,report_date_mode='processing',report_date=None):
+    db.execute("""INSERT INTO batches(id,display_name,creation_request_id,report_date_mode,report_date)
+        VALUES (%s,%s,%s,%s,%s)""",
+        (batch_id,name,request_id,report_date_mode,report_date))
 
 def count_photos_and_runs(db,batch_id):
     counter=db.execute("""SELECT count(*) FILTER (WHERE finalized AND ((media_action IS NULL AND original_media_type IS NULL)
