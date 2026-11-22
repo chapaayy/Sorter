@@ -6,7 +6,9 @@ export const runApi={
   history:(limit=30,offset=0)=>api<{runs:Run[];total:number}>(
     '/runs'+query({scope:'history',limit,offset})),
   one:(id:string)=>api<Run>('/runs/'+encodeURIComponent(id)),
-  start:(id:string,threshold:number)=>post<Run>('/runs',{batch_id:id,grouping_threshold:threshold}),
+  start:(id:string,threshold:number,regions?:string[])=>post<Run>('/runs',{
+    batch_id:id,grouping_threshold:threshold,regions:regions??null
+  }),
   stop:(id:string)=>post<Run>('/runs/'+id+'/stop',{}),
   retryArchive:(id:string)=>post<{run_id:string;state:string}>('/runs/'+encodeURIComponent(id)+'/archive/retry',{}),
   archiveStatus:(id:string)=>api<{run_id:string;state:string;can_retry:boolean}>(

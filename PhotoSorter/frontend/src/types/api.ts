@@ -18,6 +18,7 @@ export interface Batch {
   download_confirmed_at?: string | null; confirmed_run_id?: string | null
   delete_after_at?: string | null; photos?: number; videos?:number; media_files?: number; size_bytes?: number; runs?: number; pending?: number
   upload_manifest_state?: 'waiting'|'complete'|null;upload_manifest_completed_at?: string|null
+  auto_process_regions?:string[]|null
   auto_process_state?: 'waiting'|'queued'|'cancelled'|'manual'|null
   auto_process_run_id?: string|null; auto_process_error?: string|null
   auto_process_threshold?: number
@@ -40,6 +41,7 @@ export interface ProcessingSettings {
 }
 export interface BatchUploadManifest {
   state:'legacy'|'waiting'|'complete';completed_at?:string|null
+  auto_process_regions?:string[]|null
   auto_process_state?: 'waiting'|'queued'|'cancelled'|'manual'|null
   auto_process_run_id?:string|null;auto_process_error?:string|null;auto_process_threshold?:number
   expected:number;finalized:number;missing:number;pending:number
@@ -67,7 +69,7 @@ export interface RunProgress {
   estimated_remaining_seconds?: number | null; overall_percent?: number | null; eta_status?: string
 }
 export interface Run {
-  id: string; batch_id: string; status: string; created_at?: string
+  id: string; batch_id: string; status: string; selected_regions?:string[]|null; created_at?: string
   started_at?: string
   actual_started_at?: string; finished_at?: string; actual_finished_at?: string
   grouping_threshold?: number; min_match_score?:number;selected_models?: string[];source?:'manual'|'automatic'

@@ -22,6 +22,7 @@ import type {ViewerItem} from '../../components/gallery/ImageViewer.vue'
 import PendingUploads from './PendingUploads.vue'
 import BatchProcessingStatus from './BatchProcessingStatus.vue'
 import BatchRunHistory from './BatchRunHistory.vue'
+import StartRegionsDialog from './StartRegionsDialog.vue'
 const route=useRoute(),router=useRouter(),notice=useNoticeStore(),deletion=useDeletionStore()
 const id=String(route.params.batchId)
 const uploader=useUploadCenterStore()
@@ -29,7 +30,7 @@ const transfer=computed(()=>uploader.rows.find(row=>row.batchId===id))
 const batch=ref<Batch|null>(null),count=ref<{total:number;ready:number;failed:number}|null>(null)
 const rename=ref(false),newName=ref(''),busy=ref(false),error=ref('')
 const deleteWhole=ref(false),deletePhoto=ref<string|null>(null),viewer=ref<number|null>(null)
-const stopConfirm=ref(false),showHistory=ref(false),historyKey=ref(0)
+const stopConfirm=ref(false),showHistory=ref(false),historyKey=ref(0),regionStart=ref(false)
 const processing=computed(()=>batch.value?batchProcessing(batch.value):null)
 const {items,cursor,loading,error:galleryError,load,reset}=useCursor<Photo>(next=>batchApi.gallery(id,next))
 const preview=computed<ViewerItem[]>(()=>items.value.map(p=>{
@@ -102,11 +103,12 @@ async function removePhoto(){
   try{await batchApi.removePhoto(id,deletePhoto.value);deletePhoto.value=null;await Promise.all([refresh(),reset()]);notice.add('ФО удалено','ok')}
   catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
-async function startRun(){
+async function startRun(codes:string[]){
   if(!batch.value||!processing.value?.canStart||busy.value)return
   busy.value=true;error.value=''
   try{
-    const created=await runApi.start(id,batchThreshold(batch.value))
+    const created=await runApi.start(id,batchThreshold(batch.value),codes)
+    regionStart.value=false
     notice.add(readyToStart(created)?'Запуск обработки MegaLoc':'MegaLoc добавлен в очередь','ok')
     await refresh();historyKey.value++
   }catch(e){error.value=errorText(e);await refresh()}finally{busy.value=false}
@@ -155,7 +157,7 @@ async function removeBatch(){
   <div class="row wrap fo-batch-actions">
     <UiButton v-if="['failed','interrupted','completed_with_errors'].includes(batch.media_preparation?.state??'')&&!processing?.canStop"
       small :loading="busy" @click="retryMedia">Повторить перекодирование</UiButton>
-    <UiButton v-if="!transfer&&processing?.canStart" kind="primary" small :loading="busy" @click="startRun">{{(batch.runs??0)>0?'Повторить обработку':'Обработать'}}</UiButton>
+    <UiButton v-if="!transfer&&processing?.canStart" kind="primary" small :loading="busy" @click="regionStart=true">{{(batch.runs??0)>0?'Повторить обработку':'Обработать'}}</UiButton>
     <UiButton v-if="processing?.canCancelAuto" small :loading="busy" @click="cancelAuto">Отменить автозапуск</UiButton>
     <UiButton v-if="processing?.canStop" small kind="danger" :loading="busy" @click="stopConfirm=true">
       {{processing?.run?.status==='queued'?'Убрать из очереди':'Остановить'}}
@@ -179,6 +181,7 @@ async function removeBatch(){
 <LoadingSkeleton v-else-if="loading||initialGallery" variant="gallery" label="Загружаем фотографии"/>
 <EmptyState v-else-if="!galleryError" title="В этой партии пока нет фото"/>
 <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё фотографии</UiButton></div>
+<StartRegionsDialog v-if="regionStart" :busy="busy" @confirm="startRun" @cancel="regionStart=false"/>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
 <div v-if="rename" class="modal-overlay" @click.self="rename=false">
   <form class="modal stack" @submit.prevent="saveName" role="dialog" aria-modal="true" aria-label="Переименование партии">
