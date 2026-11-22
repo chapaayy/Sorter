@@ -14,7 +14,7 @@
   padding:10px 12px;box-shadow:0 8px 32px #0003}
 .reference-sides-toolbar input{min-width:125px;flex:1;max-width:245px}
 .reference-selection-count{white-space:nowrap;font-size:13px;margin-right:5px}
-.reference-library-view .reference-gallery-selecting{padding-bottom:140px}
+.reference-library-view .reference-gallery-selecting{padding-bottom:210px}
 .photo-item.photo-unassigned{border-color:color-mix(in srgb,var(--danger) 60%,var(--border))}
 .photo-item.photo-chosen{outline:2px solid var(--accent);outline-offset:-2px}
 .photo-item.photo-select-mode .photo-select{cursor:pointer}

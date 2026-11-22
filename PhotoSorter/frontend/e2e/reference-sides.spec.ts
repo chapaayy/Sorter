@@ -80,3 +80,42 @@ test('reference sides: select, assign, group, preview and queued deletion',async
   await expect.poll(()=>queued).toBe(true)
   await expect(page.getByText('Удаление поставлено в очередь')).toBeVisible()
 })
+
+// Select all must include the unscrolled pages, not only the first 60 tiles.
+test('select all reaches subsequent reference gallery pages',async({page})=>{
+  const makePhoto=(index:number)=>({
+    id:'reference-'+index,name:'IMG_'+String(index).padStart(4,'0')+'.jpg',
+    bytes:1024,created_at:'2026-11-22T07:00:00Z',
+    thumbnail_status:'pending',side:null
+  })
+  const first=Array.from({length:60},(_,index)=>makePhoto(index+1))
+  const rest=[makePhoto(61),makePhoto(62)]
+  let nextPageRequests=0
+  await page.route(/^https?:\/\/[^/]+\/api\//,async route=>{
+    const pathname=decodeURIComponent(new URL(route.request().url()).pathname)
+    const url=new URL(route.request().url())
+    const json=(body:unknown)=>route.fulfill({
+      status:200,contentType:'application/json',body:JSON.stringify(body)})
+    if(pathname==='/api/auth/me')return json({username:'admin'})
+    if(pathname==='/api/references')return json({
+      sam:[{sam,photos:62,display_name:'SAM 0001 — Победы 12'}],total:62})
+    if(pathname==='/api/references/'+sam+'/photos'){
+      if(url.searchParams.get('cursor')){
+        nextPageRequests++
+        return json({photos:rest,next_cursor:null})
+      }
+      return json({photos:first,next_cursor:'second-page'})
+    }
+    if(pathname==='/api/reference-library/status')return json({baseline_state:'ready'})
+    if(pathname==='/api/reference-library/events')return json({events:[]})
+    return json({})
+  })
+  await page.goto('/references')
+  await expect(page.getByText('Неназначена сторона')).toBeVisible()
+  await page.getByRole('button',{name:'Выделить',exact:true}).click()
+  await page.getByRole('button',{name:'Выделить все'}).click()
+  await expect(page.getByText('Выбрано: 62')).toBeVisible()
+  expect(nextPageRequests).toBeGreaterThanOrEqual(1)
+  await page.getByRole('button',{name:'Снять выделение'}).click()
+  await expect(page.getByText('Выбрано: 0')).toBeVisible()
+})
