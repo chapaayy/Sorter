@@ -1614,3 +1614,41 @@ test('report detail shows confirmed video bytes instead of recovery alerts durin
     await expect(page.getByRole('button',{name:'Обработать',exact:true})).toBeVisible()
   }finally{gate.release();await rm(folder,{recursive:true,force:true})}
 })
+
+test('result gallery loads all 150 photos on scroll without hiding the last virtual row',async({page,isMobile})=>{
+  const total=150
+  const cursors:string[]=[]
+  await page.route('**/api/results/'+rid+'/sam',route=>respond(route,{'SAM-0001':total}))
+  await page.route('**/api/results/'+rid+'/photos?*',route=>{
+    const url=new URL(route.request().url())
+    const offset=Number(url.searchParams.get('cursor')||0)
+    const end=Math.min(offset+60,total)
+    cursors.push(String(offset))
+    const photos=Array.from({length:end-offset},(_,i)=>{
+      const index=offset+i
+      return {index,filename:'IMG_'+String(index).padStart(4,'0')+'.JPG',
+        assigned_sam:'SAM-0001',group_id:'G0001',score:0.713,media_kind:'image',
+        thumbnail_url:null,image_url:'/api/images/'+rid+'/megaloc/'+index+'?kind=copy'}
+    })
+    return respond(route,{photos,next_cursor:end<total?String(end):null})
+  })
+  await page.goto('/results/'+rid)
+  const grid=page.locator('.reference-library-gallery-scroll [aria-label^="Галерея,"]')
+  await expect(grid).toHaveAttribute('aria-label','Галерея, 60 фотографий')
+  async function scrollToEnd(){
+    if(isMobile){
+      await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight))
+    }else{
+      await page.locator('.reference-library-gallery-scroll').evaluate(element=>{
+        element.scrollTop=element.scrollHeight
+      })
+    }
+  }
+  await scrollToEnd()
+  await expect(grid).toHaveAttribute('aria-label','Галерея, 120 фотографий')
+  await scrollToEnd()
+  await expect(grid).toHaveAttribute('aria-label','Галерея, 150 фотографий')
+  await scrollToEnd()
+  await expect(page.getByRole('button',{name:'Открыть IMG_0149.JPG'})).toBeVisible()
+  expect(cursors).toEqual(['0','60','120'])
+})

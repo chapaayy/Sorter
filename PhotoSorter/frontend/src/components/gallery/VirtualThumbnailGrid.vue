@@ -19,7 +19,8 @@ function attachScrollHost(){
   ;(scrollHost||window).addEventListener('scroll',measure,{passive:true})
 }
 const gap=computed(()=>mobile.value?9:12)
-const columns=computed(()=>mobile.value?2:Math.max(1,Math.floor((width.value+gap.value)/(154+gap.value))))
+// Keep the virtual row count aligned with .photo-grid's 176px minimum card width.
+const columns=computed(()=>mobile.value?2:Math.max(1,Math.floor((width.value+gap.value)/(176+gap.value))))
 const rowHeight=computed(()=>{
   const colWidth=Math.max(80,(width.value-gap.value*(columns.value-1))/columns.value)
   return colWidth*.75+gap.value

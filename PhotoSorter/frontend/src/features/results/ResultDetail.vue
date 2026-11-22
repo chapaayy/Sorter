@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,ref,watch} from 'vue'
+import {computed,nextTick,onBeforeUnmount,onMounted,ref,watch} from 'vue'
 import {useRoute,useRouter} from 'vue-router'
 import {batchApi} from '../../api/batches'
 import {resultApi,type PublishedResult} from '../../api/results'
@@ -25,6 +25,7 @@ const run=ref<Run|null>(null),batch=ref<Batch|null>(null),retention=ref<Retentio
 const sams=ref<Record<string,number>>({}),groups=ref<Record<string,number>>({}),referenceNames=ref<Record<string,string>>({}),mode=ref<'sam'|'group'>('sam')
 const selected=ref(''),lastSam=ref(''),lastGroup=ref(''),error=ref(''),busy=ref(false)
 const viewer=ref<number|null>(null),deleteWhole=ref(false)
+const galleryScroll=ref<HTMLElement|null>(null)
 const initialLoading=ref(true)
 const archiveMissing=ref(false),archiveRetryBusy=ref(false)
 const displaySam=(sam:string)=>referenceNames.value[sam]||friendlySam(sam)
@@ -36,14 +37,33 @@ const {items,cursor,loading,error:pageError,load,reset}=useCursor<ResultPhoto>(n
 const tiles=computed(()=>items.value.map(p=>({id:String(p.index),label:p.filename||'ФО №'+(p.index+1),thumbnail_url:session.isOwner||p.media_kind==='video'?p.thumbnail_url:p.image_url,original_url:p.image_url,play_url:p.image_url,score:p.score,media_kind:p.media_kind,duration:p.duration})))
 const previews=computed(()=>items.value.map(p=>({src:p.image_url,label:(p.filename||'ФО №'+(p.index+1))+' · '+displaySam(p.assigned_sam||''),score:p.score,video:p.media_kind==='video',poster:p.thumbnail_url})))
 const total=computed(()=>Object.values(sams.value).reduce((x,y)=>x+y,0))
+function loadNearGalleryEnd(){
+  const panel=galleryScroll.value
+  if(!panel||!cursor.value||loading.value||pageError.value)return
+  const remaining=window.matchMedia('(min-width:701px)').matches
+    ?panel.scrollHeight-panel.scrollTop-panel.clientHeight
+    :panel.getBoundingClientRect().bottom-window.innerHeight
+  if(remaining<400)void load()
+}
+watch([loading,cursor],async()=>{
+  if(loading.value)return
+  await nextTick()
+  loadNearGalleryEnd()
+})
 function changeMode(value:'sam'|'group'){
   if(mode.value===value)return
   if(mode.value==='sam')lastSam.value=selected.value;else lastGroup.value=selected.value
   mode.value=value
   selected.value=(value==='sam'?lastSam.value:lastGroup.value)||list.value[0]?.id||''
 }
-watch(selected,(value,old)=>{if(value!==old&&value)void reset()})
+watch(selected,(value,old)=>{
+  if(value===old)return
+  viewer.value=null
+  if(galleryScroll.value)galleryScroll.value.scrollTop=0
+  if(value)void reset()
+})
 onMounted(async()=>{
+  window.addEventListener('scroll',loadNearGalleryEnd,{passive:true})
   try{
     if(!session.isOwner){
       published.value=await resultApi.published(id)
@@ -63,6 +83,7 @@ onMounted(async()=>{
     retention.value=await batchApi.retention(b.batch_id)
   }catch(e){error.value=errorText(e)}finally{initialLoading.value=false}
 })
+onBeforeUnmount(()=>window.removeEventListener('scroll',loadNearGalleryEnd))
 function download(sam?:string){
   const anchor=document.createElement('a')
   anchor.href=resultApi.download(id,sam)
@@ -135,7 +156,7 @@ async function deleteBatch(){
       <div><h2>{{mode==='sam'?displaySam(selected):selected}}</h2><span class="meta">{{list.find(x=>x.id===selected)?.count||0}} ФО</span></div>
       <UiButton v-if="mode==='sam'" small @click="download(selected)">↓ Скачать конструкцию</UiButton>
     </div>
-    <div class="reference-library-gallery-scroll">
+    <div ref="galleryScroll" class="reference-library-gallery-scroll" @scroll.passive="loadNearGalleryEnd">
     <div v-if="pageError" class="alert error" role="alert">{{pageError}}</div>
     <VirtualThumbnailGrid v-if="items.length" :items="tiles" :show-scores="true" @open="i=>viewer=i"/>
     <LoadingSkeleton v-else-if="loading" variant="gallery" label="Загружаем фотографии результата"/>
