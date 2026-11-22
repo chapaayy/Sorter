@@ -13,7 +13,7 @@ const photos=[
 ]
 
 test('reference sides: select, assign, group, preview and queued deletion',async({page})=>{
-  const sides=new Map([[id1,null],[id2,'А'] as string[]])
+  const sides=new Map<string,string|null>([[id1,null],[id2,'А']])
   let updateCount=0,queued=false
   await page.route(/^https?:\/\/[^/]+\/api\//,async route=>{
     const url=new URL(route.request().url())
