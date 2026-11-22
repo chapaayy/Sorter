@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import {computed,ref} from 'vue'
+import {computed,onMounted,ref} from 'vue'
+import {regionApi,type Region} from '../../api/regions'
+import RegionPicker from '../../components/regions/RegionPicker.vue'
 import {referenceApi} from '../../api/references'
 import {errorText} from '../../utils/format'
 import UiButton from '../../components/ui/UiButton.vue'
@@ -12,7 +14,15 @@ const emit=defineEmits<{
  (e:'created',sam:string):void
  (e:'noChanges',message:string):void
 }>()
-const mode=ref<Mode>('standard'),city=ref('SAM'),number=ref(''),address=ref(''),name=ref('')
+const mode=ref<Mode>('standard'),city=ref(''),number=ref(''),address=ref(''),name=ref('')
+const regions=ref<Region[]>([])
+async function loadRegions(){
+ try{
+  regions.value=(await regionApi.list()).regions
+  if(!city.value)city.value=regions.value[0]?.code||''
+ }catch(e){error.value=errorText(e)}
+}
+onMounted(()=>{void loadRegions()})
 const busy=ref(false),importBusy=ref(false),error=ref('')
 const title=computed(()=>city.value.trim().toUpperCase()+' '+number.value.trim()+' — '+address.value.trim())
 async function save(){
@@ -37,13 +47,7 @@ async function save(){
    <form v-if="mode!=='import'" class="stack" @submit.prevent="save">
     <template v-if="mode==='standard'">
      <div class="grid2">
-      <label class="field">Код города
-       <input v-model.trim="city" @input="city=city.toUpperCase()" required
-         minlength="2" maxlength="5" pattern="[A-Z]{2,5}"
-         autocapitalize="characters" autocomplete="off" :spellcheck="false"
-         placeholder="SAM, MSK, KZN"/>
-       <span class="meta">Любой код из 2–5 латинских букв</span>
-      </label>
+      <RegionPicker v-model="city" :regions="regions" label="Регион" @created="loadRegions"/>
       <label class="field">Номер конструкции
        <input v-model="number" required maxlength="8" pattern="[0-9]{1,8}" placeholder="0004"/></label>
      </div>
@@ -59,7 +63,7 @@ async function save(){
     </template>
     <div v-if="error" class="alert error" role="alert">{{error}}</div>
     <div class="modal-actions"><UiButton :disabled="busy" @click="emit('dismiss')">Отмена</UiButton>
-      <UiButton kind="primary" type="submit" :loading="busy">Создать конструкцию</UiButton>
+      <UiButton kind="primary" type="submit" :disabled="mode==='standard'&&!city" :loading="busy">Создать конструкцию</UiButton>
     </div>
    </form>
    <ReferenceDirectoryImporter v-else @no-changes="emit('noChanges',$event)" @checking="importBusy=$event"/>

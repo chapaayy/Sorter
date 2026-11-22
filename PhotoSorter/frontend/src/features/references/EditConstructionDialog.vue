@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import {computed,ref} from 'vue'
+import {computed,onMounted,ref} from 'vue'
+import {regionApi,type Region} from '../../api/regions'
+import RegionPicker from '../../components/regions/RegionPicker.vue'
 import type {SamCount} from '../../types/api'
 import {referenceApi,type NewConstruction,type UpdatedConstruction} from '../../api/references'
 import {errorText} from '../../utils/format'
@@ -11,7 +13,13 @@ const emit=defineEmits<{
   (e:'saved',entry:UpdatedConstruction):void
 }>()
 const kind=ref<'standard'|'custom'>(props.entry.kind==='custom'?'custom':'standard')
-const city=ref(props.entry.city_code||'SAM')
+const city=ref(props.entry.city_code||'')
+const regions=ref<Region[]>([])
+async function loadRegions(){
+ try{regions.value=(await regionApi.list()).regions}
+ catch(e){error.value=errorText(e)}
+}
+onMounted(()=>{void loadRegions()})
 const number=ref(props.entry.construction_number||'')
 const address=ref(props.entry.address||'')
 const name=ref(props.entry.kind==='custom'?props.entry.sam:'')
@@ -48,11 +56,7 @@ async function save(){
    </div>
    <template v-if="kind==='standard'">
     <div class="grid2">
-     <label class="field">Код города
-      <input v-model="city" @input="city=city.toUpperCase()" required
-        minlength="2" maxlength="5" pattern="[A-Z]{2,5}"
-        autocapitalize="characters" autocomplete="off" :spellcheck="false"
-        placeholder="SAM, TLT, MSK"/></label>
+     <RegionPicker v-model="city" :regions="regions" @created="loadRegions"/>
      <label class="field">Номер конструкции
       <input v-model="number" required maxlength="8" pattern="[0-9]{1,8}"
         placeholder="0004"/></label>
@@ -74,7 +78,7 @@ async function save(){
    <div v-if="error" class="alert error" role="alert">{{error}}</div>
    <div class="modal-actions">
     <UiButton :disabled="busy" @click="emit('dismiss')">Отмена</UiButton>
-    <UiButton kind="primary" type="submit" :loading="busy">Сохранить изменения</UiButton>
+    <UiButton kind="primary" type="submit" :disabled="kind==='standard'&&!city" :loading="busy">Сохранить изменения</UiButton>
    </div>
   </form>
  </div>
