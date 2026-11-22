@@ -30,7 +30,10 @@ test('a cookie restores the same page after reload and temporary session-check f
     })
     if(path==='/api/auth/me'){
       if(unavailable)return route.fulfill({status:503,json:{detail:'Временно недоступно'}})
-      if(!expired&&(await route.request().headerValue('cookie'))?.includes(cookie))
+      // WebKit's Playwright interception can omit Cookie from the synthetic
+      // request headers. Inspect the browser context cookie jar directly.
+      const stored=await page.context().cookies(route.request().url())
+      if(!expired&&stored.some(c=>c.name==='photosorter_session'&&c.value==='test-token'))
         return route.fulfill({json:{username:email}})
       return route.fulfill({status:401,json:{detail:'Необходим вход'}})
     }
