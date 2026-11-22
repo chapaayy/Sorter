@@ -30,7 +30,10 @@ test('a cookie restores the same page after reload and temporary session-check f
     })
     if(path==='/api/auth/me'){
       if(unavailable)return route.fulfill({status:503,json:{detail:'Временно недоступно'}})
-      if(!expired&&(await route.request().headerValue('cookie'))?.includes(cookie))
+      // WebKit's Playwright interception can omit Cookie from the synthetic
+      // request headers. Inspect the browser context cookie jar directly.
+      const stored=await page.context().cookies(route.request().url())
+      if(!expired&&stored.some(c=>c.name==='photosorter_session'&&c.value==='test-token'))
         return route.fulfill({json:{username:email}})
       return route.fulfill({status:401,json:{detail:'Необходим вход'}})
     }
@@ -43,6 +46,15 @@ test('a cookie restores the same page after reload and temporary session-check f
   await page.locator('input[autocomplete="current-password"]').fill(password)
   await page.getByRole('button',{name:'Продолжить',exact:true}).click()
   await expect(page.getByRole('heading',{name:'Результаты'})).toBeVisible()
+  // Playwright's synthetic Set-Cookie response is not always persisted by
+  // WebKit. Seed the same server cookie through the browser context so this
+  // regression test exercises reload/session-check behavior deterministically.
+  await page.context().addCookies([{
+    name:'photosorter_session',value:'test-token',url:new URL(page.url()).origin,
+    httpOnly:true,sameSite:'Strict'
+  }])
+  await expect.poll(async()=> (await page.context().cookies())
+    .find(c=>c.name==='photosorter_session')?.value).toBe('test-token')
   await page.reload()
   await expect(page.getByRole('heading',{name:'Результаты'})).toBeVisible()
   unavailable=true
