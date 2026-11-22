@@ -66,11 +66,14 @@ def test_1315_synthetic_hardlinks_full_zip_filters_and_cleanup(sandbox,monkeypat
         cursor=page["next_cursor"]
         if not cursor:break
     assert seen==list(range(1315))
+    with connect() as database:
+        archive_day=database.execute("""SELECT (COALESCE(started_at,created_at) AT TIME ZONE 'Europe/Samara')::date AS day
+            FROM jobs WHERE id=%s""",(run,)).fetchone()['day'].isoformat()
     archive=_read_zip(downloads.download_results(run))
     with zipfile.ZipFile(io.BytesIO(archive)) as z:
         assert len(z.namelist())==1315
         assert len(set(z.namelist()))==1315
-        assert z.read(f"{title}/SAM-0001/test.jpg")==source.read_bytes()
+        assert z.read(f"{title}/SAM-0001/{archive_day}/test.jpg")==source.read_bytes()
         assert len([n for n in z.namelist() if n.startswith(f"{title}/_Неопределено/")])==sam_counts["_Неопределено"]
         assert z.testzip() is None
     partial=_read_zip(downloads.download_results(run,sam="SAM-0001"))

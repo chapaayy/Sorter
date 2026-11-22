@@ -288,13 +288,16 @@ def test_legacy_zip_and_stream_lease_survives_delete_request(sandbox):
     (target.parents[1]/"manifest.json").write_text(json.dumps([{
         "query":str(source),"copy":str(target),"assigned_sam":"SAM-0045","top":[]
     }]),encoding="utf8")
+    with connect() as db:
+        archive_day=db.execute("""SELECT (COALESCE(started_at,created_at) AT TIME ZONE 'Europe/Samara')::date AS day
+            FROM jobs WHERE id=%s""",(run,)).fetchone()['day'].isoformat()
     response=download_results(run)
     cleanup.request(own)
     assert cleanup.cleanup_one(own)=="waiting"
     body=asyncio.run(response_bytes(response))
     assert response.stat_result is None or response.stat_result.st_size==len(body)
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
-        member="Тестовая партия/SAM-0045/test.jpg"
+        member=f"Тестовая партия/SAM-0045/{archive_day}/test.jpg"
         assert archive.namelist()==[member]
         assert archive.read(member)==source.read_bytes()
     assert cleanup.cleanup_one(own)=="completed"
