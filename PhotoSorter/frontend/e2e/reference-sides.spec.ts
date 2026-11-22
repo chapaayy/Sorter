@@ -63,7 +63,7 @@ test('reference sides: select, assign, group, preview and queued deletion',async
   await expect(page.getByText('Выбрано: 1')).toBeVisible()
   await page.getByRole('button',{name:'Назначить сторону'}).click()
   const dialog=page.getByRole('dialog',{name:'Назначить сторону'})
-  await dialog.getByRole('textbox',{name:'Название стороны'}).fill('Б')
+  await dialog.getByRole('combobox',{name:'Название стороны'}).fill('Б')
   await dialog.getByRole('button',{name:'Назначить',exact:true}).click()
   await expect.poll(()=>updateCount).toBe(1)
   await expect(page.getByText('Сторона Б',{exact:true})).toBeVisible()
