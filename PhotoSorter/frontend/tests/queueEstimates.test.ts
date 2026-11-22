@@ -117,13 +117,15 @@ describe('measured FIFO time projections',()=>{
     expect(queueTime(second,map.get(2)).label).toBe('≈ 6 мин')
     expect(queueTime(second,map.get(2)).detail).toBe('Старт ≈ 2 мин')
   })
-  it('does not invent estimates when the running task has no ETA',()=>{
+  it('falls back to historical whole-run time when there is no backend ETA',()=>{
     const first=entry(1,'fo_processing','running',100)
     first.started_at=new Date(now-120000).toISOString()
     const queued=entry(2,'fo_processing','queued',100)
     const value=estimateQueue([first,queued],[historyFO(3,200)],now)
-    expect(value.get(2)?.startInSeconds).toBeNull()
-    expect(value.get(2)?.finishInSeconds).toBeNull()
+    expect(value.get(1)?.basis).toBe('history')
+    expect(value.get(1)?.remainingSeconds).toBe(80)
+    expect(value.get(2)?.startInSeconds).toBe(80)
+    expect(value.get(2)?.finishInSeconds).toBe(280)
   })
   it('uses remaining seconds for the whole conversion in FIFO',()=>{
     const current={...entry(1,'media_preparation','running',2),media_eta_seconds:36}
