@@ -2,11 +2,13 @@ import type {QueueTask,QueueKind} from '../types/workQueue'
 import type {Run} from '../types/api'
 import {duration} from './format'
 
+export type EstimateBasis='measured'|'history'|'stage'|null
 export interface TaskEstimate {
   startInSeconds:number|null
   finishInSeconds:number|null
   remainingSeconds:number|null
   durationSeconds:number|null
+  basis?:EstimateBasis
 }
 
 const valid=(n:unknown):n is number=>typeof n==='number'&&Number.isFinite(n)&&n>=0
@@ -56,20 +58,48 @@ function durationFromHistory(task:QueueTask,rates:Record<QueueKind,number|null>)
   const count=countOf(task),rate=rates[task.kind]
   return count&&rate!==null?count*rate:null
 }
-/** A running FO has its own measured MegaLoc ETA. Never extrapolate a
- * generic stage percentage as if it measured the entire model pipeline. */
-function liveRemaining(task:QueueTask,rates:Record<QueueKind,number|null>,now:number):number|null{
+
+/** A stage ETA is not an ETA for the whole run. Label it explicitly in the UI. */
+export function stageRemaining(progress:{current?:number;total?:number;stage_items_per_second?:number}|null|undefined):number|null{
+  if(!progress)return null
+  const {current,total,stage_items_per_second:rate}=progress
+  if(!valid(current)||!valid(total)||total<=0||current>=total||current<Math.min(5,total)
+      ||!valid(rate)||rate<=0)return null
+  return (total-current)/rate
+}
+type LiveRemaining={seconds:number|null;basis:EstimateBasis}
+/** Prefer the true run-wide MegaLoc ETA. Its backend projection is deliberately
+ * null until unmeasured stages (notably references/ZIP) can be predicted.
+ * In that case use historical full-run throughput if available. Otherwise
+ * disclose a measured CURRENT-STAGE ETA, not a fabricated full-run ETA. */
+function liveRemaining(task:QueueTask,rates:Record<QueueKind,number|null>,now:number):LiveRemaining{
   if(task.kind==='fo_processing'){
-    const eta=task.fo_progress?.estimated_remaining_seconds
-    return valid(eta)?eta:null
+    const direct=task.fo_progress?.estimated_remaining_seconds
+    if(valid(direct))return {seconds:direct,basis:'measured'}
+    const stage=stageRemaining(task.fo_progress)
+    const expected=durationFromHistory(task,rates)
+    const elapsed=elapsedSeconds(task.started_at,null,now)
+    if(expected!==null&&elapsed!==null&&expected>elapsed){
+      const remaining=expected-elapsed
+      if(stage!==null&&stage>remaining)
+        return {seconds:stage,basis:'stage'}
+      return {seconds:remaining,basis:'history'}
+    }
+    if(stage!==null)return {seconds:stage,basis:'stage'}
+    return {seconds:null,basis:null}
   }
-  if(task.kind==='media_preparation')return valid(task.media_eta_seconds)?task.media_eta_seconds:null
+  if(task.kind==='media_preparation'){
+    const seconds=task.media_eta_seconds
+    return {seconds:valid(seconds)?seconds:null,basis:valid(seconds)?'measured':null}
+  }
   const elapsed=elapsedSeconds(task.started_at,null,now)
   const count=countOf(task),done=task.completed_count
-  if(elapsed===null||count===null)return null
-  if(valid(done)&&done>=2&&elapsed>=5)return Math.max(0,(count-done)*elapsed/done)
+  if(elapsed===null||count===null)return {seconds:null,basis:null}
+  if(valid(done)&&done>=2&&elapsed>=5)
+    return {seconds:Math.max(0,(count-done)*elapsed/done),basis:'measured'}
   const expected=durationFromHistory(task,rates)
-  return expected!==null?Math.max(0,expected-elapsed):null
+  return {seconds:expected!==null?Math.max(0,expected-elapsed):null,
+    basis:expected!==null?'history':null}
 }
 /** FIFO estimates are a cumulative timeline. Any unknown predecessor, failed
  * preparation or truncated queue invalidates downstream estimates. */
@@ -79,10 +109,12 @@ export function estimateQueue(active:readonly QueueTask[],history:readonly Queue
   let cursor:number|null=0
   for(const task of [...active].sort((a,b)=>a.seq-b.seq)){
     if(task.state==='running'){
-      const remaining=liveRemaining(task,rates,now)
-      result.set(task.seq,{startInSeconds:0,remainingSeconds:remaining,
-        durationSeconds:null,finishInSeconds:remaining})
-      cursor=cursor!==null&&remaining!==null?cursor+remaining:null
+      const estimate=liveRemaining(task,rates,now)
+      const full=estimate.basis!=='stage'?estimate.seconds:null
+      result.set(task.seq,{startInSeconds:0,remainingSeconds:estimate.seconds,
+        durationSeconds:null,finishInSeconds:full,basis:estimate.basis})
+      // A stage-only ETA must not be used as a completion ETA for later FIFO jobs.
+      cursor=cursor!==null&&full!==null?cursor+full:null
     }else if(task.state==='queued'){
       const own=durationFromHistory(task,rates)
       const start:number|null=cursor
@@ -100,8 +132,11 @@ export function estimateQueue(active:readonly QueueTask[],history:readonly Queue
 }
 export function queueTime(task:QueueTask,estimate?:TaskEstimate):{label:string;detail:string}{
   if(task.state==='running'){
-    return {label:approxDuration(estimate?.remainingSeconds??null),
-      detail:estimate?.remainingSeconds==null?'Время уточняется':'Осталось'}
+    const remaining=estimate?.remainingSeconds
+    const detail=remaining==null?'Время уточняется':
+      estimate?.basis==='stage'?'До конца этапа':
+      estimate?.basis==='history'?'По прошлым ФО':'Осталось'
+    return {label:approxDuration(remaining??null),detail}
   }
   if(task.state==='queued'){
     return {label:approxDuration(estimate?.finishInSeconds??null),
@@ -124,9 +159,16 @@ export function runTime(run?:Run|null,estimate?:TaskEstimate):{label:string;deta
         ?'Старт '+approxDuration(estimate.startInSeconds):'До завершения · включая очередь')}
   }
   if(run.status==='running'){
-    const eta=estimate?.remainingSeconds??run.progress?.estimated_remaining_seconds
-    return {label:approxDuration(valid(eta)?eta:null),
-      detail:valid(eta)?'Осталось':'Время уточняется'}
+    const explicit=estimate?.remainingSeconds
+    if(valid(explicit))
+      return {label:approxDuration(explicit),
+        detail:estimate?.basis==='stage'?'До конца этапа':
+          estimate?.basis==='history'?'По прошлым ФО':'Осталось'}
+    const measured=run.progress?.estimated_remaining_seconds
+    if(valid(measured))return {label:approxDuration(measured),detail:'Осталось'}
+    const stage=stageRemaining(run.progress)
+    return {label:approxDuration(stage),
+      detail:stage!==null?'До конца этапа':'Время уточняется'}
   }
   if(run.status==='stopping')return {label:'—',detail:'Остановка'}
   const spent=actualDuration(run.actual_started_at,run.actual_finished_at)
