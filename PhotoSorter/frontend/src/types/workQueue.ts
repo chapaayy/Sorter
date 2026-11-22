@@ -1,5 +1,5 @@
 import type {DeletionProgress,RunProgress} from './api'
-export type QueueKind='fo_processing'|'reference_preparation'|'media_preparation'
+export type QueueKind='fo_processing'|'reference_preparation'|'media_preparation'|'reference_deletion'
 export type QueueStatus='queued'|'running'|'blocked'|'completed'|'completed_with_errors'|'stopped'|'failed'|'interrupted'
 export interface QueueTask {
   seq:number
@@ -7,6 +7,9 @@ export interface QueueTask {
   fo_run_id:string|null
   reference_job_id:string|null
   media_batch_id?:string|null
+  reference_deletion_id?:string|null
+  deletion_sam?:string|null
+  deletion_photo_id?:string|null
   media_progress_percent?:number|null
   media_eta_seconds?:number|null
   media_current_file?:string|null
