@@ -43,6 +43,15 @@ test('a cookie restores the same page after reload and temporary session-check f
   await page.locator('input[autocomplete="current-password"]').fill(password)
   await page.getByRole('button',{name:'Продолжить',exact:true}).click()
   await expect(page.getByRole('heading',{name:'Результаты'})).toBeVisible()
+  // Playwright's synthetic Set-Cookie response is not always persisted by
+  // WebKit. Seed the same server cookie through the browser context so this
+  // regression test exercises reload/session-check behavior deterministically.
+  await page.context().addCookies([{
+    name:'photosorter_session',value:'test-token',url:new URL(page.url()).origin,
+    httpOnly:true,sameSite:'Strict'
+  }])
+  await expect.poll(async()=> (await page.context().cookies())
+    .find(c=>c.name==='photosorter_session')?.value).toBe('test-token')
   await page.reload()
   await expect(page.getByRole('heading',{name:'Результаты'})).toBeVisible()
   unavailable=true
