@@ -97,10 +97,16 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
             raise HTTPException(422,"Сначала загрузите образцы конструкций")
     selected_regions=regions.selected(db,data.regions)
     if selected_regions is not None:
-        matches=db.execute("""SELECT count(*) AS n FROM reference_version_members m
-          JOIN reference_library_state s ON s.current_version_id=m.version_id
-          WHERE s.id=1 AND (m.sam ~ '^[A-Z]{2,5} [0-9]{1,8}
-    # runs alike. Already queued, active and historical runs never change.
+        members=db.execute("""SELECT m.sam FROM reference_version_members m
+            JOIN reference_library_state s ON s.current_version_id=m.version_id
+            WHERE s.id=1""").fetchall()
+        if not regions.filter_members(members,selected_regions):
+            earlier=db.execute("""SELECT 1 FROM work_queue
+                WHERE kind='reference_preparation' AND state IN ('queued','running')
+                LIMIT 1""").fetchone()
+            if not earlier:
+                raise HTTPException(422,"Для выбранных регионов нет подготовленных образцов")
+    # Freeze matching cutoff independently from region selection.
     score_setting=db.execute("""
         SELECT min_match_score FROM processing_settings WHERE id=1
     """).fetchone()
