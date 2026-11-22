@@ -73,7 +73,7 @@ def test_1315_synthetic_hardlinks_full_zip_filters_and_cleanup(sandbox,monkeypat
     with zipfile.ZipFile(io.BytesIO(archive)) as z:
         assert len(z.namelist())==1315
         assert len(set(z.namelist()))==1315
-        assert z.read(f"{title}/SAM-0001/{archive_day}/test.jpg")==source.read_bytes()
+        assert z.read(f"{title}/SAM-0001/{archive_day}/Неназначена сторона/test.jpg")==source.read_bytes()
         assert len([n for n in z.namelist() if n.startswith(f"{title}/_Неопределено/")])==sam_counts["_Неопределено"]
         assert z.testzip() is None
     partial=_read_zip(downloads.download_results(run,sam="SAM-0001"))

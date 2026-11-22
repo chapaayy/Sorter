@@ -19,7 +19,9 @@ const removal=computed(()=>deletionProgress(props.task.batch_delete_state,props.
   !!props.task.batch_id&&deletion.pending(props.task.batch_id)))
 const preparing=computed(()=>isPrep(props.task))
 const media=computed(()=>props.task.kind==='media_preparation')
-const canStop=computed(()=>!media.value&&(props.task.state==='running'||props.task.state==='queued'))
+const removingRef=computed(()=>props.task.kind==='reference_deletion')
+const canStop=computed(()=>!media.value&&!removingRef.value&&
+  (props.task.state==='running'||props.task.state==='queued'))
 const progress=computed<number|null>(()=>{
   if(removal.value.deleting||removal.value.failed)return removal.value.percent
   const task=props.task
@@ -41,6 +43,11 @@ const stage=computed(()=>{
     if(task.state==='running')return 'Перекодирование файлов · '+(task.completed_count??0)+' из '+task.total_count+
       (task.media_current_file?' · '+task.media_current_file:'')
     return task.error||'Перекодирование файлов завершено'
+  }
+  if(removingRef.value){
+    if(props.task.state==='queued')return 'Удаление образца · ожидает предыдущие задачи'
+    if(props.task.state==='running')return 'Публикация библиотеки без удалённого образца'
+    return props.task.error||'Удаление образца завершено'
   }
   if(hasBlockingFailure(props.task))return 'Ожидает повторения или пропуска'
   if(props.task.state==='queued')return props.starting?'Подготовка к запуску MegaLoc':'Ожидает предыдущие задачи'
@@ -70,9 +77,10 @@ const count=computed(()=>preparing.value||media.value?props.task.total_count:pro
 </script>
 <template>
 <CompactTaskCard :number="position??task.seq" class="queue-task-row"
-  :title="preparing?'Подготовка образцов':media?'Перекодирование файлов':task.batch_name||'Фотоотчёт'"
+  :title="preparing?'Подготовка образцов':media?'Перекодирование файлов':
+    removingRef?'Удаление образца'+(task.deletion_sam?' · '+task.deletion_sam:''):task.batch_name||'Фотоотчёт'"
   :thumbnail-url="preparing?null:task.fo_thumbnail_url"
-  :icon="preparing?'references':'photos'"
+  :icon="preparing||removingRef?'references':'photos'"
   :status="removal.deleting?'Удаляется':removal.failed?'Ошибка удаления':task.stop_requested&&task.state==='running'?'Остановка':starting?'Запуск обработки':STATE_RU[task.state]"
   :tone="tone" :progress="progress" :stage="stage" :indeterminate="removal.inProgress"
   :progress-motion-key="task.state==='running'&&!task.stop_requested&&!removal.deleting&&!removal.failed?String(task.seq):null"
@@ -80,7 +88,7 @@ const count=computed(()=>preparing.value||media.value?props.task.total_count:pro
   :time-detail="removal.deleting||removal.failed?undefined:time.detail"
   :active="task.state==='running'&&!removal.deleting&&!removal.failed">
   <template #meta>
-    <span>{{preparing?'Образцы':media?task.batch_name:'ФО'}}</span>
+    <span>{{preparing||removingRef?'Образцы':media?task.batch_name:'ФО'}}</span>
     <span v-if="count!=null">{{count}} {{media?"файлов":"фото"}}</span>
     <span v-if="preparing&&task.failed_count">Ошибок: {{task.failed_count}}</span>
     <span v-if="task.state!=='queued'&&task.state!=='running'">{{date(task.created_at)}}</span>

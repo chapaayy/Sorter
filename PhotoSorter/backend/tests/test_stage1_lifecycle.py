@@ -297,7 +297,7 @@ def test_legacy_zip_and_stream_lease_survives_delete_request(sandbox):
     body=asyncio.run(response_bytes(response))
     assert response.stat_result is None or response.stat_result.st_size==len(body)
     with zipfile.ZipFile(io.BytesIO(body)) as archive:
-        member=f"Тестовая партия/SAM-0045/{archive_day}/test.jpg"
+        member=f"Тестовая партия/SAM-0045/{archive_day}/Неназначена сторона/test.jpg"
         assert archive.namelist()==[member]
         assert archive.read(member)==source.read_bytes()
     assert cleanup.cleanup_one(own)=="completed"

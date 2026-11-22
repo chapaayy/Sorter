@@ -3,8 +3,10 @@ import {computed,nextTick,onMounted,onUnmounted,ref,watch} from 'vue'
 import ThumbnailGrid from './ThumbnailGrid.vue'
 import type {Tile} from './ThumbnailGrid.vue'
 
-const props=withDefaults(defineProps<{items:Tile[];canDelete?:boolean;showScores?:boolean}>(),{canDelete:false,showScores:false})
-const emit=defineEmits<{(e:'open',index:number):void;(e:'remove',id:string):void}>()
+const props=withDefaults(defineProps<{items:Tile[];canDelete?:boolean;showScores?:boolean;
+  selectable?:boolean;selectedIds?:ReadonlySet<string>;showSideStatus?:boolean}>(),
+  {canDelete:false,showScores:false,selectable:false,showSideStatus:false})
+const emit=defineEmits<{(e:'open',index:number):void;(e:'remove',id:string):void;(e:'toggle',id:string):void}>()
 const host=ref<HTMLElement|null>(null)
 const width=ref(780),top=ref(0),viewportY=ref(0),viewportHeight=ref(800),mobile=ref(false)
 let resize:ResizeObserver|undefined
@@ -66,7 +68,8 @@ watch(()=>props.items.length,()=>{void nextTick(measure)})
   <div ref="host" :style="{height:height+'px',position:'relative',width:'100%'}" :aria-label="'Галерея, '+items.length+' фотографий'">
     <div :style="{position:'absolute',top:startRow*rowHeight+'px',left:0,right:0}">
       <ThumbnailGrid :items="visible" :can-delete="canDelete" :show-scores="showScores"
-        @open="index=>emit('open',first+index)" @remove="id=>emit('remove',id)"/>
+        :selectable="selectable" :selected-ids="selectedIds" :show-side-status="showSideStatus"
+        @open="index=>emit('open',first+index)" @remove="id=>emit('remove',id)" @toggle="id=>emit('toggle',id)"/>
     </div>
   </div>
 </template>

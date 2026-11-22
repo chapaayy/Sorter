@@ -2,8 +2,9 @@
 from __future__ import annotations
 from fastapi import APIRouter,HTTPException
 from fastapi.responses import FileResponse
-from ...services import reference_archives
+from ...services import reference_archives,reference_sides
 from pydantic import BaseModel,Field
+import uuid
 from ...services import references as reference_service
 from ...services import construction_catalog,construction_relabel
 from app.photos.labels import check_label
@@ -52,6 +53,14 @@ def preview_import(payload:PreviewImport):
 def change_address(sam:str,payload:ChangeAddress):
     return construction_catalog.change_address(sam,payload.address)
 
+class AssignSides(BaseModel):
+    photo_ids:list[uuid.UUID]=Field(min_length=1,max_length=500)
+    side:str|None=Field(default=None,max_length=80)
+
+@router.patch("/{sam}/sides")
+def assign_sides(sam:str,payload:AssignSides):
+    return reference_sides.assign(sam,payload.photo_ids,payload.side)
+
 @router.get("/{sam}/photos")
 def gallery(sam:str,cursor:str|None=None,limit:int=60):
     try:label=check_label(sam)
@@ -60,8 +69,12 @@ def gallery(sam:str,cursor:str|None=None,limit:int=60):
 
 def _page(sam,cursor,limit):
     with connect() as db:
-        return page(db,"u.kind='reference' AND u.finalized AND u.sam=%s",
+        result=page(db,"u.kind='reference' AND u.finalized AND u.sam=%s",
                     (sam,),cursor=cursor,limit=limit)
+        sides=reference_sides.active_sides(db,[uuid.UUID(item['id']) for item in result['photos']])
+        for item in result['photos']:
+            item['side']=sides.get(item['id'])
+        return result
 
 @router.get("")
 def list_references():

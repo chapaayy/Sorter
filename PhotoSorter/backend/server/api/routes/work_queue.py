@@ -18,19 +18,21 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
         "active":""" WHERE (w.state IN ('queued','running','blocked') OR
                  (w.kind='reference_preparation' AND w.state IN ('failed','interrupted')))""",
         "history":""" WHERE w.state IN ('completed','completed_with_errors','stopped') OR
-                 (w.kind IN ('fo_processing','media_preparation') AND w.state IN ('failed','interrupted'))""",
+                 (w.kind IN ('fo_processing','media_preparation','reference_deletion')
+                  AND w.state IN ('failed','interrupted'))""",
         "all":""
     }[scope]
     direction="ASC" if scope=="active" else "DESC"
     with connect() as db:
         total=db.execute("SELECT count(*) AS n FROM work_queue w"+where).fetchone()["n"]
         entries=db.execute("""
-            SELECT w.seq,w.kind,w.fo_run_id,w.reference_job_id,w.media_batch_id,w.state,
+            SELECT w.seq,w.kind,w.fo_run_id,w.reference_job_id,w.media_batch_id,w.reference_deletion_id,
+                   d.sam AS deletion_sam,d.reference_id AS deletion_photo_id,w.state,
                    w.created_at,w.started_at,w.finished_at,
                    p.session_id,coalesce(w.media_total_count,p.total_count) AS total_count,
                    coalesce(w.media_completed_count,p.completed_count) AS completed_count,
                    coalesce(w.media_failed_count,p.failed_count) AS failed_count,
-                   coalesce(w.media_error,p.error) AS error,p.stop_requested,
+                   coalesce(w.media_error,p.error,d.error) AS error,p.stop_requested,
                    coalesce(j.batch_id,w.media_batch_id) AS batch_id,j.snapshot->>'source' AS fo_source,
                    j.snapshot->'progress' AS fo_progress,
                    w.media_progress_percent,w.media_eta_seconds,w.media_current_file,
@@ -42,6 +44,7 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
                    cover.thumbnail_id AS fo_thumbnail_id
             FROM work_queue w LEFT JOIN reference_preparation_jobs p
                  ON p.id=w.reference_job_id
+            LEFT JOIN reference_deletion_tasks d ON d.id=w.reference_deletion_id
             LEFT JOIN jobs j ON j.id=w.fo_run_id
             LEFT JOIN batches b ON b.id=coalesce(j.batch_id,w.media_batch_id)
             LEFT JOIN cleanup_tasks c ON c.batch_id=b.id

@@ -10,6 +10,7 @@ from ..recognition.errors import JobCancelled
 from ..photos.scanner import images, validate
 from ..results.repository import save_model
 from ..results.match_filter import apply_min_match_score
+from ..results.sides import attach_sides
 
 def process(job):
     if job.info.get('has_media_profile'):
@@ -87,6 +88,9 @@ def _process(job,media):
         # Old runs without this snapshot parameter keep the historical behavior.
         minimum=float(info.get('min_match_score') or 0.0)
         rows=apply_min_match_score(rows,minimum)
+        # The pinned winner reference supplies a folder label only.
+        # MegaLoc group/SAM scoring is untouched.
+        rows=attach_sides(rows,info['reference_members'])
         filtered=sum(bool(row.get('match_rejected')) for row in rows)
         if minimum>0:
             job.log('INFO',f'Минимальное сходство с образцами: {minimum:.3f}; '

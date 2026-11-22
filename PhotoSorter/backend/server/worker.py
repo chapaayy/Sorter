@@ -35,6 +35,18 @@ def _configure_cpu(kind):
     return len(assigned) or cpu_limit
 
 def _process_task(item,warm):
+    if item['kind']=='reference_deletion':
+        from .services import references
+        try:
+            references.process_deferred(item['id'])
+        except Exception as exc:
+            logging.exception('Reference deletion %s failed',item['id'])
+            with connect() as db:
+                db.execute("""UPDATE reference_deletion_tasks SET error=%s WHERE id=%s""",
+                           (str(exc)[:1000],item['id']))
+                db.execute("""UPDATE work_queue SET state='failed',finished_at=now()
+                    WHERE reference_deletion_id=%s AND state='running'""",(item['id'],))
+        return
     if item['kind']=='media_preparation':
         cpus=_configure_cpu(item['kind'])
         return media_prepare.run(item,stopping=lambda:not RUN,cpus=cpus)

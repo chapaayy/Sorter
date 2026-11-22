@@ -69,7 +69,7 @@ def photos(run_id:str,sam:str|None=None,group:str|None=None,
     for row in result["rows"]:
         upload_id=photo_ids.get(row.get("query"))
         items.append({"index":row["index"],"assigned_sam":row.get("assigned_sam"),
-            "group_id":row.get("group_id"),"score":row.get("score"),
+            "group_id":row.get("group_id"),"side":row.get("side"),"score":row.get("score"),
             "verdict":row.get("verdict"),"reason":row.get("reason"),
             "filename":row.get("export_name"),"media_kind":row.get("media_kind"),
             "duration":row.get("duration"),
