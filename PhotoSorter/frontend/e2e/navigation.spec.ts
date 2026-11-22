@@ -162,7 +162,8 @@ test('full ZIP is ready for direct download without extra confirmation',async({p
   }))
   await page.goto('/results/'+rid)
   await expect(page.getByRole('heading',{name:'Выезд Самара 05.11'})).toBeVisible()
-  await expect(page.getByText('Архив подготовлен автоматически после сортировки.')).toBeVisible()
+  await expect(page.locator('.results-zip-bar')).toContainText('ZIP готов')
+  await expect(page.locator('.results-zip-bar')).toContainText('Автоудаление не назначено')
   await expect(page.getByRole('button',{name:/Скачать всю сортировку ZIP/})).toBeVisible()
   await expect(page.getByRole('button',{name:'Я сохранил полный архив'})).toHaveCount(0)
   const download=page.waitForEvent('download')
@@ -1651,4 +1652,28 @@ test('result gallery loads all 150 photos on scroll without hiding the last virt
   await scrollToEnd()
   await expect(page.getByRole('button',{name:'Открыть IMG_0149.JPG'})).toBeVisible()
   expect(cursors).toEqual(['0','60','120'])
+})
+
+test('ZIP retention is compact and the extend action is preserved',async({page,isMobile})=>{
+  const expires='2027-01-20T12:10:00Z'
+  let extended=false
+  await page.route('**/api/batches/'+bid+'/retention',route=>respond(route,{
+    batch_id:bid,delete_state:'active',warning:false,delete_after_at:extended?'2027-03-20T12:10:00Z':expires
+  }))
+  await page.route('**/api/batches/'+bid+'/retention/extend',route=>{
+    extended=true
+    return respond(route,{batch_id:bid,delete_state:'active',warning:false,
+      delete_after_at:'2027-03-20T12:10:00Z'})
+  })
+  await page.goto('/results/'+rid)
+  const bar=page.locator('.results-zip-bar')
+  await expect(bar).toContainText('ZIP готов')
+  await expect(bar).toContainText('Автоудаление:')
+  await expect(bar.getByRole('button',{name:'Продлить хранение'})).toBeEnabled()
+  const size=await bar.boundingBox()
+  expect(size).not.toBeNull()
+  if(!isMobile)expect(size!.height).toBeLessThan(72)
+  await bar.getByRole('button',{name:'Продлить хранение'}).click()
+  await expect(bar).toContainText('20.03.2027')
+  expect(extended).toBe(true)
 })

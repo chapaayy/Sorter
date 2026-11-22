@@ -20,3 +20,14 @@
 @media(max-width:700px){
   .reference-library-gallery-scroll{overflow:visible}
 }
+
+/* Results retention takes one compact row instead of a full information card. */
+.results-zip-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:9px 14px;margin-bottom:14px;min-height:0}
+.results-zip-info,.results-zip-actions{display:flex;align-items:center;gap:12px;min-width:0}
+.results-zip-actions{margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+.results-zip-warning{font-size:12px;color:#b99b5d}
+@media(max-width:700px){
+  .results-zip-bar{flex-direction:column;align-items:stretch;gap:8px;padding:12px}
+  .results-zip-actions{width:100%;margin-left:0;justify-content:space-between;gap:8px}
+}

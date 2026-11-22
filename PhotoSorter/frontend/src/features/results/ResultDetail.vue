@@ -125,22 +125,19 @@ async function deleteBatch(){
   <span>Полный ZIP отсутствует или повреждён. Результаты MegaLoc сохранены.</span>
   <UiButton kind="primary" :loading="archiveRetryBusy" @click="restoreArchive">Восстановить ZIP</UiButton>
 </div>
-<section v-if="batch&&run" class="panel stack" :class="{'deletion-panel':deletion.pending(batch.batch_id)||batch.delete_state==='deleting'}" style="margin-bottom:18px">
+<section v-if="batch&&run" class="panel results-zip-bar" :class="{'deletion-panel':deletion.pending(batch.batch_id)||batch.delete_state==='deleting'}">
   <div v-if="deletion.pending(batch.batch_id)||batch.delete_state==='deleting'" class="deletion-state">Удаляется · удаление файлов и результатов</div>
-  <div v-else class="row between wrap">
-    <div><strong>Готовый ZIP</strong>
-      <p class="meta" style="margin:4px 0">Архив подготовлен автоматически после сортировки.</p>
+  <template v-else>
+    <div class="results-zip-info">
+      <span class="status" :class="archiveMissing?'danger':'ok'">{{archiveMissing?'ZIP недоступен':'ZIP готов'}}</span>
+      <span v-if="retention?.warning" class="results-zip-warning" role="status">До автоудаления меньше 7 дней</span>
     </div>
-    <span v-if="retention?.delete_after_at" class="meta">
-      Автоудаление: <strong>{{date(retention.delete_after_at)}}</strong>
-    </span>
-    <span v-else class="meta">Для этой партии автоматическое удаление не назначено.</span>
-  </div>
-  <div v-if="retention?.delete_after_at" class="row between wrap">
-    <span class="meta">При удалении партии архив и фотографии удалятся вместе.</span>
-    <UiButton small :loading="busy" @click="extend">Продлить хранение</UiButton>
-  </div>
-  <div v-if="retention?.warning" class="alert warning">До автоматического удаления осталось менее 7 дней.</div>
+    <div class="results-zip-actions">
+      <span v-if="retention?.delete_after_at" class="meta">Автоудаление: <strong>{{date(retention.delete_after_at)}}</strong></span>
+      <span v-else class="meta">Автоудаление не назначено</span>
+      <UiButton v-if="retention?.delete_after_at" small :loading="busy" @click="extend">Продлить хранение</UiButton>
+    </div>
+  </template>
 </section>
 <div class="row wrap between" style="margin-bottom:16px">
   <div class="segment" role="tablist" aria-label="Способ группировки">
