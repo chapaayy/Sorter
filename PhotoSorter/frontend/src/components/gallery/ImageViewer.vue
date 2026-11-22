@@ -128,9 +128,13 @@ onUnmounted(()=>{
         </div>
       </div>
       <div class="viewer-main">
-        <video v-if="current?.video&&current.src&&!failed" ref="videoNode" :key="current.src"
-          :src="current.src" :poster="current.poster??undefined"
-          controls playsinline preload="metadata" class="viewer-video" @error="failed=true"/>
+        <div v-if="current?.video&&current.src" class="viewer-video-container">
+          <video ref="videoNode" :key="current.src" :src="current.src" :poster="current.poster??undefined"
+            controls playsinline preload="metadata" class="viewer-video" @error="failed=true"/>
+          <p v-if="failed" class="meta" role="status">
+            {{current.fallbackMessage||'Браузер не смог воспроизвести видео в этом формате'}}
+          </p>
+        </div>
         <div v-else-if="current?.src&&!current.video" ref="stage" class="viewer-image-stage"
           :class="{'viewer-image-zoomed':scale>1}" @wheel.prevent="wheel"
           @pointerdown="pointerDown" @pointermove="pointerMove" @pointerup="pointerUp"
@@ -174,7 +178,8 @@ onUnmounted(()=>{
 .viewer-image-stage :deep(img){display:block;max-width:100%;max-height:100%;
   object-fit:contain;user-select:none}
 .viewer-draggable{cursor:grab}
-.viewer-video{display:block;max-width:100%;max-height:100%;margin:auto;object-fit:contain}
+.viewer-video-container{width:100%;height:100%;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.viewer-video{display:block;max-width:100%;max-height:100%;min-height:0;margin:auto;object-fit:contain}
 .viewer-fallback{text-align:center}
 .viewer-footer{width:100%;flex:none}
 @media(max-width:700px){
