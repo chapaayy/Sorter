@@ -58,13 +58,19 @@ def test_delete_construction_publishes_version_and_cleans_catalog(system):
 def test_published_removal_cannot_bypass_queued_fo(system):
     rid,_=add_published_reference(system)
     run=add_fo()
-    with pytest.raises(HTTPException) as blocked:
-        references.delete_photo(rid)
-    assert blocked.value.status_code==409
+    deferred=references.delete_photo(rid)
+    assert deferred["queued"] and deferred["task_id"]
     with database.connect() as db:
         task=work_queue.claim_next(db)
         assert task["id"]==run
+        assert len(reference_versions.members(db,reference_versions.current(db)["id"]))==1
     finish_fo(run)
+    with database.connect() as db:
+        queued_delete=work_queue.claim_next(db)
+        assert queued_delete["kind"]=="reference_deletion"
+    references.process_deferred(queued_delete["id"])
+    with database.connect() as db:
+        assert reference_versions.members(db,reference_versions.current(db)["id"])==[]
 
 def test_address_edit_during_fo_does_not_change_pinned_version(system):
     add_published_reference(system)

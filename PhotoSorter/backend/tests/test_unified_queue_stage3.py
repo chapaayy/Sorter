@@ -316,9 +316,8 @@ def test_delete_does_not_jump_ahead_of_queued_preparation(system):
     _,_,_,digest,_=prepare_import(system)
     cache_vector(system,digest)
     cache_vector(system,hashlib.sha256(original.read_bytes()).hexdigest())
-    with pytest.raises(HTTPException) as conflict:
-        library_service.delete_photo(source_id)
-    assert conflict.value.status_code==409
+    request=library_service.delete_photo(source_id)
+    assert request["queued"]
     with database.connect() as db:
         job=work_queue.claim_next(db)
         before=reference_versions.current(db)["version_number"]
@@ -326,6 +325,13 @@ def test_delete_does_not_jump_ahead_of_queued_preparation(system):
     result=reference_prepare.run(job["id"])
     assert result["changed"] is True
     assert result["version"]==before+1
+    with database.connect() as db:
+        delayed=work_queue.claim_next(db)
+    assert delayed["kind"]=="reference_deletion"
+    library_service.process_deferred(delayed["id"])
+    with database.connect() as db:
+        assert all(m["reference_id"]!=source_id for m in
+                   reference_versions.members(db,reference_versions.current(db)["id"]))
 
 
 def test_clean_database_allows_first_reference_import(system):

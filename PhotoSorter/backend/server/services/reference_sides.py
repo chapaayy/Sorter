@@ -18,7 +18,7 @@ def normalize_side(value: str | None) -> str | None:
     name = " ".join(value.strip().split())
     if name.casefold().startswith("сторона "):
         name = name[8:].strip()
-    if (not name or len(name) > 60 or name in (".", "..")
+    if (not name or len(name) > 60 or name in (".", "..") or name.endswith(".")
             or any(ord(c)<32 or c in _FORBIDDEN for c in name) or name.casefold() == "неназначена сторона"):
         raise HTTPException(422, "Название стороны: от 1 до 60 символов, без символов пути")
     return unicodedata.normalize("NFC", name)

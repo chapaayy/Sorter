@@ -111,9 +111,9 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
             assert title+".zip" in unquote(reply.headers["content-disposition"])
             with zipfile.ZipFile(BytesIO(reply.content)) as result:
                 expected={
-                    f"{title}/{sam} — {address}/{archive_day}/IMG_0115.JPG":b"hash1.jpg",
-                    f"{title}/{sam} — {address}/{archive_day}/IMG_0115 (2).JPG":b"hash2.jpg",
-                    f"{title}/_Неопределено/{archive_day}/IMG_0914.JPG":b"hash3.jpg",
+                    f"{title}/{sam} — {address}/{archive_day}/Неназначена сторона/IMG_0115.JPG":b"hash1.jpg",
+                    f"{title}/{sam} — {address}/{archive_day}/Неназначена сторона/IMG_0115 (2).JPG":b"hash2.jpg",
+                    f"{title}/_Неопределено/{archive_day}/Неназначена сторона/IMG_0914.JPG":b"hash3.jpg",
                 }
                 assert {name:result.read(name) for name in result.namelist()}==expected
             group=client.get("/api/download/"+run,params={"sam":sam})
@@ -164,25 +164,25 @@ def test_manual_date_and_video_zip_layout(sandbox):
         with connect() as db:
             db.execute("UPDATE batches SET report_date_mode='manual',report_date=%s WHERE id=%s",
                 (date(2026,11,20),batch))
-        for sam,kind,name in [
-            ("SAM 0001","image","IMG_1.jpg"),
-            ("SAM 0001","video","CLIP_1.mp4"),
-            ("_Неопределено","video","UNKNOWN.mp4"),
+        for sam,kind,name,side in [
+            ("SAM 0001","image","IMG_1.jpg","А"),
+            ("SAM 0001","video","CLIP_1.mp4","Б"),
+            ("_Неопределено","video","UNKNOWN.mp4",None),
         ]:
             source=model/sam/name
             source.parent.mkdir(parents=True,exist_ok=True)
             source.write_bytes(name.encode())
             items.append({"query":str(source),"copy":str(source),"assigned_sam":sam,
-                          "media_kind":kind,"export_name":name})
+                          "media_kind":kind,"export_name":name,"side":side})
         manifest=model/"manifest.json"
         manifest.write_text(json.dumps(items))
         (index/"megaloc.json").write_text(json.dumps({"path":str(manifest)}))
         plan=archive_pipeline.named_plan(run,batch,"Отчёт по выезду")
         members={name for _,name in plan.files}
         assert members=={
-            "Отчёт по выезду/SAM 0001/2026-11-20/IMG_1.jpg",
-            "Отчёт по выезду/Видео/SAM 0001/2026-11-20/CLIP_1.mp4",
-            "Отчёт по выезду/Видео/_Неопределено/2026-11-20/UNKNOWN.mp4",
+            "Отчёт по выезду/SAM 0001/2026-11-20/Сторона А/IMG_1.jpg",
+            "Отчёт по выезду/Видео/SAM 0001/2026-11-20/Сторона Б/CLIP_1.mp4",
+            "Отчёт по выезду/Видео/_Неопределено/2026-11-20/Неназначена сторона/UNKNOWN.mp4",
         }
         only_sam=archive_pipeline.named_plan(run,batch,"Отчёт по выезду",sam="SAM 0001")
         assert len(only_sam.files)==2
@@ -209,6 +209,6 @@ def test_processing_date_uses_job_start_not_upload_date(sandbox):
             db.execute("UPDATE jobs SET started_at=%s WHERE id=%s",
                 ("2026-11-21T21:30:00+00:00",run))
         plan=archive_pipeline.named_plan(run,batch,"Ночной выезд")
-        assert plan.files[0][1]=="Ночной выезд/SAM 0001/2026-11-22/one.jpg"
+        assert plan.files[0][1]=="Ночной выезд/SAM 0001/2026-11-22/Неназначена сторона/one.jpg"
     finally:
         cleanup.request(batch);cleanup.cleanup_one(batch)
