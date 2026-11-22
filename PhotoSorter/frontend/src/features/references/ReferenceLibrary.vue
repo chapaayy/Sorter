@@ -16,14 +16,15 @@ import VirtualThumbnailGrid from '../../components/gallery/VirtualThumbnailGrid.
 import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
 import EditConstructionDialog from './EditConstructionDialog.vue'
+import AssignSideDialog from './AssignSideDialog.vue'
 const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),
   error=ref(''),busy=ref(false),viewer=ref<number|null>(null),
   deletePhoto=ref<string|null>(null),deleteSam=ref(false)
 
 const notice=useNoticeStore(),uploader=useUploadCenterStore()
 const galleryScroll=ref<HTMLElement|null>(null)
-const chosen=ref<string[]>([]),sideName=ref('')
-const selectionMode=ref(false),selectingAll=ref(false)
+const chosen=ref<string[]>([])
+const selectionMode=ref(false),selectingAll=ref(false),sideDialog=ref(false)
 const chosenSet=computed(()=>new Set(chosen.value))
 const viewerItems=ref<Photo[]>([])
 const awaitingDeletion=ref(false)
@@ -53,7 +54,7 @@ function toggleSelectionMode(){
   if(busy.value||selectingAll.value)return
   selectionMode.value=!selectionMode.value
   chosen.value=[]
-  sideName.value=''
+  sideDialog.value=false
 }
 async function selectAll(){
   if(!selectionMode.value||selectingAll.value||busy.value||loading.value)return
@@ -90,7 +91,7 @@ async function setSide(side:string|null){
       sideLabel=changed.side
     }
     if(selected.value!==sam)return
-    chosen.value=[];sideName.value=''
+    chosen.value=[];sideDialog.value=false
     await reset()
     notice.add(sideLabel?'Сторона назначена: '+ids.length+' фото':'Сторона снята: '+ids.length+' фото','ok')
   }catch(e){error.value=errorText(e)}finally{busy.value=false}
@@ -115,7 +116,7 @@ async function refresh(){
   }catch(e){error.value=errorText(e)}finally{listLoading.value=false}
 }
 watch(selected,()=>{
-  viewer.value=null;selectionMode.value=false;chosen.value=[];sideName.value=''
+  viewer.value=null;selectionMode.value=false;chosen.value=[];sideDialog.value=false
   if(galleryScroll.value)galleryScroll.value.scrollTop=0
   if(selected.value)void reset();else items.value=[]
 })
@@ -232,22 +233,17 @@ async function removeSam(){
         @click="selectAll">Выделить все</UiButton>
       <UiButton small :disabled="busy||selectingAll||!chosen.length"
         @click="chosen=[]">Снять выделение</UiButton>
-      <input v-model="sideName" aria-label="Название стороны" maxlength="60"
-        :disabled="busy||selectingAll" list="available-reference-sides"
-        placeholder="Сторона: А, Б, А1…" @keydown.enter.prevent="setSide(sideName)"/>
-      <datalist id="available-reference-sides">
-        <option v-for="group in sideGroups.filter(g=>g.side)" :key="group.side" :value="group.side"/>
-      </datalist>
-      <UiButton kind="primary" small :loading="busy" :disabled="selectingAll||!chosen.length||!sideName.trim()"
-        @click="setSide(sideName)">Назначить сторону</UiButton>
-      <UiButton small :disabled="busy||selectingAll||!chosen.length"
-        @click="setSide(null)">Снять сторону</UiButton>
+      <UiButton kind="primary" small :disabled="busy||selectingAll||!chosen.length"
+        @click="sideDialog=true">Назначить сторону</UiButton>
     </div>
   </section>
 </div>
 <LoadingSkeleton v-else-if="listLoading" variant="split" label="Загружаем библиотеку образцов"/>
 <EmptyState v-else-if="!error" title="Пока нет образцов"/>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
+<AssignSideDialog v-if="sideDialog" :count="chosen.length" :busy="busy"
+  :available="sideGroups.filter(group=>group.side).map(group=>group.side)"
+  @assign="side=>setSide(side)" @clear="setSide(null)" @cancel="sideDialog=false"/>
 <ConfirmDialog v-if="deletePhoto" title="Удалить Образец?" message="Образец будет удалён сразу или после текущих задач в очереди. Старые результаты ФО сохранятся." danger confirm-label="Удалить Образец" :busy="busy" @cancel="deletePhoto=null" @confirm="dropOne"/>
 <ConfirmDialog v-if="deleteSam" title="Безвозвратно удалить конструкцию?" :message="'Все эталонные фото '+selected+' будут удалены из общей библиотеки. Это не удаляет партии ФО.'" :required-text="selected" danger confirm-label="Удалить SAM" :busy="busy" @cancel="deleteSam=false" @confirm="removeSam"/>
 <EditConstructionDialog v-if="editing&&selectedEntry" :key="selectedEntry.sam"
