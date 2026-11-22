@@ -12,6 +12,8 @@ from pathlib import Path
 from fastapi import HTTPException
 from . import batches as batch_service
 from ..database import connect
+from psycopg.types.json import Jsonb
+from . import regions
 
 
 def _validated(files):
@@ -42,7 +44,7 @@ def _validated(files):
 
 
 def register(batch_id, files, *, auto_process=False, grouping_threshold=0.50,
-             image_format=None, video_format=None):
+             image_format=None, video_format=None, selected_regions=None):
     """Register exactly once; identical POSTs are safe after a lost response."""
     batch_id = batch_service.uid(batch_id)
     expected = _validated(files)
@@ -52,15 +54,17 @@ def register(batch_id, files, *, auto_process=False, grouping_threshold=0.50,
     )
     signature = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     with connect() as db:
-        batch = db.execute("""SELECT delete_state, upload_manifest_signature,media_image_format,media_video_format
-            FROM batches WHERE id=%s FOR UPDATE""", (batch_id,)).fetchone()
+        codes=regions.selected(db,selected_regions) if auto_process else None
+        batch = db.execute("""SELECT delete_state, upload_manifest_signature,media_image_format,media_video_format,
+                auto_process_regions FROM batches WHERE id=%s FOR UPDATE""", (batch_id,)).fetchone()
         if not batch:
             raise HTTPException(404, "Партия не найдена")
         if batch["delete_state"] != "active":
             raise HTTPException(409, "Партия удаляется или удалена")
         if batch["upload_manifest_signature"] is not None:
             if (batch["upload_manifest_signature"] != signature or
-                (batch["media_image_format"],batch["media_video_format"]) != (image_format,video_format)):
+                (batch["media_image_format"],batch["media_video_format"]) != (image_format,video_format) or
+                 (auto_process and batch["auto_process_regions"] != codes)):
                 raise HTTPException(409, "Состав партии отличается от зарегистрированного манифеста")
         else:
             if db.execute("SELECT 1 FROM uploads WHERE batch_id=%s LIMIT 1", (batch_id,)).fetchone():
@@ -74,10 +78,11 @@ def register(batch_id, files, *, auto_process=False, grouping_threshold=0.50,
                     [(batch_id, *item) for item in expected])
             db.execute("""UPDATE batches SET upload_manifest_signature=%s,
                 upload_manifest_state='waiting', upload_manifest_completed_at=NULL,
-                auto_process_state=%s,auto_process_threshold=%s,
+                auto_process_state=%s,auto_process_threshold=%s,auto_process_regions=%s,
                 auto_process_run_id=NULL,auto_process_error=NULL,
                 media_image_format=%s,media_video_format=%s,upload_state='open' WHERE id=%s""",
-                (signature,'waiting' if auto_process else None,grouping_threshold,image_format,video_format,batch_id))
+                (signature,'waiting' if auto_process else None,grouping_threshold,
+                  Jsonb(codes) if codes is not None else None,image_format,video_format,batch_id))
     return status(batch_id)
 
 
@@ -141,7 +146,7 @@ def status(batch_id):
     batch_id = batch_service.uid(batch_id)
     with connect() as db:
         batch = db.execute("""SELECT upload_manifest_state,upload_manifest_completed_at,
-                auto_process_state,auto_process_run_id,auto_process_error,auto_process_threshold
+                auto_process_state,auto_process_run_id,auto_process_error,auto_process_threshold,auto_process_regions
             FROM batches WHERE id=%s""", (batch_id,)).fetchone()
         if not batch:
             raise HTTPException(404, "Партия не найдена")
@@ -149,7 +154,7 @@ def status(batch_id):
             return {"state": "legacy", "expected": 0, "finalized": 0,
                     "missing": 0, "pending": 0, "files": [], "auto_process_state": None,
                     "auto_process_run_id":None,"auto_process_error":None,
-                    "auto_process_threshold":0.50}
+                    "auto_process_threshold":0.50,"auto_process_regions":None}
         rows = db.execute("""SELECT m.upload_id,m.relative_path,m.filename,m.declared_size,
             u.id AS saved_id,u.finalized,u.target_path,u.received
             FROM batch_upload_manifest_files m LEFT JOIN uploads u ON u.id=m.upload_id
@@ -169,7 +174,7 @@ def status(batch_id):
             from ..db.repositories.batches import refresh_upload_state
             refresh_upload_state(db, batch_id)
             batch = db.execute("""SELECT upload_manifest_state,upload_manifest_completed_at,
-                    auto_process_state,auto_process_run_id,auto_process_error,auto_process_threshold
+                    auto_process_state,auto_process_run_id,auto_process_error,auto_process_threshold,auto_process_regions
                 FROM batches WHERE id=%s""", (batch_id,)).fetchone()
         files = []
         missing = finalized = 0
@@ -198,5 +203,6 @@ def status(batch_id):
                 "auto_process_run_id":batch["auto_process_run_id"],
                 "auto_process_error":batch["auto_process_error"],
                 "auto_process_threshold":batch["auto_process_threshold"],
+                 "auto_process_regions":batch["auto_process_regions"],
                 "missing": missing, "pending": len(rows)-finalized,
                 "files": files}

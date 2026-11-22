@@ -32,6 +32,8 @@ def isolated_import(tmp_path,monkeypatch):
     monkeypatch.setattr(storage,"LEGACY_ROOT",tmp_path/"references")
     try:
         database.initialize()
+        from server.services import regions
+        regions.register("SAM")
         yield tmp_path
     finally:
         with psycopg.connect(original) as admin:

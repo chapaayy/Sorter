@@ -4,7 +4,7 @@ import type {UploadEntry} from '../utils/upload'
 
 export type RecoverySource={batchId:string;item:PendingUpload;file:File}
 export type UploadSource=
-  |{kind:'fo';name:string;entries:readonly UploadEntry[];autoProcess:boolean;threshold:number;profile?:MediaProfile;reportDateMode?:'manual'|'processing';reportDate?:string|null;resumeBatchId?:string}
+  |{kind:'fo';name:string;entries:readonly UploadEntry[];autoProcess:boolean;threshold:number;regions?:string[];profile?:MediaProfile;reportDateMode?:'manual'|'processing';reportDate?:string|null;resumeBatchId?:string}
   |{kind:'recovery';source:RecoverySource}
   |{kind:'references';name:string;review:ReferenceReview;success:string}
 export type UploadCompletion={batchId:string}|{sam?:string}

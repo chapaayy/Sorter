@@ -165,12 +165,13 @@ def test_unknown_custom_construction_does_not_bypass_manifest_catalog(system):
 
 
 
-def test_manually_entered_city_code_is_accepted_for_catalog_and_bulk_import(system):
+def test_registered_city_code_is_accepted_for_catalog_and_bulk_import(system):
     from server.api.routes import references as api
-    from server.services import reference_imports
+    from server.services import reference_imports,regions
     from server.api.routes.reference_imports import ImportFile
 
-    # No city-registration or allowlist step: validate the format only.
+    # New region codes are created explicitly before construction metadata.
+    regions.register("MSK")
     created=construction_catalog.create("standard",city_code="MSK",number="0042",
                                         address="Ленина 1")
     assert created["sam"]=="MSK 0042"
@@ -183,6 +184,7 @@ def test_manually_entered_city_code_is_accepted_for_catalog_and_bulk_import(syst
     assert len(plan["entries"])==2
     assert plan["entries"][0]["existing"]
     assert not plan["entries"][1]["existing"]
+    assert plan["new_regions"]==["KZN"]
 
     session=uuid.uuid4()
     reference_imports.create(session)

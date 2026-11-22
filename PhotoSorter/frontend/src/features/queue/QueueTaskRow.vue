@@ -90,6 +90,8 @@ const count=computed(()=>preparing.value||media.value?props.task.total_count:pro
   <template #meta>
     <span>{{preparing||removingRef?'Образцы':media?task.batch_name:'ФО'}}</span>
     <span v-if="count!=null">{{count}} {{media?"файлов":"фото"}}</span>
+    <span v-if="task.kind==='fo_processing'">{{task.fo_selected_regions?.length?
+      'Регионы: '+task.fo_selected_regions.join(', '):'Все регионы'}}</span>
     <span v-if="preparing&&task.failed_count">Ошибок: {{task.failed_count}}</span>
     <span v-if="task.state!=='queued'&&task.state!=='running'">{{date(task.created_at)}}</span>
   </template>

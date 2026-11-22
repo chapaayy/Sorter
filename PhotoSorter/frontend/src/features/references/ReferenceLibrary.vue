@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import {computed,nextTick,onBeforeUnmount,onMounted,ref,watch} from 'vue'
 import {referenceApi,type UpdatedConstruction} from '../../api/references'
+import {regionApi,type Region} from '../../api/regions'
+import RegionPicker from '../../components/regions/RegionPicker.vue'
 import {useCursor} from '../../composables/useCursor'
 import {usePolling} from '../../composables/usePolling'
 import {useNoticeStore} from '../../stores/notice'
@@ -17,7 +19,8 @@ import ImageViewer from '../../components/gallery/ImageViewer.vue'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
 import EditConstructionDialog from './EditConstructionDialog.vue'
 import AssignSideDialog from './AssignSideDialog.vue'
-const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),
+const list=ref<SamCount[]>([]),regionChosen=ref('*'),regionRows=ref<Region[]>([])
+const selected=ref(''),editing=ref(false),
   error=ref(''),busy=ref(false),viewer=ref<number|null>(null),
   deletePhoto=ref<string|null>(null),deleteSam=ref(false)
 
@@ -29,7 +32,14 @@ const chosenSet=computed(()=>new Set(chosen.value))
 const viewerItems=ref<Photo[]>([])
 const awaitingDeletion=ref(false)
 const listLoading=ref(true)
-const groups=computed(()=>list.value.map(s=>({id:s.sam,label:s.display_name||s.sam,count:s.photos})))
+const filteredConstructions=computed(()=>list.value.filter(s=>
+  regionChosen.value==='*'||(regionChosen.value==='?'&&!s.city_code)||
+  s.city_code===regionChosen.value))
+const groups=computed(()=>filteredConstructions.value.map(s=>
+  ({id:s.sam,label:s.display_name||s.sam,count:s.photos})))
+watch(groups,()=>{
+  if(!groups.value.some(x=>x.id===selected.value))selected.value=groups.value[0]?.id||''
+})
 const selectedEntry=computed(()=>list.value.find(item=>item.sam===selected.value))
 const {items,cursor,loading,error:galleryError,load,reset}=useCursor<Photo>(cursor=>referenceApi.gallery(selected.value,cursor))
 const preview=computed(()=>viewerItems.value.map(p=>({
@@ -107,6 +117,10 @@ function loadMoreIfNearEnd(){
 watch([loading,cursor],async()=>{
   if(!loading.value){await nextTick();loadMoreIfNearEnd()}
 })
+async function loadRegions(){
+  try{regionRows.value=(await regionApi.list()).regions}
+  catch(e){error.value=errorText(e)}
+}
 async function refresh(){
   try{
     const refs=await referenceApi.list()
@@ -120,7 +134,8 @@ watch(selected,()=>{
   if(galleryScroll.value)galleryScroll.value.scrollTop=0
   if(selected.value)void reset();else items.value=[]
 })
-onMounted(()=>{window.addEventListener('scroll',loadMoreIfNearEnd,{passive:true});void refresh()})
+onMounted(()=>{window.addEventListener('scroll',loadMoreIfNearEnd,{passive:true});
+  void Promise.all([refresh(),loadRegions()])})
 onBeforeUnmount(()=>window.removeEventListener('scroll',loadMoreIfNearEnd))
 usePolling(async()=>{
   await refresh()
@@ -188,7 +203,9 @@ async function removeSam(){
 </template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
-<div class="toolbar">
+<div class="toolbar row wrap between">
+  <RegionPicker v-model="regionChosen" :regions="regionRows" allow-all allow-custom
+    label="Выбрать регион" @created="loadRegions"/>
   <span class="meta">Всего {{list.length}} конструкций · {{list.reduce((n,s)=>n+s.photos,0)}} эталонных фото</span>
 </div>
 <div v-if="list.length" class="split">

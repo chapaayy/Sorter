@@ -4,7 +4,7 @@ export interface ImportPlanEntry{
   sam:string;name:string;address:string;city_code:string;number:string;existing:boolean;photos:number
 }
 export interface ImportPlanError{folder:string;reason:string}
-export interface ImportPlan{entries:ImportPlanEntry[];errors:ImportPlanError[];cities:Record<string,string>}
+export interface ImportPlan{entries:ImportPlanEntry[];errors:ImportPlanError[];new_regions:string[]}
 export type NewConstruction =
   |{kind:'standard';city_code:string;number:string;address:string}
   |{kind:'custom';name:string}

@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
-from app.photos.construction import CITIES, parse_folder_name
+from app.photos.construction import parse_folder_name
+from . import regions
 from ..database import connect
 import json
 import re
@@ -41,6 +42,7 @@ def preview(folders: list[str]) -> dict:
                         WHERE u.kind='reference' AND u.finalized AND u.sam=c.sam) AS photos
                 FROM reference_constructions c WHERE c.sam=ANY(%s)
             """, (list(unique),)).fetchall()
+            known_regions={r["code"] for r in db.execute("SELECT code FROM reference_regions").fetchall()}
         existing = {row["sam"]: row for row in rows}
         for item in unique.values():
             row = existing.get(item.key)
@@ -51,7 +53,9 @@ def preview(folders: list[str]) -> dict:
             entries.append({"sam":item.key,"name":item.title,"address":item.address,
                             "city_code":item.city_code,"number":item.number,
                             "existing":bool(row),"photos":row["photos"] if row else 0})
-    return {"entries":entries,"errors":errors,"cities":CITIES}
+    new_regions=sorted({item.city_code for item in unique.values()}-
+                       (known_regions if unique else set()))
+    return {"entries":entries,"errors":errors,"new_regions":new_regions}
 
 
 def change_address(sam: str, address: str) -> dict:
@@ -121,6 +125,8 @@ def create(kind: str, *, city_code: str | None = None,
     values=(sam,item["city_code"],item["construction_number"],item["address"],kind)
     with connect() as db:
         db.execute("SELECT pg_advisory_xact_lock(%s)",(_EDIT_LOCK,))
+        if item["city_code"]:
+            regions.ensure_registered(db,[item["city_code"]])
         if db.execute("SELECT 1 FROM reference_constructions WHERE sam=%s",(sam,)).fetchone() or \
            db.execute("SELECT 1 FROM uploads WHERE sam=%s AND kind='reference' LIMIT 1",(sam,)).fetchone():
             raise HTTPException(409,"Конструкция с таким названием уже существует")

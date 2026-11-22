@@ -7,9 +7,11 @@ export const batchApi={
     '/batches/'+encodeURIComponent(id)+'/runs'+query({limit,offset})),
   pending:(id:string)=>api<PendingUploadList>('/batches/'+encodeURIComponent(id)+'/pending'),
   manifest:(id:string)=>api<BatchUploadManifest>('/batches/'+encodeURIComponent(id)+'/upload-manifest'),
-  registerManifest:(id:string,files:UploadManifestFile[],autoProcess=false,threshold=.50,profile?:MediaProfile)=>
+  registerManifest:(id:string,files:UploadManifestFile[],autoProcess=false,threshold=.50,
+    profile?:MediaProfile,regions?:string[])=>
     api<BatchUploadManifest>('/batches/'+encodeURIComponent(id)+'/upload-manifest',{
-      method:'PUT',body:JSON.stringify({files,...profile,auto_process:autoProcess,grouping_threshold:threshold})
+      method:'PUT',body:JSON.stringify({files,...profile,auto_process:autoProcess,grouping_threshold:threshold,
+        regions:autoProcess?regions??null:null})
     }),
   retryMedia:(id:string)=>post<unknown>('/batches/'+encodeURIComponent(id)+'/media/retry',{}),
   mediaErrors:(id:string)=>api<{files:{id:string;filename:string;media_error:string}[]}>('/batches/'+encodeURIComponent(id)+'/media/errors'),

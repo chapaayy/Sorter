@@ -80,6 +80,10 @@ def _check_catalog(db, rows):
     catalog={r["sam"]:r for r in db.execute("""
         SELECT sam,address,kind FROM reference_constructions WHERE sam=ANY(%s)
     """,(sams,)).fetchall()}
+    from . import regions
+    codes=[parse_key(sam)[0] for sam,address in
+           {row[1]:row[2] for row in rows}.items() if address is not None]
+    regions.ensure_registered(db,codes)
     for sam,address in {row[1]:row[2] for row in rows}.items():
         if sam in catalog:
             row=catalog[sam]

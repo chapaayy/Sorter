@@ -16,6 +16,7 @@ export function createFoTransfer(selection:FolderUpload){
   let batchId=selection.resumeBatchId||'',batchName=name,creationRequestId=''
   return async function transfer({signal,parallel,report,setBatch}:UploadContext):Promise<UploadResult>{
     let {autoProcess,threshold}=selection
+    const chosenRegions=selection.regions
     let amounts=entries.map(()=>0),completed=new Set<number>()
     let firstError='',phase='Подготовка партии…',sentBytes=0
     const totalBytes=entries.reduce((sum,e)=>sum+e.file.size,0)
@@ -66,7 +67,7 @@ export function createFoTransfer(selection:FolderUpload){
           upload_id:expectedUploadId(target,e),relative_path:e.relative,
           filename:e.file.name,size:e.file.size
         }))
-        await request(()=>batchApi.registerManifest(batchId,plan,autoProcess,threshold,selection.profile))
+        await request(()=>batchApi.registerManifest(batchId,plan,autoProcess,threshold,selection.profile,chosenRegions))
         manifestIds=plan.map(e=>e.upload_id)
       }
       const reconnecting=new Set<number>()

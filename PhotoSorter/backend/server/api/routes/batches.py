@@ -40,6 +40,7 @@ class BatchManifest(BaseModel):
     video_format:Literal["mp4","webm"]|None=None
     auto_process:bool=False
     grouping_threshold:float=Field(default=.50,ge=.50,le=.99,allow_inf_nan=False)
+    regions:list[str]|None=None
 
 @router.post("")
 def create(payload:NewBatch|None=None):
@@ -56,7 +57,9 @@ def register_manifest(batch_id:str,payload:BatchManifest):
     if (payload.image_format is None) != (payload.video_format is None):
         raise HTTPException(422,"Выберите форматы для фото и видео")
     return upload_manifest.register(batch_id,payload.files,
-        image_format=payload.image_format,video_format=payload.video_format,auto_process=payload.auto_process,grouping_threshold=payload.grouping_threshold)
+        image_format=payload.image_format,video_format=payload.video_format,
+        auto_process=payload.auto_process,grouping_threshold=payload.grouping_threshold,
+        selected_regions=payload.regions)
 
 @router.post("/{batch_id}/media/retry",status_code=202)
 def retry_media(batch_id:uuid.UUID):

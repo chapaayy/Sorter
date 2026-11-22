@@ -34,7 +34,7 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
                    coalesce(w.media_failed_count,p.failed_count) AS failed_count,
                    coalesce(w.media_error,p.error,d.error) AS error,p.stop_requested,
                    coalesce(j.batch_id,w.media_batch_id) AS batch_id,j.snapshot->>'source' AS fo_source,
-                   j.snapshot->'progress' AS fo_progress,
+                   j.snapshot->'progress' AS fo_progress,j.snapshot->'selected_regions' AS fo_selected_regions,
                    w.media_progress_percent,w.media_eta_seconds,w.media_current_file,
                    b.display_name AS batch_name,b.delete_state AS batch_delete_state,
                    c.progress AS batch_deletion_progress,

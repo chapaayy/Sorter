@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,onUnmounted,ref,watch} from 'vue'
 import {referenceApi} from '../../api/references'
+import {regionApi} from '../../api/regions'
 import type {ImportPlan,ImportPlanEntry} from '../../api/references'
 import {inspectReferenceDirectory} from '../../utils/referenceSelection'
 import type {ReferenceSelection} from '../../utils/referenceSelection'
@@ -15,7 +16,7 @@ import ReferenceImportReview from './ReferenceImportReview.vue'
 const emit=defineEmits<{(e:'noChanges',message:string):void;(e:'checking',busy:boolean):void}>()
 const uploadCenter=useUploadCenterStore(),transfer=useReferencePreflight()
 const selection=ref<ReferenceSelection|null>(null),plan=ref<ImportPlan|null>(null)
-const checking=ref(false),starting=ref(false),error=ref('')
+const checking=ref(false),starting=ref(false),registeringRegions=ref(false),error=ref('')
 let revision=0
 onUnmounted(()=>{revision++})
 const errors=computed(()=>[
@@ -27,7 +28,8 @@ const planById=computed<Record<string,ImportPlanEntry>>(()=>
 const existingCount=computed(()=>plan.value?.entries.filter(entry=>entry.existing).length||0)
 watch([starting,transfer.busy],()=>emit('checking',starting.value||transfer.busy.value),{immediate:true})
 const ready=computed(()=>!checking.value&&!transfer.busy.value&&
-  !!selection.value?.tasks.length&&!!plan.value&&!errors.value.length)
+  !!selection.value?.tasks.length&&!!plan.value&&!errors.value.length&&
+  !plan.value.new_regions.length&&!registeringRegions.value)
 
 async function choose(event:Event){
   const input=event.target as HTMLInputElement
@@ -50,6 +52,16 @@ async function choose(event:Event){
   finally{if(revision===current)checking.value=false}
 }
 
+async function createUnknownRegions(){
+  const missing=plan.value?.new_regions||[]
+  if(!missing.length||registeringRegions.value||!selection.value)return
+  registeringRegions.value=true;error.value=''
+  try{
+    for(const code of missing)await regionApi.create(code)
+    plan.value=await referenceApi.importPreview(selection.value.folders.map(f=>f.folder))
+  }catch(e){error.value='Не удалось создать регионы: '+errorText(e)}
+  finally{registeringRegions.value=false}
+}
 async function upload(){
   if(!ready.value||!selection.value)return
   error.value=''
@@ -107,6 +119,12 @@ function accept(){
     </div>
     <div v-if="checking" class="meta">Проверяем названия и существующую библиотеку на сервере…</div>
     <template v-else-if="plan">
+      <div v-if="plan.new_regions.length" class="alert warning" role="status">
+        <strong>Новые коды регионов: {{plan.new_regions.join(', ')}}</strong>
+        <p class="meta">Проверьте коды в названиях папок — опечатка создаст отдельный регион.</p>
+        <UiButton small kind="primary" :loading="registeringRegions"
+          @click="createUnknownRegions">Подтвердить и добавить регионы</UiButton>
+      </div>
       <div class="row wrap meta">
         <span>В библиотеке: {{existingCount}}</span>
         <span>Новых конструкций: {{plan.entries.length-existingCount}}</span>

@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from app.photos.labels import check_label
 from ..database import connect
 from ..db.repositories import reference_versions
-from . import construction_catalog, reference_publication
+from . import construction_catalog, reference_publication, regions
 
 
 def update(sam: str, kind: str, *, city_code=None, number=None,
@@ -33,6 +33,8 @@ def update(sam: str, kind: str, *, city_code=None, number=None,
         """, (sam,)).fetchone()
         if old is None:
             raise HTTPException(404, "Конструкция не найдена")
+        if desired["city_code"]:
+            regions.ensure_registered(db,[desired["city_code"]])
         if target != sam:
             # Do not rename identities during a queued or running MegaLoc /
             # reference-preparation task that might use the previous key.

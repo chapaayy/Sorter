@@ -9,6 +9,7 @@ from app.config import DATA_DIR
 from app.jobs.runtime import Job
 from .database import connect,save_snapshot
 from .db.repositories import job_status,work_queue
+from .services import regions
 
 router=APIRouter(prefix="/api/runs",tags=["jobs"])
 TERMINAL=set(job_status.TERMINAL)
@@ -16,6 +17,7 @@ TERMINAL=set(job_status.TERMINAL)
 class NewRun(BaseModel):
     batch_id:uuid.UUID
     grouping_threshold:float=Field(default=.50,ge=.50,le=.99,allow_inf_nan=False)
+    regions:list[str]|None=None
 
 @router.get("")
 def list_jobs(limit:int=100,offset:int=0,scope:str|None=None):
@@ -93,8 +95,18 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
         """).fetchone()
         if not has_prior_prep:
             raise HTTPException(422,"Сначала загрузите образцы конструкций")
-    # Freeze the *global* matching cutoff at enqueue, for manual and automatic
-    # runs alike. Already queued, active and historical runs never change.
+    selected_regions=regions.selected(db,data.regions)
+    if selected_regions is not None:
+        members=db.execute("""SELECT m.sam FROM reference_version_members m
+            JOIN reference_library_state s ON s.current_version_id=m.version_id
+            WHERE s.id=1""").fetchall()
+        if not regions.filter_members(members,selected_regions):
+            earlier=db.execute("""SELECT 1 FROM work_queue
+                WHERE kind='reference_preparation' AND state IN ('queued','running')
+                LIMIT 1""").fetchone()
+            if not earlier:
+                raise HTTPException(422,"Для выбранных регионов нет подготовленных образцов")
+    # Freeze matching cutoff independently from region selection.
     score_setting=db.execute("""
         SELECT min_match_score FROM processing_settings WHERE id=1
     """).fetchone()
@@ -105,6 +117,7 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
     info={"id":run_id,"status":"queued","new_photos":str(DATA_DIR/"uploads"/str(data.batch_id)),
           "output":str(DATA_DIR/"outputs"),"batch_id":str(data.batch_id),
           "selected_models":["megaloc"],"grouping_threshold":data.grouping_threshold,
+          "selected_regions":selected_regions,
           "min_match_score":float(score_setting["min_match_score"]),
           "models":{},"progress":{},"enqueued_at":now.isoformat(),
           "has_media_profile":bool(db.execute("SELECT media_image_format FROM batches WHERE id=%s",

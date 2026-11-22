@@ -2,6 +2,8 @@
 import {computed,onMounted,ref,watch} from 'vue'
 import type {MediaProfile} from '../../types/api'
 import {runApi} from '../../api/runs'
+import {regionApi,type Region} from '../../api/regions'
+import RegionChips from '../../components/regions/RegionChips.vue'
 import {directoryEntries} from '../../utils/upload'
 import type {UploadEntry} from '../../utils/upload'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
@@ -13,6 +15,7 @@ const props=defineProps<{target?:{id:string;name:string}}>()
 const entries=ref<UploadEntry[]>([]),name=ref(''),error=ref('')
 const source=ref<File[]>([]),unknown=ref(0),includeUnknown=ref(false)
 const autoProcess=ref(false),autoThreshold=ref(.50)
+const regionRows=ref<Region[]>([]),selectedRegions=ref<string[]>([]),regionsLoading=ref(true)
 const reportDate=ref(''),useProcessingDate=ref(false)
 const validReportDate=computed(()=>useProcessingDate.value||/^\d{4}-\d{2}-\d{2}$/.test(reportDate.value))
 const chosenAuto=ref(false)
@@ -21,6 +24,9 @@ const total=computed(()=>entries.value.reduce((sum,e)=>sum+e.file.size,0))
 const validName=computed(()=>!!name.value.trim()&&Array.from(name.value.trim()).length<=120)
 onMounted(async()=>{
   if(props.target)return
+  try{regionRows.value=(await regionApi.list()).regions}
+  catch(e){error.value='Не удалось загрузить регионы: '+errorText(e)}
+  finally{regionsLoading.value=false}
   try{
     const defaults=await runApi.autoSettings()
     if(!chosenAuto.value)autoProcess.value=defaults.auto_process_new_batches
@@ -48,9 +54,11 @@ function applySelection(){
 }
 watch(includeUnknown,applySelection)
 function submit(){
-  if(!entries.value.length||(!props.target&&(!validName.value||!validReportDate.value)))return
+  if(!entries.value.length||(!props.target&&(!validName.value||!validReportDate.value))
+     ||(!props.target&&autoProcess.value&&!selectedRegions.value.length))return
   upload.enqueue({kind:'fo',name:props.target?.name||name.value.trim(),entries:[...entries.value],
-    autoProcess:autoProcess.value,threshold:autoThreshold.value,resumeBatchId:props.target?.id,
+    autoProcess:autoProcess.value,threshold:autoThreshold.value,
+    regions:autoProcess.value?[...selectedRegions.value]:[],resumeBatchId:props.target?.id,
     profile:{image_format:imageFormat.value,video_format:videoFormat.value},
     reportDateMode:useProcessingDate.value?'processing':'manual',
     reportDate:useProcessingDate.value?null:reportDate.value})
@@ -88,13 +96,19 @@ function submit(){
   <p v-if="entries.length&&!target" class="meta">Перекодируются только несовместимые файлы. Оригиналы останутся на сервере.</p>
   <div v-if="entries.length" class="row wrap between">
     <span class="meta">{{entries.length.toLocaleString('ru-RU')}} файлов · {{bytes(total)}}</span>
-    <UiButton kind="primary" type="submit" :disabled="!target&&(!validName||!validReportDate)">{{target?'Продолжить':'Загрузить'}}</UiButton>
+    <UiButton kind="primary" type="submit"
+      :disabled="!target&&(!validName||!validReportDate||(autoProcess&&!selectedRegions.length)||regionsLoading&&autoProcess)">
+      {{target?'Продолжить':'Загрузить'}}</UiButton>
   </div>
   <label v-if="entries.length&&!target" class="row wrap" style="gap:10px;align-items:center">
     <input v-model="autoProcess" type="checkbox" @change="chosenAuto=true"
       aria-label="Обработать после загрузки"/>
     <span>Отсортировать фото и видео после загрузки</span>
   </label>
+  <div v-if="entries.length&&!target&&autoProcess" class="panel stack-sm">
+    <RegionChips v-model="selectedRegions" :regions="regionRows" :disabled="regionsLoading"/>
+    <p class="meta">Выбор сохранится в партии. После загрузки отдельное окно не потребуется.</p>
+  </div>
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
 </form>
 </template>

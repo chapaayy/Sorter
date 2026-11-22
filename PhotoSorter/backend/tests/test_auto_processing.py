@@ -7,7 +7,7 @@ import uuid
 import pytest
 from fastapi import HTTPException
 from server.database import connect
-from server.services import auto_processing,upload_manifest,cleanup,batches
+from server.services import auto_processing,upload_manifest,cleanup,batches,regions
 from server import jobs
 from .test_stage1_lifecycle import _batch,sandbox,db
 from .test_stage2_platform import thumbs,_jpg
@@ -80,7 +80,9 @@ def test_wait_for_complete_then_queue_once_with_persisted_threshold(thumbs,refer
     raw=_jpg()
     files=_files(2,raw)
     try:
-        upload_manifest.register(batch,files,auto_process=True,grouping_threshold=.73)
+        regions.register("SAM")
+        upload_manifest.register(batch,files,auto_process=True,grouping_threshold=.73,
+                                 selected_regions=["SAM"])
         assert auto_processing.schedule_ready()==[]
         _send(thumbs,batch,files[0],raw)
         assert auto_processing.schedule_ready()==[]
@@ -94,6 +96,9 @@ def test_wait_for_complete_then_queue_once_with_persisted_threshold(thumbs,refer
             assert job["snapshot"]["source"]=="automatic"
             assert job["snapshot"]["selected_models"]==["megaloc"]
             assert job["snapshot"]["grouping_threshold"]==.73
+            assert job["snapshot"]["selected_regions"]==["SAM"]
+            saved=db.execute("SELECT auto_process_regions FROM batches WHERE id=%s",(batch,)).fetchone()
+            assert saved["auto_process_regions"]==["SAM"]
             # Worker errors are terminal, not an invitation to re-enqueue forever.
             db.execute("UPDATE jobs SET status='failed' WHERE id=%s",(job["id"],))
         assert batches.get(batch)["auto_process_run_id"]==job["id"]

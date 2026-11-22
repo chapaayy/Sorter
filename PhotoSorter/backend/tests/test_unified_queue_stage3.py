@@ -43,6 +43,11 @@ def system(tmp_path,monkeypatch):
     cache.mkdir(parents=True)
     monkeypatch.setattr(reference_cache,"CACHE_DIR",cache)
     database.initialize()
+    # Tests that predate the region picker create standard constructions in
+    # these two cities. Register both, like the upgrade migration does on VPS.
+    from server.services import regions
+    regions.register("SAM")
+    regions.register("TLT")
     try:
         yield root
     finally:

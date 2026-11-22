@@ -17,6 +17,7 @@ import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import FoBatchCard from './FoBatchCard.vue'
+import StartRegionsDialog from './StartRegionsDialog.vue'
 
 const notice=useNoticeStore(),uploader=useUploadCenterStore(),deletion=useDeletionStore()
 const batches=ref<Batch[]>([]),search=ref('')
@@ -42,6 +43,7 @@ async function refreshQueue(){
 }
 const loading=ref(true),loadingMore=ref(false),error=ref('')
 const total=ref(0),activeAction=ref(''),stopConfirm=ref<{id:string;name:string;queued:boolean}|null>(null)
+const regionStart=ref<{batchId:string;threshold:number}|null>(null)
 let refreshing=false
 const filtered=computed(()=>batches.value.filter(b=>
   b.delete_state!=='deleted'&&b.display_name.toLowerCase().includes(search.value.toLowerCase())))
@@ -119,11 +121,17 @@ usePolling(async()=>{
 },250)
 usePolling(refreshQueue,6000)
 
-async function start(batchId:string,threshold:number){
+function start(batchId:string,threshold:number){
   if(activeAction.value)return
-  activeAction.value=batchId;error.value=''
+  regionStart.value={batchId,threshold}
+}
+async function startSelected(codes:string[]){
+  const request=regionStart.value
+  if(!request||activeAction.value)return
+  activeAction.value=request.batchId;error.value=''
   try{
-    const created=await runApi.start(batchId,threshold)
+    const created=await runApi.start(request.batchId,request.threshold,codes)
+    regionStart.value=null
     notice.add(readyToStart(created)?'Запуск обработки MegaLoc':'MegaLoc поставлен в очередь','ok')
     await Promise.all([refreshVisible(),refreshQueue()])
   }catch(e){error.value=errorText(e);await refreshVisible()}
@@ -181,6 +189,8 @@ async function stop(){
 </div>
 <LoadingSkeleton v-else-if="loading" variant="tasks" label="Загружаем фотоотчёты"/>
 <EmptyState v-else-if="!error" :title="total&&search.trim()?'Ничего не найдено':'Пока нет фотоотчётов'"/>
+<StartRegionsDialog v-if="regionStart" :busy="!!activeAction"
+  @confirm="startSelected" @cancel="regionStart=null"/>
 <ConfirmDialog v-if="stopConfirm" :title="stopConfirm.queued?'Убрать из очереди MegaLoc?':'Остановить обработку MegaLoc?'"
   :message="'Партия «'+stopConfirm.name+'». История предыдущих запусков и фотографии сохранятся.'"
   :confirm-label="stopConfirm.queued?'Убрать из очереди':'Остановить'"

@@ -87,7 +87,7 @@ def schedule_ready(limit:int=10):
             with connect() as db:
                 # Match the existing manual enqueue's lock acquisition order.
                 db.execute("SELECT pg_advisory_xact_lock(723409133)")
-                batch=db.execute("""SELECT id,auto_process_state,auto_process_threshold,
+                batch=db.execute("""SELECT id,auto_process_state,auto_process_threshold,auto_process_regions,
                     upload_manifest_state,delete_state
                     FROM batches WHERE id=%s FOR UPDATE""",(batch_id,)).fetchone()
                 if (not batch or batch["auto_process_state"]!="waiting" or
@@ -107,7 +107,8 @@ def schedule_ready(limit:int=10):
                 if _cancel_if_originals_only(db,batch_id):continue
                 try:
                     result=jobs._enqueue_locked(db, jobs.NewRun(
-                        batch_id=batch_id,grouping_threshold=batch["auto_process_threshold"]),
+                        batch_id=batch_id,grouping_threshold=batch["auto_process_threshold"],
+                        regions=batch["auto_process_regions"]),
                         source="automatic", locked_batch=batch)
                 except HTTPException as exc:
                     # No run was inserted. Retry only queue capacity / missing
@@ -130,7 +131,7 @@ def enqueue_on_manifest_completion(db,batch_id):
     Missing prerequisites are recorded for the cleanup fallback, not a lost FO.
     """
     from .. import jobs
-    batch=db.execute("""SELECT id,auto_process_state,auto_process_threshold,
+    batch=db.execute("""SELECT id,auto_process_state,auto_process_threshold,auto_process_regions,
        upload_manifest_state,delete_state FROM batches WHERE id=%s""",
        (batch_id,)).fetchone()
     if (not batch or batch["auto_process_state"]!="waiting" or
@@ -144,7 +145,8 @@ def enqueue_on_manifest_completion(db,batch_id):
     try:
         with db.transaction():
             result=jobs._enqueue_locked(db,jobs.NewRun(
-                batch_id=batch_id,grouping_threshold=batch["auto_process_threshold"]),
+                batch_id=batch_id,grouping_threshold=batch["auto_process_threshold"],
+                        regions=batch["auto_process_regions"]),
                 source="automatic",locked_batch=batch)
     except HTTPException as exc:
         db.execute("""UPDATE batches SET auto_process_error=%s WHERE id=%s""",
