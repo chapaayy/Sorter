@@ -23,6 +23,7 @@ const list=ref<SamCount[]>([]),selected=ref(''),editing=ref(false),
 const notice=useNoticeStore(),uploader=useUploadCenterStore()
 const galleryScroll=ref<HTMLElement|null>(null)
 const chosen=ref<string[]>([]),sideName=ref('')
+const selectionMode=ref(false),selectingAll=ref(false)
 const chosenSet=computed(()=>new Set(chosen.value))
 const viewerItems=ref<Photo[]>([])
 const awaitingDeletion=ref(false)
@@ -48,22 +49,50 @@ function openGroup(photos:Photo[],index:number){viewerItems.value=photos;viewer.
 function togglePhoto(id:string){
   chosen.value=chosen.value.includes(id)?chosen.value.filter(x=>x!==id):[...chosen.value,id]
 }
-function toggleGroup(photos:Photo[]){
-  const ids=photos.map(x=>x.id)
-  const chosenNow=chosenSet.value
-  chosen.value=ids.every(id=>chosenNow.has(id))
-    ?chosen.value.filter(id=>!ids.includes(id))
-    :[...new Set([...chosen.value,...ids])]
+function toggleSelectionMode(){
+  if(busy.value||selectingAll.value)return
+  selectionMode.value=!selectionMode.value
+  chosen.value=[]
+  sideName.value=''
+}
+async function selectAll(){
+  if(!selectionMode.value||selectingAll.value||busy.value||loading.value)return
+  const sam=selected.value
+  selectingAll.value=true
+  loading.value=true
+  try{
+    const all=new Map(items.value.map(photo=>[photo.id,photo]))
+    let next=cursor.value
+    const visited=new Set<string>()
+    while(next){
+      if(visited.has(next))throw new Error('Ошибка загрузки списка образцов')
+      visited.add(next)
+      const page=await referenceApi.gallery(sam,next)
+      if(selected.value!==sam||!selectionMode.value)return
+      for(const photo of page.photos)all.set(photo.id,photo)
+      next=page.next_cursor
+    }
+    if(selected.value!==sam||!selectionMode.value)return
+    items.value=[...all.values()]
+    cursor.value=null
+    chosen.value=[...all.keys()]
+  }catch(e){error.value=errorText(e)}
+  finally{selectingAll.value=false;loading.value=false}
 }
 async function setSide(side:string|null){
-  if(!chosen.value.length||busy.value)return
+  if(!chosen.value.length||busy.value||selectingAll.value)return
   busy.value=true
+  const sam=selected.value, ids=[...chosen.value]
   try{
-    const changed=await referenceApi.setSides(selected.value,chosen.value,side)
-    const count=chosen.value.length
+    let sideLabel:string|null=null
+    for(let offset=0;offset<ids.length;offset+=500){
+      const changed=await referenceApi.setSides(sam,ids.slice(offset,offset+500),side)
+      sideLabel=changed.side
+    }
+    if(selected.value!==sam)return
     chosen.value=[];sideName.value=''
     await reset()
-    notice.add(changed.side?'Сторона назначена: '+count+' фото':'Сторона снята: '+count+' фото','ok')
+    notice.add(sideLabel?'Сторона назначена: '+ids.length+' фото':'Сторона снята: '+ids.length+' фото','ok')
   }catch(e){error.value=errorText(e)}finally{busy.value=false}
 }
 function loadMoreIfNearEnd(){
@@ -86,7 +115,7 @@ async function refresh(){
   }catch(e){error.value=errorText(e)}finally{listLoading.value=false}
 }
 watch(selected,()=>{
-  viewer.value=null;chosen.value=[];sideName.value=''
+  viewer.value=null;selectionMode.value=false;chosen.value=[];sideName.value=''
   if(galleryScroll.value)galleryScroll.value.scrollTop=0
   if(selected.value)void reset();else items.value=[]
 })
@@ -167,45 +196,52 @@ async function removeSam(){
     <div class="panel-header reference-detail-header"><div><h2>{{selectedEntry?.display_name||selected}}</h2>
       <span class="meta">{{selectedEntry?.photos||0}} образцов</span></div>
       <div class="row wrap">
-        <UiButton small  @click="openUpload('single')">+ Добавить фото</UiButton>
+        <UiButton small class="reference-select-mode-toggle" :kind="selectionMode?'primary':'secondary'"
+          :disabled="busy||selectingAll" :aria-pressed="selectionMode"
+          @click="toggleSelectionMode">{{selectionMode?'Готово':'Выделить'}}</UiButton>
+        <UiButton small @click="openUpload('single')">+ Добавить фото</UiButton>
         <UiButton small @click="editing=true">Изменить конструкцию</UiButton>
         <UiButton kind="danger" small  @click="deleteSam=true">Удалить конструкцию</UiButton>
       </div>
     </div>
-    <div ref="galleryScroll" class="reference-library-gallery-scroll" @scroll.passive="loadMoreIfNearEnd">
-      <div v-if="chosen.length" class="reference-sides-toolbar">
-        <strong>Выбрано: {{chosen.length}}</strong>
-        <input v-model="sideName" aria-label="Название стороны" maxlength="60"
-          list="available-reference-sides" placeholder="Сторона: А, Б, А1…"
-          @keydown.enter.prevent="setSide(sideName)"/>
-        <datalist id="available-reference-sides">
-          <option v-for="group in sideGroups.filter(g=>g.side)" :key="group.side" :value="group.side"/>
-        </datalist>
-        <UiButton kind="primary" small :loading="busy" :disabled="!sideName.trim()"
-          @click="setSide(sideName)">Назначить сторону</UiButton>
-        <UiButton small :disabled="busy" @click="setSide(null)">Снять сторону</UiButton>
-        <UiButton small @click="chosen=[]">Отмена</UiButton>
-      </div>
+    <div ref="galleryScroll" class="reference-library-gallery-scroll"
+      :class="{'reference-gallery-selecting':selectionMode}" @scroll.passive="loadMoreIfNearEnd">
       <div v-if="galleryError" class="alert error">{{galleryError}}</div>
       <template v-if="items.length">
         <section v-for="group in sideGroups" :key="group.side||'unassigned'" class="reference-side-section">
           <div class="reference-side-heading" :class="{'reference-side-heading-unassigned':!group.side}">
             <div><strong>{{group.side?'Сторона '+group.side:'Неназначена сторона'}}</strong>
               <span class="meta">{{group.photos.length}} фото</span></div>
-            <UiButton small @click="toggleGroup(group.photos)">
-              {{group.photos.every(p=>chosenSet.has(p.id))?'Снять выделение':'Выбрать фото'}}
-            </UiButton>
+
           </div>
           <VirtualThumbnailGrid :items="group.photos.map(p=>({
               id:p.id,label:p.name,side:p.side,thumbnail_status:p.thumbnail_status,
               thumbnail_url:p.thumbnail_url,original_url:p.original_url}))"
-            :selected-ids="chosenSet" :selectable="true" :show-side-status="true" :can-delete="true"
+            :selected-ids="chosenSet" :selectable="selectionMode" :show-side-status="true"
+            :can-delete="!selectionMode"
             @open="i=>openGroup(group.photos,i)" @remove="id=>deletePhoto=id" @toggle="togglePhoto"/>
         </section>
       </template>
       <LoadingSkeleton v-else-if="loading" variant="gallery" label="Загружаем образцы"/>
       <EmptyState v-else-if="!galleryError" title="В этой SAM пока нет фотографий"/>
       <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё</UiButton></div>
+    </div>
+    <div v-if="selectionMode" class="reference-sides-toolbar" role="toolbar" aria-label="Работа с выделенными образцами">
+      <strong class="reference-selection-count">Выбрано: {{chosen.length}}</strong>
+      <UiButton small :loading="selectingAll" :disabled="busy||loading||!items.length||chosen.length===items.length&&cursor===null"
+        @click="selectAll">Выделить все</UiButton>
+      <UiButton small :disabled="busy||selectingAll||!chosen.length"
+        @click="chosen=[]">Снять выделение</UiButton>
+      <input v-model="sideName" aria-label="Название стороны" maxlength="60"
+        :disabled="busy||selectingAll" list="available-reference-sides"
+        placeholder="Сторона: А, Б, А1…" @keydown.enter.prevent="setSide(sideName)"/>
+      <datalist id="available-reference-sides">
+        <option v-for="group in sideGroups.filter(g=>g.side)" :key="group.side" :value="group.side"/>
+      </datalist>
+      <UiButton kind="primary" small :loading="busy" :disabled="selectingAll||!chosen.length||!sideName.trim()"
+        @click="setSide(sideName)">Назначить сторону</UiButton>
+      <UiButton small :disabled="busy||selectingAll||!chosen.length"
+        @click="setSide(null)">Снять сторону</UiButton>
     </div>
   </section>
 </div>
