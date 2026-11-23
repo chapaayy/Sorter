@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app.config import DATA_DIR, MODELS_DIR
-from .storage_breakdown import _kind, _metadata
+from .storage_breakdown import _kind, _metadata, ROOT_ORDER
 
 MAX_FILES = 250_000
 MAX_SECONDS = 15.0
@@ -114,7 +114,11 @@ def _collect(data_dir: Path, models_dir: Path, names: dict, jobs: dict,
                     partial = True
                 else:
                     safe_dirs.append(d)
-            dirs[:] = sorted(safe_dirs)
+            if Path(folder) == root and root_name == "data":
+                priority = {name: index for index, name in enumerate(ROOT_ORDER)}
+                dirs[:] = sorted(safe_dirs, key=lambda name: (priority.get(name, 100), name))
+            else:
+                dirs[:] = sorted(safe_dirs)
             for filename in sorted(filenames):
                 if time.monotonic() >= stop_at or len(entries) >= max_files:
                     partial = True
