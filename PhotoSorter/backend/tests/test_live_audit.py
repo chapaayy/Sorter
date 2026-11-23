@@ -60,3 +60,37 @@ def test_queue_overflow_is_visible_as_a_coverage_gap(tmp_path):
     finally:
         observer.stream.close()
         os.close(observer.fd)
+
+
+def test_postgres_shm_close_storm_is_summarized_without_losing_counts(tmp_path):
+    data = tmp_path / "PhotoSorter" / "data"
+    data.mkdir(parents=True)
+    observer = mod.LiveAudit(tmp_path, roots=[], containers_fn=lambda _name: [])
+    observer.init()
+    try:
+        shm = tmp_path / "proc" / "123" / "root" / "dev" / "shm" / "PostgreSQL.123456"
+        shm.parent.mkdir(parents=True)
+        shm.write_bytes(b"x" * 1024)
+        observer.wd_paths[42] = (shm.parent, "map_container_tmp:outdoor-sorter-postgres-1")
+        # Linux inotify pads event names to 4-byte boundaries.
+        name = shm.name.encode()
+        padded = name + b"\0" * ((4 - len(name) % 4) % 4)
+        event = struct.pack("iIII", 42, mod.IN_CLOSE_WRITE, 0, len(padded)) + padded
+        for _ in range(1000):
+            observer.process(event)
+        state = observer.state()
+        assert state["postgres_shm_close_writes_aggregated"] == 1000
+        assert state["postgres_shm_pending"] == 1000
+        assert state["events_observed_including_aggregates"] >= 1000
+        observer.flush_shm_batches()
+        records = [json.loads(line) for line in
+                   (observer.report / "live-events.jsonl").read_text().splitlines()]
+        batch = [r for r in records if r["event"] == "postgres_shm_close_write_summary"]
+        assert len(batch) == 1
+        assert batch[0]["observed_close_writes"] == 1000
+        assert batch[0]["logical_bytes"] == 1024
+        assert not [r for r in records if r["event"] == "close_write"]
+        assert observer.state()["postgres_shm_pending"] == 0
+    finally:
+        observer.stream.close()
+        os.close(observer.fd)

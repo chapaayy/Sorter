@@ -147,10 +147,12 @@ onMounted(()=>{void refresh()})
       <template v-else>
         <p class="meta">
           Состояние: <strong>{{live.running?'Работает по последнему отчёту':'Остановлен'}}</strong>.
-          Событий: {{(live.events||0).toLocaleString('ru-RU')}}.
+          Записей журнала: {{(live.events||0).toLocaleString('ru-RU')}}.
+          Событий с учётом группировки: {{(live.events_observed_including_aggregates??live.events??0).toLocaleString('ru-RU')}}.
           Каталогов под наблюдением: {{(live.watched_directories||0).toLocaleString('ru-RU')}}.
           Переполнений очереди: {{live.queue_overflows||0}}.
           Ошибок наблюдения: {{live.watch_errors||0}}.
+          Повторных закрытий общей памяти PostgreSQL: {{(live.postgres_shm_close_writes_aggregated||0).toLocaleString('ru-RU')}}.
           Последний сигнал: {{live.heartbeat_at||'неизвестно'}}.
         </p>
         <a v-if="live.download_available" class="btn secondary"
