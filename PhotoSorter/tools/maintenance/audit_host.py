@@ -166,17 +166,23 @@ class HostAudit:
             if len(rel)>=3 and rel[:3]==('PhotoSorter','data','uploads'):
                 cat = 'normalized' if len(rel)>4 and rel[4]=='.normalized' else 'originals'
             elif len(rel)>=3 and rel[:3]==('PhotoSorter','data','outputs'):
-                cat = 'results_zip' if '.archives' in rel and path.suffix=='.zip' else 'results'
+                if '.archives' in rel:
+                    cat = 'results_zip' if path.suffix.lower()=='.zip' else 'results_temporary'
+                elif any(p.endswith('.building') for p in rel):
+                    cat = 'results_temporary'
+                else:
+                    cat = 'results'
             elif len(rel)>=3 and rel[:3]==('PhotoSorter','data','reference_staging'):
-                cat = 'reference_objects'
+                cat = 'reference_uploads' if 'incoming' in rel else 'reference_objects'
             elif len(rel)>=3 and rel[:3]==('PhotoSorter','data','references'):
                 cat = 'reference_gallery'
             elif len(rel)>=3 and rel[:3]==('PhotoSorter','data','reference_exports'):
-                cat = 'reference_zip'
+                cat = 'reference_zip' if path.suffix.lower()=='.zip' else 'reference_export_temporary'
             elif len(rel)>=3 and rel[:3]==('PhotoSorter','data','cache'):
-                cat = 'megaloc_cache' if 'megaloc' in rel else 'thumbnails_or_cache'
+                cat = 'megaloc_cache' if 'megaloc' in rel else (
+                    'thumbnails' if 'thumbnails' in rel else 'other_cache')
             elif len(rel)>=3 and rel[:3]==('PhotoSorter','data','runs'):
-                cat = 'run_files_and_logs'
+                cat = 'run_logs' if path.name.startswith('events.jsonl') else 'run_metadata'
             elif len(rel)>=3 and rel[:3]==('PhotoSorter','data','incoming'):
                 cat = 'incomplete_uploads'
             elif len(rel)>=3 and rel[:3]==('PhotoSorter','data','audits'):
