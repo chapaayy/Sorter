@@ -62,6 +62,7 @@ def host_audit_summary():
         raise HTTPException(503, "Неизвестный формат аудита сервера")
     summary["available"] = True
     summary["csv_available"] = (_HOST_REPORT / "latest.csv").is_file()
+    summary["write_sites_available"] = (_HOST_REPORT / "latest-write-sites.csv").is_file()
     return summary
 
 @router.get("/host-audit/report.csv")
@@ -73,5 +74,18 @@ def host_audit_csv():
         path=path,
         media_type="text/csv; charset=utf-8",
         filename="map-full-host-file-audit.csv",
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get("/host-audit/write-sites.csv")
+def host_audit_write_sites():
+    path = _HOST_REPORT / "latest-write-sites.csv"
+    if not path.is_file():
+        raise HTTPException(404, "Карта записей кода пока не собрана")
+    return FileResponse(
+        path=path,
+        media_type="text/csv; charset=utf-8",
+        filename="map-file-write-sites.csv",
         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
