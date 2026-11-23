@@ -154,6 +154,8 @@ class HostAudit:
             self.errors.append('Docker global usage: '+str(exc))
 
     def label(self,path,hint,owner):
+        if hint in ('host_package_file','host_installer_config'):
+            return ('shared_unattributed',hint,'Host dependencies (shared)','disk')
         if hint=='container_tmp_view':
             return ('runtime_view','container_tmp',owner,'non_additive_view')
         if hint=='open_deleted_fd':
@@ -251,7 +253,7 @@ class HostAudit:
             if len(self.errors)<100:
                 self.errors.append('Unreadable: '+str(exc)[:180])
         for folder,dirs,files in os.walk(root,followlinks=False,onerror=fail):
-            if self.docker_root and within(Path(folder),self.docker_root/'overlay2'):
+            if self.docker_root and Path(folder).parent == self.docker_root/'overlay2':
                 dirs[:]=[d for d in dirs if d!='merged']
             keep=[]
             for name in dirs:
@@ -267,6 +269,28 @@ class HostAudit:
                 self.add(writer,Path(folder)/name,kind,owner,view=view)
             for name in dirs:
                 self.add(writer,Path(folder)/name,kind,owner,view=view)
+
+    def host_dependencies(self,writer):
+        packages=('docker-ce','docker-ce-cli','containerd.io','docker-compose-plugin',
+                  'docker-buildx-plugin','python3','python3-minimal')
+        for package in packages:
+            try:
+                result=subprocess.run(['dpkg-query','-L',package],capture_output=True,
+                                      text=True,check=False,timeout=15)
+                if result.returncode:
+                    continue
+                for name in result.stdout.splitlines():
+                    path=Path(name)
+                    if path.is_absolute() and path.exists() and not path.is_dir():
+                        self.add(writer,path,'host_package_file',package)
+            except (OSError,subprocess.TimeoutExpired):
+                self.errors.append('Could not list package: '+package)
+        for path in ('/etc/apt/sources.list.d/docker.sources',
+                     '/etc/apt/keyrings/docker.asc',
+                     '/etc/sysctl.d/99-photosorter-bbr.conf',
+                     '/etc/modules-load.d/99-photosorter-bbr.conf'):
+            if Path(path).exists():
+                self.add(writer,Path(path),'host_installer_config','Host setup')
 
     def deleted_fds(self,writer):
         identifiers=[c.get('Id','') for c in self.containers if c.get('Id')]
@@ -339,6 +363,7 @@ class HostAudit:
                         if root.is_dir() and not root.is_symlink():
                             self.walk(writer,root,'container_tmp_view',
                                       container.get('Name','').lstrip('/'),view=True)
+                self.host_dependencies(writer)
                 self.deleted_fds(writer)
             report={
                 'schema':'map-host-audit-v1',
