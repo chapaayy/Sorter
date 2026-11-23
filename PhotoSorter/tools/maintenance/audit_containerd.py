@@ -16,7 +16,7 @@ from collections import defaultdict
 from pathlib import Path
 
 _LAYER_RE = re.compile(r"/snapshots/([0-9]+)/(?:fs|work)(?:\b|/)")
-_OPTIONS_RE = re.compile(r"(?:^|,)(upperdir|lowerdir)=([^,\s]+)")
+_OPTIONS_RE = re.compile(r"(?:^|[,\s])(upperdir|lowerdir)=([^,\s]+)")
 
 
 def overlay_paths(raw: str):
