@@ -124,8 +124,8 @@ def test_host_audit_sees_app_postgres_caddy_overlay_images_and_host_tmp(tmp_path
     assert any(r["path"] == str(image_file) and r["category"] == "docker_image_layer" for r in rows)
     assert not any("secret.txt" in r["path"] for r in rows)
     by_path = {r["path"]: r for r in rows}
-    assert (int(by_path[str(photo)]["allocated_bytes"]) +
-            int(by_path[str(output)]["allocated_bytes"])) == photo.stat().st_blocks * 512
+    assert int(by_path[str(photo)]["allocated_bytes"]) == photo.stat().st_blocks * 512
+    assert int(by_path[str(output)]["allocated_bytes"]) == 0
     assert json.loads((report_dir / "latest.json").read_text())["schema"] == "map-host-audit-v1"
     assert result["limitations"], "A point-in-time scan cannot claim complete event history"
 
@@ -161,3 +161,35 @@ def test_deleted_but_still_open_file_is_visible(tmp_path):
     assert "open-deleted:" in output.getvalue()
     assert "very-short-lived.part (deleted)" in output.getvalue()
     assert audit.categories["open_deleted_file"]["files"] >= 1
+
+
+def test_overlay_root_mount_view_is_not_counted_as_real_disk(tmp_path, monkeypatch):
+    project = tmp_path / "Sorter"
+    (project / "PhotoSorter" / "data").mkdir(parents=True)
+    root = tmp_path / "docker"
+    merged = root / "rootfs" / "overlayfs" / "fake-container"
+    payload = merged / "usr" / "lib" / "torch_cpu.so"
+    payload.parent.mkdir(parents=True)
+    payload.write_bytes(b"x" * 131072)
+    actual = root / "real-layer" / "torch_cpu.so"
+    actual.parent.mkdir()
+    actual.write_bytes(b"x" * 131072)
+    original_is_mount = Path.is_mount
+    monkeypatch.setattr(
+        Path, "is_mount",
+        lambda self: True if self == merged else original_is_mount(self),
+    )
+    audit = host_audit.HostAudit(project,shared_roots=[],
+                                 proc_root=tmp_path / "proc")
+    audit.docker_root = root
+    audit.containers = []
+    result_csv = io.StringIO()
+    audit.walk(csv.writer(result_csv, delimiter=";"),root,"docker_global","Docker")
+    rows = list(csv.reader(io.StringIO(result_csv.getvalue()), delimiter=";"))
+    # The merged mountpoint is present as a zero-byte view, not recursively counted.
+    assert not any(str(payload) in line for line in rows)
+    assert any(str(merged) == line[0] and line[1] == "runtime_view"
+               and int(line[6]) == 0 for line in rows)
+    assert any(str(actual) == line[0] and int(line[6]) > 0 for line in rows)
+    assert audit.mount_views_excluded == 1
+    assert audit.categories["container_root_mount"]["allocated_bytes"] == 0
