@@ -60,7 +60,7 @@ def _func_name(node):
         return node.id
     if isinstance(node, ast.Attribute):
         prefix = _func_name(node.value)
-        return (prefix + "." if prefix else "") + node.attr
+        return (prefix + "." if prefix else ".") + node.attr
     return ""
 
 def _site(node):
