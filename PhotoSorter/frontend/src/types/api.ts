@@ -157,7 +157,8 @@ export interface HostAuditReport {
   errors?:string[];limitations?:string[]
   containerd_attribution?:{
     driver?:string;matched_snapshots?:number;container_mount_references?:number
-    image_chains_checked?:number;image_chains_matched?:number
+    image_chains_checked?:number;image_chains_matched?:number|null
+    ctr_snapshot_metadata_checked?:boolean;snapshot_keys_listed?:number
     categories?:Record<string,HostAuditCounter>;snapshot_owners?:Record<string,{
       category:string;owners:string[];roles:string[];sources:string[]
     }>;warnings?:string[];limitations?:string[]

@@ -102,8 +102,9 @@ onMounted(()=>{void refresh()})
       <p class="meta">
         Подтверждённых снимков: {{report.containerd_attribution?.matched_snapshots??0}}.
         Ссылок из работающих контейнеров: {{report.containerd_attribution?.container_mount_references??0}}.
-        Проверено цепочек слоёв образов: {{report.containerd_attribution?.image_chains_checked??0}};
-        сопоставлено: {{report.containerd_attribution?.image_chains_matched??0}}.
+        Уникальных цепочек слоёв образов: {{report.containerd_attribution?.image_chains_checked??0}};
+        подтверждено ключей через ctr: {{report.containerd_attribution?.ctr_snapshot_metadata_checked
+          ? report.containerd_attribution?.image_chains_matched : 'не проверено'}}.
       </p>
       <p class="meta">Слои общих образов не считаются исключительной собственностью MAP.
         Нераспознанные данные containerd остаются в отдельной категории, а не исчезают из отчёта.</p>
