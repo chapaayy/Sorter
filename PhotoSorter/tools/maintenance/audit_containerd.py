@@ -1,8 +1,8 @@
 """Read-only attribution of containerd overlayfs snapshots to MAP.
 
-Attribution only when backed by kernel overlay mount metadata from a MAP
-container or by the snapshotter's read-only mounts command for MAP image
-chain IDs. An image layer can be shared by other applications: never call it
+Filesystem attribution only when backed by kernel overlay mount metadata
+from running MAP containers. An independent read-only ctr snapshot key list
+verifies image chain metadata but does not guess a numeric disk snapshot ID. An image layer can be shared by other applications: never call it
 exclusive. Compressed content-store blobs are NOT identified by snapshot IDs.
 """
 from __future__ import annotations
@@ -69,12 +69,25 @@ def image_chains(image: dict):
         yield chain
 
 
-def _ctr_mounts(chain: str, namespace: str):
+def parse_snapshot_keys(text: str):
+    """Read committed chain keys from the output of ctr snapshots ls."""
+    found = set()
+    for line in text.splitlines():
+        columns = line.split()
+        if columns and re.fullmatch(r"sha256:[0-9a-f]{64}", columns[0]):
+            found.add(columns[0])
+    return found
+
+
+def _ctr_snapshot_keys(namespace: str):
+    """One read-only metadata query. Never call ctr snapshots mounts here."""
     result = subprocess.run(
-        ["ctr", "--namespace", namespace, "snapshots", "mounts", chain],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=6,
+        ["ctr", "--namespace", namespace, "snapshots", "ls"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15,
     )
-    return result.stdout if result.returncode == 0 else ""
+    if result.returncode:
+        raise RuntimeError("ctr snapshots ls failed: " + result.stderr.strip()[:160])
+    return result.stdout
 
 
 def collect(containers: list, images: list, proc_root: Path, snapshot_root: Path,
@@ -85,14 +98,16 @@ def collect(containers: list, images: list, proc_root: Path, snapshot_root: Path
     be shared and are never categorized as exclusive MAP storage.
     """
     if ctr_runner is None:
-        ctr_runner = _ctr_mounts
+        ctr_runner = _ctr_snapshot_keys
     if ctr_available is None:
         ctr_available = shutil.which("ctr") is not None
     evidence = defaultdict(lambda: {"owners": set(), "roles": set(), "sources": set()})
     warnings = []
     container_mounts = 0
     image_chains_checked = 0
-    image_chains_matched = 0
+    image_chains_matched = None
+    snapshot_keys_listed = 0
+    ctr_snapshot_metadata_checked = False
     for container in containers:
         name = container.get("Name", "").lstrip("/") or container.get("Id", "")[:12]
         pid = int(container.get("State", {}).get("Pid") or 0)
@@ -125,40 +140,35 @@ def collect(containers: list, images: list, proc_root: Path, snapshot_root: Path
         if pid > 0 and not found:
             warnings.append("No containerd overlay mounts mapped for " + name)
 
-    if ctr_available:
-        unique = {}
-        for image in images:
-            identity = image.get("Id") or image.get("RepoTags", [""])[0]
-            if identity:
-                unique[identity] = image
-        for identity, image in unique.items():
-            for chain in image_chains(image):
-                image_chains_checked += 1
-                try:
-                    output = ctr_runner(chain, namespace)
-                except (OSError, subprocess.TimeoutExpired) as exc:
-                    warnings.append("ctr snapshot lookup failed: " + type(exc).__name__)
-                    break
-                matches = set()
-                for role, path in overlay_paths(output):
-                    sid = snapshot_id(path, snapshot_root)
-                    if sid:
-                        matches.add(sid)
-                for sid in matches:
-                    entry = evidence[sid]
-                    entry["owners"].add("image:" + identity[:24])
-                    entry["roles"].add("referenced_image_layer")
-                    entry["sources"].add("ctr_snapshot_mounts")
-                if matches:
-                    image_chains_matched += 1
-    else:
-        warnings.append("ctr unavailable; image snapshot references not independently checked")
+    unique_images = {}
+    for image in images:
+        identity = image.get("Id") or (image.get("RepoTags") or [""])[0]
+        if identity:
+            unique_images[identity] = image
+    chains = set()
+    for image in unique_images.values():
+        chains.update(image_chains(image))
+    image_chains_checked = len(chains)
 
-    if image_chains_checked and image_chains_matched < image_chains_checked:
-        warnings.append(
-            "Only " + str(image_chains_matched) + " of " +
-            str(image_chains_checked) + " MAP image chain lookups had snapshot paths"
-        )
+    if ctr_available and chains:
+        try:
+            # ctr snapshots mounts <target> <key> may activate mounts. We must
+            # NOT invoke that command for a read-only filesystem audit.
+            keys = parse_snapshot_keys(ctr_runner(namespace))
+            ctr_snapshot_metadata_checked = True
+            snapshot_keys_listed = len(keys)
+            image_chains_matched = len(chains.intersection(keys))
+            if image_chains_matched < image_chains_checked:
+                warnings.append(
+                    "Only " + str(image_chains_matched) + "/" +
+                    str(image_chains_checked) +
+                    " distinct MAP image chain keys found in ctr snapshot listing; "
+                    "unmatched does not mean unused"
+                )
+        except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+            warnings.append("Cannot query ctr snapshot metadata: " + str(exc)[:160])
+    elif not ctr_available:
+        warnings.append("ctr unavailable; image snapshot metadata not verified")
     result = {}
     for sid, detail in evidence.items():
         roles = sorted(detail["roles"])
@@ -179,12 +189,16 @@ def collect(containers: list, images: list, proc_root: Path, snapshot_root: Path
         "image_chains_checked": image_chains_checked,
         "image_chains_matched": image_chains_matched,
         "ctr_available": bool(ctr_available),
+        "ctr_snapshot_metadata_checked": ctr_snapshot_metadata_checked,
+        "snapshot_keys_listed": snapshot_keys_listed,
         "warnings": list(dict.fromkeys(warnings)),
         "limitations": [
             "Shared image snapshots may be used by other applications.",
             "Compressed content blobs and unreferenced snapshots remain unattributed.",
             "An active container's upper snapshot is attributed from kernel overlay mount options.",
             "Missing mount metadata is a coverage gap, not evidence that a file is unused.",
+            "ctr snapshot keys do not identify numeric snapshot directories; kernel mounts establish that connection.",
+            "No mount, prepare, view, or other mutable ctr commands are used.",
         ],
     }
 
