@@ -951,7 +951,7 @@ test('System settings identify a lost Worker heartbeat',async({page})=>{
     thumbnails:{},disk:{total_bytes:100,available_bytes:90,reserved_bytes:1},
     api:{uptime_seconds:10,latency:{samples:0,p50_ms:null,p95_ms:null},rss_peak_kib:100}
   }))
-  await page.goto('/settings')
+  await page.goto('/admin')
   await expect(page.getByText('Нет свежего сигнала').first()).toBeVisible()
 })
 test('FO library notice appears once, shows events and requires explicit acknowledgement',async({page})=>{
