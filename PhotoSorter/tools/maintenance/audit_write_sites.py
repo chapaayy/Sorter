@@ -114,7 +114,7 @@ def collect(project: Path):
             except (UnicodeError, OSError):
                 continue
             for i, line in enumerate(lines, 1):
-                if re.match(r"\\s*(RUN|COPY|ADD)\\b", line):
+                if re.match(r"\s*(RUN|COPY|ADD)\b", line):
                     rows.append((str(file.relative_to(project)), i,
                                  "docker_build", "build_layer_write"))
         elif file.suffix == ".sh":
