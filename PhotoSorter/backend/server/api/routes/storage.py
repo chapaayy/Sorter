@@ -4,6 +4,7 @@ from ...services.storage_usage import usage
 from ...services.storage_breakdown import breakdown
 from ...services import storage_inventory
 from fastapi import Query
+from fastapi.responses import StreamingResponse
 router=APIRouter(prefix="/api/storage",tags=["storage"])
 
 @router.get("/usage")
@@ -26,3 +27,16 @@ def inventory_files(
 ):
     return storage_inventory.files(snapshot_id=snapshot_id, offset=offset, limit=limit,
                                    category=category, search=search)
+
+@router.get("/inventory/report.csv")
+def inventory_csv_report(snapshot_id: str):
+    filename, content = storage_inventory.csv_report(snapshot_id)
+    return StreamingResponse(
+        content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
