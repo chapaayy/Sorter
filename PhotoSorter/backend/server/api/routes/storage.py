@@ -7,6 +7,7 @@ from fastapi import Query
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi import HTTPException
 from pathlib import Path
+from datetime import datetime, timezone
 import json
 from app.config import DATA_DIR
 router=APIRouter(prefix="/api/storage",tags=["storage"])
@@ -117,6 +118,14 @@ def host_live_audit_status():
     if payload.get("schema") != "map-live-audit-v1":
         raise HTTPException(503, "Неизвестная версия журнала файлов")
     payload["available"] = True
+    # A crashed observer may have written running=true on its last heartbeat.
+    try:
+        heartbeat = datetime.fromisoformat(payload.get("heartbeat_at", ""))
+        age = (datetime.now(timezone.utc) - heartbeat.astimezone(timezone.utc)).total_seconds()
+        payload["heartbeat_stale"] = age > 30 or age < -30
+    except (ValueError, TypeError):
+        payload["heartbeat_stale"] = True
+    payload["running"] = bool(payload.get("running")) and not payload["heartbeat_stale"]
     payload["download_available"] = (_HOST_REPORT / "live-events.jsonl").is_file()
     return payload
 
