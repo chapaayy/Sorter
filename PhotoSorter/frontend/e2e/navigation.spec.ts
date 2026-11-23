@@ -1781,7 +1781,7 @@ test('read-only file inventory scans and displays per-file ownership',async({pag
 
 test('Administration shows host audit scope, incomplete coverage and full download',async({page})=>{
   await page.route('**/api/storage/host-audit',route=>respond(route,{
-    available:true,csv_available:true,snapshot_id:'host-test',
+    available:true,csv_available:true,write_sites_available:true,write_sites_count:128,snapshot_id:'host-test',
     captured_at:'2026-11-23T16:00:00Z',files_scanned:120560,
     allocated_bytes:34000000000,skipped_paths:0,scan_seconds:12.4,
     scopes:{
@@ -1793,6 +1793,10 @@ test('Administration shows host audit scope, incomplete coverage and full downlo
     errors:[],limitations:['Snapshot only'],
     docker:{containers:6,volumes:3,driver:'overlay2',matched_image_layers:5,global_shared_disk_usage:[]}
   }))
+  await page.route('**/api/storage/host-audit/write-sites.csv',route=>
+    route.fulfill({status:200,contentType:'text/csv',headers:{
+      'Content-Disposition':'attachment; filename="map-file-write-sites.csv"'
+    },body:'source_file;line;operation;effect\\nbackend/server/app.py;13;open;write\\n'}))
   await page.route('**/api/storage/host-audit/report.csv',route=>
     route.fulfill({status:200,contentType:'text/csv',headers:{
       'Content-Disposition':'attachment; filename="map-full-host-file-audit.csv"'
@@ -1805,4 +1809,8 @@ test('Administration shows host audit scope, incomplete coverage and full downlo
   const download=page.waitForEvent('download')
   await host.getByRole('link',{name:'Скачать полный аудит сервера CSV'}).click()
   expect((await download).suggestedFilename()).toBe('map-full-host-file-audit.csv')
+  await expect(host.getByText(/потенциальных мест создания.*файлов/)).toBeVisible()
+  const sourceDownload=page.waitForEvent('download')
+  await host.getByRole('link',{name:'Скачать карту записей файлов в коде'}).click()
+  expect((await sourceDownload).suggestedFilename()).toBe('map-file-write-sites.csv')
 })
