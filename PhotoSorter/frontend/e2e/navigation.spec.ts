@@ -1763,9 +1763,17 @@ test('read-only file inventory scans and displays per-file ownership',async({pag
         hardlink:true,links:2,modified_at:'2026-11-23T12:00:00Z'}
     ]
   }))
+  await page.route('**/api/storage/inventory/report.csv?**',route=>
+    route.fulfill({status:200,contentType:'text/csv; charset=utf-8',
+      headers:{'Content-Disposition':'attachment; filename="map-file-inventory-20261123_120000.csv"'},
+      body:'Путь;Размер\\r\\nPhotoSorter/data/uploads/batch/photo.jpg;4096\\r\\n'
+    }))
   await page.goto('/admin')
   await page.getByRole('button',{name:'Проверить файлы'}).click()
   await expect(page.getByText('PhotoSorter/data/uploads/batch/photo.jpg')).toBeVisible()
   await expect(page.getByText('Hardlink: без повторного места')).toBeVisible()
   await expect(page.getByRole('region',{name:'Реестр файлов'})).toBeVisible()
+  const download=page.waitForEvent('download')
+  await page.getByRole('link',{name:'Скачать полный отчёт CSV'}).click()
+  expect((await download).suggestedFilename()).toBe('map-file-inventory-20261123_120000.csv')
 })

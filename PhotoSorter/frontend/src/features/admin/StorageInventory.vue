@@ -23,6 +23,16 @@ const purposeNames:Record<string,string>={
   permanent:'Постоянный',temporary:'Временный',cache:'Кэш',
   system:'Системный',service:'Служебный',archive:'Архив',unknown:'Не определён'
 }
+const reportUrl=computed(()=>summary.value
+  ? '/api/storage/inventory/report.csv?snapshot_id='+encodeURIComponent(summary.value.snapshot_id)
+  : '')
+const reportFilename=computed(()=>{
+  const value=summary.value
+  if(!value)return 'map-file-inventory.csv'
+  const date=value.captured_at.slice(0,10).replace(/-/g,'')
+  const time=value.captured_at.slice(11,19).replace(/:/g,'')
+  return 'map-file-inventory-'+date+'_'+time+(value.partial?'-partial':'')+'.csv'
+})
 const availableCategories=computed(()=>Object.entries(summary.value?.categories||{})
   .filter(([,value])=>value.files>0)
   .sort((a,b)=>b[1].allocated_bytes-a[1].allocated_bytes))
@@ -58,9 +68,15 @@ function applyFilters(){
         <p class="meta">Проверка файлов на диске: пути, размеры, категории и связь с ФО.
           Только чтение — без удаления, лимитов и изменений в обработке.</p>
       </div>
-      <UiButton :loading="scanning" :disabled="scanning" @click="scan">
-        {{summary?'Повторить проверку':'Проверить файлы'}}
-      </UiButton>
+      <div class="row wrap">
+        <a v-if="summary&&!scanning" class="btn secondary" :href="reportUrl" :download="reportFilename"
+          title="Скачать все файлы из последней проверки, без ограничения в 100 строк">
+          Скачать полный отчёт CSV
+        </a>
+        <UiButton :loading="scanning" :disabled="scanning" @click="scan">
+          {{summary?'Повторить проверку':'Проверить файлы'}}
+        </UiButton>
+      </div>
     </div>
     <div v-if="error" class="alert error" role="alert">{{error}}</div>
     <p v-if="scanning" class="meta" role="status">Проверяем файлы на диске…</p>
@@ -74,6 +90,8 @@ function applyFilters(){
         Проверка неполная (лимит времени/файлов, недоступные пути или символьные ссылки).
         Пропущено: {{summary.skipped_paths}}. Нельзя считать этот снимок полным учётом.
       </div>
+      <p class="meta">CSV содержит все {{summary.files_scanned.toLocaleString('ru-RU')}} файлов последней проверки
+        независимо от фильтров и страниц. Скачивание не создаёт архивов на сервере.</p>
       <p class="meta">Показан снимок на момент проверки, а не история всех записей.
         Файлы, созданные или удалённые после проверки, появятся после следующего сканирования.
         Одинаковые hardlink учитываются на диске один раз.</p>

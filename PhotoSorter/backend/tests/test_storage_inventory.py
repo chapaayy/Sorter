@@ -1,4 +1,6 @@
 """Read-only file inventory with physical hardlink accounting and explicit scan gaps."""
+import csv
+import io
 import os
 
 import pytest
@@ -87,4 +89,42 @@ def test_inventory_pagination_rejects_expired_snapshot(monkeypatch):
     assert filtered["total"] == 1
     with pytest.raises(HTTPException) as exc:
         inventory.files(snapshot_id="old")
+    assert exc.value.status_code == 409
+
+
+def test_complete_csv_export_has_every_row_and_blocks_excel_formulas(monkeypatch):
+    """No 100-file pagination: export exactly the last scanned snapshot."""
+    snapshot = {"snapshot_id": "full", "captured_at": "2026-11-23T14:00:00+00:00"}
+    entries = [
+        {
+            "path": f"PhotoSorter/data/uploads/photo-{index}.jpg",
+            "category": "originals",
+            "purpose": "permanent",
+            "owner_name": "=HYPERLINK(\"https://unsafe.example\")" if index == 3 else "ФО 321",
+            "owner_kind": "batch",
+            "owner_id": "batch-id",
+            "logical_bytes": 1200,
+            "allocated_bytes": 1200,
+            "hardlink": index == 204,
+            "links": 2 if index == 204 else 1,
+            "modified_at": "2026-11-23T14:00:00+00:00",
+        }
+        for index in range(205)
+    ]
+    monkeypatch.setattr(inventory, "_snapshot", (snapshot, entries))
+    filename, stream = inventory.csv_report("full")
+    # A concurrent scan must not change an in-progress export.
+    monkeypatch.setattr(inventory, "_snapshot", ({"snapshot_id": "new"}, []))
+    raw = b"".join(stream)
+    assert raw.startswith(b"\xef\xbb\xbf")
+    assert filename == "map-file-inventory-20261123_140000.csv"
+    table = list(csv.reader(io.StringIO(raw.decode("utf-8-sig")), delimiter=";"))
+    assert len(table) == 206
+    assert table[0][0] == "Путь"
+    assert table[1][0] == entries[0]["path"]
+    assert table[205][0] == entries[204]["path"]
+    assert table[4][4].startswith("'=HYPERLINK")
+    assert table[205][9] == "Да"
+    with pytest.raises(HTTPException) as exc:
+        inventory.csv_report("stale")
     assert exc.value.status_code == 409
