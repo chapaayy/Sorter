@@ -98,6 +98,9 @@ class LiveAudit:
         self.events_by_type = {}
         self.sizes = {}
         self.last_modify = {}
+        self.shm_batches = {}
+        self.shm_close_writes_observed = 0
+        self.last_shm_flush = time.monotonic()
         self.started_at = utcnow()
         self.last_event_at = None
         self.last_discovery = 0
@@ -155,6 +158,50 @@ class LiveAudit:
         self.total += 1
         self.events_by_type[kind] = self.events_by_type.get(kind, 0) + 1
         self.last_event_at = record["time_utc"]
+
+    def batch_postgres_shared_memory_close(self, *, path: Path, scope: str,
+                                           size, allocated, inode) -> bool:
+        """Compact repeated closes of one PostgreSQL tmpfs object only.
+
+        Keep every create/delete/resize/rename and every other file as before.
+        Exact close counts + first/last timestamp are retained in the log.
+        """
+        if ("/root/dev/shm/PostgreSQL." not in str(path)
+                or not scope.startswith("map_container_tmp:")
+                or "postgres" not in scope
+                or size is None or inode is None):
+            return False
+        moment = utcnow()
+        key = (str(path), scope, inode, size, allocated)
+        batch = self.shm_batches.get(key)
+        if batch is None:
+            self.shm_batches[key] = {
+                "path": str(path), "scope": scope, "count": 1,
+                "first_seen_utc": moment, "last_seen_utc": moment,
+                "inode": inode, "logical_bytes": size, "allocated_bytes": allocated,
+            }
+        else:
+            batch["count"] += 1
+            batch["last_seen_utc"] = moment
+        self.shm_close_writes_observed += 1
+        self.last_event_at = moment
+        return True
+
+    def flush_shm_batches(self):
+        if not self.shm_batches:
+            return
+        for batch in self.shm_batches.values():
+            self.emit(
+                "postgres_shm_close_write_summary",
+                path=batch["path"], scope=batch["scope"],
+                observed_close_writes=batch["count"],
+                first_seen_utc=batch["first_seen_utc"],
+                last_seen_utc=batch["last_seen_utc"],
+                logical_bytes=batch["logical_bytes"],
+                allocated_bytes=batch["allocated_bytes"], inode=batch["inode"],
+            )
+        self.shm_batches.clear()
+        self.last_shm_flush = time.monotonic()
 
     def watch_tree(self, root: Path, scope: str):
         """Watch existing dirs; new dirs receive a watch as soon as observed."""
@@ -274,6 +321,9 @@ class LiveAudit:
                         self.sizes[str(path)] = (size, allocated)
                 except OSError:
                     pass
+            if kind == "close_write" and self.batch_postgres_shared_memory_close(
+                    path=path, scope=scope, size=size, allocated=allocated, inode=inode):
+                continue
             previous = self.sizes.get(str(path))
             self.emit(kind, path=str(path), scope=scope,
                       is_directory=bool(mask & IN_ISDIR),cookie=cookie or None,
@@ -292,6 +342,12 @@ class LiveAudit:
             "last_event_at":self.last_event_at,
             "events":self.total,
             "events_by_type":self.events_by_type,
+            "postgres_shm_close_writes_aggregated":self.shm_close_writes_observed,
+            "postgres_shm_pending":sum(b["count"] for b in self.shm_batches.values()),
+            "events_observed_including_aggregates":(
+                self.total + self.shm_close_writes_observed -
+                self.events_by_type.get("postgres_shm_close_write_summary", 0)
+            ),
             "queue_overflows":self.overflows,
             "watch_errors":self.watch_errors,
             "watched_directories":len(self.wd_paths),
@@ -303,6 +359,7 @@ class LiveAudit:
                 "New-directory watch races, cross-mount events and queue overflows can miss events.",
                 "Host /tmp observations are shared and cannot be attributed solely to MAP.",
                 "Records include file metadata only and do not measure every write() syscall.",
+                "Repeated close_write on PostgreSQL /dev/shm shared memory is aggregated in 60-second groups; individual closes are not retained, but exact counts and observed sizes are.",
             ],
         }
         temp = self.report / ".live-state.tmp"
@@ -332,9 +389,12 @@ class LiveAudit:
                         if not data:
                             break
                         self.process(data)
+                if time.monotonic()-self.last_shm_flush>=60:
+                    self.flush_shm_batches()
                 if time.monotonic()-self.last_state>=5:
                     self.state()
         finally:
+            self.flush_shm_batches()
             self.emit("observer_stopped",path=str(self.project),scope="system")
             self.state(running=False)
             if self.stream:
