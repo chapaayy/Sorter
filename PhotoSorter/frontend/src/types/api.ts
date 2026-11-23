@@ -140,3 +140,19 @@ export interface StorageInventoryFile {
 export interface StorageInventoryPage {
   snapshot_id:string;total:number;offset:number;limit:number;files:StorageInventoryFile[]
 }
+
+export interface HostAuditCounter {
+  files:number;allocated_bytes:number;logical_bytes:number;hardlink_paths?:number
+}
+export interface HostAuditReport {
+  available:boolean;csv_available?:boolean;write_sites_available?:boolean;write_sites_count?:number;detail?:string
+  snapshot_id?:string;captured_at?:string;files_scanned?:number
+  allocated_bytes?:number;skipped_paths?:number;scan_seconds?:number
+  scopes?:Record<string,HostAuditCounter>
+  categories?:Record<string,HostAuditCounter>
+  docker?:{
+    containers:number;volumes:number;driver:string|null
+    matched_image_layers:number;global_shared_disk_usage:unknown[]
+  }
+  errors?:string[];limitations?:string[]
+}
