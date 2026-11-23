@@ -72,10 +72,7 @@ def test_postgres_shm_close_storm_is_summarized_without_losing_counts(tmp_path):
         shm.parent.mkdir(parents=True)
         shm.write_bytes(b"x" * 1024)
         observer.wd_paths[42] = (shm.parent, "map_container_tmp:outdoor-sorter-postgres-1")
-        event = struct.pack("iIII", 42, mod.IN_CLOSE_WRITE, 0, 16) + (
-            b"PostgreSQL.123456"[:15] + b"\0"
-        )
-        # Event name is 17 bytes, so use a correctly padded buffer.
+        # Linux inotify pads event names to 4-byte boundaries.
         name = shm.name.encode()
         padded = name + b"\0" * ((4 - len(name) % 4) % 4)
         event = struct.pack("iIII", 42, mod.IN_CLOSE_WRITE, 0, len(padded)) + padded
