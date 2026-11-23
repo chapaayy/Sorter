@@ -68,7 +68,8 @@ onMounted(()=>{void refresh()})
       <p class="meta">Снимок: {{report.captured_at}}.
         Проверка: {{report.scan_seconds}} с. Пропущено: {{report.skipped_paths}}.
         Общие файлы ОС не считаются собственностью MAP.
-        Подключённые представления контейнеров не суммируются повторно.</p>
+        Подключённые представления контейнеров не суммируются повторно.
+        Исключено таких представлений: {{report.container_root_mounts_excluded??0}}.</p>
       <div class="row wrap">
         <a v-if="report.csv_available" class="btn secondary"
           href="/api/storage/host-audit/report.csv" download="map-full-host-file-audit.csv">
