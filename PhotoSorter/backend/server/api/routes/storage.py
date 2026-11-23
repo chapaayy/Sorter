@@ -103,3 +103,33 @@ def host_audit_json():
         filename="map-full-host-audit-summary.json",
         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
+
+
+@router.get("/host-audit/live")
+def host_live_audit_status():
+    path = _HOST_REPORT / "live-state.json"
+    if not path.is_file():
+        return {"available": False, "detail": "Наблюдение ещё не запущено"}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise HTTPException(503, "Состояние файлового наблюдателя недоступно") from exc
+    if payload.get("schema") != "map-live-audit-v1":
+        raise HTTPException(503, "Неизвестная версия журнала файлов")
+    payload["available"] = True
+    payload["download_available"] = (_HOST_REPORT / "live-events.jsonl").is_file()
+    return payload
+
+
+@router.get("/host-audit/live-events.jsonl")
+def host_live_audit_events():
+    """No page limit or compression: all observed events from observer startup."""
+    path = _HOST_REPORT / "live-events.jsonl"
+    if not path.is_file():
+        raise HTTPException(404, "Наблюдение ещё не запущено")
+    return FileResponse(
+        path=path,
+        media_type="application/x-ndjson",
+        filename="map-file-live-events.jsonl",
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
