@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # Linux <sys/inotify.h> values.
+IN_MODIFY = 0x00000002
 IN_CLOSE_WRITE = 0x00000008
 IN_ATTRIB = 0x00000004
 IN_MOVED_FROM = 0x00000040
@@ -36,7 +37,7 @@ IN_MOVE_SELF = 0x00000800
 IN_Q_OVERFLOW = 0x00004000
 IN_IGNORED = 0x00008000
 IN_ISDIR = 0x40000000
-MASK = (IN_CLOSE_WRITE | IN_ATTRIB | IN_MOVED_FROM | IN_MOVED_TO | IN_CREATE |
+MASK = (IN_MODIFY | IN_CLOSE_WRITE | IN_ATTRIB | IN_MOVED_FROM | IN_MOVED_TO | IN_CREATE |
         IN_DELETE | IN_DELETE_SELF | IN_MOVE_SELF | IN_Q_OVERFLOW)
 HEADER = struct.Struct("iIII")
 
@@ -96,6 +97,7 @@ class LiveAudit:
         self.watch_errors = 0
         self.events_by_type = {}
         self.sizes = {}
+        self.last_modify = {}
         self.started_at = utcnow()
         self.last_event_at = None
         self.last_discovery = 0
@@ -167,7 +169,10 @@ class LiveAudit:
                     err = ctypes.get_errno()
                     self.state_error.append("Cannot watch " + str(current) + ": errno " + str(err))
                 continue
-            self.wd_paths[code] = (current, scope)
+            # A second path can refer to the very same directory inode.
+            # Never lose the first canonical scope when watches are shared.
+            if code not in self.wd_paths:
+                self.wd_paths[code] = (current, scope)
             self.path_wds[current] = code
             try:
                 with os.scandir(current) as iterator:
@@ -234,7 +239,7 @@ class LiveAudit:
                 self.watch_tree(path, scope)
             kind = None
             for bit, label in (
-                (IN_CREATE, "create"),(IN_CLOSE_WRITE,"close_write"),
+                (IN_CREATE, "create"),(IN_MODIFY,"modify"),(IN_CLOSE_WRITE,"close_write"),
                 (IN_MOVED_FROM,"move_from"),(IN_MOVED_TO,"move_to"),
                 (IN_DELETE,"delete"),(IN_DELETE_SELF,"delete_self"),
                 (IN_MOVE_SELF,"move_self"),(IN_ATTRIB,"attribute"),
@@ -244,6 +249,13 @@ class LiveAudit:
                     break
             if kind is None:
                 continue
+            if kind == "modify":
+                # Record changing temporary sizes while limiting high-frequency
+                # write() storms to at most one observation per file/second.
+                moment=time.monotonic()
+                if moment-self.last_modify.get(str(path),-1e9)<1.0:
+                    continue
+                self.last_modify[str(path)]=moment
             size = None
             allocated = None
             inode = None
@@ -262,6 +274,7 @@ class LiveAudit:
                       last_seen_bytes=previous[0] if previous else None,inode=inode)
             if kind in ("delete","move_from","delete_self"):
                 self.sizes.pop(str(path), None)
+                self.last_modify.pop(str(path), None)
 
     def state(self, *, running=True):
         state = {
