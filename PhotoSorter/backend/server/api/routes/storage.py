@@ -4,7 +4,11 @@ from ...services.storage_usage import usage
 from ...services.storage_breakdown import breakdown
 from ...services import storage_inventory
 from fastapi import Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi import HTTPException
+from pathlib import Path
+import json
+from app.config import DATA_DIR
 router=APIRouter(prefix="/api/storage",tags=["storage"])
 
 @router.get("/usage")
@@ -39,4 +43,35 @@ def inventory_csv_report(snapshot_id: str):
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
         },
+    )
+
+
+_HOST_REPORT = DATA_DIR / "audits" / "host"
+
+@router.get("/host-audit")
+def host_audit_summary():
+    """Read only the host-side report; the web container never gets Docker root."""
+    path = _HOST_REPORT / "latest.json"
+    if not path.is_file():
+        return {"available": False, "detail": "Аудит сервера ещё не запускался"}
+    try:
+        summary = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise HTTPException(503, "Отчёт аудита сервера недоступен") from exc
+    if summary.get("schema") != "map-host-audit-v1":
+        raise HTTPException(503, "Неизвестный формат аудита сервера")
+    summary["available"] = True
+    summary["csv_available"] = (_HOST_REPORT / "latest.csv").is_file()
+    return summary
+
+@router.get("/host-audit/report.csv")
+def host_audit_csv():
+    path = _HOST_REPORT / "latest.csv"
+    if not path.is_file():
+        raise HTTPException(404, "Сначала выполните аудит сервера")
+    return FileResponse(
+        path=path,
+        media_type="text/csv; charset=utf-8",
+        filename="map-full-host-file-audit.csv",
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
