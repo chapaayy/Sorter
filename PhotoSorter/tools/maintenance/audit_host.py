@@ -87,6 +87,11 @@ class HostAudit:
         self.project_uppers = []
         self.project_containers = []
         self.project_layers = []
+        self.containerd_root = Path(os.environ.get("PHOTOSORTER_CONTAINERD_ROOT", "/var/lib/containerd"))
+        self.containerd_snapshot_root = self.containerd_root / "io.containerd.snapshotter.v1.overlayfs"
+        self.containerd_attribution = {"snapshots": {}, "warnings": ["Not yet discovered"]}
+        self.containerd_snapshots = {}
+        self.containerd_sizes = defaultdict(lambda: {"files": 0, "allocated_bytes": 0})
         self.additional_roots = []
         self.roots_checked = []
         self.mount_views_excluded = 0
@@ -147,8 +152,19 @@ class HostAudit:
             img = self.json('image','inspect',*sorted(images)) if images else []
             if self.docker_driver=='overlay2':
                 self.project_layers = layers(self.docker_root,img,self.errors)
+            elif self.docker_driver == 'overlayfs':
+                companion = Path(__file__).with_name("audit_containerd.py")
+                spec = importlib.util.spec_from_file_location("map_audit_containerd", companion)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                self.containerd_attribution = module.collect(
+                    self.containers, img, Path('/proc'), self.containerd_snapshot_root
+                )
+                self.containerd_snapshots = self.containerd_attribution["snapshots"]
+                for warning in self.containerd_attribution["warnings"]:
+                    self.errors.append("Containerd mapping: " + warning)
             elif images:
-                self.errors.append('Driver does not expose overlay2 layer mapping; shared layer bytes unassigned')
+                self.errors.append('Unsupported Docker storage driver: ' + str(self.docker_driver))
         except (RuntimeError,ValueError) as exc:
             self.errors.append('Image discovery: '+str(exc))
         try:
@@ -209,6 +225,17 @@ class HostAudit:
         for root in self.project_layers:
             if within(path,root):
                 return ('app_shared_layer','docker_image_layer','MAP + shared images','disk')
+        if within(path, self.containerd_snapshot_root):
+            relative = path.relative_to(self.containerd_snapshot_root).parts
+            if len(relative) >= 2 and relative[0] == 'snapshots':
+                item = self.containerd_snapshots.get(relative[1])
+                if item:
+                    category = item["category"]
+                    scope = 'app' if category == 'containerd_active_upper' else 'app_shared_layer'
+                    return (scope, category, ', '.join(item["owners"])[:240], 'disk')
+            return ('shared_unattributed','containerd_unattributed','Shared containerd','disk')
+        if within(path, self.containerd_root):
+            return ('shared_unattributed','containerd_content_or_metadata','Shared containerd','disk')
         if self.docker_root and within(path,self.docker_root):
             return ('shared_unattributed','docker_other','Docker global / build cache','disk')
         return ('shared_unattributed',hint,owner,'disk')
@@ -245,6 +272,9 @@ class HostAudit:
             counts['logical_bytes'] += size
             counts['allocated_bytes'] += allocated
         self.categories[category]['hardlink_paths'] += int(already)
+        if category.startswith('containerd_'):
+            self.containerd_sizes[category]['files'] += 1
+            self.containerd_sizes[category]['allocated_bytes'] += allocated
 
     def walk(self,writer,root,kind,owner,*,view=False):
         root=Path(root)
@@ -421,6 +451,17 @@ class HostAudit:
                 'scan_seconds':round(time.monotonic()-start,2),
                 'container_root_mounts_excluded':self.mount_views_excluded,
                 'write_sites_count':write_sites_count,
+                'containerd_attribution': {
+                    'driver': self.docker_driver,
+                    'matched_snapshots': len(self.containerd_snapshots),
+                    'container_mount_references': self.containerd_attribution.get('container_mount_references', 0),
+                    'image_chains_checked': self.containerd_attribution.get('image_chains_checked', 0),
+                    'image_chains_matched': self.containerd_attribution.get('image_chains_matched', 0),
+                    'categories': dict(self.containerd_sizes),
+                    'snapshot_owners': self.containerd_snapshots,
+                    'warnings': self.containerd_attribution.get('warnings', []),
+                    'limitations': self.containerd_attribution.get('limitations', []),
+                },
                 'docker':{
                     'containers':len(self.containers),
                     'volumes':len(set(str(x[0]) for x in self.project_volumes)),

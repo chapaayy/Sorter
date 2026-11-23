@@ -155,4 +155,21 @@ export interface HostAuditReport {
     matched_image_layers:number;global_shared_disk_usage:unknown[]
   }
   errors?:string[];limitations?:string[]
+  containerd_attribution?:{
+    driver?:string;matched_snapshots?:number;container_mount_references?:number
+    image_chains_checked?:number;image_chains_matched?:number
+    categories?:Record<string,HostAuditCounter>;snapshot_owners?:Record<string,{
+      category:string;owners:string[];roles:string[];sources:string[]
+    }>;warnings?:string[];limitations?:string[]
+  }
+}
+
+export interface LiveAuditStatus {
+  available:boolean;download_available?:boolean;detail?:string
+  schema?:string;running?:boolean;started_at?:string
+  heartbeat_at?:string;last_event_at?:string;events?:number
+  events_by_type?:Record<string,number>;queue_overflows?:number
+  watch_errors?:number;watched_directories?:number
+  watched_roots?:Array<{path:string;scope:string}>
+  warnings?:string[];limitations?:string[]
 }

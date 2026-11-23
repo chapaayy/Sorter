@@ -7,6 +7,7 @@ from fastapi import Query
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi import HTTPException
 from pathlib import Path
+from datetime import datetime, timezone
 import json
 from app.config import DATA_DIR
 router=APIRouter(prefix="/api/storage",tags=["storage"])
@@ -101,5 +102,43 @@ def host_audit_json():
         path=path,
         media_type="application/json",
         filename="map-full-host-audit-summary.json",
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get("/host-audit/live")
+def host_live_audit_status():
+    path = _HOST_REPORT / "live-state.json"
+    if not path.is_file():
+        return {"available": False, "detail": "Наблюдение ещё не запущено"}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise HTTPException(503, "Состояние файлового наблюдателя недоступно") from exc
+    if payload.get("schema") != "map-live-audit-v1":
+        raise HTTPException(503, "Неизвестная версия журнала файлов")
+    payload["available"] = True
+    # A crashed observer may have written running=true on its last heartbeat.
+    try:
+        heartbeat = datetime.fromisoformat(payload.get("heartbeat_at", ""))
+        age = (datetime.now(timezone.utc) - heartbeat.astimezone(timezone.utc)).total_seconds()
+        payload["heartbeat_stale"] = age > 30 or age < -30
+    except (ValueError, TypeError):
+        payload["heartbeat_stale"] = True
+    payload["running"] = bool(payload.get("running")) and not payload["heartbeat_stale"]
+    payload["download_available"] = (_HOST_REPORT / "live-events.jsonl").is_file()
+    return payload
+
+
+@router.get("/host-audit/live-events.jsonl")
+def host_live_audit_events():
+    """No page limit or compression: all observed events from observer startup."""
+    path = _HOST_REPORT / "live-events.jsonl"
+    if not path.is_file():
+        raise HTTPException(404, "Наблюдение ещё не запущено")
+    return FileResponse(
+        path=path,
+        media_type="application/x-ndjson",
+        filename="map-file-live-events.jsonl",
         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
