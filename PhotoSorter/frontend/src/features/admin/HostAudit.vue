@@ -64,10 +64,20 @@ onMounted(()=>{void refresh()})
       <p class="meta">Снимок: {{report.captured_at}}.
         Проверка: {{report.scan_seconds}} с. Пропущено: {{report.skipped_paths}}.
         Общие файлы ОС не считаются собственностью MAP.</p>
-      <a v-if="report.csv_available" class="btn secondary"
-        href="/api/storage/host-audit/report.csv" download="map-full-host-file-audit.csv">
-        Скачать полный аудит сервера CSV
-      </a>
+      <div class="row wrap">
+        <a v-if="report.csv_available" class="btn secondary"
+          href="/api/storage/host-audit/report.csv" download="map-full-host-file-audit.csv">
+          Скачать полный аудит сервера CSV
+        </a>
+        <a v-if="report.write_sites_available" class="btn secondary"
+          href="/api/storage/host-audit/write-sites.csv" download="map-file-write-sites.csv">
+          Скачать карту записей файлов в коде
+        </a>
+      </div>
+      <p v-if="report.write_sites_available" class="meta">
+        Найдено потенциальных мест создания или изменения файлов в исходниках:
+        {{report.write_sites_count}}. Это дополнение к снимку диска, а не история операций.
+      </p>
       <h3>Каким областям принадлежит место</h3>
       <div v-for="[key,stat] in scopes" :key="key" class="row between wrap audit-row">
         <div><strong>{{scopeLabels[key]||key}}</strong>
