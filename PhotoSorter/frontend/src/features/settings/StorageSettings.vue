@@ -6,7 +6,7 @@ import {systemApi} from '../../api/system'
 import {useNoticeStore} from '../../stores/notice'
 import {usePolling} from '../../composables/usePolling'
 import {bytes,date,errorText} from '../../utils/format'
-import type {Batch,StorageUsage,RetentionPreference} from '../../types/api'
+import type {Batch,StorageUsage,StorageBreakdown,RetentionPreference} from '../../types/api'
 import UiButton from '../../components/ui/UiButton.vue'
 import UiSelect from '../../components/ui/UiSelect.vue'
 import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
@@ -15,6 +15,27 @@ const notice=useNoticeStore()
 const usageLoading=ref(true),retentionLoading=ref(true)
 const usage=ref<StorageUsage|null>(null),batches=ref<Batch[]>([]),busy=ref(false),
   cleanConfirm=ref(false),error=ref(''),savingRetention=ref(false),retentionPrefs=ref<RetentionPreference|null>(null)
+const breakdown=ref<StorageBreakdown|null>(null),scanning=ref(false),scanError=ref('')
+const breakdownLabels:Record<string,string>={
+  originals:'Оригиналы ФО',normalized:'Перекодированные ФО (.normalized)',
+  results_files:'Готовые файлы результатов',results_zip:'ZIP готовых результатов',
+  results_temporary:'Временные файлы результатов',reference_objects:'Хранилище объектов образцов',
+  reference_gallery:'Галерея образцов (hardlink)',references_zip:'ZIP библиотеки образцов',
+  reference_uploads:'Незавершённые загрузки образцов',reference_other:'Прочие файлы образцов',
+  thumbnails:'Миниатюры',reference_cache:'Кэш MegaLoc',other_cache:'Прочий кэш',
+  runs:'Состояния запусков',logs:'Журналы',incoming:'Временные загрузки ФО',
+  models:'Модели',other:'Другие файлы данных'
+}
+const breakdownRows=computed(()=>Object.entries(breakdown.value?.categories||{})
+  .filter(([,stat])=>stat.files>0)
+  .sort((a,b)=>b[1].allocated_bytes-a[1].allocated_bytes))
+async function scanStorage(){
+  if(scanning.value)return
+  scanning.value=true;scanError.value=''
+  try{breakdown.value=await systemApi.breakdown()}
+  catch(e){scanError.value=errorText(e)}
+  finally{scanning.value=false}
+}
 const due=computed(()=>batches.value.filter(b=>b.delete_state==='active'&&b.delete_after_at)
   .sort((a,b)=>(a.delete_after_at||'').localeCompare(b.delete_after_at||'')))
 const labels:Record<string,string>={photos:'Оригиналы ФО',results:'Готовые результаты',
@@ -87,6 +108,75 @@ async function cleanup(){
   </section>
   <section class="panel stack">
     <div class="row between wrap">
+      <div>
+        <h2>Подробная диагностика диска</h2>
+        <p class="meta">Показывает оригиналы, перекодирование, ZIP и hardlink по партиям.
+          Только чтение: файлы не изменяются и ничего не удаляется.</p>
+      </div>
+      <UiButton :loading="scanning" :disabled="scanning" @click="scanStorage">
+        {{breakdown?'Пересчитать':'Анализировать диск'}}
+      </UiButton>
+    </div>
+    <p class="meta">Анализ запускается только по кнопке, а не при каждом обновлении страницы.
+      Сканирование ограничено по времени и количеству файлов.</p>
+    <div v-if="scanError" class="alert error" role="alert">{{scanError}}</div>
+    <template v-if="breakdown">
+      <div v-if="breakdown.partial" class="alert warning" role="status">
+        Анализ неполный: достигнут лимит или часть файлов была недоступна.
+        Результаты ниже предварительные.
+      </div>
+      <div class="row wrap meta">
+        <span>Проверено файлов: {{breakdown.files_scanned.toLocaleString('ru-RU')}}</span>
+        <span>Время: {{breakdown.scan_seconds}} с</span>
+        <span>Пропущено путей: {{breakdown.skipped_paths}}</span>
+      </div>
+      <div class="row between wrap">
+        <strong>Учтено файловых блоков: {{bytes(breakdown.allocated_total_bytes)}}</strong>
+        <span class="meta">Общие данные hardlink: {{bytes(breakdown.hardlink_reused_bytes)}}
+          ({{breakdown.hardlink_paths}} ссылок)</span>
+      </div>
+      <p class="meta">
+        «На диске» — оценка выделенных блоков, одинаковый inode учитывается один раз.
+        «По файлам» — сумма размеров по путям без исключения hardlink.
+        Это разные показатели, их не нужно складывать.
+        Системные данные, PostgreSQL и Docker вне папок Sorter сюда не входят.
+      </p>
+      <div class="storage-breakdown-table">
+        <div class="storage-breakdown-row storage-breakdown-head">
+          <strong>Категория</strong><strong>На диске</strong><strong>По файлам</strong>
+        </div>
+        <div v-for="[key,stat] in breakdownRows" :key="key" class="storage-breakdown-row">
+          <span>{{breakdownLabels[key]||key}} <small class="meta">({{stat.files}})</small></span>
+          <strong>{{bytes(stat.allocated_bytes)}}</strong>
+          <span class="meta">{{bytes(stat.logical_bytes)}}</span>
+        </div>
+      </div>
+      <h3>Партии ФО — больше всего места</h3>
+      <p v-if="!breakdown.batch_metadata_available" class="meta">
+        Метаданные партий временно недоступны, ниже могут отсутствовать подписи.
+      </p>
+      <p v-if="!breakdown.batches.length" class="meta">Партии для этого анализа не найдены.</p>
+      <div v-for="batch in breakdown.batches.slice(0,20)" :key="batch.batch_id"
+        class="storage-batch-row">
+        <div class="row between wrap">
+          <RouterLink :to="'/fo/'+batch.batch_id"><strong>{{batch.display_name}}</strong></RouterLink>
+          <strong>{{bytes(batch.allocated_bytes)}} на диске</strong>
+        </div>
+        <div class="row wrap meta">
+          <span>Оригиналы: {{bytes(batch.originals.allocated_bytes)}}</span>
+          <span>Перекодировано: {{bytes(batch.normalized.allocated_bytes)}}</span>
+          <span>Файлы результатов: {{bytes(batch.results_files.allocated_bytes)}}</span>
+          <span>ZIP: {{bytes(batch.results_zip.allocated_bytes)}}</span>
+          <span>Hardlink: {{bytes(batch.hardlink_reused_bytes)}} без повторного места</span>
+        </div>
+      </div>
+      <p v-if="breakdown.total_batches>20" class="meta">
+        Показаны первые 20 из {{breakdown.total_batches}} партий по занятому месту.
+      </p>
+    </template>
+  </section>
+  <section class="panel stack">
+    <div class="row between wrap">
       <div><h2>Автоматическое удаление</h2><p class="meta">После обработки удаляются исходные ФО, результаты и ZIP.</p></div>
       <UiButton :disabled="!retentionPrefs" :loading="savingRetention" @click="saveRetention">Сохранить</UiButton>
     </div>
@@ -130,3 +220,15 @@ async function cleanup(){
     confirm-label="Очистить" :busy="busy" @confirm="cleanup" @cancel="cleanConfirm=false"/>
 </div>
 </template>
+
+<style scoped>
+.storage-breakdown-table{display:grid;gap:0}
+.storage-breakdown-row{display:grid;grid-template-columns:minmax(0,1fr) 110px 110px;
+  align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-subtle)}
+.storage-breakdown-row>:nth-child(n+2){text-align:right}
+.storage-breakdown-head{font-size:12px;color:var(--muted)}
+.storage-batch-row{padding:13px 0;border-bottom:1px solid var(--border-subtle);display:grid;gap:6px}
+@media(max-width:550px){
+  .storage-breakdown-row{grid-template-columns:minmax(0,1fr) 84px 84px;gap:6px;font-size:12px}
+}
+</style>

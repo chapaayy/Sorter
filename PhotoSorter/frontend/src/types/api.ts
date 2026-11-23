@@ -97,6 +97,23 @@ export interface StorageUsage {
     warning?: 'warning' | 'critical' | null; reserved_bytes?: number; admission_ok?: boolean }
   categories_bytes: Record<string, number>; database_estimated_bytes?: number | null; not_scanned?: string[]
 }
+export interface StorageCounter {
+  allocated_bytes:number;logical_bytes:number;hardlink_reused_bytes:number
+  files:number;hardlink_paths:number
+}
+export interface StorageBatchBreakdown {
+  batch_id:string;display_name:string
+  allocated_bytes:number;logical_bytes:number;hardlink_reused_bytes:number
+  originals:StorageCounter;normalized:StorageCounter;results_files:StorageCounter
+  results_zip:StorageCounter;results_temporary:StorageCounter
+}
+export interface StorageBreakdown {
+  categories:Record<string,StorageCounter>
+  batches:StorageBatchBreakdown[];total_batches:number;unlisted_batches:number
+  files_scanned:number;hardlink_paths:number;hardlink_reused_bytes:number
+  allocated_total_bytes:number;scan_seconds:number;partial:boolean
+  skipped_paths:number;captured_at:string;basis:string;batch_metadata_available:boolean
+}
 export interface SystemStatus {
   at: string; worker: { queue: Record<string, number>; expected_threads: number }
   thumbnails: Record<string, number>;
