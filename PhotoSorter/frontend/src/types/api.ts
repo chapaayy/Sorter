@@ -147,7 +147,7 @@ export interface HostAuditCounter {
 export interface HostAuditReport {
   available:boolean;csv_available?:boolean;write_sites_available?:boolean;write_sites_count?:number;detail?:string
   snapshot_id?:string;captured_at?:string;files_scanned?:number
-  allocated_bytes?:number;skipped_paths?:number;scan_seconds?:number
+  allocated_bytes?:number;skipped_paths?:number;scan_seconds?:number;container_root_mounts_excluded?:number
   scopes?:Record<string,HostAuditCounter>
   categories?:Record<string,HostAuditCounter>
   docker?:{

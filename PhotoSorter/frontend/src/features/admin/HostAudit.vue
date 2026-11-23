@@ -30,6 +30,7 @@ const categoryLabels:Record<string,string>={
   docker_image_layer:'Слои образов MAP',
   docker_other:'Другие Docker-файлы и BuildKit',
   container_tmp:'Временные каталоги /tmp (вид внутри контейнера)',
+  container_root_mount:'Подключённая файловая система контейнера (не суммируется)',
   open_deleted_file:'Удалённые файлы, ещё открытые процессом',
   model_weights:'Веса моделей',model_cache:'Кэши моделей',
   app_source_installer_and_git:'Приложение, установщик и Git',
@@ -66,11 +67,17 @@ onMounted(()=>{void refresh()})
       </div>
       <p class="meta">Снимок: {{report.captured_at}}.
         Проверка: {{report.scan_seconds}} с. Пропущено: {{report.skipped_paths}}.
-        Общие файлы ОС не считаются собственностью MAP.</p>
+        Общие файлы ОС не считаются собственностью MAP.
+        Подключённые представления контейнеров не суммируются повторно.
+        Исключено таких представлений: {{report.container_root_mounts_excluded??0}}.</p>
       <div class="row wrap">
         <a v-if="report.csv_available" class="btn secondary"
           href="/api/storage/host-audit/report.csv" download="map-full-host-file-audit.csv">
           Скачать полный аудит сервера CSV
+        </a>
+        <a v-if="report.csv_available" class="btn secondary"
+          href="/api/storage/host-audit/report.json" download="map-full-host-audit-summary.json">
+          Скачать сводку и ошибки JSON
         </a>
         <a v-if="report.write_sites_available" class="btn secondary"
           href="/api/storage/host-audit/write-sites.csv" download="map-file-write-sites.csv">
