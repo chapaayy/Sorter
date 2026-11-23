@@ -196,7 +196,7 @@ test('full ZIP is ready for direct download without extra confirmation',async({p
   if(download)expect((await download).suggestedFilename()).toBe(filename)
 })
 test('auto-processing preference defaults off and saves on the server',async({page})=>{
-  await page.goto('/settings')
+  await page.goto('/admin')
   const enabled=page.getByRole('checkbox',{name:'Автоматически обрабатывать загруженные ФО'})
   await expect(enabled).not.toBeChecked()
   await enabled.check()
@@ -205,7 +205,7 @@ test('auto-processing preference defaults off and saves on the server',async({pa
   await expect(enabled).toBeChecked()
 })
 test('storage settings persist minute-level automatic deletion',async({page})=>{
-  await page.goto('/settings')
+  await page.goto('/admin')
   const enabled=page.getByRole('checkbox',{name:'Удалять старые фотоотчёты автоматически'})
   await expect(enabled).toBeChecked()
   await page.getByRole('spinbutton',{name:'Удалять через'}).fill('5')
@@ -237,8 +237,8 @@ test('mobile drawer allows navigation',async({page,isMobile})=>{
   await expect(page.getByRole('heading',{name:'Настройки',exact:true})).toBeVisible()
 })
 
-test('processing overview moved to Settings, run details live under Queue',async({page})=>{
-  await page.goto('/settings')
+test('processing overview lives in Administration, run details in Queue',async({page})=>{
+  await page.goto('/admin')
   await expect(page.getByRole('heading',{name:'MegaLoc',exact:true})).toBeVisible()
   await expect(page.getByText('Модель установлена')).toBeVisible()
   await expect(page.getByRole('heading',{name:'Производительность',exact:true})).toBeVisible()
@@ -951,7 +951,7 @@ test('System settings identify a lost Worker heartbeat',async({page})=>{
     thumbnails:{},disk:{total_bytes:100,available_bytes:90,reserved_bytes:1},
     api:{uptime_seconds:10,latency:{samples:0,p50_ms:null,p95_ms:null},rss_peak_kib:100}
   }))
-  await page.goto('/settings')
+  await page.goto('/admin')
   await expect(page.getByText('Нет свежего сигнала').first()).toBeVisible()
 })
 test('FO library notice appears once, shows events and requires explicit acknowledgement',async({page})=>{
@@ -1451,7 +1451,7 @@ test('website transfer queue stays FIFO across two FO folders and references',as
 test('settings are stacked and the theme cards preview the actual palettes',async({page})=>{
   await page.goto('/settings')
   const sections=page.locator('.settings-layout > section')
-  await expect(sections).toHaveCount(7)
+  await expect(sections).toHaveCount(3)
   await expect(sections.first().getByRole('heading',{name:'Оформление'})).toBeVisible()
   await expect(sections.nth(1).getByRole('heading',{name:'Загрузка файлов'})).toBeVisible()
   await expect(sections.last().getByRole('heading',{name:'О сервисе MAP'})).toBeVisible()
@@ -1537,11 +1537,14 @@ test('administration lives outside Settings and is unavailable to viewers',async
   await page.goto('/settings')
   await expect(page.getByRole('heading',{name:'Настройки',exact:true})).toBeVisible()
   await expect(page.getByRole('region',{name:'Пользователи'})).toHaveCount(0)
+  await expect(page.getByRole('heading',{name:'MegaLoc',exact:true})).toHaveCount(0)
   const drawer=page.getByRole('button',{name:'Открыть меню'})
   if(await drawer.isVisible())await drawer.click()
   await page.getByRole('link',{name:'Администрирование'}).click()
   await expect(page.getByRole('heading',{name:'Администрирование'})).toBeVisible()
   await expect(page.getByRole('region',{name:'Пользователи'})).toBeVisible()
+  await expect(page.getByRole('region',{name:'Хранилище'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'MegaLoc',exact:true})).toBeVisible()
   await page.route('**/api/auth/me',route=>respond(route,{username:'viewer@example.com'}))
   await page.goto('/admin')
   await expect(page).toHaveURL(/\/results$/)
@@ -1736,4 +1739,33 @@ test('completed FO has Results as main action and retry only in Other actions',a
   await confirmRegionStart(page)
   await expect.poll(()=>started).toBe(1)
   await expect(card.getByRole('button',{name:'Убрать из очереди'})).toBeVisible()
+})
+
+test('read-only file inventory scans and displays per-file ownership',async({page})=>{
+  await page.route('**/api/storage/inventory/scan',route=>respond(route,{
+    snapshot_id:'test-snapshot',captured_at:'2026-11-23T12:00:00Z',
+    files_scanned:2,allocated_bytes:4096,logical_bytes:8192,
+    categories:{originals:{files:2,allocated_bytes:4096,logical_bytes:8192,hardlink_paths:1}},
+    skipped_paths:0,partial:false,scan_seconds:0.02,checked_roots:['data','models'],
+    not_scanned:['PostgreSQL files'],batch_metadata_available:true,
+    description:'Snapshot'
+  }))
+  await page.route('**/api/storage/inventory/files?**',route=>respond(route,{
+    snapshot_id:'test-snapshot',total:2,offset:0,limit:100,
+    files:[
+      {path:'PhotoSorter/data/uploads/batch/photo.jpg',category:'originals',
+        purpose:'permanent',owner_kind:'batch',owner_id:'batch',
+        owner_name:'Фотоотчёт 321',logical_bytes:4096,allocated_bytes:4096,
+        hardlink:false,links:2,modified_at:'2026-11-23T12:00:00Z'},
+      {path:'PhotoSorter/data/outputs/run/photo.jpg',category:'originals',
+        purpose:'permanent',owner_kind:'batch',owner_id:'batch',
+        owner_name:'Фотоотчёт 321',logical_bytes:4096,allocated_bytes:0,
+        hardlink:true,links:2,modified_at:'2026-11-23T12:00:00Z'}
+    ]
+  }))
+  await page.goto('/admin')
+  await page.getByRole('button',{name:'Проверить файлы'}).click()
+  await expect(page.getByText('PhotoSorter/data/uploads/batch/photo.jpg')).toBeVisible()
+  await expect(page.getByText('Hardlink: без повторного места')).toBeVisible()
+  await expect(page.getByRole('region',{name:'Реестр файлов'})).toBeVisible()
 })
