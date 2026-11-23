@@ -2,10 +2,11 @@
 import {computed,onMounted,ref} from 'vue'
 import {systemApi} from '../../api/system'
 import {bytes,errorText} from '../../utils/format'
-import type {HostAuditReport} from '../../types/api'
+import type {HostAuditReport,LiveAuditStatus} from '../../types/api'
 import UiButton from '../../components/ui/UiButton.vue'
 
 const report=ref<HostAuditReport|null>(null)
+const live=ref<LiveAuditStatus|null>(null)
 const loading=ref(true),error=ref('')
 const scopeLabels:Record<string,string>={
   app:'Файлы MAP (включая базу и контейнеры)',
@@ -29,6 +30,10 @@ const categoryLabels:Record<string,string>={
   container_metadata_and_logs:'Контейнеры и Docker-логи',
   docker_image_layer:'Слои образов MAP',
   docker_other:'Другие Docker-файлы и BuildKit',
+  containerd_active_upper:'Слои записи запущенных контейнеров MAP',
+  containerd_shared_image_layer:'Общие слои образов, используемых MAP',
+  containerd_unattributed:'Слои containerd без подтверждённой принадлежности',
+  containerd_content_or_metadata:'Данные и кэш containerd без подтверждённой принадлежности',
   container_tmp:'Временные каталоги /tmp (вид внутри контейнера)',
   container_root_mount:'Подключённая файловая система контейнера (не суммируется)',
   open_deleted_file:'Удалённые файлы, ещё открытые процессом',
@@ -42,8 +47,13 @@ const categories=computed(()=>Object.entries(report.value?.categories||{})
   .sort((a,b)=>b[1].allocated_bytes-a[1].allocated_bytes))
 async function refresh(){
   loading.value=true;error.value=''
-  try{report.value=await systemApi.hostAudit()}
-  catch(e){error.value=errorText(e)}
+  try{
+    const [hostResult,liveResult]=await Promise.allSettled([systemApi.hostAudit(),systemApi.liveAudit()])
+    if(hostResult.status==='fulfilled')report.value=hostResult.value
+    else error.value=errorText(hostResult.reason)
+    if(liveResult.status==='fulfilled')live.value=liveResult.value
+    else live.value={available:false,detail:'Состояние наблюдателя недоступно'}
+  }catch(e){error.value=errorText(e)}
   finally{loading.value=false}
 }
 onMounted(()=>{void refresh()})
@@ -88,6 +98,19 @@ onMounted(()=>{void refresh()})
         Найдено потенциальных мест создания или изменения файлов в исходниках:
         {{report.write_sites_count}}. Это дополнение к снимку диска, а не история операций.
       </p>
+      <h3>Слои containerd: принадлежность</h3>
+      <p class="meta">
+        Подтверждённых снимков: {{report.containerd_attribution?.matched_snapshots??0}}.
+        Ссылок из работающих контейнеров: {{report.containerd_attribution?.container_mount_references??0}}.
+        Проверено цепочек слоёв образов: {{report.containerd_attribution?.image_chains_checked??0}};
+        сопоставлено: {{report.containerd_attribution?.image_chains_matched??0}}.
+      </p>
+      <p class="meta">Слои общих образов не считаются исключительной собственностью MAP.
+        Нераспознанные данные containerd остаются в отдельной категории, а не исчезают из отчёта.</p>
+      <details v-if="report.containerd_attribution?.warnings?.length">
+        <summary>Пробелы сопоставления containerd ({{report.containerd_attribution.warnings.length}})</summary>
+        <ul><li v-for="(item,index) in report.containerd_attribution.warnings" :key="index">{{item}}</li></ul>
+      </details>
       <h3>Каким областям принадлежит место</h3>
       <div v-for="[key,stat] in scopes" :key="key" class="row between wrap audit-row">
         <div><strong>{{scopeLabels[key]||key}}</strong>
@@ -115,6 +138,32 @@ onMounted(()=>{void refresh()})
     </template>
     <p v-else-if="!loading" class="meta">Серверный аудит ещё не выполнялся.
       Первая проверка запускается на VPS с правами администратора.</p>
+    <div class="stack" style="gap:8px" aria-label="Непрерывный учёт файлов">
+      <h3>Непрерывный учёт файловых событий</h3>
+      <p v-if="!live?.available" class="meta">
+        Наблюдатель ещё не запускался. Он устанавливается как системная служба при обновлении MAP от root.
+      </p>
+      <template v-else>
+        <p class="meta">
+          Состояние: <strong>{{live.running?'Работает по последнему отчёту':'Остановлен'}}</strong>.
+          Событий: {{(live.events||0).toLocaleString('ru-RU')}}.
+          Каталогов под наблюдением: {{(live.watched_directories||0).toLocaleString('ru-RU')}}.
+          Переполнений очереди: {{live.queue_overflows||0}}.
+          Ошибок наблюдения: {{live.watch_errors||0}}.
+          Последний сигнал: {{live.heartbeat_at||'неизвестно'}}.
+        </p>
+        <a v-if="live.download_available" class="btn secondary"
+          href="/api/storage/host-audit/live-events.jsonl"
+          download="map-file-live-events.jsonl">Скачать все события файлов JSONL</a>
+        <details v-if="live.warnings?.length">
+          <summary>Ошибки наблюдения ({{live.warnings.length}})</summary>
+          <ul><li v-for="(item,index) in live.warnings" :key="index">{{item}}</li></ul>
+        </details>
+      </template>
+      <p class="meta">Фиксируются создание, закрытие после записи, переименование и удаление.
+        Неназванные временные файлы и события до запуска службы не восстановить.
+        Пропуски и переполнение очереди фиксируются, но не скрываются.</p>
+    </div>
     <details>
       <summary>Команда запуска полной проверки на VPS</summary>
       <p class="meta">Нужны права root: Docker-тома и временные файлы контейнеров не доступны
