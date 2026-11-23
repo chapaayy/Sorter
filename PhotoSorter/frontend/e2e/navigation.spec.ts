@@ -77,6 +77,7 @@ async function mock(page:Page){
     if(p==='/api/results/'+rid+'/sam')return respond(route,{'SAM-0001':1,'_Неопределено':1})
     if(p==='/api/results/'+rid+'/groups')return respond(route,{'G0001':2})
     if(p==='/api/results/'+rid+'/photos')return respond(route,{photos:[output],next_cursor:null})
+    if(p==='/api/storage/host-audit')return respond(route,{available:false,detail:'Host scan not run'})
     if(p==='/api/storage/usage')return respond(route,{disk:{total_bytes:10000000000,used_bytes:4000000000,available_bytes:6000000000,used_fraction:.4,warning:null,reserved_bytes:600000000,admission_ok:true},categories_bytes:{photos:250000000,results:100000000}})
     if(p==='/api/system/status')return respond(route,{at:'2026-11-05T06:00:00Z',worker:{queue:{},expected_threads:7},thumbnails:{queued:0},disk:{total_bytes:10000000000,available_bytes:6000000000,reserved_bytes:600000000},api:{uptime_seconds:400,latency:{samples:6,p50_ms:13,p95_ms:30},rss_peak_kib:90000}})
     if(p==='/api/logs/usage')return respond(route,{bytes:2000,budget_bytes:524288000})
@@ -1776,4 +1777,32 @@ test('read-only file inventory scans and displays per-file ownership',async({pag
   const download=page.waitForEvent('download')
   await page.getByRole('link',{name:'Скачать полный отчёт CSV'}).click()
   expect((await download).suggestedFilename()).toBe('map-file-inventory-20261123_120000.csv')
+})
+
+test('Administration shows host audit scope, incomplete coverage and full download',async({page})=>{
+  await page.route('**/api/storage/host-audit',route=>respond(route,{
+    available:true,csv_available:true,snapshot_id:'host-test',
+    captured_at:'2026-11-23T16:00:00Z',files_scanned:120560,
+    allocated_bytes:34000000000,skipped_paths:0,scan_seconds:12.4,
+    scopes:{
+      app:{files:40000,allocated_bytes:22000000000,logical_bytes:23000000000},
+      shared_unattributed:{files:80000,allocated_bytes:12000000000,logical_bytes:15000000000},
+      runtime_view:{files:560,allocated_bytes:0,logical_bytes:120000}
+    },
+    categories:{docker_volume:{files:1200,allocated_bytes:5000000000,logical_bytes:5000000000}},
+    errors:[],limitations:['Snapshot only'],
+    docker:{containers:6,volumes:3,driver:'overlay2',matched_image_layers:5,global_shared_disk_usage:[]}
+  }))
+  await page.route('**/api/storage/host-audit/report.csv',route=>
+    route.fulfill({status:200,contentType:'text/csv',headers:{
+      'Content-Disposition':'attachment; filename="map-full-host-file-audit.csv"'
+    },body:'path;scope\\n/srv/test;app\\n'}))
+  await page.goto('/admin')
+  const host=page.getByRole('region',{name:'Аудит сервера'})
+  await expect(host.getByRole('heading',{name:'Аудит всего сервера MAP'})).toBeVisible()
+  await expect(host.getByText('Общие файлы Docker и системы')).toBeVisible()
+  await expect(host.getByText('Временные каталоги контейнеров (только просмотр)')).toBeVisible()
+  const download=page.waitForEvent('download')
+  await host.getByRole('link',{name:'Скачать полный аудит сервера CSV'}).click()
+  expect((await download).suggestedFilename()).toBe('map-full-host-file-audit.csv')
 })
