@@ -127,9 +127,16 @@ class LiveAudit:
         self.add_watch = library.inotify_add_watch
         self.add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
         self.add_watch.restype = ctypes.c_int
-        self.report.mkdir(parents=True, exist_ok=True)
-        if self.report.is_symlink() or not within(self.report.resolve(), self.project):
+        if self.report.is_symlink() or not within(self.report.resolve(strict=False), self.project):
             raise RuntimeError("Audit event output path is not safe")
+        self.report.mkdir(parents=True, exist_ok=True)
+        if os.geteuid() == 0:
+            data_gid=(self.project / "PhotoSorter" / "data").stat().st_gid
+            # The API runs as group 10001 and needs directory traversal.
+            # UMask=0027 on the unit otherwise makes root-owned 0750 dirs unreadable.
+            for folder in (self.report.parent, self.report):
+                os.chown(folder, -1, data_gid)
+                os.chmod(folder, 0o750)
         self.stream = (self.report / "live-events.jsonl").open("a", encoding="utf-8", buffering=1)
         if os.geteuid() == 0:
             # The owner-only API runs as uid/gid 10001 and needs read access.
