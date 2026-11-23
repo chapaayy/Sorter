@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import importlib.util
 import json
 import os
@@ -143,3 +144,19 @@ def test_missing_docker_is_reported_not_silently_dropped(tmp_path):
     assert summary["errors"]
     assert summary["docker"]["containers"] == 0
     assert summary["files_scanned"] > 0
+
+
+def test_deleted_but_still_open_file_is_visible(tmp_path):
+    project = tmp_path / "Sorter"
+    (project / "PhotoSorter" / "data").mkdir(parents=True)
+    audit = host_audit.HostAudit(project, shared_roots=[], proc_root=Path("/proc"))
+    audit.containers = [{"Id": "test-container", "State": {"Pid": os.getpid()}}]
+    data = tmp_path / "very-short-lived.part"
+    data.write_bytes(b"temporary content")
+    with data.open("rb") as opened:
+        data.unlink()
+        output = io.StringIO()
+        audit.deleted_fds(csv.writer(output, delimiter=";"))
+    assert "open-deleted:" in output.getvalue()
+    assert "very-short-lived.part (deleted)" in output.getvalue()
+    assert audit.categories["open_deleted_file"]["files"] >= 1
