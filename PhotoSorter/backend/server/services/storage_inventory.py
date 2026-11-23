@@ -299,7 +299,7 @@ def csv_report(snapshot_id: str):
     """Stream *all* rows of the captured scan; no pagination or server file."""
     summary, entries = _validated_snapshot(snapshot_id)
     stamp = datetime.fromisoformat(summary["captured_at"]).strftime("%Y%m%d_%H%M%S")
-    filename = f"map-file-inventory-{stamp}.csv"
+    filename = f"map-file-inventory-{stamp}{'-partial' if summary.get('partial') else ''}.csv"
 
     def stream():
         # BOM + semicolon separator makes Cyrillic and byte counts readable in Excel.
