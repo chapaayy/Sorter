@@ -89,3 +89,17 @@ def host_audit_write_sites():
         filename="map-file-write-sites.csv",
         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
+
+
+@router.get("/host-audit/report.json")
+def host_audit_json():
+    """Download the coverage, errors and per-category totals alongside CSV."""
+    path = _HOST_REPORT / "latest.json"
+    if not path.is_file():
+        raise HTTPException(404, "Сначала выполните аудит сервера")
+    return FileResponse(
+        path=path,
+        media_type="application/json",
+        filename="map-full-host-audit-summary.json",
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
