@@ -1793,6 +1793,16 @@ test('Administration shows host audit scope, incomplete coverage and full downlo
     errors:[],limitations:['Snapshot only'],
     docker:{containers:6,volumes:3,driver:'overlay2',matched_image_layers:5,global_shared_disk_usage:[]}
   }))
+  await page.route('**/api/storage/host-audit/live',route=>respond(route,{
+    available:true,download_available:true,schema:'map-live-audit-v1',
+    running:true,started_at:'2026-11-23T18:00:00Z',
+    heartbeat_at:'2026-11-23T18:00:15Z',events:25,watched_directories:45,
+    queue_overflows:0,watch_errors:0,warnings:[],limitations:[]
+  }))
+  await page.route('**/api/storage/host-audit/live-events.jsonl',route=>
+    route.fulfill({status:200,contentType:'application/x-ndjson',headers:{
+      'Content-Disposition':'attachment; filename="map-file-live-events.jsonl"'
+    },body:'{"event":"create","path":"/tmp/video.part"}\n'}))
   await page.route('**/api/storage/host-audit/write-sites.csv',route=>
     route.fulfill({status:200,contentType:'text/csv',headers:{
       'Content-Disposition':'attachment; filename="map-file-write-sites.csv"'
@@ -1813,4 +1823,9 @@ test('Administration shows host audit scope, incomplete coverage and full downlo
   const sourceDownload=page.waitForEvent('download')
   await host.getByRole('link',{name:'Скачать карту записей файлов в коде'}).click()
   expect((await sourceDownload).suggestedFilename()).toBe('map-file-write-sites.csv')
+  await expect(host.getByRole('heading',{name:'Непрерывный учёт файловых событий'})).toBeVisible()
+  await expect(host.getByText(/Каталогов под наблюдением: 45/)).toBeVisible()
+  const liveDownload=page.waitForEvent('download')
+  await host.getByRole('link',{name:'Скачать все события файлов JSONL'}).click()
+  expect((await liveDownload).suggestedFilename()).toBe('map-file-live-events.jsonl')
 })
