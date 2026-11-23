@@ -169,6 +169,8 @@ export interface LiveAuditStatus {
   available:boolean;download_available?:boolean;detail?:string
   schema?:string;running?:boolean;started_at?:string
   heartbeat_at?:string;last_event_at?:string;events?:number
+  postgres_shm_close_writes_aggregated?:number
+  postgres_shm_pending?:number;events_observed_including_aggregates?:number
   events_by_type?:Record<string,number>;queue_overflows?:number
   watch_errors?:number;watched_directories?:number
   watched_roots?:Array<{path:string;scope:string}>
