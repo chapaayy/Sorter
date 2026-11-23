@@ -51,7 +51,7 @@ function applyFilters(){
 </script>
 
 <template>
-  <section class="panel stack" aria-label="Реестр файлов">
+  <section class="panel stack">
     <div class="row between wrap">
       <div class="stack" style="gap:4px">
         <h2>Учёт файлов MAP</h2>
