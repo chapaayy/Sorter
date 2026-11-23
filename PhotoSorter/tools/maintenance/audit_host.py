@@ -379,6 +379,9 @@ class HostAudit:
                 write_sites_count=module.export_csv(self.project,Path(tmpwrites))
             except (OSError,RuntimeError,ImportError,ValueError) as exc:
                 self.errors.append('Source write-site inventory failed: '+str(exc)[:200])
+                if tmpwrites and os.path.exists(tmpwrites):
+                    os.unlink(tmpwrites)
+                tmpwrites=None
             report={
                 'schema':'map-host-audit-v1',
                 'snapshot_id':uuid.uuid4().hex,
