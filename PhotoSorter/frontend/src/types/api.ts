@@ -121,3 +121,22 @@ export interface SystemStatus {
   disk: { total_bytes: number; available_bytes: number; reserved_bytes: number }
   api: { uptime_seconds: number; latency: { samples: number; p50_ms: number | null; p95_ms: number | null }; rss_peak_kib: number }
 }
+
+export interface InventoryStats {
+  files:number;logical_bytes:number;allocated_bytes:number;hardlink_paths:number
+}
+export interface StorageInventorySummary {
+  snapshot_id:string;captured_at:string;files_scanned:number
+  allocated_bytes:number;logical_bytes:number
+  categories:Record<string,InventoryStats>;skipped_paths:number;partial:boolean
+  scan_seconds:number;checked_roots:string[];not_scanned:string[]
+  batch_metadata_available:boolean;description:string
+}
+export interface StorageInventoryFile {
+  path:string;category:string;purpose:'permanent'|'temporary'|'cache'|'system'|'service'|'archive'|'unknown'
+  owner_kind:string;owner_id:string|null;owner_name:string|null
+  logical_bytes:number;allocated_bytes:number;hardlink:boolean;links:number;modified_at:string
+}
+export interface StorageInventoryPage {
+  snapshot_id:string;total:number;offset:number;limit:number;files:StorageInventoryFile[]
+}
