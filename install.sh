@@ -156,8 +156,9 @@ fi
 "${COMPOSE[@]}" up -d --build
 # Optional root-owned, read-only file-event observer. It creates only its own
 # append-only audit logs, not user data or cleanup. No new Python packages.
-if [[ "$(id -u)" == 0 ]] && command -v systemctl >/dev/null 2>&1 &&
-   [[ -d /run/systemd/system ]]; then
+if [[ "$(id -u)" == 0 && "${CI:-}" != "true" && "${GITHUB_ACTIONS:-}" != "true" ]] &&
+   command -v systemctl >/dev/null 2>&1 &&
+   [[ -d /run/systemd/system ]] && [[ -w /etc/systemd/system ]]; then
   AUDIT_UNIT=/etc/systemd/system/map-file-audit.service
   cat > "$AUDIT_UNIT" <<EOF
 [Unit]
