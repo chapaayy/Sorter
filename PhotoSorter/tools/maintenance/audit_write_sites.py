@@ -85,7 +85,17 @@ def _site(node):
 
 def collect(project: Path):
     rows = []
-    for file in sorted(project.rglob("*")):
+    # Never inspect user uploads, the database, model cache, or .env files.
+    roots = [project / "PhotoSorter" / "backend",
+             project / "PhotoSorter" / "tools",
+             project / "PhotoSorter" / "docker"]
+    files = [project / "install.sh"]
+    for root in roots:
+        if root.is_dir():
+            files.extend(root.rglob("*"))
+    for file in sorted(files):
+        if not file.is_file() or file.is_symlink():
+            continue
         if any(p in ("node_modules", "__pycache__", ".git", "tests", "frontend") for p in file.parts):
             continue
         if file.suffix == ".py":
@@ -98,6 +108,15 @@ def collect(project: Path):
                     hit = _site(node)
                     if hit:
                         rows.append((str(file.relative_to(project)), node.lineno, hit[0], hit[1]))
+        elif file.name == "Dockerfile":
+            try:
+                lines = file.read_text(encoding="utf-8").splitlines()
+            except (UnicodeError, OSError):
+                continue
+            for i, line in enumerate(lines, 1):
+                if re.match(r"\\s*(RUN|COPY|ADD)\\b", line):
+                    rows.append((str(file.relative_to(project)), i,
+                                 "docker_build", "build_layer_write"))
         elif file.suffix == ".sh":
             try:
                 lines = file.read_text(encoding="utf-8").splitlines()
