@@ -129,7 +129,13 @@ class LiveAudit:
         if self.report.is_symlink() or not within(self.report.resolve(), self.project):
             raise RuntimeError("Audit event output path is not safe")
         self.stream = (self.report / "live-events.jsonl").open("a", encoding="utf-8", buffering=1)
-        os.chmod(self.report / "live-events.jsonl", 0o640)
+        if os.geteuid() == 0:
+            # The owner-only API runs as uid/gid 10001 and needs read access.
+            os.chown(self.report / "live-events.jsonl", 0,
+                     (self.project / "PhotoSorter" / "data").stat().st_gid)
+            os.chmod(self.report / "live-events.jsonl", 0o640)
+        else:
+            os.chmod(self.report / "live-events.jsonl", 0o644)
         self.emit("observer_started", path=str(self.project), scope="system")
 
     def emit(self, kind, *, path, scope, **details):
