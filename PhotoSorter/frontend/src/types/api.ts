@@ -156,3 +156,13 @@ export interface HostAuditReport {
   }
   errors?:string[];limitations?:string[]
 }
+
+export interface LiveAuditStatus {
+  available:boolean;download_available?:boolean;detail?:string
+  schema?:string;running?:boolean;started_at?:string
+  heartbeat_at?:string;last_event_at?:string;events?:number
+  events_by_type?:Record<string,number>;queue_overflows?:number
+  watch_errors?:number;watched_directories?:number
+  watched_roots?:Array<{path:string;scope:string}>
+  warnings?:string[];limitations?:string[]
+}
