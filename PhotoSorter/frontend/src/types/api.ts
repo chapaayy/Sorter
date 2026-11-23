@@ -145,7 +145,7 @@ export interface HostAuditCounter {
   files:number;allocated_bytes:number;logical_bytes:number;hardlink_paths?:number
 }
 export interface HostAuditReport {
-  available:boolean;csv_available?:boolean;detail?:string
+  available:boolean;csv_available?:boolean;write_sites_available?:boolean;write_sites_count?:number;detail?:string
   snapshot_id?:string;captured_at?:string;files_scanned?:number
   allocated_bytes?:number;skipped_paths?:number;scan_seconds?:number
   scopes?:Record<string,HostAuditCounter>
