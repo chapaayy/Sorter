@@ -8,10 +8,10 @@ the snapshot approximate; skipped paths are reported rather than invented.
 from __future__ import annotations
 
 import os
+import stat as statlib
 import time
 from datetime import datetime,timezone
 from pathlib import Path
-from . import disk_guard
 from ..database import connect
 from app.config import DATA_DIR,MODELS_DIR
 
@@ -34,8 +34,8 @@ def _kind(parts: tuple[str,...]) -> str:
     if section=="uploads":
         return "normalized" if len(parts)>2 and parts[2]==".normalized" else "originals"
     if section=="outputs":
-        if len(parts)>2 and parts[2]==".archives" and parts[-1].lower().endswith(".zip"):
-            return "results_zip"
+        if len(parts)>2 and parts[2]==".archives":
+            return "results_zip" if parts[-1].lower().endswith(".zip") else "results_temporary"
         if len(parts)>2 and (parts[2].endswith(".building") or parts[2].startswith(".archive-")):
             return "results_temporary"
         return "results_files"
@@ -93,7 +93,7 @@ def _scan(data_dir:Path,models_dir:Path,batch_names:dict,run_to_batch:dict,
         try:
             if path.is_symlink():return
             stat=path.stat(follow_symlinks=False)
-            if not os.path.isfile(path):return
+            if not statlib.S_ISREG(stat.st_mode):return
         except OSError:
             skipped+=1
             return
