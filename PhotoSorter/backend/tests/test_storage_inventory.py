@@ -46,6 +46,8 @@ def test_inventory_lists_real_paths_and_owners_without_writing(tmp_path):
     assert len(shared) == 2
     assert sum(int(r["hardlink"]) for r in shared) == 1
     assert sum(r["allocated_bytes"] for r in shared) == original.stat().st_blocks * 512
+    assert by_path["PhotoSorter/data/uploads/" + batch_id + "/one.jpg"]["allocated_bytes"] > 0
+    assert by_path["PhotoSorter/data/outputs/" + run_id + "/megaloc/SAM 0004/one.jpg"]["allocated_bytes"] == 0
     assert summary["allocated_bytes"] == sum(r["allocated_bytes"] for r in records)
 
 
