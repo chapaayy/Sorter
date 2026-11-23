@@ -115,9 +115,10 @@ def test_host_audit_sees_app_postgres_caddy_overlay_images_and_host_tmp(tmp_path
     assert result["categories"]["docker_volume"]["files"] >= 2
     assert result["categories"]["container_writable_layer"]["files"] >= 1
     assert result["categories"]["model_weights"]["files"] >= 1
-    assert result["categories"]["normalized"]["files"] == 1
+    assert result["categories"]["normalized"]["files"] >= 1  # Includes directory metadata
     report_dir = data / "audits" / "host"
     rows = list(csv.DictReader((report_dir / "latest.csv").open(encoding="utf-8-sig"), delimiter=";"))
+    assert any(r["path"] == str(normalized) and r["category"] == "normalized" for r in rows)
     assert any(r["path"] == str(wal) for r in rows)
     assert any(r["path"] == str(cert) for r in rows)
     assert any(r["path"] == str(image_file) and r["category"] == "docker_image_layer" for r in rows)
