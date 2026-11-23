@@ -26,6 +26,13 @@ const purposeNames:Record<string,string>={
 const reportUrl=computed(()=>summary.value
   ? '/api/storage/inventory/report.csv?snapshot_id='+encodeURIComponent(summary.value.snapshot_id)
   : '')
+const reportFilename=computed(()=>{
+  const value=summary.value
+  if(!value)return 'map-file-inventory.csv'
+  const date=value.captured_at.slice(0,10).replace(/-/g,'')
+  const time=value.captured_at.slice(11,19).replace(/:/g,'')
+  return 'map-file-inventory-'+date+'_'+time+(value.partial?'-partial':'')+'.csv'
+})
 const availableCategories=computed(()=>Object.entries(summary.value?.categories||{})
   .filter(([,value])=>value.files>0)
   .sort((a,b)=>b[1].allocated_bytes-a[1].allocated_bytes))
@@ -62,7 +69,7 @@ function applyFilters(){
           Только чтение — без удаления, лимитов и изменений в обработке.</p>
       </div>
       <div class="row wrap">
-        <a v-if="summary&&!scanning" class="btn secondary" :href="reportUrl"
+        <a v-if="summary&&!scanning" class="btn secondary" :href="reportUrl" :download="reportFilename"
           title="Скачать все файлы из последней проверки, без ограничения в 100 строк">
           Скачать полный отчёт CSV
         </a>
