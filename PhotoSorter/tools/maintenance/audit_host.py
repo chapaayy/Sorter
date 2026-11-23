@@ -89,6 +89,9 @@ class HostAudit:
         self.project_layers = []
         self.additional_roots = []
         self.roots_checked = []
+        self.mount_views_excluded = 0
+        self.root_order = ('uploads','reference_staging','references','outputs',
+                           'reference_exports','cache','runs','incoming','audits')
 
     def json(self,*args):
         return json.loads(self.call(*args))
@@ -159,6 +162,8 @@ class HostAudit:
             return ('shared_unattributed',hint,'Host dependencies (shared)','disk')
         if hint=='container_tmp_view':
             return ('runtime_view','container_tmp',owner,'non_additive_view')
+        if hint=='container_root_view':
+            return ('runtime_view','container_root_mount',owner,'non_additive_view')
         if hint=='open_deleted_fd':
             return ('app','open_deleted_file',owner,'disk')
         if within(path,self.project):
@@ -267,11 +272,24 @@ class HostAudit:
                 p=Path(folder)/name
                 if p.is_symlink():
                     self.add(writer,p,kind,owner,view=view)
+                elif (self.docker_root and
+                      p.parent == self.docker_root/'rootfs'/'overlayfs' and p.is_mount()):
+                    # Docker's containerd snapshotter exposes complete merged
+                    # container rootfilesystems here. They are *views*, not new
+                    # physical copies. Count the mountpoint, never its contents.
+                    self.add(writer,p,'container_root_view',name,view=True)
+                    self.mount_views_excluded += 1
                 elif kind=='shared_system' and p.is_mount():
                     self.skipped += 1
+                    if len(self.errors)<100:
+                        self.errors.append('External mount not traversed: '+str(p))
                 else:
                     keep.append(name)
-            dirs[:]=sorted(keep)
+            if Path(folder)==self.project/'PhotoSorter'/'data':
+                priority={name:i for i,name in enumerate(self.root_order)}
+                dirs[:]=sorted(keep,key=lambda name:(priority.get(name,100),name))
+            else:
+                dirs[:]=sorted(keep)
             for name in sorted(files):
                 self.add(writer,Path(folder)/name,kind,owner,view=view)
             for name in dirs:
@@ -401,6 +419,7 @@ class HostAudit:
                 'skipped_paths':self.skipped,
                 'errors':self.errors,
                 'scan_seconds':round(time.monotonic()-start,2),
+                'container_root_mounts_excluded':self.mount_views_excluded,
                 'write_sites_count':write_sites_count,
                 'docker':{
                     'containers':len(self.containers),
@@ -412,7 +431,7 @@ class HostAudit:
                 'limitations':[
                     'Point-in-time snapshot: files already created and removed cannot be recovered.',
                     'Shared system and Docker BuildKit files are listed but not assigned entirely to MAP.',
-                    'Container tmp views do not add duplicate physical bytes.',
+                    'Container tmp and merged container root views do not add duplicate physical bytes.',
                     'Concurrent file updates can change sizes during the scan.',
                     'Neither contents nor database records are read.',
                     'Code-write-site report lists candidates, not guaranteed runtime paths.',
