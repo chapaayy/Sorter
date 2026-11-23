@@ -161,7 +161,7 @@ class HostAudit:
         if within(path,self.project):
             rel = path.relative_to(self.project).parts
             if len(rel)>=3 and rel[:3]==('PhotoSorter','data','uploads'):
-                cat = 'normalized' if len(rel)>5 and rel[5]=='.normalized' else 'originals'
+                cat = 'normalized' if len(rel)>4 and rel[4]=='.normalized' else 'originals'
             elif len(rel)>=3 and rel[:3]==('PhotoSorter','data','outputs'):
                 cat = 'results_zip' if '.archives' in rel and path.suffix=='.zip' else 'results'
             elif len(rel)>=3 and rel[:3]==('PhotoSorter','data','reference_staging'):
