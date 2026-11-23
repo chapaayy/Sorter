@@ -154,6 +154,17 @@ else
   echo '[INFO] Skipped recursive chown of existing model/photo storage.'
 fi
 "${COMPOSE[@]}" up -d --build
+# Read-only host filesystem census after deployment. Root is needed for Docker
+# volumes, container overlay layers and /proc. This never deletes user files,
+# sets quotas or changes the behaviour of the workers.
+if [[ "$(id -u)" == 0 ]]; then
+  echo '[INFO] Auditing MAP storage, Docker volumes, images, logs and host runtime files.'
+  if ! python3 PhotoSorter/tools/maintenance/audit_host.py --project-root "$PWD"; then
+    echo '[WARN] Host audit reported coverage gaps; view Administration > Host audit.' >&2
+  fi
+else
+  echo '[INFO] Host audit needs root: sudo python3 PhotoSorter/tools/maintenance/audit_host.py --project-root "'"$PWD"'"'
+fi
 # Clean up the previous installer’s copy after Compose accepts the deployment.
 if grep -Eq '^ADMIN_PASSWORD=' .env.generated; then
   sed -i '/^ADMIN_PASSWORD=/d' .env.generated
