@@ -154,6 +154,11 @@ def collect(containers: list, images: list, proc_root: Path, snapshot_root: Path
     else:
         warnings.append("ctr unavailable; image snapshot references not independently checked")
 
+    if image_chains_checked and image_chains_matched < image_chains_checked:
+        warnings.append(
+            "Only " + str(image_chains_matched) + " of " +
+            str(image_chains_checked) + " MAP image chain lookups had snapshot paths"
+        )
     result = {}
     for sid, detail in evidence.items():
         roles = sorted(detail["roles"])
