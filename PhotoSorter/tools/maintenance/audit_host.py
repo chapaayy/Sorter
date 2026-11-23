@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -330,7 +331,8 @@ class HostAudit:
         if not within(target.resolve(),self.project):
             raise RuntimeError('Audit output escaped the project')
         first=datetime.now(timezone.utc)
-        tmpcsv=tmpjson=None
+        tmpcsv=tmpjson=tmpwrites=None
+        write_sites_count=0
         start=time.monotonic()
         try:
             fd,tmpcsv=tempfile.mkstemp(prefix='.host-audit-',suffix='.csv.tmp',dir=target)
@@ -365,6 +367,18 @@ class HostAudit:
                                       container.get('Name','').lstrip('/'),view=True)
                 self.host_dependencies(writer)
                 self.deleted_fds(writer)
+            # List the *potential* writes in source code as a second audit.
+            # It never opens photos, references or model files.
+            try:
+                module_path=Path(__file__).with_name('audit_write_sites.py')
+                spec=importlib.util.spec_from_file_location('map_audit_write_sites',module_path)
+                module=importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                fd,tmpwrites=tempfile.mkstemp(prefix='.host-audit-',suffix='.sites.tmp',dir=target)
+                os.close(fd)
+                write_sites_count=module.export_csv(self.project,Path(tmpwrites))
+            except (OSError,RuntimeError,ImportError,ValueError) as exc:
+                self.errors.append('Source write-site inventory failed: '+str(exc)[:200])
             report={
                 'schema':'map-host-audit-v1',
                 'snapshot_id':uuid.uuid4().hex,
@@ -378,6 +392,7 @@ class HostAudit:
                 'skipped_paths':self.skipped,
                 'errors':self.errors,
                 'scan_seconds':round(time.monotonic()-start,2),
+                'write_sites_count':write_sites_count,
                 'docker':{
                     'containers':len(self.containers),
                     'volumes':len(set(str(x[0]) for x in self.project_volumes)),
@@ -391,6 +406,7 @@ class HostAudit:
                     'Container tmp views do not add duplicate physical bytes.',
                     'Concurrent file updates can change sizes during the scan.',
                     'Neither contents nor database records are read.',
+                    'Code-write-site report lists candidates, not guaranteed runtime paths.',
                 ],
             }
             fd,tmpjson=tempfile.mkstemp(prefix='.host-audit-',suffix='.json.tmp',dir=target)
@@ -400,10 +416,13 @@ class HostAudit:
             os.chmod(tmpcsv,0o644)
             os.chmod(tmpjson,0o644)
             os.replace(tmpcsv,target/'latest.csv')
+            if tmpwrites:
+                os.chmod(tmpwrites,0o644)
+                os.replace(tmpwrites,target/'latest-write-sites.csv')
             os.replace(tmpjson,target/'latest.json')
             return report
         finally:
-            for path in (tmpcsv,tmpjson):
+            for path in (tmpcsv,tmpjson,tmpwrites):
                 if path and os.path.exists(path):
                     os.unlink(path)
 
