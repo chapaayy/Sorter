@@ -154,6 +154,40 @@ else
   echo '[INFO] Skipped recursive chown of existing model/photo storage.'
 fi
 "${COMPOSE[@]}" up -d --build
+# Optional root-owned, read-only file-event observer. It creates only its own
+# append-only audit logs, not user data or cleanup. No new Python packages.
+if [[ "$(id -u)" == 0 ]] && command -v systemctl >/dev/null 2>&1 &&
+   [[ -d /run/systemd/system ]]; then
+  AUDIT_UNIT=/etc/systemd/system/map-file-audit.service
+  cat > "$AUDIT_UNIT" <<EOF
+[Unit]
+Description=MAP read-only continuous filesystem event audit
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0027
+WorkingDirectory=$PWD
+ExecStart=/usr/bin/python3 $PWD/PhotoSorter/tools/maintenance/audit_live.py --project-root $PWD
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  if systemctl daemon-reload && systemctl enable map-file-audit.service &&
+     systemctl restart map-file-audit.service; then
+    echo '[OK] Continuous read-only MAP filesystem event audit is running.'
+  else
+    echo '[WARN] Could not start MAP filesystem observer; host snapshot audit still works.' >&2
+  fi
+else
+  echo '[INFO] Continuous host audit requires root + systemd on the VPS.'
+fi
 # Read-only host filesystem census after deployment. Root is needed for Docker
 # volumes, container overlay layers and /proc. This never deletes user files,
 # sets quotas or changes the behaviour of the workers.
