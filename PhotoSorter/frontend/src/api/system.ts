@@ -1,5 +1,5 @@
 import {api,post} from './client'
-import type {StorageUsage,StorageBreakdown,SystemStatus,RetentionPreference,StorageInventorySummary,StorageInventoryPage,HostAuditReport} from '../types/api'
+import type {StorageUsage,StorageBreakdown,SystemStatus,RetentionPreference,StorageInventorySummary,StorageInventoryPage,HostAuditReport,LiveAuditStatus} from '../types/api'
 export const systemApi={
   usage:()=>api<StorageUsage>('/storage/usage'),
   breakdown:()=>api<StorageBreakdown>('/storage/breakdown'),
@@ -9,6 +9,7 @@ export const systemApi={
       snapshot_id:snapshotId,offset:String(offset),limit:'100',category,search
     }).toString()),
   hostAudit:()=>api<HostAuditReport>('/storage/host-audit'),
+  liveAudit:()=>api<LiveAuditStatus>('/storage/host-audit/live'),
   status:()=>api<SystemStatus>('/system/status'),
   cleanup:()=>post<{removed:number}>('/system/cache/cleanup',{}),
   retention:()=>api<RetentionPreference>('/system/retention'),
