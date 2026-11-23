@@ -155,6 +155,13 @@ export interface HostAuditReport {
     matched_image_layers:number;global_shared_disk_usage:unknown[]
   }
   errors?:string[];limitations?:string[]
+  containerd_attribution?:{
+    driver?:string;matched_snapshots?:number;container_mount_references?:number
+    image_chains_checked?:number;image_chains_matched?:number
+    categories?:Record<string,HostAuditCounter>;snapshot_owners?:Record<string,{
+      category:string;owners:string[];roles:string[];sources:string[]
+    }>;warnings?:string[];limitations?:string[]
+  }
 }
 
 export interface LiveAuditStatus {
