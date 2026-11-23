@@ -62,7 +62,7 @@ function applyFilters(){
           Только чтение — без удаления, лимитов и изменений в обработке.</p>
       </div>
       <div class="row wrap">
-        <a v-if="summary&&!scanning" class="btn secondary" :href="reportUrl" download
+        <a v-if="summary&&!scanning" class="btn secondary" :href="reportUrl"
           title="Скачать все файлы из последней проверки, без ограничения в 100 строк">
           Скачать полный отчёт CSV
         </a>
