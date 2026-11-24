@@ -32,7 +32,7 @@ def ensure_directory(path, uid, gid, mode):
         path.mkdir(mode=mode)
     except FileExistsError:
         info = path.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != uid or info.st_gid != gid or info.st_mode & 0o022:
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != uid or info.st_gid != gid or stat.S_IMODE(info.st_mode) != mode:
             raise ValueError(f"Unsafe existing storage directory: {path}")
     else:
         os.chown(path, uid, gid, follow_symlinks=False)
@@ -44,11 +44,14 @@ def bootstrap(root, *, host_uid=0, host_gid=0, app_uid=APP_UID, app_gid=APP_GID)
         raise ValueError("Storage root parent must already exist")
     ensure_directory(root, host_uid, host_gid, 0o750)
     marker = root / "system/state/layout-version"
+    for ancestor in (root / "system", marker.parent):
+        if ancestor.is_symlink():
+            raise ValueError("Symlinked layout marker parent")
     if marker.is_symlink():
         raise ValueError("Symlinked layout marker")
     if marker.exists():
         info = marker.lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != host_uid or info.st_mode & 0o022:
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != host_uid or stat.S_IMODE(info.st_mode) != 0o600:
             raise ValueError("Unsafe storage layout marker")
         if marker.read_text().strip() != str(LAYOUT_VERSION):
             raise ValueError("Incompatible storage layout")

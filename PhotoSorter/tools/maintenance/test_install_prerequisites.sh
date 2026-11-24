@@ -51,6 +51,16 @@ chmod() {
 systemctl() { echo "systemctl $*" >> "$SORTER_TEST_TMP/calls"; }
 sysctl() { echo cubic; }
 chown() { return 0; }
+# The host-prerequisite test mocks the privileged storage bootstrap boundary.
+# Actual bootstrap is tested independently and under real UID in Docker CI.
+python3() {
+  if [[ "$1" == PhotoSorter/tools/maintenance/bootstrap_storage.py ]]; then
+    mkdir -p "$2/system/state"
+    printf '2\n' > "$2/system/state/layout-version"
+  else
+    command python3 "$@"
+  fi
+}
 docker() {
   case "$*" in
     'compose version') [[ -f "$SORTER_TEST_TMP/compose" ]] ;;

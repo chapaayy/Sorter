@@ -18,7 +18,14 @@ def deploy(tmp_path):
     (root/".env").write_text("DOMAIN=stage4.example.test\nADMIN_PASSWORD='new_test_admin_$password'\n",encoding="utf8")
     (root/".env.example").write_text("DOMAIN=sorter.example.com\n",encoding="utf8")
     (root/"compose.yaml").write_text("name: outdoor-sorter\n",encoding="utf8")
-    (root/".env.generated").write_text("POSTGRES_PASSWORD=synthetic_test_password_000\nADMIN_PASSWORD=synthetic_test_admin_password_111\n",encoding="utf8")
+    pinned=f"MAP_STORAGE_ROOT={root}/storage\n"
+    (root/".env.generated").write_text("POSTGRES_PASSWORD=synthetic_test_password_000\nADMIN_PASSWORD=synthetic_test_admin_password_111\n"+pinned,encoding="utf8")
+    marker=root/"storage/system/state/layout-version"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("2\n")
+    # Host prerequisite tests mock privileged bootstrap; real bootstrap tests
+    # exercise ownership and marker creation independently.
+    (host.parent/"bootstrap_storage.py").write_text("import sys; from pathlib import Path; assert (Path(sys.argv[1])/'system/state/layout-version').read_text().strip() == '2'\n")
     stub=tmp_path/"stubs"
     stub.mkdir()
     docker=stub/"docker"
@@ -92,7 +99,7 @@ def test_beta_upgrade_uses_one_command_without_approval_switches(deploy):
     result=run("--deploy",overrides={"ADMIN_PASSWORD":"ignored_shell_password"})
     assert result.returncode==0,result.stderr
     assert any(line.endswith("up -d --build") for line in log.read_text().splitlines())
-    assert (root/".env.generated").read_text()=="POSTGRES_PASSWORD=synthetic_test_password_000\n"
+    assert (root/".env.generated").read_text()==f"POSTGRES_PASSWORD=synthetic_test_password_000\nMAP_STORAGE_ROOT={root}/storage\n"
     assert "new_test_admin_" not in result.stdout+result.stderr
     assert "synthetic_test_" not in result.stdout+result.stderr
     assert (root/".env").stat().st_mode & 0o777 == 0o600
@@ -173,3 +180,14 @@ def test_explicit_bbr_disable_only_removes_owned_files(deploy):
     assert not (etc/"sysctl.d/99-photosorter-bbr.conf").exists()
     assert not (etc/"modules-load.d/99-photosorter-bbr.conf").exists()
     assert (root.parent/"active").read_text().strip()=="cubic"
+
+
+def test_storage_root_cannot_change_on_redeploy(deploy):
+    root,run,log=deploy
+    with (root/".env").open("a") as stream:
+        stream.write(f"MAP_STORAGE_ROOT={root.parent}/different\n")
+    result=run("--deploy")
+    assert result.returncode!=0
+    assert "refusing to switch roots" in result.stderr
+    assert not (root.parent/"different").exists()
+    assert "up -d" not in log.read_text()

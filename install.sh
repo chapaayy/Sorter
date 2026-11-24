@@ -45,6 +45,18 @@ if ! docker info --format '{{.ServerVersion}}' >/dev/null; then
   exit 1
 fi
 
+export MAP_STORAGE_ROOT="${MAP_STORAGE_ROOT:-$PWD/storage}"
+if [[ "$MAP_STORAGE_ROOT" != /* || "$MAP_STORAGE_ROOT" == / || "$MAP_STORAGE_ROOT" == *[!a-zA-Z0-9_./-]* ]]; then
+  echo '[ERROR] MAP_STORAGE_ROOT must be a safe absolute directory path.' >&2; exit 1
+fi
+python3 - "$MAP_STORAGE_ROOT" "$PWD" <<'PY'
+from pathlib import Path
+import sys
+root,project=map(Path,sys.argv[1:])
+if root.resolve()!=root or root==project or project.is_relative_to(root) or (root.is_relative_to(project) and root!=project/"storage"):
+    raise SystemExit("[ERROR] Unsafe storage root: use project/storage or a separate absolute directory")
+PY
+
 # Deterministic volume name derives from "name: outdoor-sorter" in compose.yaml.
 # A missing .env.generated while PostgreSQL volume exists MUST NOT generate a
 # new DB password. The admin password is configured separately in .env.
@@ -60,13 +72,22 @@ if [[ ! -f .env.generated ]]; then
   fi
   if [[ "$MODE" == "--check" ]]; then echo '[ERROR] .env.generated missing' >&2; exit 1; fi
   (umask 077; python3 - <<'PY' > .env.generated
-import secrets
+import os,secrets
 print('POSTGRES_PASSWORD='+secrets.token_hex(24))
+print('MAP_STORAGE_ROOT='+os.environ['MAP_STORAGE_ROOT'])
 PY
   )
   echo '[INFO] Created PostgreSQL credentials in .env.generated.'
 fi
 
+# The generated host path is immutable for this installation.
+if [[ "$(grep -c '^MAP_STORAGE_ROOT=' .env.generated || true)" != 1 ]] ||
+   ! grep -Fxq "MAP_STORAGE_ROOT=$MAP_STORAGE_ROOT" .env.generated; then
+  echo '[ERROR] Storage root does not match the installation credentials; refusing to switch roots.' >&2; exit 1
+fi
+if [[ "$EXISTING_POSTGRES" -eq 1 && ! -f "$MAP_STORAGE_ROOT/system/state/layout-version" ]]; then
+  echo '[ERROR] Existing database but no v2 layout marker; refusing to initialize another storage root.' >&2; exit 1
+fi
 # Verify that secrets exist without echoing them to CI/logs.
 if ! grep -Eq '^POSTGRES_PASSWORD=.{16,}$' .env.generated; then
   echo '[ERROR] .env.generated incomplete; restore correct credentials.' >&2
@@ -96,10 +117,6 @@ PY
 fi
 if [[ -z "${PHOTOSORTER_CPU_THREADS:-}" ]]; then
   export PHOTOSORTER_CPU_THREADS="${PHOTOSORTER_WORKER_CPUS}"
-fi
-export MAP_STORAGE_ROOT="${MAP_STORAGE_ROOT:-$PWD/storage}"
-if [[ "$MAP_STORAGE_ROOT" != /* || "$MAP_STORAGE_ROOT" == / || "$MAP_STORAGE_ROOT" == *[!a-zA-Z0-9_./-]* ]]; then
-  echo '[ERROR] MAP_STORAGE_ROOT must be a safe absolute directory path.' >&2; exit 1
 fi
 COMPOSE=(docker compose --env-file .env --env-file .env.generated)
 "${COMPOSE[@]}" config --quiet
