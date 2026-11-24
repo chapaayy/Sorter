@@ -92,31 +92,60 @@ export interface ModelInfo {
   models: Array<{ id: string; title: string; available: boolean; reason?: string; downloadable: boolean }>
   device: string; downloads?: Record<string, unknown>
 }
-export interface StorageUsage {
-  disk: { total_bytes: number; used_bytes: number; available_bytes: number; used_fraction: number
-    warning?: 'warning' | 'critical' | null; reserved_bytes?: number; admission_ok?: boolean }
-  categories_bytes: Record<string, number>; database_estimated_bytes?: number | null; not_scanned?: string[]
-  journals?: {at:string|null;services:Record<string,{bytes:number|null;budget_bytes:number;partial:boolean}>}
-  registry?:{sampled_at:string|null;reconciled_at:string|null;partial:boolean;pending_changes:number;missing_expected?:number;issues?:Record<string,number>;cross_owner_inode_conflicts?:number}
-}
 export interface StorageCounter {
-  allocated_bytes:number;logical_bytes:number;hardlink_reused_bytes:number
-  files:number;hardlink_paths:number
+  allocated_bytes:number;logical_bytes:number;files:number;hardlink_paths:number
+  hardlink_reused_bytes?:number;charged_bytes?:number
 }
-export interface StorageBatchBreakdown {
-  batch_id:string;display_name:string
-  allocated_bytes:number;logical_bytes:number;hardlink_reused_bytes:number
-  originals:StorageCounter;normalized:StorageCounter;results_files:StorageCounter
-  results_zip:StorageCounter;results_temporary:StorageCounter
+export interface StorageCapacity {
+  total_bytes:number;used_bytes:number;available_bytes:number
+  map_allocated_bytes?:number;outside_map_or_unexplained_bytes?:number
 }
-export interface StorageBreakdown {
-  reference_history?:{objects:number;object_bytes:number;embeddings:number;embedding_bytes:number;missing:number;partial?:boolean}|null
-  categories:Record<string,StorageCounter>
-  batches:StorageBatchBreakdown[];total_batches:number;unlisted_batches:number
-  files_scanned:number;hardlink_paths:number;hardlink_reused_bytes:number
-  allocated_total_bytes:number;scan_seconds:number;partial:boolean
-  skipped_paths:number;captured_at:string;basis:string;batch_metadata_available:boolean
+export interface StorageHistory {
+  objects:number;object_bytes:number;embeddings:number;embedding_bytes:number;missing:number;partial:boolean
 }
+export interface StorageRegistry {
+  sampled_at:string|null;reconciled_at:string|null;started_at:string|null;requested_at?:string|null
+  partial:boolean;stale:boolean;reconciling:boolean;reconciliation_requested?:boolean;pending_changes:number;errors:number
+  allocated_bytes?:number;logical_bytes?:number;categories?:Record<string,StorageCounter>
+  owners?:Record<string,StorageCounter>;devices?:Record<string,StorageCounter>
+  temporary?:StorageCounter;temporary_peak_bytes:number;reference_history?:StorageHistory
+  missing_expected?:number;issues?:Record<string,number>;cross_owner_inode_conflicts?:number
+  reserved_bytes?:number;reservations?:Record<string,{bytes:number;operations:number}>
+  unfinished_fo?:{files:number;remaining_bytes:number};unfinished_references?:{files:number;remaining_bytes:number}
+  temporary_operations?:{rows:Array<{operation_key:string;category:string;owner_id:number|null;batch_id:string|null;run_id:string|null;files:number;logical_bytes:number;allocated_bytes:number}>;total_groups:number;partial:boolean}
+}
+export interface StorageHost {
+  at:string;partial:boolean;stale:boolean;errors:number;engine_sampled_at?:string
+  categories:Record<string,StorageCounter>;devices:Record<string,StorageCounter>
+  unknown_sample?:Array<{path:string;reason:string;logical_bytes:number}>
+  postgres_wal_subset_bytes?:number;postgres_wal_delta_bytes?:number|null
+  docker?:{available:boolean;shared_engine_totals:Array<{Type?:string;Size?:string;Reclaimable?:string;TotalCount?:string|number;Active?:string|number}>;map_revision_images:Array<{ID:string;Tag:string;Size:string}>;limitations:string[]}
+  tmpfs?:{available:boolean;partial:boolean;devices:Record<string,StorageCapacity>;mounts:Array<{service:string;mount:string;device:string}>}|null
+  deleted_open?:{allocated_bytes:number;logical_bytes:number;files:number;partial:boolean}|null
+}
+export interface StorageUsage {
+  disk:StorageCapacity & {device?:number;used_fraction:number;reserved_bytes?:number;allocatable_bytes?:number;warning?:'warning'|'critical'|null}
+  filesystems?:Record<string,StorageCapacity>;categories_bytes:Record<string,number>
+  registry?:StorageRegistry;host?:StorageHost|null;database_estimated_bytes?:number|null
+  postgres_diagnostics?:{open_transactions:number;long_transactions:number;oldest_transaction_seconds:number;estimated_dead_tuples:number;autovacuum_count:number;last_autovacuum:string|null}|null
+  journals?:{at:string|null;services:Record<string,{bytes:number|null;budget_bytes:number;partial:boolean}>}
+}
+export interface StorageAccount {id:string;username:string;access_role:string;usage?:StorageCounter|null}
+export interface StorageAccountsPage {rows:StorageAccount[];total:number;offset:number;limit:number;sampled_at:string|null;partial:boolean}
+export interface StorageAccountDetail {
+  account:StorageAccount;categories:Record<string,StorageCounter>;batches:Array<{batch_id:string;display_name:string;categories:Record<string,StorageCounter>}>
+  total:number;offset:number;limit:number;sampled_at:string|null;basis:string
+}
+export interface StorageOperations {
+  active_queue:Array<{seq:number;kind:string;state:string;fo_run_id:string|null;batch_id:string|null;display_name:string|null;started_at:string|null}>
+  archives:Array<{category:string;files:number;expired:number;next_eligible_at:string}>
+  unfinished_fo_next_eligible_at:string|null;archive_ttl_seconds:number;scratch_grace_seconds:number
+  cleanup_worker:{alive:boolean;last_seen:string|null}
+}
+export interface StorageIssues {files:Array<{path:string;category:string;issue:string;logical_bytes:number;allocated_bytes:number}>;missing:Array<{path:string;issue:string}>;offset:number;limit:number;snapshot:string|null}
+export type MaintenanceKind='expired_archives'|'unused_thumbnails'|'abandoned_scratch'
+export interface StorageMaintenance {kind:MaintenanceKind;state:'queued'|'running'|'completed'|'failed'|'interrupted';requested_at:string;started_at:string|null;finished_at:string|null;removed:number|null;detail:string|null}
+export interface StoragePreview {kind:MaintenanceKind;files:number;allocated_bytes:number;sampled_at:string|null;partial:boolean;basis:string}
 export interface SystemStatus {
   at: string; worker: { queue: Record<string, number>; expected_threads: number }
   thumbnails: Record<string, number>;

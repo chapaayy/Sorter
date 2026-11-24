@@ -61,10 +61,10 @@ function applyFilters(){
 </script>
 
 <template>
-  <section class="panel stack">
+  <section class="panel stack" aria-label="Реестр файлов">
     <div class="row between wrap">
       <div class="stack" style="gap:4px">
-        <h2>Учёт файлов MAP</h2>
+        <h2>Реестр файлов MAP</h2>
         <p class="meta">Снимок автоматического реестра: пути, размеры, категории и связь с ФО.
           Только чтение — без удаления, лимитов и изменений в обработке.</p>
       </div>
@@ -74,7 +74,7 @@ function applyFilters(){
           Скачать полный отчёт CSV
         </a>
         <UiButton :loading="scanning" :disabled="scanning" @click="scan">
-          {{summary?'Повторить проверку':'Проверить файлы'}}
+          {{summary?'Обновить список':'Показать файлы'}}
         </UiButton>
       </div>
     </div>
@@ -144,7 +144,7 @@ function applyFilters(){
       <details>
         <summary>Что пока не учитывается по отдельным файлам</summary>
         <p class="meta">Приложение видит только подключённые каталоги данных и моделей.
-          Системные Docker-тома и временные файлы вне этих каталогов требуют отдельного мониторинга.</p>
+          Защищённые данные PostgreSQL, Caddy, журналы и Docker показываются отдельно в обзоре. Этот список содержит только пути реестра приложения.</p>
         <ul><li v-for="item in summary.not_scanned" :key="item">{{item}}</li></ul>
       </details>
     </template>
