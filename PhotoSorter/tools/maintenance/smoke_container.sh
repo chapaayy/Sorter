@@ -41,11 +41,14 @@ docker compose exec -T api python - <<'PY'
 import os
 from pathlib import Path
 from app.config import APP_STORAGE_ROOT
-from app.storage.filesystem import atomic_write, file_stat
+from app.storage.filesystem import atomic_write, file_stat, atomic_publish
 from app.storage.temporary import temporary_operation
 assert os.getuid() == 10001
 assert APP_STORAGE_ROOT == Path("/storage/app")
 assert not Path("/storage/system").exists()
+assert not Path("/storage/infrastructure").exists()
+assert not Path("/workspace/PhotoSorter/data").exists()
+assert not Path("/workspace/Models").exists()
 with temporary_operation(APP_STORAGE_ROOT, "api") as scratch:
     key = scratch.relative_to(APP_STORAGE_ROOT) / "a"
     with atomic_write(APP_STORAGE_ROOT, key) as f:
@@ -54,7 +57,7 @@ with temporary_operation(APP_STORAGE_ROOT, "api") as scratch:
     try:
         os.link(APP_STORAGE_ROOT / key, target)
         assert target.stat().st_ino == file_stat(APP_STORAGE_ROOT, key)["inode"]
-        os.replace(target, scratch / "b")
+        atomic_publish(APP_STORAGE_ROOT, "users/ci-link", (scratch / "b").relative_to(APP_STORAGE_ROOT))
         assert (scratch / "b").read_bytes() == b"synthetic"
     finally:
         target.unlink(missing_ok=True)

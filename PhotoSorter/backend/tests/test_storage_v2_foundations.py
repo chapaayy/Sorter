@@ -91,3 +91,28 @@ def test_existing_owned_paths_reject_internal_symlinks(tmp_path):
             check(tmp_path / "alias/photo.jpg", tmp_path)
         with pytest.raises(ValueError):
             check(tmp_path / "real/../real/photo.jpg", tmp_path)
+
+
+def test_publish_and_unlink_refuse_nonregular_targets(tmp_path):
+    from app.storage.filesystem import atomic_publish, safe_unlink
+    with atomic_write(tmp_path, "staged/a") as stream:
+        stream.write(b"payload")
+    (tmp_path / "published").mkdir()
+    sentinel=tmp_path / "sentinel"
+    sentinel.write_bytes(b"keep")
+    (tmp_path / "published/a").symlink_to(sentinel)
+    with pytest.raises(ValueError):
+        atomic_publish(tmp_path, "staged/a", "published/a")
+    with pytest.raises(ValueError):
+        safe_unlink(tmp_path, "published/a")
+    with pytest.raises(ValueError):
+        with atomic_write(tmp_path, "published/a") as stream:
+            stream.write(b"bad")
+    assert sentinel.read_bytes()==b"keep"
+    assert (tmp_path / "staged/a").read_bytes()==b"payload"
+    (tmp_path / "published/a").unlink()
+    atomic_publish(tmp_path, "staged/a", "published/a")
+    assert not (tmp_path / "staged/a").exists()
+    assert (tmp_path / "published/a").read_bytes()==b"payload"
+    safe_unlink(tmp_path, "published/a")
+    assert not (tmp_path / "published/a").exists()

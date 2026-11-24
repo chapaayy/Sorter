@@ -2,6 +2,8 @@
 from __future__ import annotations
 import uuid
 import hashlib
+import os
+from app.storage.filesystem import safe_read
 from fastapi import HTTPException
 from ..database import connect
 from ..db.repositories import batches as repository
@@ -150,24 +152,31 @@ def pending_uploads(batch_id):
     base=DATA_DIR/"incoming"
     result=[]
     for row in rows:
-        part=base/f"{row['id']}.part"
-        exists=part.is_file() and not part.is_symlink()
-        actual=part.stat().st_size if exists else 0
-        # Full received-prefix verification prevents stitching together two
-        # different originals with the same filename and a similar JPEG header.
-        # Completed .part files need no source-file verification to finalize.
-        prefix_bytes=actual if 0<actual<row["declared_size"] else 0
+        part_key=f"{row['id']}.part"
+        exists=False
+        actual=0
+        prefix_bytes=0
         prefix_hash=None
-        if prefix_bytes:
-            digest=hashlib.sha256()
-            with part.open("rb") as stream:
-                remaining=prefix_bytes
-                while remaining:
-                    chunk=stream.read(min(1024*1024,remaining))
-                    if not chunk:break
-                    digest.update(chunk)
-                    remaining-=len(chunk)
-            if remaining==0:prefix_hash=digest.hexdigest()
+        # A single fd binds the measured size and prefix bytes to the same
+        # regular file, without following a replaced parent or leaf symlink.
+        try:
+            with safe_read(base,part_key) as stream:
+                exists=True
+                actual=os.fstat(stream.fileno()).st_size
+                prefix_bytes=actual if 0<actual<row["declared_size"] else 0
+                if prefix_bytes:
+                    digest=hashlib.sha256()
+                    remaining=prefix_bytes
+                    while remaining:
+                        chunk=stream.read(min(1024*1024,remaining))
+                        if not chunk:break
+                        digest.update(chunk)
+                        remaining-=len(chunk)
+                    if remaining==0:prefix_hash=digest.hexdigest()
+        except FileNotFoundError:
+            pass
+        except (ValueError,OSError) as exc:
+            raise HTTPException(409,"Небезопасный или недоступный файл загрузки") from exc
         result.append({
             "id":str(row["id"]),"filename":row["filename"],
             "size":row["declared_size"],"received":actual,

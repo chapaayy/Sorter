@@ -67,3 +67,20 @@ def test_stage_one_site_review_coverage():
     reviewed = re.findall(r'^- \*\*`([^`]+)`\*\*', modules, re.M)
     assert len(expected) == len(set(expected)) == 96
     assert Counter(reviewed) == Counter(expected)
+
+
+def test_runtime_and_build_exclusions():
+    import subprocess
+    root=CONTRACT.parent.parent
+    targets=["storage/app/users/1/private.jpg","storage/system/backups/updater/db.dump",
+             ".env",".env.generated","Models/models/private.bin","PhotoSorter/data/private.jpg"]
+    result=subprocess.run(["git","check-ignore","--no-index",*targets],cwd=root,text=True,capture_output=True)
+    assert result.returncode==0
+    assert set(result.stdout.splitlines())==set(targets)
+    dockerignore=(root/".dockerignore").read_text().splitlines()
+    assert {"/storage/",".env",".env.generated","Models/","PhotoSorter/data/"}<=set(dockerignore)
+    compose=(root/"compose.yaml").read_text()
+    assert compose.count("/app:/storage/app")==1
+    assert "*app_storage_bind" in compose
+    assert "/workspace/PhotoSorter/data" not in compose
+    assert "/workspace/Models" not in compose
