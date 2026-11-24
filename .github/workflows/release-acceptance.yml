@@ -36,7 +36,7 @@ jobs:
               before = os.environ.get("BEFORE", "")
               try:
                   paths = subprocess.check_output(["git", "diff", "--name-only", before, "HEAD"], text=True).splitlines()
-                  allowed = {"PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md"}
+                  allowed = {"PhotoSorter/tools/maintenance/ci_vm_health.py", "PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md"}
                   old = subprocess.check_output(["git", "show", before+":.github/workflows/release-acceptance.yml"], text=True)
                   new = open(".github/workflows/release-acceptance.yml").read()
                   # Only skip if the load job itself and every workload/runtime file are identical.

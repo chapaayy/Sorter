@@ -4,6 +4,8 @@ set -euo pipefail
 [[ "${CI:-}" == true && "${GITHUB_ACTIONS:-}" == true ]] || exit 1
 cd "$(dirname "$0")/../../.."
 revision="$(git rev-parse HEAD)"
+health_probe="$PWD/PhotoSorter/tools/maintenance/ci_vm_health.py"
+python3 "$health_probe" --self-test
 vm="$(mktemp -d)"
 cleanup() {
   local rc=$?
@@ -132,6 +134,8 @@ sha256sum -c /root/stage10-model.sha
 sha256sum -c /root/stage10-photo.sha
 echo STAGE10_REPEAT_INSTALL_OK
 printf '%s\n' "$revision" > /root/stage10-ready
+install -m 0700 /home/ci/ci_vm_health.py /root/stage10-health.py
+python3 /root/stage10-health.py --mode baseline --output /root/stage10-health-before.json
 sync
 GUEST
 cat > "$vm/after.sh" <<'GUEST'
@@ -143,20 +147,9 @@ test -s /root/stage10-boot
 test "$(cat /proc/sys/kernel/random/boot_id)" != "$(cat /root/stage10-boot)"
 echo "STAGE10_BOOT_ID_CHANGED $(cat /root/stage10-boot) -> $(cat /proc/sys/kernel/random/boot_id)"
 # No restart/start or compose up: verify recovery by systemd and Docker alone.
-all_healthy() {
-  local service id
-  systemctl is-active --quiet docker.service map-updater.service map-log-maintenance.timer || return 1
-  for service in postgres caddy api worker thumbnail cleanup; do
-    id=$(docker compose --env-file .env --env-file .env.generated ps -q "$service") || return 1
-    [[ -n "$id" && "$(docker inspect -f '{{.State.Health.Status}}' "$id")" == healthy ]] || return 1
-  done
-  curl -kfsS --max-time 5 https://localhost/api/health >/dev/null
-}
-for _ in $(seq 1 120); do
-  if all_healthy; then break; fi
-  sleep 2
-done
-all_healthy
+# Only postgres/api have native healthchecks; Caddy uses the real HTTPS route,
+# and the three background workers must publish new, advancing DB heartbeats.
+python3 /root/stage10-health.py --mode reboot --previous /root/stage10-health-before.json --output /root/stage10-health-reboot.json
 echo STAGE10_ALL_SERVICES_AUTO_RECOVERED_OK
 systemctl is-enabled --quiet map-updater.service
 systemctl is-active --quiet map-updater.service
@@ -195,17 +188,17 @@ for _ in $(seq 1 600); do
 done
 api https://localhost/api/system/update | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["phase"]=="success" and not d["busy"]'
 test "$(git rev-parse HEAD)" = "$target"
+python3 /root/stage10-health.py --mode update --previous /root/stage10-health-reboot.json --output /root/stage10-health-update.json
 systemctl is-active --quiet map-updater.service
 sha256sum -c /root/stage10-secrets.sha
 sha256sum -c /root/stage10-model.sha
 openssl s_client -connect localhost:443 -servername localhost </dev/null 2>/dev/null | openssl x509 -fingerprint -sha256 -noout | cmp - /root/stage10-cert
 api "https://localhost/api/batches/$id" | python3 -c 'import json,sys;assert json.load(sys.stdin)["display_name"]=="STAGE10_REBOOT_SENTINEL"'
 sha256sum -c /root/stage10-photo.sha
-all_healthy
 echo STAGE10_REAL_SYSTEMD_API_UPDATE_OK
 GUEST
 # SCP over the same isolated forwarded SSH connection.
-scp -i "$vm/key" -P 2222 -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$vm/before.sh" "$vm/after.sh" ci@127.0.0.1:/home/ci/
+scp -i "$vm/key" -P 2222 -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$vm/before.sh" "$vm/after.sh" "$health_probe" ci@127.0.0.1:/home/ci/
 "${sshvm[@]}" -n sudo bash /home/ci/before.sh "$revision"
 "${sshvm[@]}" -n sudo test -s /root/stage10-ready
 old_boot=$("${sshvm[@]}" -n sudo cat /root/stage10-boot)
