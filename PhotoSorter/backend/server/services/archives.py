@@ -1,8 +1,6 @@
 """Reusable, seekable ZIP archives for completed MegaLoc runs.
 
-Build once atomically inside the run's output directory. Starlette FileResponse
-serves byte ranges and Content-Length; browser reconnects never rebuild the ZIP.
-Cache is removed by the existing per-run output cleanup.
+Build only on request, atomically; expire after one hour under archive_cache.
 """
 from __future__ import annotations
 
@@ -15,6 +13,7 @@ import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 from fastapi import HTTPException
+from . import archive_cache
 from ..storage import paths as storage_paths
 from ..storage.paths import owned_file, owned_directory
 
@@ -68,7 +67,7 @@ def prepare(run_id:str,sam:str|None,selected:list[tuple[Path,str]],*,progress=No
     target=_cache_path(run_id,sam,selected)
     total=sum(source.stat().st_size for source,_ in selected)
     lock=target.with_suffix(".lock")
-    with lock.open("a+b") as handle:
+    with archive_cache.pin(target.parent), os.fdopen(os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600),"a+b") as handle:
         fcntl.flock(handle.fileno(),fcntl.LOCK_EX)
         root=output_root()
         try:
@@ -78,34 +77,39 @@ def prepare(run_id:str,sam:str|None,selected:list[tuple[Path,str]],*,progress=No
                     if progress:progress(total,total)
                     return target
                 target.unlink()
-            fd,tmp=tempfile.mkstemp(dir=target.parent,prefix=".archive-",suffix=".tmp")
-            try:
-                with os.fdopen(fd,"wb") as output:
-                    with zipfile.ZipFile(output,mode="w",compression=zipfile.ZIP_STORED,
-                                         allowZip64=True) as archive:
-                        done=0
-                        for source,name in selected:
-                            if should_stop and should_stop():
-                                raise InterruptedError("Подготовка архива остановлена")
-                            owned_file(source,root)
-                            # JPEG already compressed: store without recompressing.
-                            archive.write(source,arcname=name,compress_type=zipfile.ZIP_STORED)
-                            done+=source.stat().st_size
-                            if progress:progress(done,total)
-                    output.flush()
-                    os.fsync(output.fileno())
-                # Publishing an archive is the last completion gate: verify
-                # every entry's CRC and count before making the ZIP visible.
-                with zipfile.ZipFile(tmp,"r") as verified:
-                    if len(verified.infolist())!=len(selected):
-                        raise OSError("ZIP не содержит все фотографии")
-                    corrupt=verified.testzip()
-                    if corrupt is not None:
-                        raise OSError("Ошибка проверки ZIP: "+corrupt)
-                os.chmod(tmp,0o444)
-                os.replace(tmp,target)
-                return target
-            finally:
-                Path(tmp).unlink(missing_ok=True)
+            with archive_cache.build_space(output_root().parent,total+1024*1024+len(selected)*2048):
+                return _build(target,selected,total,progress,should_stop,root)
         finally:
             fcntl.flock(handle.fileno(),fcntl.LOCK_UN)
+
+def _build(target,selected,total,progress,should_stop,root):
+    fd,tmp=tempfile.mkstemp(dir=target.parent,prefix=".archive-",suffix=".tmp")
+    try:
+        with os.fdopen(fd,"wb") as output:
+            with zipfile.ZipFile(output,mode="w",compression=zipfile.ZIP_STORED,
+                                 allowZip64=True) as archive:
+                done=0
+                for source,name in selected:
+                    if should_stop and should_stop():
+                        raise InterruptedError("Подготовка архива остановлена")
+                    owned_file(source,root)
+                    # JPEG already compressed: store without recompressing.
+                    archive.write(source,arcname=name,compress_type=zipfile.ZIP_STORED)
+                    done+=source.stat().st_size
+                    if progress:progress(done,total)
+            output.flush()
+            os.fsync(output.fileno())
+        # Publishing an archive is atomic: verify
+        # every entry's CRC and count before making the ZIP visible.
+        with zipfile.ZipFile(tmp,"r") as verified:
+            if len(verified.infolist())!=len(selected):
+                raise OSError("ZIP не содержит все фотографии")
+            corrupt=verified.testzip()
+            if corrupt is not None:
+                raise OSError("Ошибка проверки ZIP: "+corrupt)
+        os.utime(tmp,None)
+        os.chmod(tmp,0o444)
+        os.replace(tmp,target)
+        return target
+    finally:
+        Path(tmp).unlink(missing_ok=True)

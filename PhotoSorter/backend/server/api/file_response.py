@@ -13,9 +13,10 @@ from ..services import operations
 class LeasedFileResponse(FileResponse):
     """Own the operation lease for every FileResponse exit, not just success."""
 
-    def __init__(self, path, *, lease, **kwargs):
+    def __init__(self, path, *, lease=None, archive_pin=None, **kwargs):
         super().__init__(path, **kwargs)
         self.lease = lease
+        self.archive_pin = archive_pin
 
     async def __call__(self, scope, receive, send):
         last_heartbeat = time.monotonic()
@@ -33,6 +34,8 @@ class LeasedFileResponse(FileResponse):
         finally:
             # FileResponse can return early for 400/416 or stop on disconnect.
             # Don't defer the release to its success-only background callback.
+            if self.archive_pin is not None:
+                self.archive_pin.close()
             if self.lease:
                 with CancelScope(shield=True):
                     await run_in_threadpool(operations.finish, self.lease)

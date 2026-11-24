@@ -23,7 +23,7 @@ from ..database import connect
 from ..db.repositories import reference_versions
 from ..storage import reference_objects
 from ..storage.paths import owned_directory, owned_file
-from . import archives, disk_guard
+from . import archives, archive_cache
 from .archive_layout import _unique, portable_name
 from .construction_catalog import construction_title
 
@@ -102,8 +102,7 @@ def prepare(plan: ReferenceExport) -> Path:
     lock = directory / (plan.key + ".lock")
     if lock.is_symlink() or target.is_symlink():
         raise HTTPException(409, "Небезопасный путь ZIP образцов")
-    descriptor = os.open(lock, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
-    with os.fdopen(descriptor, "a+b") as handle:
+    with archive_cache.pin(directory), os.fdopen(os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600), "a+b") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
             if target.exists():
@@ -112,28 +111,33 @@ def prepare(plan: ReferenceExport) -> Path:
                     return target
                 target.unlink()
             # ZIP_STORED needs almost as much free space as the source images.
-            disk_guard.check_admission(sum(size for _, _, size in plan.files) + 1024 * 1024)
-            fd, temporary = tempfile.mkstemp(prefix=".references-", suffix=".tmp", dir=directory)
-            try:
-                with os.fdopen(fd, "wb") as output:
-                    with zipfile.ZipFile(output, mode="w", compression=zipfile.ZIP_STORED,
-                                         allowZip64=True) as archive:
-                        for source, name, size in plan.files:
-                            reference_objects.verify(source, reference_objects.ROOT, size)
-                            archive.write(source, arcname=name, compress_type=zipfile.ZIP_STORED)
-                    output.flush()
-                    os.fsync(output.fileno())
-                with zipfile.ZipFile(temporary) as archive:
-                    if len(archive.infolist()) != len(plan.files) or archive.testzip() is not None:
-                        raise OSError("Проверка целостности ZIP образцов не пройдена")
-                os.chmod(temporary, 0o444)
-                os.replace(temporary, target)
-                return target
-            finally:
-                Path(temporary).unlink(missing_ok=True)
+            with archive_cache.build_space(EXPORTS.parent,sum(size for _, _, size in plan.files)+1024*1024+len(plan.files)*2048):
+                return _build(plan,target,directory)
         except OSError as exc:
             if exc.errno == errno.ENOSPC:
                 raise HTTPException(507, "Недостаточно места для ZIP образцов") from exc
             raise
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _build(plan,target,directory):
+    fd, temporary = tempfile.mkstemp(prefix=".references-", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "wb") as output:
+            with zipfile.ZipFile(output, mode="w", compression=zipfile.ZIP_STORED,
+                                 allowZip64=True) as archive:
+                for source, name, size in plan.files:
+                    reference_objects.verify(source, reference_objects.ROOT, size)
+                    archive.write(source, arcname=name, compress_type=zipfile.ZIP_STORED)
+            output.flush()
+            os.fsync(output.fileno())
+        with zipfile.ZipFile(temporary) as archive:
+            if len(archive.infolist()) != len(plan.files) or archive.testzip() is not None:
+                raise OSError("Проверка целостности ZIP образцов не пройдена")
+        os.utime(temporary, None)
+        os.chmod(temporary, 0o444)
+        os.replace(temporary, target)
+        return target
+    finally:
+        Path(temporary).unlink(missing_ok=True)

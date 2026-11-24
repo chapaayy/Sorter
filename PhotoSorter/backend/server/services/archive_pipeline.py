@@ -1,4 +1,4 @@
-"""Automatic final ZIP stage, shared by the worker and explicit archive repair."""
+"""Build download plans from the saved MegaLoc results."""
 from __future__ import annotations
 from pathlib import Path
 from app.results.repository import load_model
@@ -29,20 +29,7 @@ def named_plan(run_id,batch_id,title=None,sam=None):
         return archive_layout.build(db,run_id,batch_id,title,rows,sam)
 
 def build_for_job(job):
-    try:
-        plan=named_plan(job.info["id"],job.info["batch_id"])
-        job.info["archive_state"]="preparing"
-        total=sum(path.stat().st_size for path,_ in plan.files)
-        job.progress("megaloc","archive",0,total,"Подготовка полного ZIP")
-        job.log("INFO","Создание полного ZIP-архива","megaloc")
-        archive=archives.prepare(job.info["id"],None,plan.files,
-            progress=lambda done,size: job.progress("megaloc","archive",done,size,"Подготовка ZIP"),
-            should_stop=job.stopped)
-        job.info.update(archive_state="ready",archive_bytes=archive.stat().st_size,
-                        archive_file=archive.name,archive_title=plan.title)
-        job.progress("megaloc","archive",total,total,"Архив готов")
-        job.log("INFO","ZIP готов к скачиванию","megaloc")
-    except BaseException:
-        job.info["archive_state"]="failed"
-        job.save()
-        raise
+    """Finalize the run without creating or opening a ZIP."""
+    for key in ("archive_file","archive_bytes","archive_title","archive_retry"):
+        job.info.pop(key,None)
+    job.info["archive_state"]="on_demand"

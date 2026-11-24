@@ -194,8 +194,15 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     videos=[row for row in rows if row['media_kind']=='video']
     assert len(videos)==1 and videos[0]['assigned_sam']=='SAM 0001'
     assert not list(job.path.glob('media-frames-*'))
-    archive=archives.published(item['id'],job.info['archive_file'])
-    with zipfile.ZipFile(archive) as zipped:
+    assert job.info['archive_state']=='on_demand'
+    assert not list((thumbs/'outputs'/item['id']).rglob('*.zip'))
+    from server.api.routes.downloads import router as download_router
+    app=FastAPI()
+    app.include_router(download_router)
+    with TestClient(app) as client:
+        response=client.get('/api/download/'+item['id'])
+    assert response.status_code==200
+    with zipfile.ZipFile(BytesIO(response.content)) as zipped:
         assert {Path(name).name for name in zipped.namelist()}=={'Альфа.jpg','Клип.mp4','Совместимый.JPG'}
         mp4=next(name for name in zipped.namelist() if name.endswith('.mp4'))
         assert '/Видео/SAM 0001' in mp4

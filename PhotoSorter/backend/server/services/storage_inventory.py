@@ -52,7 +52,7 @@ def _purpose(category: str, parts: tuple[str, ...]) -> str:
     if category in ("runs", "logs", "reference_other"):
         return "service"
     if category in ("results_zip", "references_zip"):
-        return "archive"
+        return "temporary"
     if category == "other":
         return "unknown"
     return "permanent"

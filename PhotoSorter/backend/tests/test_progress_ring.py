@@ -29,8 +29,8 @@ def test_estimates_progress_for_entire_run_and_eta_adapts():
     tracker.update('megaloc','queries',30,189,50)
     info=tracker.calculate(50)
     assert 0 < info['overall_percent'] < 100
-    # The new ZIP stage has not been measured yet, so a numeric ETA would
-    # pretend we know the future archive duration.
+    # Reference cache access is not yet measured; ZIP is not a processing stage.
+    assert all(p.stage!='archive' for p in tracker.phases)
     assert info['estimated_remaining_seconds'] is None
     assert info['eta_status']=='partial'
     tracker.update('megaloc','queries',80,189,80)

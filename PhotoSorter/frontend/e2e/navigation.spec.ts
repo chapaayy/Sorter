@@ -17,7 +17,7 @@ async function mock(page:Page){
   const workloads={mode:'manual',fo_threads:6,reference_threads:6,max_threads:7,
     total_cpus:8,model_cpus:6,system_cpus:2,max_model_cpus:7,
     background_policy:'cpu_shares_no_quota',model_limit_applies:'next_task',
-    zip_mode:'single_thread_in_worker',docker_limits_editable:false,applies:'next_task'}
+    zip_mode:'on_demand',docker_limits_editable:false,applies:'next_task'}
   await page.route(/^https?:\/\/[^/]+\/api\//,async route=>{
     const url=new URL(route.request().url()),p=url.pathname,method=route.request().method()
     if(p==='/api/auth/me')return respond(route,{username:'admin'})
@@ -185,7 +185,7 @@ test('full ZIP is ready for direct download without extra confirmation',async({p
   })
   await page.goto('/results/'+rid)
   await expect(page.getByRole('heading',{name:'Выезд Самара 05.11'})).toBeVisible()
-  await expect(page.locator('.results-zip-bar')).toContainText('ZIP готов')
+  await expect(page.locator('.results-zip-bar')).toContainText('Результаты готовы')
   await expect(page.locator('.results-zip-bar')).toContainText('Автоудаление не назначено')
   await expect(page.getByRole('button',{name:/Скачать всю сортировку ZIP/})).toBeVisible()
   await expect(page.getByRole('button',{name:'Я сохранил полный архив'})).toHaveCount(0)
@@ -1706,7 +1706,7 @@ test('ZIP retention is compact and the extend action is preserved',async({page,i
   })
   await page.goto('/results/'+rid)
   const bar=page.locator('.results-zip-bar')
-  await expect(bar).toContainText('ZIP готов')
+  await expect(bar).toContainText('Результаты готовы')
   await expect(bar).toContainText('Автоудаление:')
   await expect(bar.getByRole('button',{name:'Продлить хранение'})).toBeEnabled()
   const size=await bar.boundingBox()

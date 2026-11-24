@@ -12,42 +12,23 @@ from server.storage import paths
 from .test_stage1_lifecycle import sandbox,db,_batch,_job
 
 
-def test_completed_zip_missing_can_be_queued_for_zip_only_repair(sandbox):
+def test_zip_absence_is_normal_and_never_changes_job_status(sandbox):
     batch=_batch(sandbox)
     run=_job(sandbox,batch)
-    folder=paths.run_dir(run)/"megaloc"
-    source=folder/"SAM 0001"/"one.jpg"
-    source.parent.mkdir(parents=True,exist_ok=True)
-    source.write_bytes(b"photo bytes")
-    manifest=folder/"manifest.json"
-    manifest.write_text(json.dumps([{"copy":str(source),"assigned_sam":"SAM 0001"}]))
-    index=sandbox/"runs"/run/"models"
-    index.mkdir(parents=True)
-    (index/"megaloc.json").write_text(json.dumps({"path":str(manifest)}))
     try:
         with connect() as db:
             db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(
                 Jsonb({"id":run,"status":"completed","archive_state":"ready",
                        "models":{"megaloc":{"status":"completed"}}}),run))
-        selected=[(source,"SAM 0001/one.jpg")]
-        full=archives.prepare(run,None,selected)
-        assert archive_retries.archive_status(run)["state"]=="ready"
-        with pytest.raises(HTTPException) as ready:
+        assert archive_retries.archive_status(run)=={
+            "run_id":run,"state":"on_demand","can_retry":False}
+        with pytest.raises(HTTPException) as rejected:
             archive_retries.request(run)
-        assert ready.value.status_code==409
-
-        full.unlink()
-        assert archive_retries.archive_status(run)["state"]=="missing"
-        assert archive_retries.archive_status(run)["can_retry"] is True
-        assert archive_retries.request(run)["state"]=="pending"
-        assert archive_retries.request(run)["state"]=="pending"
+        assert rejected.value.status_code==409
         with connect() as db:
-            row=db.execute("SELECT status,snapshot FROM jobs WHERE id=%s",(run,)).fetchone()
-            retry=db.execute("SELECT state FROM archive_retries WHERE run_id=%s",(run,)).fetchone()
-        assert row["status"]=="failed"
-        assert row["snapshot"]["archive_state"]=="failed"
-        assert row["snapshot"]["models"]["megaloc"]["status"]=="completed"
-        assert retry["state"]=="pending"
+            assert db.execute("SELECT status FROM jobs WHERE id=%s",(run,)).fetchone()["status"]=="completed"
+            assert db.execute("SELECT count(*) AS n FROM archive_retries WHERE run_id=%s",(run,)).fetchone()["n"]==0
+        assert not list(paths.run_dir(run).rglob("*.zip"))
     finally:
         cleanup.request(batch)
         cleanup.cleanup_one(batch)
@@ -99,7 +80,8 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
             noop=lambda *args:None
             job=SimpleNamespace(info=info,progress=noop,log=noop,stopped=lambda:False,save=noop)
             archive_pipeline.build_for_job(job)
-            initial=archives.published(run,info["archive_file"])
+            assert info["archive_state"]=="on_demand"
+            assert not list(model.parent.rglob("*.zip"))
             with connect() as db:
                 db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(Jsonb(info),run))
 
@@ -122,15 +104,21 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
             with connect() as db:
                 row=db.execute("SELECT status,snapshot FROM jobs WHERE id=%s",(run,)).fetchone()
                 assert row["status"]=="completed"
-                assert (row["snapshot"]["archive_file"]!=initial.name)==legacy_format
-            assert archive_retries.archive_status(run)["state"]=="ready"
-            # A catalog edit cannot invalidate the immutable published ZIP.
-            with connect() as db:
-                db.execute("UPDATE reference_constructions SET address='Другой адрес' WHERE sam=%s",(sam,))
+                assert "archive_file" not in row["snapshot"]
+            assert archive_retries.archive_status(run)["state"]=="on_demand"
             partial=client.get("/api/download/"+run,headers={"Range":"bytes=5-20"})
             assert partial.status_code==206
             assert partial.content==reply.content[5:21]
-        assert initial.is_file()
+            from server.services import archive_cache
+            import os,time
+            for file in (model.parent/".archives").glob("*.zip"):
+                os.utime(file,(time.time()-3700,)*2)
+            assert archive_cache.sweep_folder(model.parent/".archives")>=2
+            assert not list((model.parent/".archives").glob("*.zip"))
+            rebuilt=client.get("/api/download/"+run)
+            assert rebuilt.status_code==200
+            assert rebuilt.content==reply.content
+            assert manifest.is_file()
     finally:
         with connect() as db:
             db.execute("DELETE FROM reference_constructions WHERE sam=%s",(sam,))

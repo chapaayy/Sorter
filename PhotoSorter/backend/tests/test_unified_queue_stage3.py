@@ -439,8 +439,8 @@ def test_queue_api_supplies_real_fo_progress_photo_counts_and_preview_fallback(s
     assert batch["cover_thumbnail_url"] is None
 
 
-def test_interrupted_zip_stage_can_queue_zip_only_retry(system):
-    """A Worker restart during ZIP must not require another MegaLoc run."""
+def test_legacy_interrupted_zip_stage_is_not_automatically_queued(system):
+    """Old incomplete tasks remain interrupted; new downloads never enqueue jobs."""
     from psycopg.types.json import Jsonb
     from server.db.repositories import work_queue
     from server.services import archive_retries
@@ -456,5 +456,10 @@ def test_interrupted_zip_stage_can_queue_zip_only_retry(system):
         row=db.execute("SELECT status,snapshot FROM jobs WHERE id=%s",(run_id,)).fetchone()
         assert row["status"]=="interrupted"
         assert row["snapshot"]["archive_state"]=="failed"
-    requested=archive_retries.request(run_id)
-    assert requested["state"]=="pending"
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as error:
+        archive_retries.request(run_id)
+    assert error.value.status_code==409
+    with database.connect() as db:
+        assert db.execute("SELECT status FROM jobs WHERE id=%s",(run_id,)).fetchone()["status"]=="interrupted"
+        assert db.execute("SELECT count(*) AS n FROM archive_retries WHERE run_id=%s",(run_id,)).fetchone()["n"]==0

@@ -88,7 +88,7 @@ def workload_settings():
         "reference_threads":row["reference_cpu_threads"],
         "max_threads":max_threads(),
 
-        "zip_mode":"single_thread_in_worker",
+        "zip_mode":"on_demand",
         "docker_limits_editable":False,
         "applies":"next_task",
     }
