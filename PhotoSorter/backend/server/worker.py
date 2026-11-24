@@ -5,6 +5,7 @@ import psycopg
 from psycopg.rows import dict_row
 from .database import connect,wait_and_initialize,DB_URL
 from .services import heartbeat
+from .services.update_gate import activity
 from .db.repositories import work_queue
 from .workers import reference_prepare,media_prepare
 from .workers.warm_megaloc import WarmMegaLoc
@@ -102,31 +103,35 @@ def main():
                 try:
                     logging.info("MegaLoc leader ready; unified FIFO")
                     while RUN:
-                        try:info=claim_job()
-                        except Exception:
-                            logging.exception('Could not claim next task; FIFO is blocked safely')
-                            time.sleep(5)
-                            continue
-                        if info:
-                            ident=info['id']
-                            logging.info('Processing %s',ident)
-                            try:_process_task(info,warm)
-                            except Exception:logging.exception('Unhandled job exception for %s',ident)
-                        else:
-                            now=time.monotonic()
-                            if now>=next_warm_check:
-                                next_warm_check=now+30
-                                from app.system.model_store import signature
-                                try:
-                                    fingerprint=signature()
-                                    if fingerprint and not warm.ready_for(fingerprint):
-                                        _configure_cpu('fo_processing')
-                                        warm.get(fingerprint)
-                                        logging.info('MegaLoc loaded and ready for FIFO jobs')
-                                    elif not fingerprint:
-                                        warm.close()
-                                except Exception:logging.exception('Could not pre-load MegaLoc')
-                            time.sleep(.5)
+                        with activity() as allowed:
+                            if not allowed:
+                                time.sleep(.5)
+                                continue
+                            try:info=claim_job()
+                            except Exception:
+                                logging.exception('Could not claim next task; FIFO is blocked safely')
+                                time.sleep(5)
+                                continue
+                            if info:
+                                ident=info['id']
+                                logging.info('Processing %s',ident)
+                                try:_process_task(info,warm)
+                                except Exception:logging.exception('Unhandled job exception for %s',ident)
+                            else:
+                                now=time.monotonic()
+                                if now>=next_warm_check:
+                                    next_warm_check=now+30
+                                    from app.system.model_store import signature
+                                    try:
+                                        fingerprint=signature()
+                                        if fingerprint and not warm.ready_for(fingerprint):
+                                            _configure_cpu('fo_processing')
+                                            warm.get(fingerprint)
+                                            logging.info('MegaLoc loaded and ready for FIFO jobs')
+                                        elif not fingerprint:
+                                            warm.close()
+                                    except Exception:logging.exception('Could not pre-load MegaLoc')
+                                time.sleep(.5)
                 finally:
                     warm.close()
                     watch_stop.set()
