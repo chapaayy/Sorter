@@ -1,10 +1,13 @@
-import {api,post} from './client'
-import type {StorageUsage,SystemStatus,RetentionPreference,StorageInventorySummary,StorageInventoryPage,HostAuditReport,LiveAuditStatus,MapUpdateStatus,StorageAccountsPage,StorageAccountDetail,StorageOperations,StorageIssues,StorageMaintenance,StoragePreview,MaintenanceKind,HostMaintenanceKind} from '../types/api'
+import {api,post,patch} from './client'
+import type {StorageUsage,SystemStatus,RetentionPreference,StorageInventorySummary,StorageInventoryPage,HostAuditReport,LiveAuditStatus,MapUpdateStatus,StorageAccountsPage,StorageAccountDetail,StorageOperations,StorageIssues,StorageMaintenance,StoragePreview,MaintenanceKind,HostMaintenanceKind,StorageLimits,StoragePolicy,StorageBudget} from '../types/api'
 export const systemApi={
   updateStatus:()=>api<MapUpdateStatus>('/system/update'),
   checkUpdate:()=>post<MapUpdateStatus>('/system/update/check',{}),
   startUpdate:()=>post<MapUpdateStatus>('/system/update/start',{}),
   usage:()=>api<StorageUsage>('/storage/usage'),
+  storageLimits:()=>api<StorageLimits>('/storage/limits'),
+  saveStorageLimits:(value:StoragePolicy)=>patch<StorageLimits>('/storage/limits',value),
+  saveAccountLimit:(id:string,limit_bytes:number|null)=>patch<StorageBudget>('/storage/accounts/'+encodeURIComponent(id)+'/limit',{limit_bytes}),
   storageAccounts:(offset=0)=>api<StorageAccountsPage>('/storage/accounts?offset='+offset),
   storageAccount:(id:string,offset=0)=>api<StorageAccountDetail>('/storage/accounts/'+encodeURIComponent(id)+'?offset='+offset),
   storageOperations:()=>api<StorageOperations>('/storage/operations'),

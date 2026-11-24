@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from fastapi import HTTPException
 from app import config
+# Compatibility with existing callers; admission itself uses the canonical app mount.
+DATA_DIR=config.DATA_DIR
 
 def stat(path=None):
     fs=os.statvfs(path or config.APP_STORAGE_ROOT)

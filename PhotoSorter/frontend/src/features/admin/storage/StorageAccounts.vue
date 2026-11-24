@@ -6,6 +6,9 @@ import type {StorageAccountsPage,StorageAccountDetail,StorageCounter} from '../.
 import UiButton from '../../../components/ui/UiButton.vue'
 import LoadingSkeleton from '../../../components/ui/LoadingSkeleton.vue'
 import CategoryTable from './CategoryTable.vue'
+import BudgetSummary from './BudgetSummary.vue'
+import {gibValue,parseGib} from './quotaUnits'
+const limit=ref(''),saving=ref(false),saved=ref('')
 const page=ref<StorageAccountsPage|null>(null),detail=ref<StorageAccountDetail|null>(null),selected=ref(''),loading=ref(false),error=ref('')
 async function load(offset=0){
   if(loading.value)return
@@ -17,8 +20,14 @@ async function select(id:string,offset=0){
   if(loading.value)return
   const same=selected.value===id
   selected.value=id;loading.value=true;error.value='';if(!same)detail.value=null
-  try{detail.value=await systemApi.storageAccount(id,offset)}
+  try{detail.value=await systemApi.storageAccount(id,offset);limit.value=gibValue(detail.value.account.quota?.limit_bytes)}
   catch(e){error.value=errorText(e)}finally{loading.value=false}
+}
+async function saveLimit(){
+  if(!detail.value||saving.value)return
+  saving.value=true;error.value='';saved.value=''
+  try{detail.value.account.quota=await systemApi.saveAccountLimit(selected.value,parseGib(limit.value));saved.value='Лимит сохранён';limit.value=gibValue(detail.value.account.quota.limit_bytes)}
+  catch(e){error.value=errorText(e)}finally{saving.value=false}
 }
 const sum=(categories:Record<string,StorageCounter>,key:'allocated_bytes'|'logical_bytes')=>Object.values(categories).reduce((n,r)=>n+r[key],0)
 const accountTotal=computed(()=>detail.value?sum(detail.value.categories,'allocated_bytes'):null)
@@ -27,14 +36,14 @@ onMounted(()=>void load())
 <template>
 <section class="panel stack">
   <div class="row between wrap"><h2>Место по аккаунтам</h2><UiButton :loading="loading" @click="selected?select(selected,detail?.offset??0):load(page?.offset??0)">Обновить</UiButton></div>
-  <p class="meta">Личные постоянные данные. Общие образцы и временный пул не относятся к личному объёму. Просмотр чужих результатов не создаёт владение. Лимиты не применяются.</p>
+  <p class="meta">Личные постоянные данные. Общие образцы и временный пул не относятся к личному объёму. Просмотр чужих результатов не создаёт владение. Личная квота использует charged bytes: максимум логического размера и физических блоков, один раз для inode владельца.</p>
   <p v-if="error" role="alert" class="alert error">{{error}}</p>
   <template v-if="!selected">
     <LoadingSkeleton v-if="loading&&!page" variant="lines" label="Загружаем аккаунты"/>
     <template v-if="page">
       <p class="meta">Снимок: {{date(page.sampled_at)}}{{page.partial?' · неполный':''}}</p>
       <button v-for="user in page.rows" :key="user.id" class="account-row" :disabled="loading" @click="select(user.id)">
-        <span><strong>{{user.username}}</strong><small class="meta">{{user.access_role==='owner'?'Владелец':'Пользователь'}}</small></span><span><strong>{{bytes(user.usage?.allocated_bytes)}}</strong><small class="meta">{{bytes(user.usage?.logical_bytes)}} по файлам</small></span>
+        <span><strong>{{user.username}}</strong><small class="meta">{{user.access_role==='owner'?'Владелец':'Пользователь'}}</small></span><span><strong>{{bytes(user.usage?.allocated_bytes)}}</strong><small class="meta">{{bytes(user.usage?.logical_bytes)}} по файлам</small><small v-if="user.quota" class="meta">Квота: {{user.quota.enabled?bytes(user.quota.limit_bytes):'без ограничения'}} · {{bytes(user.quota.used_bytes)}} учтено</small></span>
       </button>
       <p v-if="!page.rows.length" class="meta">Аккаунтов нет.</p>
       <div class="row between wrap"><span class="meta">{{page.total? page.offset+1:0}}–{{page.offset+page.rows.length}} из {{page.total}}</span><div class="row"><UiButton small :disabled="loading||page.offset===0" @click="load(Math.max(0,page.offset-page.limit))">Назад</UiButton><UiButton small :disabled="loading||page.offset+page.rows.length>=page.total" @click="load(page.offset+page.limit)">Дальше</UiButton></div></div>
@@ -46,6 +55,15 @@ onMounted(()=>void load())
     <template v-if="detail">
       <div class="row between wrap"><h3>{{detail.account.username}}</h3><strong>{{bytes(detail.sampled_at?accountTotal:null)}}</strong></div>
       <p class="meta">Текущие записи реестра; последнее агрегированное измерение: {{date(detail.sampled_at)}}. Hardlink учитывается глобально, поэтому повторная обработка может занимать 0 дополнительных блоков.</p>
+      <template v-if="detail.account.quota">
+        <BudgetSummary :budget="detail.account.quota" title="Личная квота"/>
+        <form class="stack" @submit.prevent="saveLimit">
+          <label class="stack meta">Индивидуальный лимит, ГиБ (пусто — без ограничения)<input v-model="limit" aria-label="Индивидуальный лимит, ГиБ" type="number" min="0" step="any" :disabled="saving"/></label>
+          <p class="meta">Уменьшение лимита не удаляет файлы. Принятые загрузки могут завершиться.</p>
+          <div class="row wrap"><UiButton type="submit" kind="primary" :loading="saving">Сохранить лимит</UiButton><UiButton :disabled="saving" @click="limit=''">Без ограничения</UiButton></div>
+          <p v-if="saved" role="status">{{saved}}</p>
+        </form>
+      </template>
       <CategoryTable :categories="detail.categories" :unavailable="!detail.sampled_at"/>
       <h3>Фотоотчёты</h3>
       <p class="meta">Миниатюры могут использоваться несколькими ФО и относятся к аккаунту, а не к отдельной партии.</p>

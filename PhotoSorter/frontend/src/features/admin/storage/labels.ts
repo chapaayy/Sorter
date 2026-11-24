@@ -15,6 +15,7 @@ export const labels:Record<string,string>={
   fo_processing:'Обработка ФО',reference_preparation:'Подготовка образцов',reference_deletion:'Удаление образцов',
   upload:'Загрузка файлов',download:'Скачивание файлов',archive:'Создание ZIP',transcode:'Перекодирование',model:'Загрузка модели',model_install:'Установка модели'
 }
+Object.assign(labels,{fo_upload:'Загрузка ФО',reference_upload:'Загрузка образцов',result_export:'Публикация результатов',video_frames:'Кадры видео',frame_index:'Индекс кадров',video_poster:'Кадр для миниатюры',atomic_write:'Атомарная запись'})
 export const categoryName=(key:string)=>labels[key]||key
 export const groups=[
  {label:'Фотоотчёты',keys:['fo_original','fo_normalized','result_media','result_metadata','run_state','fo_thumbnail']},

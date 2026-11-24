@@ -11,7 +11,8 @@ import StorageAccounts from './StorageAccounts.vue'
 import StorageTemporary from './StorageTemporary.vue'
 import StorageDiagnostics from './StorageDiagnostics.vue'
 import StorageMaintenance from './StorageMaintenance.vue'
-const tabs=[['overview','Обзор'],['accounts','По аккаунтам'],['temporary','Временные данные'],['diagnostics','Диагностика'],['maintenance','Обслуживание']] as const
+import StorageLimits from './StorageLimits.vue'
+const tabs=[['overview','Обзор'],['accounts','По аккаунтам'],['temporary','Временные данные'],['limits','Лимиты'],['diagnostics','Диагностика'],['maintenance','Обслуживание']] as const
 const active=ref<(typeof tabs)[number][0]>('overview')
 const usage=ref<StorageUsage|null>(null),loading=ref(false),error=ref('')
 async function refresh(){
@@ -48,6 +49,7 @@ usePolling(refresh,15000)
     </template>
     <StorageAccounts v-else-if="active==='accounts'"/>
     <StorageTemporary v-else-if="active==='temporary'" :registry="usage?.registry"/>
+    <StorageLimits v-else-if="active==='limits'" @refresh="refresh"/>
     <StorageDiagnostics v-else-if="active==='diagnostics'" :usage="usage" @refresh="refresh"/>
     <StorageMaintenance v-else-if="active==='maintenance'" @refresh="refresh"/>
   </div>

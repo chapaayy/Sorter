@@ -56,7 +56,8 @@ function mapped(fs:{map_allocated_bytes?:number|null;used_bytes:number}){return 
       <div class="metrics smaller">
         <div><span class="meta">MAP по файлам (логически)</span><strong>{{bytes(mapLogical)}}</strong></div>
         <div><span class="meta">Резерв диска (действующий)</span><strong>{{bytes(usage.disk.reserved_bytes)}}</strong></div>
-        <div><span class="meta">Доступно сверх резерва</span><strong>{{bytes(usage.disk.allocatable_bytes)}}</strong></div>
+        <div v-if="usage.disk.operation_reserved_bytes!=null"><span class="meta">Резервы активных операций</span><strong>{{bytes(usage.disk.operation_reserved_bytes)}}</strong></div>
+        <div><span class="meta">Доступно для новых операций</span><strong>{{bytes(usage.disk.allocatable_bytes)}}</strong></div>
       </div>
       <p class="meta">Измерение хоста: {{date(host?.at)}}. <span v-if="usage.disk.warning">Внимание: мало свободного места. </span>Docker и остальные данные входят в «Вне MAP / расхождение», но не суммируются с MAP повторно. Разница также включает метаданные ФС и несинхронность выборок. Свободные блоки, зарезервированные ФС, не входят в доступное место.</p>
       <p v-if="!host||host.stale||host.partial" class="alert warning" role="status">Хостовый учёт {{!host?'ещё недоступен':host.stale?'устарел':'неполный'}}. Размер инфраструктуры и общий объём MAP предварительные.</p>

@@ -26,6 +26,7 @@ def block_size(path=None):
 
 def rounded(n,path=None):
     n=max(0,int(n))
+    if not n:return 0
     block=block_size(path)
     return ((n+block-1)//block)*block
 
@@ -159,8 +160,10 @@ def configure(values):
         for name in ("disk_reserve_bytes","temporary_limit_bytes"):
             if values[name] is not None and not 0<=values[name]<=total:
                 raise HTTPException(422,"Лимит должен быть в пределах ёмкости диска")
-        if values["personal_enabled"] or values["temporary_limit_bytes"] is not None:
-            if not _ready(db):raise HTTPException(409,"Сначала дождитесь полной фоновой сверки")
+        previous=policy(db)
+        enabling=(values["personal_enabled"] and not previous["personal_enabled"]) or (
+            values["temporary_limit_bytes"] is not None and previous["temporary_limit_bytes"] is None)
+        if enabling and not _ready(db):raise HTTPException(409,"Сначала дождитесь полной фоновой сверки")
         db.execute("""UPDATE storage_limits SET personal_enabled=%s,temporary_limit_bytes=%s,disk_reserve_bytes=%s""",
                    (values["personal_enabled"],values["temporary_limit_bytes"],values["disk_reserve_bytes"]))
         return status(db)

@@ -172,6 +172,26 @@ def disk_available(project):
     paths=[project,STORAGE or ROOT,Path("/var/lib/docker"),Path("/var/lib/containerd")]
     return min(shutil.disk_usage(p).free for p in paths if p.exists())
 
+def reserve_policy():
+    """Read the fixed policy from the running DB, not arbitrary host input.
+    Older revisions do not have the policy table; their historical floor
+    still applies. Do not silently ignore a broken database query.
+    """
+    disk=shutil.disk_usage(STORAGE or ROOT)
+    env=inspect_container("api")["Config"].get("Env",[])
+    entries=[v.split("=",1)[1] for v in env if v.startswith("PHOTOSORTER_MIN_FREE_BYTES=")]
+    baseline=max(0,int(entries[0])) if entries and entries[0] else min(12*1024**3,max(256*1024**2,int(disk.total*.06)))
+    configured=0
+    if sql("SELECT to_regclass('storage_limits') IS NOT NULL")=="t":
+        configured=int(sql("SELECT coalesce(disk_reserve_bytes,0) FROM storage_limits WHERE singleton"))
+    return max(MIN_FREE,baseline,configured),configured
+
+def check_space(project,*,extra=0):
+    minimum,_=reserve_policy()
+    if disk_available(project)<minimum+extra:
+        raise RuntimeError("Недостаточно места для обновления: требуется сохранить действующий резерв диска")
+    return minimum
+
 def backup(project,revision):
     name="backup-"+revision[:12]+"-"+uuid.uuid4().hex
     directory=BACKUPS/(".pending-"+name)
@@ -431,8 +451,10 @@ class Updater:
                 raise RuntimeError("Версия изменилась; выполните новую проверку")
             if self.git("rev-parse","HEAD")!=old:
                 raise RuntimeError("Исходники и работающий образ не совпадают")
-            if disk_available(self.project)<MIN_FREE:
-                raise RuntimeError("Для сборки требуется не менее 8 ГиБ свободного места")
+            minimum,configured=reserve_policy()
+            check_space(self.project)
+            # With an explicit reserve, drain before starting any large build
+            # to avoid racing app admissions against Docker/BuildKit writes.
             if recent_uploads():
                 raise RuntimeError("Недавно начата или прервана загрузка. Завершите её перед обновлением.")
             for service in SERVICES:
@@ -442,8 +464,29 @@ class Updater:
                     raise RuntimeError("Отсутствует защищённый канал обновления: "+service)
                 docker("exec",service_id(service),"test","-f","/run/map-updater/activity.lock")
             check_proxy()
+            if configured:
+                self.publish(phase="draining",detail="Ожидание завершения операций перед сборкой с резервом")
+                MARKER.touch(mode=0o644,exist_ok=False)
+                marked=True
+                gate=LOCK.open("rb")
+                deadline=time.monotonic()+7200
+                while True:
+                    try:
+                        fcntl.flock(gate,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic()>=deadline:raise RuntimeError("Не удалось дождаться завершения операций")
+                        time.sleep(1)
+                verify_idle()
+                # Durable unfinished transfers remain reserved after restart.
+                if sql("SELECT to_regclass('storage_limits') IS NOT NULL")=="t" and int(sql("""SELECT
+                    (SELECT count(*) FROM uploads WHERE kind='fo' AND NOT finalized) +
+                    (SELECT count(*) FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id
+                        WHERE f.state='pending' AND s.upload_state='uploading' AND f.storage_admitted)""")):
+                    raise RuntimeError("Завершите или отмените зарезервированные загрузки перед обновлением")
+                check_space(self.project,extra=256*1024**2)
             before=shutil.disk_usage(self.project).free
-            self.publish(phase="building",detail="Сборка нового образа; MAP продолжает работать",
+            self.publish(phase="building",detail="Сборка нового образа; MAP в режиме обслуживания" if configured else "Сборка нового образа; MAP продолжает работать",
                          free_before=before,free_change=None,warnings=[])
             with tempfile.TemporaryDirectory(prefix="source-",dir=WORKSPACE) as directory:
                 archive=Path(directory)/"source.tar"
@@ -453,24 +496,32 @@ class Updater:
                 subprocess.run(["tar","-xf",str(archive),"-C",directory],check=True,timeout=120)
                 archive.unlink()
                 candidate="map-local/app:rev-"+target
-                warnings+=map_build.build(Path(directory),target,candidate)
-            self.publish(phase="draining",detail="Ожидание завершения текущих операций",warnings=warnings)
-            MARKER.touch(mode=0o644,exist_ok=False)
-            marked=True
-            gate=LOCK.open("rb")
-            deadline=time.monotonic()+7200
-            while True:
-                try:
-                    fcntl.flock(gate,fcntl.LOCK_EX|fcntl.LOCK_NB)
-                    break
-                except BlockingIOError:
-                    if time.monotonic()>=deadline:
-                        raise RuntimeError("Не удалось дождаться завершения операций")
-                    time.sleep(1)
+                def monitor():
+                    # Re-read effective floor; even with no explicit reserve
+                    # do not proceed below the old updater/app protections.
+                    check_space(self.project,extra=128*1024**2)
+                warnings+=map_build.build(Path(directory),target,candidate,check_space=monitor)
+            if not marked:
+                self.publish(phase="draining",detail="Ожидание завершения текущих операций",warnings=warnings)
+                MARKER.touch(mode=0o644,exist_ok=False)
+                marked=True
+                gate=LOCK.open("rb")
+                deadline=time.monotonic()+7200
+                while True:
+                    try:
+                        fcntl.flock(gate,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic()>=deadline:
+                            raise RuntimeError("Не удалось дождаться завершения операций")
+                        time.sleep(1)
             verify_idle()
+            # Conservative bound for the compressed backup and config.
+            check_space(self.project,extra=int(sql("SELECT pg_database_size(current_database())"))+16*1024**2)
             self.publish(phase="backup",detail="Резервная копия базы и конфигурации")
             old_workers=worker_instances()
             backup_dir=backup(self.project,old)
+            check_space(self.project)
             docker("tag",old_image,ROLLBACK)
             docker("tag",old_image,"map-local/app:rev-"+old)
             self.publish(previous=old,backup=backup_dir.name)

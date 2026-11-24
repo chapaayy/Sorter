@@ -83,14 +83,15 @@ def aggregate(db):
     conflicts=db.execute("""SELECT count(*) AS n FROM (
       SELECT device,inode FROM storage_files WHERE scope='personal' GROUP BY device,inode
       HAVING count(DISTINCT owner_id)>1) x""").fetchone()["n"]
-    from .admission import counters
+    from .admission import counters,policy,_budget
     budgets=counters(db)
+    temporary_budget=_budget(budgets["temporary_used_bytes"],budgets["temporary_reserved_bytes"],policy(db)["temporary_limit_bytes"])
     reservations=budgets["reservations"]
     reserved=budgets["disk_reserved_bytes"]
     incoming=db.execute("""SELECT count(*) AS files,coalesce(sum(greatest(declared_size-received,0)),0)::bigint AS remaining_bytes FROM uploads WHERE NOT finalized AND kind='fo'""").fetchone()
     reference_incoming=db.execute("""SELECT count(*) AS files,coalesce(sum(greatest(f.declared_size-f.received,0)),0)::bigint AS remaining_bytes FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id WHERE f.state='pending' AND s.upload_state='uploading'""").fetchone()
     return {"categories":categories,"owners":owners,"devices":devices,"temporary":temporary,"issues":issues,
-            "missing_expected":missing,"cross_owner_inode_conflicts":conflicts,"reserved_bytes":reserved,"reservations":reservations,
+            "missing_expected":missing,"cross_owner_inode_conflicts":conflicts,"reserved_bytes":reserved,"reservations":reservations,"temporary_budget":temporary_budget,
             "unfinished_fo":incoming,"unfinished_references":reference_incoming,
             "temporary_operations":temporary_operations(db),
             "allocated_bytes":sum(r["allocated_bytes"] for r in categories.values()),

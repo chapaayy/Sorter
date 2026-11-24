@@ -6,6 +6,7 @@ import {bytes,date,errorText} from '../../../utils/format'
 import {usePolling} from '../../../composables/usePolling'
 import {categoryName} from './labels'
 import UiButton from '../../../components/ui/UiButton.vue'
+import BudgetSummary from './BudgetSummary.vue'
 defineProps<{registry?:StorageRegistry}>()
 const data=ref<StorageOperations|null>(null),error=ref(''),loading=ref(false)
 async function refresh(){
@@ -21,9 +22,10 @@ usePolling(refresh,15000)
   <section class="panel stack">
     <div class="row between wrap"><h2>Временное хранилище</h2><UiButton :loading="loading" @click="refresh">Обновить операции</UiButton></div>
     <p v-if="error" role="alert" class="alert error">{{error}}</p>
+    <BudgetSummary v-if="registry?.temporary_budget" :budget="registry.temporary_budget" title="Лимит временного пула"/>
     <div class="grid2">
       <div><span class="meta">На диске</span><h3>{{bytes(registry?.temporary?.allocated_bytes)}}</h3></div>
-      <div><span class="meta">Зарезервировано операциями</span><h3>{{bytes(registry?.reserved_bytes)}}</h3></div>
+      <div><span class="meta">Зарезервировано операциями</span><h3>{{bytes(registry?.temporary_budget?.reserved_bytes??registry?.reserved_bytes)}}</h3></div>
       <div><span class="meta">Наблюдавшийся пик</span><h3>{{bytes(registry?.temporary_peak_bytes)}}</h3></div>
       <div><span class="meta">Логический размер</span><h3>{{bytes(registry?.temporary?.logical_bytes)}}</h3></div>
     </div>

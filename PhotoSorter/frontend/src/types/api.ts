@@ -92,6 +92,13 @@ export interface ModelInfo {
   models: Array<{ id: string; title: string; available: boolean; reason?: string; downloadable: boolean }>
   device: string; downloads?: Record<string, unknown>
 }
+export interface StoragePolicy {personal_enabled:boolean;temporary_limit_bytes:number|null;disk_reserve_bytes:number|null}
+export interface StorageBudget {used_bytes:number;reserved_bytes:number;limit_bytes:number|null;enabled:boolean;available_bytes:number|null;state:'unlimited'|'ok'|'warning'|'full'|'exceeded'}
+export interface StorageLimits {
+  policy:StoragePolicy;registry_ready:boolean;total_bytes:number
+  disk:{used_bytes:number;free_bytes:number;reserved_bytes:number;minimum_bytes:number;baseline_bytes:number;available_bytes:number}
+  temporary:StorageBudget
+}
 export interface StorageCounter {
   allocated_bytes:number;logical_bytes:number;files:number;hardlink_paths:number
   hardlink_reused_bytes?:number;charged_bytes?:number
@@ -110,7 +117,7 @@ export interface StorageRegistry {
   owners?:Record<string,StorageCounter>;devices?:Record<string,StorageCounter>
   temporary?:StorageCounter;temporary_peak_bytes:number;reference_history?:StorageHistory
   missing_expected?:number;issues?:Record<string,number>;cross_owner_inode_conflicts?:number
-  reserved_bytes?:number;reservations?:Record<string,{bytes:number;operations:number}>
+  reserved_bytes?:number;reservations?:Record<string,{bytes:number;operations:number}>;temporary_budget?:StorageBudget
   unfinished_fo?:{files:number;remaining_bytes:number};unfinished_references?:{files:number;remaining_bytes:number}
   temporary_operations?:{rows:Array<{operation_key:string;category:string;owner_id:number|null;batch_id:string|null;run_id:string|null;files:number;logical_bytes:number;allocated_bytes:number}>;total_groups:number;partial:boolean}
 }
@@ -124,13 +131,13 @@ export interface StorageHost {
   deleted_open?:{allocated_bytes:number;logical_bytes:number;files:number;partial:boolean}|null
 }
 export interface StorageUsage {
-  disk:StorageCapacity & {device?:number;used_fraction:number;reserved_bytes?:number;allocatable_bytes?:number;warning?:'warning'|'critical'|null}
+  disk:StorageCapacity & {device?:number;used_fraction:number;reserved_bytes?:number;operation_reserved_bytes?:number;allocatable_bytes?:number;warning?:'warning'|'critical'|null}
   filesystems?:Record<string,StorageCapacity>;categories_bytes:Record<string,number>
   registry?:StorageRegistry;host?:StorageHost|null;database_estimated_bytes?:number|null
   postgres_diagnostics?:{open_transactions:number;long_transactions:number;oldest_transaction_seconds:number;estimated_dead_tuples:number;autovacuum_count:number;last_autovacuum:string|null}|null
   journals?:{at:string|null;services:Record<string,{bytes:number|null;budget_bytes:number;partial:boolean}>}
 }
-export interface StorageAccount {id:string;username:string;access_role:string;usage?:StorageCounter|null}
+export interface StorageAccount {id:string;username:string;access_role:string;usage?:StorageCounter|null;quota?:StorageBudget}
 export interface StorageAccountsPage {rows:StorageAccount[];total:number;offset:number;limit:number;sampled_at:string|null;partial:boolean}
 export interface StorageAccountDetail {
   account:StorageAccount;categories:Record<string,StorageCounter>;batches:Array<{batch_id:string;display_name:string;categories:Record<string,StorageCounter>}>
