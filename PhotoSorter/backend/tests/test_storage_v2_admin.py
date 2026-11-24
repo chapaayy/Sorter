@@ -66,14 +66,18 @@ def test_owner_reports_global_hardlink_attribution_and_paginated_batches(system,
     assert owner.get("/api/storage/accounts/999999999").status_code==404
     assert owner.get("/api/storage/operations").status_code==200
     assert owner.get("/api/storage/usage").status_code==200
-    paths=["usage","accounts",f"accounts/{user}","operations","accounting/issues","maintenance","maintenance/expired_archives/preview"]
+    paths=["usage","accounts",f"accounts/{user}","operations","accounting/issues","maintenance","maintenance/expired_archives/preview","host-maintenance/storage-cache/preview","host-maintenance/storage-logs/preview"]
     for path in paths:
         assert viewer.get("/api/storage/"+path).status_code==403,path
         assert public.get("/api/storage/"+path).status_code==401,path
-    for path in ("reconcile","maintenance/expired_archives"):
+    for path in ("reconcile","maintenance/expired_archives","host-maintenance/storage-cache","host-maintenance/storage-logs"):
         assert viewer.post("/api/storage/"+path,json={"confirmed":True}).status_code==403
         assert public.post("/api/storage/"+path,json={"confirmed":True}).status_code==401
     assert owner.post("/api/storage/reconcile",headers={"Origin":"https://evil.example"}).status_code==403
+    assert owner.post("/api/storage/host-maintenance/storage-cache",json={"confirmed":False}).status_code==422
+    assert owner.post("/api/storage/host-maintenance/arbitrary",json={"confirmed":True}).status_code==422
+    assert owner.get("/api/storage/host-maintenance/storage-cache/preview").status_code==200
+    assert owner.get("/api/storage/host-maintenance/storage-logs/preview").status_code==200
 
 def test_manual_reconciliation_and_safe_archive_action(system,monkeypatch):
     owner,_,_=clients(monkeypatch)

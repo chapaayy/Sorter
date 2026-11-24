@@ -229,7 +229,11 @@ class Updater:
             self.state=json.loads(STATE.read_text())
         except (OSError,ValueError):
             self.state={}
-        self.state.update(available=True,busy=False,branch=BRANCH)
+        self.state.update(available=True,busy=False,branch=BRANCH,storage_maintenance_supported=True)
+        action=self.state.get("storage_action")
+        if isinstance(action,dict) and action.get("state")=="running":
+            self.state["storage_action"]={**action,"state":"interrupted","finished_at":now(),
+                "detail":"Хостовая операция прервана; проверьте состояние сервисов."}
         if MARKER.exists():
             self.state.update(phase="recovery_required",detail="Прервано переключение версии. Нужна проверка на сервере.")
         elif self.state.get("phase") not in ("success","failed","checked"):
@@ -289,6 +293,13 @@ class Updater:
         with self.mutex:
             if self.state.get("busy") or MARKER.exists():
                 return {"rejected":True,"detail":"Обновление уже выполняется или требуется восстановление"}
+            if command in ("storage-cache","storage-logs"):
+                self.state.update(busy=True,storage_action={"kind":command,"state":"running","started_at":now()},
+                                  updated_at=now())
+                atomic_json(STATE,self.state)
+                result=dict(self.state)
+                threading.Thread(target=self.storage_maintenance,args=(command,),daemon=True).start()
+                return result
             target=self.state.get("target")
             if command=="update" and (not self.state.get("update_available") or not isinstance(target,str) or not REV.fullmatch(target)):
                 return {"rejected":True,"detail":"Сначала проверьте обновления"}
@@ -301,6 +312,94 @@ class Updater:
         threading.Thread(target=self.check if command=="check" else self.update,
                          args=() if command=="check" else (target,),daemon=True).start()
         return result
+
+    def storage_maintenance(self,command):
+        """Restricted host action, mutually exclusive with deploy/installer.
+        No user paths, shell text, foreign images, or online cache deletion.
+        """
+        if command not in ("storage-cache","storage-logs"):
+            raise ValueError("Unknown storage action")
+        lock=gate=None
+        marked=stopped=False
+        before=None
+        error=None
+        removed=None
+        recovery=False
+        try:
+            lock=(PRIVATE/"deploy.lock").open("a")
+            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            before=shutil.disk_usage(STORAGE).free
+            if command=="storage-logs":
+                from host_logs import prune_postgres,publish_usage
+                removed=prune_postgres(STORAGE)
+                publish_usage(STORAGE)
+            else:
+                revision,image=installed()
+                if self.git("rev-parse","HEAD")!=revision or image_info(map_build.CURRENT)["Id"]!=image:
+                    raise RuntimeError("Исходники и рабочий образ должны совпадать")
+                if recent_uploads():
+                    raise RuntimeError("Завершите недавние загрузки перед обслуживанием")
+                for service in SERVICES:
+                    mounts=inspect_container(service).get("Mounts",[])
+                    if not any(m.get("Source")==str(CONTROL) and m.get("Destination")=="/run/map-updater"
+                               and not m.get("RW") for m in mounts):
+                        raise RuntimeError("Не установлен защищённый канал обслуживания")
+                MARKER.touch(mode=0o644,exist_ok=False)
+                marked=True
+                fd=os.open(CONTROL,os.O_RDONLY|os.O_DIRECTORY)
+                try:os.fsync(fd)
+                finally:os.close(fd)
+                gate=LOCK.open("rb")
+                deadline=time.monotonic()+30
+                while True:
+                    try:
+                        fcntl.flock(gate,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic()>=deadline:raise RuntimeError("Есть активные операции; очистка отменена")
+                        time.sleep(.25)
+                verify_idle()
+                if "," in str(STORAGE) or "\n" in str(STORAGE):
+                    raise RuntimeError("Неподдерживаемый путь хранения")
+                prefix=["docker","compose","--env-file",".env","--env-file",".env.generated"]
+                # If stop partially fails, finally still attempts to restore every service.
+                stopped=True
+                cmd([*prefix,"stop",*SERVICES],cwd=self.project,timeout=120)
+                docker("run","--rm","--network","none","--read-only","--user","10001:10001",
+                       "--entrypoint","python","-e","MAP_APP_STORAGE_ROOT=/storage/app",
+                       "--mount","type=bind,source="+str(STORAGE/"app")+",target=/storage/app",
+                       image,"-c","from app.system.technical_cache import clear_disposable; clear_disposable()",
+                       timeout=180)
+        except Exception as exc:
+            error=str(exc)[:250]
+        finally:
+            if stopped:
+                try:
+                    cmd([*prefix,"up","-d","--no-build","--wait","--wait-timeout","180",*SERVICES],
+                        cwd=self.project,timeout=240)
+                    if installed()[0]!=revision:raise RuntimeError("Рабочая ревизия изменилась")
+                    check_proxy()
+                except Exception:
+                    recovery=True
+                    error="Не удалось восстановить приложение после обслуживания. Требуется проверка сервера."
+            if marked and not recovery:
+                MARKER.unlink(missing_ok=True)
+                fd=os.open(CONTROL,os.O_RDONLY|os.O_DIRECTORY)
+                try:os.fsync(fd)
+                finally:os.close(fd)
+            if gate is not None:gate.close()
+            if lock is not None:lock.close()
+            delta=None
+            if before is not None:
+                try:delta=shutil.disk_usage(STORAGE).free-before
+                except OSError:pass
+            result={"kind":command,"state":"failed" if error else "completed",
+                    "started_at":self.state.get("storage_action",{}).get("started_at"),
+                    "finished_at":now(),"removed":removed,"available_delta_bytes":delta,
+                    "detail":error or "Обслуживание завершено"}
+            fields={"busy":False,"storage_action":result}
+            if recovery:fields.update(phase="recovery_required",detail=error)
+            self.publish(**fields)
 
     def update(self,expected):
         locked=gate=None
@@ -430,7 +529,7 @@ class Handler(socketserver.StreamRequestHandler):
             return
         try:
             line=self.rfile.readline(32)
-            if line not in (b"status\n",b"check\n",b"update\n"):
+            if line not in (b"status\n",b"check\n",b"update\n",b"storage-cache\n",b"storage-logs\n"):
                 return
             result=self.server.updater.dispatch(line.decode().strip())
             self.wfile.write((json.dumps(result,ensure_ascii=False)+"\n").encode())

@@ -30,6 +30,26 @@ def preview(kind):
     return dict(row,kind=kind,sampled_at=data["sampled_at"],partial=data["partial"],
                 basis="age_based_observed_candidates_not_guaranteed_reclaim")
 
+def host_preview(kind):
+    if kind=="storage-cache":
+        data=snapshot()
+        row=data.get("categories",{}).get("technical_cache")
+        return {"kind":kind,"files":row["files"] if row else (0 if data["sampled_at"] else None),
+            "allocated_bytes":row["allocated_bytes"] if row else (0 if data["sampled_at"] else None),
+            "sampled_at":data["sampled_at"],"partial":data["partial"],
+            "basis":"typed_provider_cache_offline_only"}
+    if kind=="storage-logs":
+        from .storage_usage import _host
+        from app.storage.categories import LOG_BUDGETS_MIB
+        report=_host("log-usage.json")
+        row=report.get("services",{}).get("postgres",{})
+        logical=row.get("bytes")
+        return {"kind":kind,"files":None,"allocated_bytes":None,
+            "logical_excess_bytes":max(0,logical-LOG_BUDGETS_MIB["postgres"]*1024*1024) if logical is not None else None,
+            "sampled_at":report.get("at"),"partial":row.get("partial",True),
+            "basis":"postgres_closed_segments_over_budget_only"}
+    raise HTTPException(422,"Недопустимая операция")
+
 def status():
     with connect() as db:
         return db.execute("SELECT * FROM storage_maintenance ORDER BY kind").fetchall()
@@ -39,7 +59,7 @@ def enqueue(kind,confirmed):
     with connect() as db:
         row=db.execute("""INSERT INTO storage_maintenance(kind,state) VALUES(%s,'queued')
           ON CONFLICT(kind) DO UPDATE SET state='queued',requested_at=now(),started_at=NULL,
-          finished_at=NULL,removed=NULL,detail=NULL WHERE storage_maintenance.state NOT IN ('queued','running')
+          finished_at=NULL,removed=NULL,detail=NULL,available_delta_bytes=NULL WHERE storage_maintenance.state NOT IN ('queued','running')
           RETURNING *""",(kind,)).fetchone()
         if not row:row=db.execute("SELECT * FROM storage_maintenance WHERE kind=%s",(kind,)).fetchone()
     return row
@@ -58,7 +78,10 @@ def run_pending():
         kind=row["kind"]
         db.execute("UPDATE storage_maintenance SET state='running',started_at=now() WHERE kind=%s",(kind,))
         db.commit()
+        before=None
         try:
+            from ..storage.accounting import disk
+            before=disk()["available_bytes"]
             if kind=="expired_archives":
                 from .archive_cache import collect
                 removed=collect()
@@ -73,4 +96,6 @@ def run_pending():
             logging.exception("Storage maintenance action failed")
             db.execute("UPDATE storage_maintenance SET state='failed',finished_at=now(),detail='cleanup_failed' WHERE kind=%s",(kind,))
         else:
-            db.execute("UPDATE storage_maintenance SET state='completed',finished_at=now(),removed=%s WHERE kind=%s",(removed,kind))
+            try:delta=disk()["available_bytes"]-before
+            except OSError:delta=None
+            db.execute("UPDATE storage_maintenance SET state='completed',finished_at=now(),removed=%s,available_delta_bytes=%s WHERE kind=%s",(removed,delta,kind))

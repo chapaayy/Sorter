@@ -11,7 +11,7 @@ def request_host(request,command):
     user=getattr(request.state,"user",None)
     if not user or not is_owner(user):
         raise HTTPException(403,"Недостаточно прав")
-    if command not in ("status","check","update"):
+    if command not in ("status","check","update","storage-cache","storage-logs"):
         raise ValueError("Unknown updater command")
     try:
         with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as sock:

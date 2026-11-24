@@ -59,6 +59,19 @@ def maintenance_start(request:Request,kind:str,payload:MaintenanceConfirmation):
     require_owner(request)
     return storage_maintenance.enqueue(kind,payload.confirmed)
 
+@router.get("/host-maintenance/{kind}/preview")
+def host_maintenance_preview(request:Request,kind:str):
+    require_owner(request)
+    return storage_maintenance.host_preview(kind)
+
+@router.post("/host-maintenance/{kind}",status_code=202)
+def host_maintenance_start(request:Request,kind:str,payload:MaintenanceConfirmation):
+    require_owner(request)
+    if kind not in ("storage-cache","storage-logs") or payload.confirmed is not True:
+        raise HTTPException(422,"Требуется подтверждение разрешённой операции")
+    from .updater import request_host
+    return request_host(request,kind)
+
 @router.get("/usage")
 def storage_usage():return usage()
 

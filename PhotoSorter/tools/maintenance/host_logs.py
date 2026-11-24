@@ -35,6 +35,11 @@ def record(directory,service,message):
 
 def prune_postgres(storage,*,budget=None):
     storage=Path(storage)
+    with (storage/"system/updater/private/log-prune.lock").open("a") as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        return _prune_postgres(storage,budget=budget)
+
+def _prune_postgres(storage,*,budget=None):
     root=storage/"logs/postgres"
     if budget is None:budget=policy(storage/"system/state/log-policy.json")["postgres"]*1024*1024
     active_file=storage/"infrastructure/postgres/data/current_logfiles"
@@ -58,6 +63,11 @@ def prune_postgres(storage,*,budget=None):
 def publish_usage(storage):
     """The protected-host sample also supplies journal-budget usage."""
     storage=Path(storage)
+    with (storage/"system/updater/private/host-sample.lock").open("a") as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        return _publish_usage(storage)
+
+def _publish_usage(storage):
     contract=json.loads((storage/"system/state/log-policy.json").read_text())
     from host_accounting import measure
     from map_updater import atomic_json

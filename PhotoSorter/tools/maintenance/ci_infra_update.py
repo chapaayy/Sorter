@@ -263,6 +263,39 @@ def main():
             deadline=time.monotonic()+10
             while not (host.RPC/"control.sock").exists() and time.monotonic()<deadline:time.sleep(.1)
             assert rpc("status")["branch"]==BRANCH
+            assert rpc("status")["storage_maintenance_supported"]
+            def wait_storage(kind):
+                deadline=time.monotonic()+300
+                while time.monotonic()<deadline:
+                    state=rpc("status")
+                    action=state.get("storage_action",{})
+                    if action.get("kind")==kind and not state.get("busy"):
+                        assert action["state"]=="completed",action
+                        return action
+                    time.sleep(.3)
+                raise RuntimeError("Host storage maintenance deadline")
+            # Real closed log cleanup under the normal configured budget.
+            closed=storage/"logs/postgres/postgresql-20000101-000000.log"
+            with closed.open("wb") as stream:stream.truncate(101*1024*1024)
+            active=(storage/"infrastructure/postgres/data/current_logfiles").read_text().split()[1]
+            active_file=storage/"logs/postgres"/Path(active).name
+            assert rpc("storage-logs")["busy"]
+            wait_storage("storage-logs")
+            assert not closed.exists() and active_file.exists()
+            # Real offline technical cache cleanup through root RPC, not a
+            # direct test-only invocation. The guarded operation restarts MAP.
+            for provider in ("torch","huggingface","xdg"):
+                folder=storage/"app/cache"/provider
+                folder.mkdir(exist_ok=True)
+                os.chown(folder,10001,10001)
+                sentinel=folder/"ci-stage8-disposable"
+                sentinel.write_bytes(b"cache")
+                os.chown(sentinel,10001,10001)
+            assert rpc("storage-cache")["busy"]
+            wait_storage("storage-cache")
+            assert all(not (storage/"app/cache"/p/"ci-stage8-disposable").exists() for p in ("torch","huggingface","xdg"))
+            assert permanent(storage)==initial and tls()==cert and not host.MARKER.exists()
+            print("STAGE8_REAL_HOST_STORAGE_MAINTENANCE_OK",flush=True)
             rpc("check")
             state=wait_phase("checked")
             assert state["target"]==target and state["update_available"],state
