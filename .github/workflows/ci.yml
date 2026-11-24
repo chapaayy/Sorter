@@ -134,5 +134,5 @@ jobs:
       GITHUB_ACTIONS: "true"
     steps:
       - uses: actions/checkout@v4
-      - name: Full CPU-PyTorch Docker build + isolated runtime, no real photos
+      - name: Full CPU-PyTorch Docker runtime and mandatory official MegaLoc offline acceptance
         run: bash PhotoSorter/tools/maintenance/smoke_container.sh

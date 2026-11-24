@@ -1,8 +1,6 @@
 """Explicit official MegaLoc installer. A verified marker publishes the bundle."""
 from __future__ import annotations
-import errno
 import fcntl
-import hashlib
 import os
 import subprocess
 import sys
@@ -85,7 +83,8 @@ class Downloads:
 
     def install(self):
         from server.services.archive_cache import build_space
-        config.ensure_dirs()
+        from app.storage.config import StorageConfig
+        StorageConfig(config.APP_STORAGE_ROOT).ensure_dirs()
         root=config.APP_STORAGE_ROOT
         meta=managed_prefix(Category.MODEL_METADATA)
         # Stable directory lock covers cross-process installers and marker publication.

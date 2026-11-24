@@ -111,3 +111,26 @@ curl -kfsS --max-time 8 -b "$cookie_file" "https://localhost/api/batches/$id" >/
 curl -kfsS --max-time 8 -b "$cookie_file" -X DELETE \
   -H 'Origin: https://localhost' "https://localhost/api/batches/$id" >/dev/null
 echo "[OK] Full image build and isolated runtime: TLS self-signed, API/login, root Vue SPA, 3 workers and synthetic batch lifecycle"
+
+
+# Stage 5: real official MegaLoc assets, real photo fixtures, offline processing.
+# No mock engine or dummy checkpoint; a failed network download fails CI.
+docker compose stop worker thumbnail cleanup api
+fixture="$PWD/PhotoSorter/tools/maintenance/ci_megaloc_offline.py"
+docker compose run --rm --no-deps -v "$fixture:/ci_megaloc.py:ro" api python /ci_megaloc.py prepare
+private_network="$(docker network ls --filter label=com.docker.compose.project=outdoor-sorter --filter label=com.docker.compose.network=private --format '{{.Name}}')"
+test "$(docker network inspect "$private_network" --format '{{.Internal}}')" = true
+docker compose run --rm --no-deps -v "$fixture:/ci_megaloc.py:ro" worker python /ci_megaloc.py before
+offline() {
+  docker run --rm --network none -e MAP_APP_STORAGE_ROOT=/storage/app -e PHOTOSORTER_CPU_THREADS=2 \
+    -e MAP_SERVICE=models -v "$MAP_STORAGE_ROOT/app:/storage/app" -v "$fixture:/ci_megaloc.py:ro" \
+    map-local/app:current python /ci_megaloc.py "$1"
+}
+offline network-none
+# No application process is running. Bypass entrypoint only for exclusive offline maintenance.
+docker run --rm --network none --entrypoint python -e MAP_APP_STORAGE_ROOT=/storage/app \
+  -v "$MAP_STORAGE_ROOT/app:/storage/app" -v "$fixture:/ci_megaloc.py:ro" \
+  map-local/app:current /ci_megaloc.py purge
+offline network-none
+docker compose run --rm --no-deps -v "$fixture:/ci_megaloc.py:ro" worker python /ci_megaloc.py after
+echo "[OK] Actual MegaLoc: official weights and source, real photo FO pipeline, cache purge, process restart, no external network, reference embedding reuse"

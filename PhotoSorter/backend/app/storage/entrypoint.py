@@ -5,16 +5,17 @@ import subprocess
 import sys
 from .temporary import leased_operation
 from .categories import Category
+from app.system.technical_cache import runtime_guard
 import uuid
 from app.config import APP_STORAGE_ROOT,ensure_dirs
 
 def main():
     ensure_dirs()
     service=os.environ.get("MAP_SERVICE","api")
-    with leased_operation(APP_STORAGE_ROOT,Category.SCRATCH,service=service,operation_id=uuid.uuid4()) as (scratch,fd):
+    with runtime_guard() as cache_lock, leased_operation(APP_STORAGE_ROOT,Category.SCRATCH,service=service,operation_id=uuid.uuid4()) as (scratch,fd):
         env=os.environ.copy()
         env.update({k:str(scratch) for k in ("TMPDIR","TEMP","TMP")})
-        child=subprocess.Popen(sys.argv[1:],env=env,pass_fds=(fd,))
+        child=subprocess.Popen(sys.argv[1:],env=env,pass_fds=(fd,cache_lock))
         def forward(sig,_):
             if child.poll() is None:child.send_signal(sig)
         for sig in (signal.SIGTERM,signal.SIGINT):signal.signal(sig,forward)

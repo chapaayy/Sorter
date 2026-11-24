@@ -62,7 +62,7 @@ def verify_source(path):
     for name,expected in SOURCE_BLOBS.items():
         with safe_read(config.APP_STORAGE_ROOT,(path/name).relative_to(config.APP_STORAGE_ROOT)) as stream:
             data=stream.read(1_000_001)
-        if len(data)>1_000_000 or hashlib.sha1(f"blob {len(data)}\\0".encode()+data).hexdigest()!=expected:
+        if len(data)>1_000_000 or hashlib.sha1(f"blob {len(data)}".encode()+bytes([0])+data).hexdigest()!=expected:
             raise ValueError("MegaLoc source integrity failure: "+name)
 
 def verify_bundle(repo,weight):
@@ -88,11 +88,11 @@ def signature():
     digest=content_digest(weight)
     hasher=hashlib.sha256()
     for source in sorted(repo.glob("*.py")):
-        hasher.update(source.relative_to(repo).as_posix().encode()+b"\\0")
+        hasher.update(source.relative_to(repo).as_posix().encode()+bytes([0]))
         hasher.update(hashlib.sha256(source.read_bytes()).digest())
     app_root=Path(__file__).resolve().parents[1]
     for rel in ("recognition/engines/megaloc/loader.py","recognition/engines/megaloc/extractor.py","photos/reader.py"):
-        hasher.update(rel.encode()+b"\\0")
+        hasher.update(rel.encode()+bytes([0]))
         hasher.update(hashlib.sha256((app_root/rel).read_bytes()).digest())
     return hashlib.sha256(f"megaloc:{digest}:{hasher.hexdigest()}:loader-v2".encode()).hexdigest()
 
