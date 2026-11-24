@@ -188,7 +188,18 @@ def reserve_policy():
 
 def check_space(project,*,extra=0):
     minimum,_=reserve_policy()
-    if disk_available(project)<minimum+extra:
+    # A native build must not spend space promised to admitted app writers.
+    # Full requested sizes are intentionally conservative on the host; the app
+    # computes exact outstanding bytes using its own registry and live paths.
+    outstanding=0
+    if sql("SELECT to_regclass('storage_limits') IS NOT NULL")=="t":
+        outstanding=int(sql("""SELECT
+            coalesce((SELECT sum(requested_bytes) FROM storage_reservations),0)
+            +coalesce((SELECT sum(declared_size) FROM uploads WHERE kind='fo' AND NOT finalized),0)
+            +coalesce((SELECT sum(f.declared_size) FROM reference_import_files f
+              JOIN reference_import_sessions s ON s.id=f.session_id
+              WHERE f.state='pending' AND s.upload_state='uploading' AND (f.storage_admitted OR f.received>0)),0)"""))
+    if disk_available(project)<minimum+extra+outstanding:
         raise RuntimeError("Недостаточно места для обновления: требуется сохранить действующий резерв диска")
     return minimum
 
@@ -482,7 +493,7 @@ class Updater:
                 if sql("SELECT to_regclass('storage_limits') IS NOT NULL")=="t" and int(sql("""SELECT
                     (SELECT count(*) FROM uploads WHERE kind='fo' AND NOT finalized) +
                     (SELECT count(*) FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id
-                        WHERE f.state='pending' AND s.upload_state='uploading' AND f.storage_admitted)""")):
+                        WHERE f.state='pending' AND s.upload_state='uploading' AND (f.storage_admitted OR f.received>0))""")):
                     raise RuntimeError("Завершите или отмените зарезервированные загрузки перед обновлением")
                 check_space(self.project,extra=256*1024**2)
             before=shutil.disk_usage(self.project).free
@@ -499,6 +510,8 @@ class Updater:
                 def monitor():
                     # Re-read effective floor; even with no explicit reserve
                     # do not proceed below the old updater/app protections.
+                    if not marked and reserve_policy()[1]:
+                        raise RuntimeError("Изменён дисковый резерв; повторите обновление")
                     check_space(self.project,extra=128*1024**2)
                 warnings+=map_build.build(Path(directory),target,candidate,check_space=monitor)
             if not marked:

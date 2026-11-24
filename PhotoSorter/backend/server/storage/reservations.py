@@ -1,7 +1,13 @@
 """Atomic admission leases with crash recovery and registry handoff."""
 from contextlib import contextmanager
 from pathlib import Path
+import fcntl
+import os
 import uuid
+from app.storage.categories import Category
+from app.storage.paths import app_key
+from app.storage.filesystem import directory_fd,parent_fd
+from app.storage.temporary import leased_operation
 from ..database import connect
 from app import config
 from . import admission
@@ -10,12 +16,15 @@ from .registry import key_for,observe,note
 def sync_paths(db,keys,tree_key=None):
     # Only the private operation tree, never a global scan. Include vanished
     # rows so atomic rename/delete is accounted for before releasing the lease.
+    def unavailable():raise RuntimeError("Storage reservation evidence is unreadable")
     keys=set(keys)
     if tree_key:
         from .reconciliation import walk
-        keys.update(walk(config.APP_STORAGE_ROOT,tree_key))
+        keys.update(walk(config.APP_STORAGE_ROOT,tree_key,onerror=unavailable))
         keys.update(r["path"] for r in db.execute("SELECT path FROM storage_files WHERE starts_with(path,%s)",(tree_key+"/",)))
-    if keys:observe(db,config.APP_STORAGE_ROOT,sorted(keys))
+    ordered=sorted(keys)
+    for start in range(0,len(ordered),512):
+        observe(db,config.APP_STORAGE_ROOT,ordered[start:start+512],onerror=unavailable)
 
 class Lease:
     def __init__(self,token=None,limit=0):self.token=token;self.limit=limit
@@ -76,24 +85,48 @@ def reservation(kind,requested,*,owner=None,personal=0,temporary=None,path=None,
     temporary=requested if temporary is None else admission.rounded(temporary,path=path)
     personal=admission.rounded(personal)
     token=uuid.uuid4();key=token.int & ((1<<63)-1)
-    # Session lock lives until exit or process death. The short transaction
-    # lock serializes competing admissions, not their long-running writes.
-    with connect() as db:
-        db.execute("SELECT pg_advisory_lock(%s)",(key,))
-        admission.lock(db)
-        admission.admit(db,requested,temporary=temporary,owner=owner,personal=personal,path=path)
-        db.execute("""INSERT INTO storage_reservations(id,kind,lease_key,requested_bytes,
-            owner_id,personal_bytes,temporary_bytes,work_key,work_tree)
-            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (token,kind,key,requested,owner,personal,temporary,key_for(work) if work is not None else None,tree))
-        db.commit()
-        try:yield Lease(token,requested)
-        finally:
+    # A kernel lease survives loss of the PostgreSQL session while this
+    # process is still writing. Use the existing typed scratch lease path;
+    # no competing ledger or new cleanup policy.
+    with leased_operation(config.APP_STORAGE_ROOT,Category.SCRATCH,service="worker",operation_id=token):
+        with connect() as db:
+            db.execute("SELECT pg_advisory_lock(%s)",(key,))
             admission.lock(db)
-            row=db.execute("SELECT * FROM storage_reservations WHERE id=%s",(token,)).fetchone()
-            if row:_sync(db,row)
-            db.execute("DELETE FROM storage_reservations WHERE id=%s",(token,))
+            admission.admit(db,requested,temporary=temporary,owner=owner,personal=personal,path=path)
+            db.execute("""INSERT INTO storage_reservations(id,kind,lease_key,requested_bytes,
+                owner_id,personal_bytes,temporary_bytes,work_key,work_tree)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (token,kind,key,requested,owner,personal,temporary,key_for(work) if work is not None else None,tree))
             db.commit()
+            try:yield Lease(token,requested)
+            finally:
+                # A fresh connection makes handoff independent of the
+                # original session's health. Recovery retries a failed handoff.
+                with connect() as final:
+                    admission.lock(final)
+                    row=final.execute("SELECT * FROM storage_reservations WHERE id=%s",(token,)).fetchone()
+                    if row:_sync(final,row)
+                    final.execute("DELETE FROM storage_reservations WHERE id=%s",(token,))
+
+@contextmanager
+def _recovery_guard(token):
+    key=app_key(Category.SCRATCH,service="worker",operation_id=token).relative
+    try:
+        with directory_fd(config.APP_STORAGE_ROOT,key) as fd:
+            try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:
+                yield False
+                return
+            yield True
+            # The marker has no data files. Only remove this empty exact
+            # directory; do not erase an unexpected entry.
+            try:
+                with parent_fd(config.APP_STORAGE_ROOT,key) as (parent,name):os.rmdir(name,dir_fd=parent)
+            except OSError:pass
+    except FileNotFoundError:
+        # Old lease rows or already-collected empty markers: PostgreSQL lock
+        # is the remaining recovery authority.
+        yield True
 
 def recover(db,limit=100,after=None):
     """Advance through all leases, including those behind long-lived holders.
@@ -108,6 +141,8 @@ def recover(db,limit=100,after=None):
         rows=db.execute("SELECT * FROM storage_reservations WHERE id>%s ORDER BY id LIMIT %s",(after,limit)).fetchall()
     for row in rows:
         if db.execute("SELECT pg_try_advisory_xact_lock(%s) AS ok",(row["lease_key"],)).fetchone()["ok"]:
-            _sync(db,row)
-            db.execute("DELETE FROM storage_reservations WHERE id=%s",(row["id"],))
+            with _recovery_guard(row["id"]) as safe:
+                if not safe:continue
+                _sync(db,row)
+                db.execute("DELETE FROM storage_reservations WHERE id=%s",(row["id"],))
     return rows[-1]["id"] if len(rows)==limit else None

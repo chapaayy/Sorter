@@ -261,3 +261,24 @@ def test_real_transcode_admission_and_preserve_original(system,clips):
     assert row["media_output_path"] is None and "личной квоте" in row["media_error"]
     assert Path(saved[0][1]["path"]).read_bytes()==photo.getvalue()
     assert budget(owner)["reserved_bytes"]==0
+
+
+def test_live_writer_survives_database_session_loss(system):
+    from server.storage.reservations import recover
+    settle()
+    unit=1024**2
+    admission.configure(policy(temp=unit))
+    with reservation("live",unit) as lease:
+        with database.connect() as db:
+            row=db.execute("SELECT lease_key FROM storage_reservations WHERE id=%s",(lease.token,)).fetchone()
+            key=row["lease_key"]
+            pid=db.execute("""SELECT pid FROM pg_locks WHERE locktype='advisory' AND granted
+                AND classid=%s::oid AND objid=%s::oid AND objsubid=1""",
+                (key>>32,key&0xffffffff)).fetchone()["pid"]
+            assert db.execute("SELECT pg_terminate_backend(%s,5000) AS ok",(pid,)).fetchone()["ok"]
+        with database.connect() as db:
+            recover(db)
+            assert db.execute("SELECT 1 FROM storage_reservations WHERE id=%s",(lease.token,)).fetchone()
+        with pytest.raises(HTTPException,match="временном"):
+            with reservation("other",4096):pass
+    assert admission.status()["temporary"]["reserved_bytes"]==0

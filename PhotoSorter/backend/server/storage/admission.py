@@ -38,10 +38,10 @@ def _actual(key):
         return 0
 
 def _receipt_rows(db):
-    return db.execute("""SELECT 'fo_upload' AS kind,b.owner_id,u.declared_size,
+    return db.execute("""SELECT 'fo_upload' AS kind,b.owner_id,u.declared_size,u.received,
        'app/temporary/uploads/fo/'||u.batch_id::text||'/'||u.id::text||'.part' AS work_key
       FROM uploads u JOIN batches b ON b.id=u.batch_id WHERE u.kind='fo' AND NOT u.finalized
-      UNION ALL SELECT 'reference_upload',NULL,f.declared_size,
+      UNION ALL SELECT 'reference_upload',NULL,f.declared_size,f.received,
        'app/temporary/uploads/references/'||f.session_id::text||'/'||f.upload_id::text||'.part'
       FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id
       WHERE f.state='pending' AND s.upload_state='uploading' AND (f.storage_admitted OR f.received>0)""").fetchall()
@@ -83,6 +83,9 @@ def counters(db):
         elif key:
             seen=exact.get(key,0)
             physical=_actual(key)
+            # Uncommitted chunks can still roll back to the last receipt.
+            # Do not give disk credit for bytes beyond the durable offset.
+            if 'received' in row:physical=min(physical,rounded(row['received']))
         disk_remaining=max(0,requested-physical)
         temp_remaining=max(0,temporary-seen)
         temp_future+=temp_remaining;disk_future+=disk_remaining
