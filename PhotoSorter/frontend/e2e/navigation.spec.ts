@@ -11,6 +11,15 @@ const run={id:rid,batch_id:bid,status:'completed',models:{megaloc:{status:'compl
 const photo={id:pid,name:'screen_001.jpg',bytes:1024,created_at:'2026-11-05T06:00:00Z',thumbnail_status:'pending',thumbnail_url:'/api/thumbnails/'+pid,original_url:'/api/photos/'+pid+'/original'}
 const output={index:0,assigned_sam:'SAM-0001',group_id:'G0001',score:.921,thumbnail_url:'/api/thumbnails/'+pid,image_url:'/api/images/'+rid+'/megaloc/0?kind=query'}
 function respond(route:any,data:unknown){return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)})}
+const stat=(allocated_bytes:number,logical_bytes=allocated_bytes,files=1,hardlink_paths=0)=>({allocated_bytes,logical_bytes,files,hardlink_paths})
+function storageFixture(stale=false){
+  return {disk:{device:1,total_bytes:10000000000,used_bytes:4000000000,available_bytes:6000000000,used_fraction:.4,reserved_bytes:600000000,allocatable_bytes:5400000000},
+    filesystems:{'1':{total_bytes:10000000000,used_bytes:4000000000,available_bytes:6000000000,map_allocated_bytes:350000000,outside_map_or_unexplained_bytes:3650000000}},
+    categories_bytes:{},registry:{sampled_at:'2026-11-25T00:00:00Z',reconciled_at:'2026-11-25T00:00:00Z',started_at:'2026-11-24T23:59:00Z',partial:stale,stale,reconciling:false,pending_changes:0,errors:0,
+      allocated_bytes:250000000,logical_bytes:350000000,categories:{fo_original:stat(250000000),result_media:stat(0,100000000,1,1)},temporary:stat(0,0,0),temporary_peak_bytes:0,reserved_bytes:0,
+      reference_history:{objects:0,object_bytes:0,embeddings:0,embedding_bytes:0,missing:0,partial:false},issues:{},missing_expected:0},
+    host:{at:'2026-11-25T00:00:00Z',partial:false,stale:false,errors:0,categories:{postgres_data:stat(100000000)},devices:{'1':stat(100000000)},docker:{available:true,shared_engine_totals:[{Type:'Build Cache',Size:'1 GB',Reclaimable:'100 MB'}],map_revision_images:[],limitations:[]}}}
+}
 async function mock(page:Page){
   const defaults={auto_process_new_batches:false,grouping_threshold:.50,min_match_score:0,model:'megaloc'}
   const retention={enabled:true,value:2,unit:'months'}
@@ -78,7 +87,9 @@ async function mock(page:Page){
     if(p==='/api/results/'+rid+'/groups')return respond(route,{'G0001':2})
     if(p==='/api/results/'+rid+'/photos')return respond(route,{photos:[output],next_cursor:null})
     if(p==='/api/storage/host-audit')return respond(route,{available:false,detail:'Host scan not run'})
-    if(p==='/api/storage/usage')return respond(route,{disk:{total_bytes:10000000000,used_bytes:4000000000,available_bytes:6000000000,used_fraction:.4,warning:null,reserved_bytes:600000000,admission_ok:true},categories_bytes:{photos:250000000,results:100000000}})
+    if(p==='/api/storage/usage')return respond(route,storageFixture())
+    if(p==='/api/storage/accounting/issues')return respond(route,{files:[],missing:[],offset:0,limit:50,snapshot:'2026-11-25T00:00:00Z'})
+    if(p==='/api/storage/maintenance')return respond(route,[])
     if(p==='/api/system/status')return respond(route,{at:'2026-11-05T06:00:00Z',worker:{queue:{},expected_threads:7},thumbnails:{queued:0},disk:{total_bytes:10000000000,available_bytes:6000000000,reserved_bytes:600000000},api:{uptime_seconds:400,latency:{samples:6,p50_ms:13,p95_ms:30},rss_peak_kib:90000}})
     if(p==='/api/logs/usage')return respond(route,{bytes:2000,budget_bytes:524288000})
     if(p==='/api/logs/'+rid+'/page')return respond(route,{events:[{at:'2026-11-05T06:02:00Z',level:'INFO',model:'megaloc',source:'MegaLoc',message:'Обработка завершена'}],next_cursor:null})
@@ -207,6 +218,7 @@ test('auto-processing preference defaults off and saves on the server',async({pa
 })
 test('storage settings persist minute-level automatic deletion',async({page})=>{
   await page.goto('/admin')
+  await page.getByRole('button',{name:'Обслуживание',exact:true}).click()
   const enabled=page.getByRole('checkbox',{name:'Удалять старые фотоотчёты автоматически'})
   await expect(enabled).toBeChecked()
   await page.getByRole('spinbutton',{name:'Удалять через'}).fill('5')
@@ -214,6 +226,7 @@ test('storage settings persist minute-level automatic deletion',async({page})=>{
   await page.getByRole('option',{name:'Минут'}).click()
   await page.getByRole('region',{name:'Хранилище'}).getByRole('button',{name:'Сохранить'}).click()
   await page.reload()
+  await page.getByRole('button',{name:'Обслуживание',exact:true}).click()
   await expect(page.getByRole('spinbutton',{name:'Удалять через'})).toHaveValue('5')
   await expect(page.getByRole('combobox',{name:'Единицы срока хранения'})).toContainText('Минут')
 })
@@ -1770,7 +1783,9 @@ test('read-only file inventory scans and displays per-file ownership',async({pag
       body:'Путь;Размер\\r\\nPhotoSorter/data/uploads/batch/photo.jpg;4096\\r\\n'
     }))
   await page.goto('/admin')
-  await page.getByRole('button',{name:'Проверить файлы'}).click()
+  await page.getByRole('button',{name:'Диагностика',exact:true}).click()
+  await page.getByRole('button',{name:'Открыть реестр файлов'}).click()
+  await page.getByRole('button',{name:'Показать файлы'}).click()
   await expect(page.getByText('PhotoSorter/data/uploads/batch/photo.jpg')).toBeVisible()
   await expect(page.getByText('Hardlink: без повторного места')).toBeVisible()
   await expect(page.getByRole('region',{name:'Реестр файлов'})).toBeVisible()
@@ -1812,6 +1827,8 @@ test('Administration shows host audit scope, incomplete coverage and full downlo
       'Content-Disposition':'attachment; filename="map-full-host-file-audit.csv"'
     },body:'path;scope\\n/srv/test;app\\n'}))
   await page.goto('/admin')
+  await page.getByRole('button',{name:'Диагностика',exact:true}).click()
+  await page.getByRole('button',{name:'Открыть отчёт хоста'}).click()
   const host=page.getByRole('region',{name:'Аудит сервера'})
   await expect(host.getByRole('heading',{name:'Диагностический снимок MAP'})).toBeVisible()
   await expect(host.getByText('Общие файлы Docker и системы')).toBeVisible()
@@ -1828,4 +1845,83 @@ test('Administration shows host audit scope, incomplete coverage and full downlo
   const liveDownload=page.waitForEvent('download')
   await host.getByRole('link',{name:'Скачать события последнего сеанса JSONL'}).click()
   expect((await liveDownload).suggestedFilename()).toBe('map-file-live-events.jsonl')
+})
+
+test('storage center uses registry, drills into accounts and paginates reports',async({page})=>{
+  let requests=0
+  await page.route('**/api/storage/accounts?**',route=>respond(route,{
+    rows:[{id:'1',username:'admin',access_role:'owner',usage:stat(250000000,350000000,2,1)},{id:'2',username:'viewer@example.test',access_role:'viewer',usage:stat(0,0,0)}],
+    total:2,offset:0,limit:25,partial:false,sampled_at:'2026-11-25T00:00:00Z'
+  }))
+  await page.route('**/api/storage/accounts/1?**',route=>{
+    requests++
+    const offset=Number(new URL(route.request().url()).searchParams.get('offset'))
+    return respond(route,{account:{id:'1',username:'admin',access_role:'owner'},categories:{fo_original:stat(250000000),result_media:stat(0,100000000,1,1)},
+      batches:offset?[{batch_id:bid,display_name:'Последний отчёт',categories:{result_media:stat(0,100000000,1,1)}}]:Array.from({length:25},(_,i)=>({batch_id:bid.slice(0,-2)+String(i).padStart(2,'0'),display_name:'Отчёт '+i,categories:{fo_original:stat(10000000)}})),
+      total:26,offset,limit:25,sampled_at:'2026-11-25T00:00:00Z',basis:'live_registry_rows_global_inode_attribution'})
+  })
+  await page.goto('/admin')
+  const storage=page.getByRole('region',{name:'Хранилище'})
+  await expect(storage.getByRole('heading',{name:'Объём хранилища'})).toBeVisible()
+  await expect(storage.getByRole('img',{name:'Распределение физических блоков MAP по категориям'})).toBeVisible()
+  await expect(storage.getByText('Build Cache',{exact:true})).toBeVisible()
+  await expect(storage.getByText('Актуальный снимок',{exact:true})).toBeVisible()
+  await storage.getByText('Фотоотчёты',{exact:true}).click()
+  await expect(storage.getByText('Оригиналы ФО',{exact:false}).first()).toBeVisible()
+  await storage.getByRole('button',{name:'По аккаунтам'}).click()
+  await expect(storage.getByText('viewer@example.test')).toBeVisible()
+  await storage.getByRole('button',{name:/admin.*Владелец/}).click()
+  await expect(storage.getByRole('heading',{name:'admin'})).toBeVisible()
+  await storage.getByText('Отчёт 0',{exact:true}).click()
+  await expect(storage.getByRole('link',{name:'Открыть фотоотчёт'}).first()).toBeVisible()
+  await storage.getByRole('button',{name:'Дальше'}).click()
+  await expect(storage.getByText('Последний отчёт',{exact:true})).toBeVisible()
+  expect(requests).toBe(2)
+  expect(await storage.evaluate(el=>el.scrollWidth<=el.clientWidth+2)).toBeTruthy()
+})
+test('storage diagnostics reports stale data and errors; reconciliation and maintenance are explicit',async({page})=>{
+  let reconciles=0,started=0,reads=0
+  await page.route('**/api/storage/usage',route=>{
+    reads++
+    if(reads===2)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Сервер временно недоступен'})})
+    return respond(route,storageFixture(true))
+  })
+  await page.route('**/api/storage/accounting/issues?**',route=>respond(route,{files:[{path:'app/unknown.bin',category:'unknown',issue:'unclassified_path',logical_bytes:2,allocated_bytes:4096}],missing:[{path:'app/users/1/lost.jpg',issue:'expected_not_observed'}],offset:0,limit:50,snapshot:'2026-11-25T00:00:00Z'}))
+  await page.route('**/api/storage/reconcile',route=>{reconciles++;return respond(route,{requested_at:'2026-11-25T00:01:00Z'})})
+  await page.route('**/api/storage/maintenance/expired_archives/preview',route=>respond(route,{kind:'expired_archives',files:2,allocated_bytes:4096,sampled_at:'2026-11-25T00:00:00Z',partial:true,basis:'age_based'}))
+  await page.route('**/api/storage/maintenance/expired_archives',route=>{
+    started++;expect(route.request().postDataJSON()).toEqual({confirmed:true})
+    return respond(route,{kind:'expired_archives',state:'queued',requested_at:'2026-11-25T00:01:00Z',started_at:null,finished_at:null,removed:null,detail:null})
+  })
+  await page.goto('/admin')
+  const storage=page.getByRole('region',{name:'Хранилище'})
+  await expect(storage.getByText('Данные устарели',{exact:true})).toBeVisible()
+  await storage.getByRole('button',{name:'Обновить показатели'}).click()
+  await expect(storage.getByRole('alert').filter({hasText:'Сервер временно недоступен'})).toBeVisible()
+  await expect(storage.getByRole('heading',{name:'Объём хранилища'})).toBeVisible()
+  await storage.getByRole('button',{name:'Диагностика',exact:true}).click()
+  await expect(storage.getByText('app/unknown.bin',{exact:true})).toBeVisible()
+  await expect(storage.getByText('app/users/1/lost.jpg',{exact:true})).toBeVisible()
+  expect(reconciles).toBe(0)
+  await storage.getByRole('button',{name:'Запустить сверку'}).click()
+  await expect(storage.getByText(/Дополнительная сверка поставлена/)).toBeVisible()
+  expect(reconciles).toBe(1)
+  await storage.getByRole('button',{name:'Обслуживание',exact:true}).click()
+  await storage.getByRole('button',{name:'Предпросмотр очистки'}).first().click()
+  const dialog=page.getByRole('alertdialog')
+  await expect(dialog.getByText(/Кандидатов по возрасту: 2/)).toBeVisible()
+  expect(started).toBe(0)
+  await dialog.getByRole('button',{name:'Отмена'}).click()
+  await storage.getByRole('button',{name:'Предпросмотр очистки'}).first().click()
+  await page.getByRole('alertdialog').getByRole('button',{name:'Запустить очистку'}).click()
+  await expect(storage.getByText(/В очереди ·/)).toBeVisible()
+  expect(started).toBe(1)
+})
+test('storage empty and unmeasured states never fabricate capacity or history',async({page})=>{
+  await page.route('**/api/storage/usage',route=>respond(route,{...storageFixture(),registry:{sampled_at:null,reconciled_at:null,partial:true,stale:true,pending_changes:0,errors:0},host:null}))
+  await page.goto('/admin')
+  const storage=page.getByRole('region',{name:'Хранилище'})
+  await expect(storage.getByText('Ожидаем первый снимок реестра.')).toBeVisible()
+  await expect(storage.getByText('Сведения Docker пока недоступны.')).toBeVisible()
+  await expect(storage.getByRole('img',{name:'Распределение физических блоков MAP по категориям'})).toHaveCount(0)
 })

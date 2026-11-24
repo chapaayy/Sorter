@@ -48,7 +48,7 @@ function mapped(fs:{map_allocated_bytes?:number;used_bytes:number}){return fs.ma
         </div>
         <div class="legend">
           <span><i class="map"/>MAP: {{bytes(fs.map_allocated_bytes)}}</span>
-          <span><i class="other"/>Вне MAP / расхождение: {{bytes(fs.outside_map_or_unexplained_bytes)}}<template v-if="(fs.outside_map_or_unexplained_bytes??0)<0"> (отрицательное, несинхронные замеры)</template></span>
+          <span><i class="other"/>Вне MAP / расхождение: {{fs.outside_map_or_unexplained_bytes!=null&&fs.outside_map_or_unexplained_bytes<0?'−'+bytes(Math.abs(fs.outside_map_or_unexplained_bytes)):bytes(fs.outside_map_or_unexplained_bytes)}}<template v-if="(fs.outside_map_or_unexplained_bytes??0)<0"> (несинхронные замеры)</template></span>
           <span><i class="free"/>Свободно: {{bytes(fs.available_bytes)}}</span>
         </div>
         <p v-if="mapped(fs)===null&&fs.map_allocated_bytes!=null" class="meta">Разбивка диска временно несогласована. Не подменяем расхождение нулём.</p>
@@ -69,7 +69,7 @@ function mapped(fs:{map_allocated_bytes?:number;used_bytes:number}){return fs.ma
       <p v-else class="meta">{{mapTotal===null?'Ожидаем первый снимок реестра.':'Учтённых данных пока нет.'}}</p>
       <div v-for="(g,i) in groupTotals" :key="g.label" class="category-group">
         <details>
-          <summary><span class="group-name"><i :style="{background:groupColors[i]}"/>{{g.label}}</span><strong>{{bytes(mapTotal===null?null:g.value)}}</strong></summary>
+          <summary><span class="group-name"><i :style="{background:groupColors[i]}"/>{{g.label}}</span><strong>{{bytes(mapTotal===null||i===4&&!hostKnown&&!g.value?null:g.value)}}</strong></summary>
           <CategoryTable :categories="categories" :keys="g.keys" :unavailable="i===4?!hostKnown:!registry?.sampled_at"/>
         </details>
       </div>

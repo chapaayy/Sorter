@@ -45,13 +45,13 @@ onMounted(()=>void load())
     <template v-if="detail">
       <div class="row between wrap"><h3>{{detail.account.username}}</h3><strong>{{bytes(detail.sampled_at?accountTotal:null)}}</strong></div>
       <p class="meta">Текущие записи реестра; последнее агрегированное измерение: {{date(detail.sampled_at)}}. Hardlink учитывается глобально, поэтому повторная обработка может занимать 0 дополнительных блоков.</p>
-      <CategoryTable :categories="detail.categories"/>
+      <CategoryTable :categories="detail.categories" :unavailable="!detail.sampled_at"/>
       <h3>Фотоотчёты</h3>
       <p class="meta">Миниатюры могут использоваться несколькими ФО и относятся к аккаунту, а не к отдельной партии.</p>
       <details v-for="batch in detail.batches" :key="batch.batch_id" class="batch-row">
-        <summary><strong>{{batch.display_name}}</strong> · {{bytes(sum(batch.categories,'allocated_bytes'))}} на диске</summary>
+        <summary><strong>{{batch.display_name}}</strong> · {{bytes(detail.sampled_at?sum(batch.categories,'allocated_bytes'):null)}} на диске</summary>
         <p><RouterLink :to="'/fo/'+batch.batch_id">Открыть фотоотчёт</RouterLink></p>
-        <CategoryTable :categories="batch.categories"/>
+        <CategoryTable :categories="batch.categories" :unavailable="!detail.sampled_at"/>
       </details>
       <p v-if="!detail.batches.length" class="meta">Фотоотчётов нет.</p>
       <div class="row between wrap"><span class="meta">{{detail.total?detail.offset+1:0}}–{{detail.offset+detail.batches.length}} из {{detail.total}}</span><div class="row"><UiButton small :disabled="loading||detail.offset===0" @click="select(selected,Math.max(0,detail.offset-detail.limit))">Назад</UiButton><UiButton small :disabled="loading||detail.offset+detail.batches.length>=detail.total" @click="select(selected,detail.offset+detail.limit)">Дальше</UiButton></div></div>

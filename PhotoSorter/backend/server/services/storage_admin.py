@@ -8,6 +8,7 @@ from . import heartbeat
 def accounts(offset=0,limit=25):
     data=snapshot()
     with connect() as db:
+        db.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         total=db.execute("SELECT count(*) AS n FROM users").fetchone()["n"]
         rows=db.execute("""SELECT id::text,username,access_role FROM users
           ORDER BY id LIMIT %s OFFSET %s""",(limit,offset)).fetchall()
@@ -60,11 +61,15 @@ def operational():
           AND kind='file' GROUP BY category""",(ARCHIVE_TTL_SECONDS,)).fetchall()
         fo=db.execute("""SELECT min(updated_at+interval '30 days') AS next_eligible_at
           FROM uploads WHERE kind='fo' AND NOT finalized""").fetchone()
+        refs=db.execute("""SELECT min(f.updated_at+interval '30 days') AS next_eligible_at
+          FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id
+          WHERE f.state='pending' AND s.upload_state='uploading'""").fetchone()
         health=heartbeat.status(db)["cleanup"]
     for row in archives:
         from datetime import datetime,timezone
         row["next_eligible_at"]=datetime.fromtimestamp(row.pop("oldest_mtime_ns")/1e9+ARCHIVE_TTL_SECONDS,timezone.utc).isoformat()
     return {"active_queue":active,"archives":archives,"unfinished_fo_next_eligible_at":fo["next_eligible_at"],
+            "unfinished_reference_next_eligible_at":refs["next_eligible_at"],
             "archive_ttl_seconds":ARCHIVE_TTL_SECONDS,"scratch_grace_seconds":TEMPORARY_GRACE_SECONDS,
             "cleanup_worker":health}
 

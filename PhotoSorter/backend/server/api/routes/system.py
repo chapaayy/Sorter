@@ -49,12 +49,6 @@ def system_status():
                "rss_peak_kib":resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
                "allowed_cpus":sorted(os.sched_getaffinity(0)) if hasattr(os,"sched_getaffinity") else None}}
 
-@router.post("/cache/cleanup")
-def clean_unused_thumbnails():
-    """Manual, owner-checked cleanup only of orphaned preview cache."""
-    from ...services.thumbnails import gc_unowned
-    return {"removed":gc_unowned(limit=200)}
-
 class RetentionPreference(BaseModel):
     enabled:bool
     value:int=Field(ge=1,le=525600)
