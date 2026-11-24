@@ -17,7 +17,7 @@ if [[ ! -f .env ]]; then
   if [[ "$MODE" == "--check" ]]; then echo '[ERROR] .env missing' >&2; exit 1; fi
   cp .env.example .env
 fi
-unset ADMIN_PASSWORD
+unset ADMIN_PASSWORD POSTGRES_PASSWORD
 unset MAP_STORAGE_ROOT
 set -a
 # shellcheck disable=SC1091
@@ -189,6 +189,8 @@ if [[ "$(id -u)" == 0 && "${CI:-}" != true && "${GITHUB_ACTIONS:-}" != true ]] &
   fi
 else
   if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
+    exec 9>"$MAP_STORAGE_ROOT/system/updater/private/deploy.lock"
+    flock -n 9 || { echo '[ERROR] Another MAP deployment is running'; exit 1; }
     python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)" --storage-root "$MAP_STORAGE_ROOT"
   fi
   "${COMPOSE[@]}" up -d --no-build --wait --wait-timeout 180

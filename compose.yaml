@@ -32,6 +32,8 @@ services:
       net.ipv4.tcp_congestion_control: "${PHOTOSORTER_CADDY_TCP_CC:-cubic}"
     environment:
       DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+      MAP_CADDY_ACCESS_ROLL: ${MAP_CADDY_ACCESS_ROLL:-20MiB}
+      MAP_CADDY_RUNTIME_ROLL: ${MAP_CADDY_RUNTIME_ROLL:-6MiB}
     ports:
       - "80:80"
       - "443:443"

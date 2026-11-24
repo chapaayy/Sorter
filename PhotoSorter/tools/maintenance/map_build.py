@@ -1,6 +1,8 @@
 """Disposable MAP-only BuildKit; never prune a shared/default builder."""
 import argparse
 import re
+import json
+import signal
 import subprocess
 import uuid
 from pathlib import Path
@@ -27,6 +29,16 @@ def clean_owned_builders():
             run(["docker","buildx","rm",marker.name],timeout=120)
             marker.unlink()
         except (OSError,subprocess.SubprocessError):
+            # Registry may already be gone after an interrupted removal. Never
+            # drop the marker while a matching container or state volume exists.
+            try:
+                names=subprocess.check_output(["docker","buildx","ls","--format","{{.Name}}"],text=True,timeout=30).splitlines()
+                resource="buildx_buildkit_"+marker.name+"0"
+                containers=subprocess.check_output(["docker","ps","-a","--format","{{.Names}}"],text=True,timeout=30).splitlines()
+                volumes=subprocess.check_output(["docker","volume","ls","--format","{{.Name}}"],text=True,timeout=30).splitlines()
+                if marker.name not in names and resource not in containers and resource+"_state" not in volumes:
+                    marker.unlink();continue
+            except (OSError,subprocess.SubprocessError):pass
             warnings.append("Не удалось удалить builder "+marker.name)
     return warnings
 
@@ -58,6 +70,9 @@ if __name__=="__main__":
     p.add_argument("--storage-root",type=Path,required=True)
     a=p.parse_args()
     configure(a.storage_root)
+    def stop(sig,frame):raise SystemExit(128+sig)
+    signal.signal(signal.SIGTERM,stop)
+    signal.signal(signal.SIGINT,stop)
     for w in build(a.root,a.revision,CURRENT):
         print("[WARN]",w)
     run(["docker","tag",CURRENT,"map-local/app:rev-"+a.revision],timeout=60)

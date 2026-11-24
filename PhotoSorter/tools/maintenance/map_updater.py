@@ -91,6 +91,9 @@ def atomic_json(path,value):
         os.fsync(out.fileno())
     os.chmod(temp,0o644)
     os.replace(temp,path)
+    fd=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY)
+    try:os.fsync(fd)
+    finally:os.close(fd)
 
 def service_id(service):
     ids=docker("ps","-q","--filter","label=com.docker.compose.project="+PROJECT,
@@ -160,7 +163,7 @@ def check_proxy():
                 raise RuntimeError("Caddy не возвращает здоровый API")
 
 def disk_available(project):
-    paths=[project,ROOT,Path("/var/lib/docker"),Path("/var/lib/containerd")]
+    paths=[project,STORAGE or ROOT,Path("/var/lib/docker"),Path("/var/lib/containerd")]
     return min(shutil.disk_usage(p).free for p in paths if p.exists())
 
 def backup(project,revision):
@@ -237,7 +240,8 @@ class Updater:
             if LOG_DIRECTORY is not None and "phase" in fields:
                 # Host log contains only trusted phase/revision, not command output.
                 from host_logs import record
-                record(LOG_DIRECTORY,"updater",str(fields["phase"]))
+                try:record(LOG_DIRECTORY,"updater",str(fields["phase"]))
+                except OSError:pass
             atomic_json(STATE,self.state)
 
     def status(self):
@@ -248,7 +252,7 @@ class Updater:
         return cmd(["git",*args],cwd=self.project)
 
     def target(self):
-        if self.git("remote","get-url","origin") not in REPO_URLS:
+        if self.git("config","--get","remote.origin.url") not in REPO_URLS:
             raise RuntimeError("origin не соответствует репозиторию MAP")
         if self.git("symbolic-ref","--short","HEAD")!=BRANCH:
             raise RuntimeError("Рабочая ветка не соответствует закреплённой ветке установки")

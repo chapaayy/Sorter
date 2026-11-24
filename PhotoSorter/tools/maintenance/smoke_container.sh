@@ -8,7 +8,9 @@ if [[ "${CI:-}" != "true" || "${GITHUB_ACTIONS:-}" != "true" ]]; then
 fi
 cd "$(dirname "$0")/../../.."
 export DOMAIN="localhost"
-export POSTGRES_PASSWORD="ci_only_disposable_not_a_real_password"
+unset POSTGRES_PASSWORD
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$PWD"
+export MAP_CADDY_ACCESS_ROLL=1KiB MAP_CADDY_RUNTIME_ROLL=1KiB
 export ADMIN_PASSWORD="ci_only_disposable_admin_password"
 export PHOTOSORTER_WORKER_CPUSET
 PHOTOSORTER_WORKER_CPUSET="$(python3 - <<'PY'
@@ -19,8 +21,13 @@ PY
 export PHOTOSORTER_CPU_THREADS="1"
 export PHOTOSORTER_WORKER_CPUS="1"
 export MAP_STORAGE_ROOT="$PWD/storage"
-sudo python3 PhotoSorter/tools/maintenance/bootstrap_storage.py "$MAP_STORAGE_ROOT"
-sudo python3 PhotoSorter/tools/maintenance/bootstrap_storage.py "$MAP_STORAGE_ROOT"
+test ! -e "$MAP_STORAGE_ROOT"
+umask 077
+printf 'DOMAIN=localhost\nADMIN_PASSWORD=%s\nPHOTOSORTER_ENABLE_BBR=0\nMAP_STORAGE_ROOT=%s\nPHOTOSORTER_WORKER_CPUSET=%s\nPHOTOSORTER_WORKER_CPUS=1\nPHOTOSORTER_CPU_THREADS=1\n' "$ADMIN_PASSWORD" "$MAP_STORAGE_ROOT" "$PHOTOSORTER_WORKER_CPUSET" > .env
+bash install.sh --deploy
+export POSTGRES_PASSWORD="$(sed -n 's/^POSTGRES_PASSWORD=//p' .env.generated)"
+bash install.sh --check
+echo "[OK] Actual clean install and read-only check"
 echo "[INFO] Isolated Docker Compose build for disposable CI containers"
 cleanup() {
   docker compose ps || true
@@ -29,12 +36,7 @@ cleanup() {
   docker compose down --remove-orphans || true
 }
 trap cleanup EXIT
-# Exercise the exact disposable builder used by the VPS updater.
-sudo touch $MAP_STORAGE_ROOT/system/updater/control/activity.lock
-sudo chmod 0644 $MAP_STORAGE_ROOT/system/updater/control/activity.lock
-sudo python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)" --storage-root "$MAP_STORAGE_ROOT"
-test -z "$(sudo find "$MAP_STORAGE_ROOT/system/updater/private/builders" -type f -print -quit)"
-docker compose up -d --no-build
+test -z "$(find "$MAP_STORAGE_ROOT/system/updater/private/builders" -type f -print -quit)"
 # Real app UID, same mount hardlink and rename, private host paths not mounted.
 docker compose exec -T api python - <<'PY'
 import os
@@ -139,3 +141,8 @@ docker run --rm --network none --entrypoint python -e MAP_APP_STORAGE_ROOT=/stor
 offline network-none
 docker compose run --rm --no-deps -v "$fixture:/ci_megaloc.py:ro" worker python /ci_megaloc.py after
 echo "[OK] Actual MegaLoc: official weights and source, real photo FO pipeline, cache purge, process restart, no external network, reference embedding reuse"
+python3 PhotoSorter/tools/maintenance/ci_infra_update.py "$PWD" "$MAP_STORAGE_ROOT"
+docker compose stop worker thumbnail cleanup api
+docker compose run --rm --no-deps -v "$fixture:/ci_megaloc.py:ro" worker python /ci_megaloc.py after
+offline network-none
+echo "[OK] Post-update actual offline MegaLoc and cached embeddings"

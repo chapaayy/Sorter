@@ -79,7 +79,10 @@ class Downloads:
 
     def _run(self):
         try:
-            self.install()
+            from server.services.update_gate import activity
+            with activity() as allowed:
+                if not allowed:raise RuntimeError("MAP обновляется")
+                self.install()
             self._set("installed","MegaLoc загружена и проверена",stage="done")
         except Exception as exc:
             self._set("error",f"{type(exc).__name__}: {exc}",stage="error")

@@ -4,7 +4,7 @@
 {
   log {
     output file /logs/runtime/caddy.jsonl {
-      roll_size 6MiB
+      roll_size {$MAP_CADDY_RUNTIME_ROLL:6MiB}
       roll_keep 4
       roll_keep_for 168h
     }
@@ -25,7 +25,7 @@
 {$DOMAIN} {
   log {
     output file /logs/access/access.jsonl {
-      roll_size 20MiB
+      roll_size {$MAP_CADDY_ACCESS_ROLL:20MiB}
       roll_keep 4
       roll_keep_for 168h
     }
