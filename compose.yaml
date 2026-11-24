@@ -41,11 +41,11 @@ services:
       - caddy_config:/config
     depends_on:
       api:
-    image: map-local/app:current
         condition: service_healthy
     networks: [public]
 
   api:
+    image: map-local/app:current
     logging: *bounded_logs
     build:
       context: .
