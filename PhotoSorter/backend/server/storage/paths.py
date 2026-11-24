@@ -1,9 +1,10 @@
 """Trusted batch/run paths; strict containment for existing storage callers."""
 from pathlib import Path
 import re
+from dataclasses import dataclass
 import stat
 from app.config import DATA_DIR, RUNS_DIR
-from app.storage.paths import uuid_key, run_key, managed_prefix, managed_path
+from app.storage.paths import uuid_key, run_key, managed_prefix, managed_path, relative_key, relative_media_key
 from app.storage.categories import Category
 
 RUN_PATTERN = re.compile(r"\d{8}T\d{6}-[a-f0-9]{12}\Z")
@@ -87,3 +88,39 @@ def owned_file(path, root):
 
 def owned_directory(path, root):
     return _contained(path, root)
+
+
+@dataclass(frozen=True)
+class ResultKeys:
+    """Encode/decode canonical FO manifest paths at the Storage Manager boundary."""
+    batch: Path
+    originals: Path
+    normalized: Path
+    media: Path
+
+    def source(self,path):
+        path=Path(path)
+        if path.is_relative_to(self.originals):return owned_file(path,self.originals)
+        if path.is_relative_to(self.normalized):return owned_file(path,self.normalized)
+        raise ValueError("File outside owned storage")
+
+    def encode(self,row):
+        row=dict(row)
+        if row.get("query"):
+            row["query"]=str(relative_key(self.source(row["query"]).relative_to(self.batch).as_posix()))
+        row["copy"]=str(relative_media_key(owned_file(row["copy"],self.media).relative_to(self.media).as_posix()))
+        return row
+
+    def decode(self,row):
+        row=dict(row)
+        if row.get("query"):
+            row["query"]=str(self.source(self.batch/relative_key(row["query"])))
+        row["copy"]=str(owned_file(self.media/relative_media_key(row["copy"]),self.media))
+        return row
+
+
+def result_keys(run_id,*,identity=None):
+    batch_id,owner_id=run_identity(run_id) if identity is None else identity
+    return ResultKeys(batch_root(batch_id,owner_id),batch_dir(batch_id,owner_id),
+                      normalized_dir(batch_id,owner_id),
+                      result_media_dir(run_id,identity=(batch_id,owner_id)))

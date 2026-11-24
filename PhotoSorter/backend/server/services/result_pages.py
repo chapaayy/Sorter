@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from app.config import DATA_DIR
 from app.results.repository import manifest_path
+from ..storage.paths import result_keys
 
 RUN_ID=re.compile(r"\d{8}T\d{6}-[a-f0-9]{12}\Z")
 
@@ -29,14 +30,17 @@ def _manifest(run_id):
     except (OSError,ValueError):raise HTTPException(404,"Результат не найден")
 
 def iter_rows(run_id):
-    with _manifest(run_id).open("r",encoding="utf-8") as stream:
-        for line in stream:yield json.loads(line)
+    file=_manifest(run_id)
+    keys=result_keys(run_id)
+    with file.open("r",encoding="utf-8") as stream:
+        for line in stream:yield keys.decode(json.loads(line))
 
 def page(run_id,*,sam=None,group=None,cursor=None,limit=60):
     if not 1<=limit<=200:raise HTTPException(422,"Неверный лимит")
     if not RUN_ID.fullmatch(run_id):raise HTTPException(404,"Запуск не найден")
     selector={"sam":sam or "","group":group or ""}
     file=_manifest(run_id)
+    keys=result_keys(run_id)
     matches=[]
     next_cursor=None
     with file.open('rb') as stream:
@@ -52,7 +56,7 @@ def page(run_id,*,sam=None,group=None,cursor=None,limit=60):
             row=json.loads(line)
             if sam is not None and row.get("assigned_sam")!=sam:continue
             if group is not None and row.get("group_id")!=group:continue
-            matches.append(row)
+            matches.append(keys.decode(row))
             if len(matches)>limit:
                 next_cursor=_cursor(start,selector)
                 break

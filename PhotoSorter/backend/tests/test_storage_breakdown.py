@@ -92,3 +92,29 @@ def test_bucket_names_cover_media_and_archives():
     assert _kind(("reference_staging","session","files","f.jpg"))=="reference_objects"
     assert _kind(("reference_staging","session","incoming","part"))=="reference_uploads"
     assert _kind(("reference_exports","full.zip"))=="references_zip"
+
+
+def test_v2_owner_trees_and_reprocessing_count_physical_inode_once(tmp_path,monkeypatch):
+    from app import config
+    from app.storage.categories import Category
+    from app.storage.paths import managed_path
+    root=tmp_path/"app"
+    root.mkdir()
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",root)
+    batch="11111111-1111-4111-8111-111111111111"
+    upload="22222222-2222-4222-8222-222222222222"
+    runs=["20261124T123000-abcdef123456","20261124T123001-abcdef123457"]
+    original=managed_path(Category.FO_ORIGINAL,user_id=1,batch_uuid=batch,upload_uuid=upload,ext="png")
+    normalized=managed_path(Category.FO_NORMALIZED,user_id=1,batch_uuid=batch,upload_uuid=upload,ext="jpg")
+    for path,data in ((original,b"A"*8192),(normalized,b"B"*4096)):
+        path.parent.mkdir(parents=True,exist_ok=True)
+        path.write_bytes(data)
+    for run in runs:
+        copy=managed_path(Category.RESULT_MEDIA,user_id=1,batch_uuid=batch,run_id=run)/"SAM 0001"/"photo.jpg"
+        copy.parent.mkdir(parents=True)
+        os.link(normalized,copy)
+    report=_scan(tmp_path/"state",tmp_path/"models",{batch:"ФО"},{r:batch for r in runs},app_root=root)
+    assert report["allocated_total_bytes"]==(original.stat().st_blocks+normalized.stat().st_blocks)*512
+    assert report["categories"]["results_files"]["allocated_bytes"]==0
+    assert report["hardlink_paths"]==2
+    assert report["batches"][0]["allocated_bytes"]==report["allocated_total_bytes"]

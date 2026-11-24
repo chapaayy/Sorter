@@ -51,7 +51,7 @@ def test_1315_synthetic_hardlinks_full_zip_filters_and_cleanup(sandbox,monkeypat
             "group_id":f"G{i//40:04d}","score":round((i%100)/100,2),
             "top":[{"label":label,"score":round((i%100)/100,2)}] if label!="_Неопределено" else []})
     from app.results.exporter import export
-    export(paths.result_metadata_dir(run),records)
+    export(paths.result_metadata_dir(run),records,run_id=run)
 
     start=time.perf_counter()
     assert result_pages.counts(run)["sam"]==sam_counts

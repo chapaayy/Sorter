@@ -14,7 +14,7 @@ from ..media.video import encode
 import subprocess
 from ..storage.paths import owned_file,batch_dir,normalized_path,normalized_dir
 from app import config
-from app.storage.filesystem import atomic_publish
+from app.storage.filesystem import atomic_publish,directory_fd
 from ..services import operations,disk_guard
 
 
@@ -48,8 +48,8 @@ def run(item, *, stopping, cpus=2):
                 ORDER BY created_at,id""",(batch_id,)).fetchall()
         root = batch_dir(batch_id,settings['owner_id'])
         dest = normalized_dir(batch_id,settings['owner_id'])
-        if dest.is_symlink():raise ValueError('Недопустимый каталог подготовки')
-        dest.mkdir(parents=True,exist_ok=True)
+        with directory_fd(config.APP_STORAGE_ROOT,dest.relative_to(config.APP_STORAGE_ROOT),create=True):
+            pass
         plan=[]
         for row in rows:
             if stop():raise InterruptedError()

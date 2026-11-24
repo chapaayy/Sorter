@@ -302,7 +302,7 @@ def test_legacy_zip_and_stream_lease_survives_delete_request(sandbox):
     from app.results.exporter import export
     export(paths.result_metadata_dir(run),[{
         "query":str(source),"copy":str(target),"assigned_sam":"SAM-0045","top":[]
-    }])
+    }],run_id=run)
     with connect() as db:
         archive_day=db.execute("""SELECT (COALESCE(started_at,created_at) AT TIME ZONE 'Europe/Samara')::date AS day
             FROM jobs WHERE id=%s""",(run,)).fetchone()['day'].isoformat()

@@ -61,13 +61,13 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
     rows=[]
     try:
         for folder,name,query in [(sam,"hash1.jpg",original),(sam,"hash2.jpg",original),
-                                  ("_Неопределено","hash3.jpg","/unused/IMG_0914.JPG")]:
+                                  ("_Неопределено","hash3.jpg",str(paths.batch_dir(batch)/"IMG_0914.JPG"))]:
             source=model/folder/name
             source.parent.mkdir(parents=True,exist_ok=True)
             source.write_bytes(name.encode())
             rows.append({"copy":str(source),"query":query,"assigned_sam":folder})
         from app.results.exporter import export
-        manifest=export(paths.result_metadata_dir(run),rows)
+        manifest=export(paths.result_metadata_dir(run),rows,run_id=run)
         if legacy_format:
             initial=archives.prepare(run,None,archive_pipeline.legacy_selections(run))
         else:
@@ -156,10 +156,10 @@ def test_manual_date_and_video_zip_layout(sandbox):
             source=model/sam/name
             source.parent.mkdir(parents=True,exist_ok=True)
             source.write_bytes(name.encode())
-            items.append({"query":str(source),"copy":str(source),"assigned_sam":sam,
+            items.append({"query":str(paths.batch_dir(batch)/name),"copy":str(source),"assigned_sam":sam,
                           "media_kind":kind,"export_name":name,"side":side})
         from app.results.exporter import export
-        manifest=export(paths.result_metadata_dir(run),items)
+        manifest=export(paths.result_metadata_dir(run),items,run_id=run)
         plan=archive_pipeline.named_plan(run,batch,"Отчёт по выезду")
         members={name for _,name in plan.files}
         assert members=={
@@ -183,7 +183,7 @@ def test_processing_date_uses_job_start_not_upload_date(sandbox):
     source.parent.mkdir(parents=True,exist_ok=True)
     source.write_bytes(b"photo")
     from app.results.exporter import export
-    manifest=export(paths.result_metadata_dir(run),[{"copy":str(source),"assigned_sam":"SAM 0001"}])
+    manifest=export(paths.result_metadata_dir(run),[{"copy":str(source),"assigned_sam":"SAM 0001"}],run_id=run)
     try:
         with connect() as db:
             db.execute("UPDATE jobs SET started_at=%s WHERE id=%s",

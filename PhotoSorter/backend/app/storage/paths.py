@@ -139,3 +139,17 @@ def managed_path(category, **fields):
 def managed_prefix(category, **fields):
     from app.config import APP_STORAGE_ROOT
     return APP_STORAGE_ROOT / category_prefix(category,**fields)
+
+
+def relative_media_key(value):
+    """Relative key for a human-readable media entry under a typed root.
+
+    SAM labels may contain spaces and Unicode. Unlike category components,
+    these names are not used to choose the owning directory.
+    """
+    if not isinstance(value, str) or not value or value.startswith("/") or "\\" in value:
+        raise ValueError("Invalid media key")
+    if any(not part or part in (".", "..") or any(ord(c)<32 or ord(c)==127 for c in part)
+           for part in value.split("/")):
+        raise ValueError("Invalid media key")
+    return PurePosixPath(value)

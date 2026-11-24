@@ -32,12 +32,12 @@ def manifest_path(run_id,model="megaloc"):
 
 def save_model(info,model,rows,query_stamps=None,progress=None,on_export_start=None):
     from app.config import APP_STORAGE_ROOT
-    from server.storage.paths import run_identity,run_dir,result_media_dir,result_metadata_dir,batch_root,owned_file
+    from server.storage.paths import run_identity,run_dir,result_media_dir,result_metadata_dir,batch_root,owned_file,result_keys
     if model!="megaloc":raise ValueError("Unsupported result model")
     run_id=info["id"]
     identity=run_identity(run_id)
     if str(identity[0])!=str(info["batch_id"]):raise ValueError("Wrong batch for run")
-    source_root=batch_root(*identity)
+    keys=result_keys(run_id,identity=identity)
     output=run_dir(run_id,identity=identity)
     media=result_media_dir(run_id,identity=identity)
     metadata=result_metadata_dir(run_id,identity=identity)
@@ -50,7 +50,7 @@ def save_model(info,model,rows,query_stamps=None,progress=None,on_export_start=N
         staged_media.mkdir(parents=True)
         staged_metadata.mkdir()
         for i,row in enumerate(rows,1):
-            source=owned_file(Path(row["query"]),source_root)
+            source=keys.source(row["query"])
             winner=(row.get("top") or [None])[0]
             sam=winner["label"] if winner else "_Неопределено"
             file=copy_photo(source,staged_media,sam,
@@ -61,7 +61,7 @@ def save_model(info,model,rows,query_stamps=None,progress=None,on_export_start=N
                 "reference":winner.get("reference") if winner else None,"copy":str(published)})
             if progress:progress(i,len(rows),source.name)
         if on_export_start:on_export_start()
-        export(staged_metadata,stored)
+        export(staged_metadata,stored,run_id=run_id,identity=identity)
         # Publish media and metadata together under the same run tree.
         # Exclusive FIFO run ownership prevents concurrent publication.
         with parent_fd(APP_STORAGE_ROOT,staging.relative_to(APP_STORAGE_ROOT)) as (src_fd,src), \
@@ -74,10 +74,12 @@ def save_model(info,model,rows,query_stamps=None,progress=None,on_export_start=N
     return stored
 
 def load_model(run_id,model):
+    from server.storage.paths import result_keys
+    keys=result_keys(run_id)
     with manifest_path(run_id,model).open("r",encoding="utf-8") as stream:
         rows=[]
         for index,line in enumerate(stream):
             row=json.loads(line)
             if row.pop("index")!=index:raise ValueError("Invalid result row index")
-            rows.append(row)
+            rows.append(keys.decode(row))
         return rows

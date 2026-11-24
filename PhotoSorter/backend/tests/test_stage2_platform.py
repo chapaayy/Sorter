@@ -161,6 +161,14 @@ def test_export_rows_jsonl_and_paged_results(thumbs,monkeypatch):
     repository.save_model({"id":run,"batch_id":str(own)},"megaloc",rows)
     manifest=repository.manifest_path(run)
     assert {p.name for p in manifest.parent.iterdir() if p.is_file()}=={"manifest.rows.jsonl"}
+    encoded=json.loads(manifest.read_text(encoding="utf-8").splitlines()[0])
+    assert encoded["query"]=="originals/photo.jpg"
+    assert encoded["copy"].startswith("SAM-0001/")
+    assert not Path(encoded["copy"]).is_absolute()
+    from server.storage.paths import result_keys
+    keys=result_keys(run)
+    for key in ("../escape.jpg","/tmp/escape.jpg","SAM-0001/../escape.jpg"):
+        with pytest.raises(ValueError):keys.decode({**encoded,"copy":key})
     cursor=None
     indexes=[]
     while True:
