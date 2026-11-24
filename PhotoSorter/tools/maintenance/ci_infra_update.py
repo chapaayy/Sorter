@@ -186,7 +186,7 @@ def main():
     from host_logs import maintenance
     # The preceding rotation can leave a genuinely empty active PG log.
     # Write a fresh real server message before comparing usage.
-    host.sql("DO $ BEGIN RAISE WARNING 'CI journal usage sample'; END $")
+    host.sql("DO $ci$ BEGIN RAISE WARNING 'CI journal usage sample'; END $ci$")
     deadline=time.monotonic()+10
     while not any(p.stat().st_size for p in (storage/"logs/postgres").glob("postgresql-*.log")):
         if time.monotonic()>deadline:raise RuntimeError("PostgreSQL sample not flushed")
