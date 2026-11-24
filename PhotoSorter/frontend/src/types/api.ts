@@ -96,6 +96,7 @@ export interface StorageUsage {
   disk: { total_bytes: number; used_bytes: number; available_bytes: number; used_fraction: number
     warning?: 'warning' | 'critical' | null; reserved_bytes?: number; admission_ok?: boolean }
   categories_bytes: Record<string, number>; database_estimated_bytes?: number | null; not_scanned?: string[]
+  journals?: {at:string|null;services:Record<string,{bytes:number|null;budget_bytes:number;partial:boolean}>}
 }
 export interface StorageCounter {
   allocated_bytes:number;logical_bytes:number;hardlink_reused_bytes:number

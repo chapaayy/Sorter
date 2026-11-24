@@ -55,6 +55,55 @@ def prune_postgres(storage,*,budget=None):
         path.unlink(missing_ok=True);total-=size;removed+=1
     return removed
 
+def publish_usage(storage):
+    """Only fixed log trees, no user-file census, filenames or contents exported."""
+    storage=Path(storage)
+    budgets=policy(storage/"system/state/log-policy.json")
+    rows={}
+    for service,budget in budgets.items():
+        root=storage/"logs"/service
+        total=0
+        count=0
+        partial=False
+        try:
+            for directory,dirs,files in os.walk(root,followlinks=False):
+                dirs[:]=[d for d in dirs if not (Path(directory)/d).is_symlink()]
+                for name in files:
+                    if count>=100000:
+                        partial=True;break
+                    try:
+                        st=(Path(directory)/name).lstat()
+                        if stat.S_ISREG(st.st_mode):
+                            total+=st.st_size;count+=1
+                    except OSError:partial=True
+                if partial:break
+        except OSError:partial=True
+        rows[service]={"bytes":total,"budget_bytes":budget*1024*1024,"partial":partial}
+    from map_updater import atomic_json
+    atomic_json(storage/"system/updater/control/log-usage.json",
+                {"at":datetime.now(timezone.utc).isoformat(),"services":rows})
+
+def maintenance(storage):
+    storage=Path(storage)
+    prune_postgres(storage)
+    # This is the same lock held by install.sh and the host updater, never a
+    # second cleanup system. An active build retains all of its resources.
+    from map_updater import configure,recover_owned_work
+    from map_build import configure as configure_builder,clean_owned_builders
+    lock=storage/"system/updater/private/deploy.lock"
+    with lock.open("a") as handle:
+        try:fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:pass
+        else:
+            configure_builder(storage)
+            clean_owned_builders()
+            import shutil
+            for path in (storage/"system/updater/workspace").glob("source-*"):
+                if path.is_dir() and not path.is_symlink():shutil.rmtree(path)
+            for path in (storage/"system/backups/updater").glob(".pending-*"):
+                if path.is_dir() and not path.is_symlink():shutil.rmtree(path)
+    publish_usage(storage)
+
 if __name__=="__main__":
     import sys
-    prune_postgres(Path(sys.argv[1]))
+    maintenance(Path(sys.argv[1]))

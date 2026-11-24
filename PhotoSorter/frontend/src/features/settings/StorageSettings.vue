@@ -106,6 +106,13 @@ async function cleanup(){
     </template>
     <LoadingSkeleton v-else-if="usageLoading" variant="lines" label="Считываем использование хранилища"/>
   </section>
+  <section v-if="usage?.journals" class="panel stack">
+    <h2>Бюджеты журналов</h2>
+    <p class="meta">{{usage.journals.at?`Снимок: ${date(usage.journals.at)}`:"Снимок хостовых журналов ещё недоступен."}} Бюджеты допускают временное превышение на активный сегмент.</p>
+    <div v-for="(row,name) in usage.journals.services" :key="name" class="row between wrap">
+      <span>{{name}}</span><strong>{{row.bytes===null?"Нет данных":bytes(row.bytes)+(row.partial?" (частично)":"")}} / {{bytes(row.budget_bytes)}}</strong>
+    </div>
+  </section>
   <section class="panel stack">
     <div class="row between wrap">
       <div>

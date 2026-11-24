@@ -207,6 +207,9 @@ class LiveAudit:
             return
         stack = [root]
         while stack:
+            if self.stop or time.monotonic()>=self.deadline or len(self.path_wds)>=100000:
+                self.stop=True
+                return
             current = stack.pop()
             if self.should_skip(current) or current in self.path_wds:
                 continue

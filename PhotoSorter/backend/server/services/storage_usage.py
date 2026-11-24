@@ -1,6 +1,7 @@
 """Read-only data-mount capacity and approximate logical/physical category usage."""
 from __future__ import annotations
 import os
+import json
 from pathlib import Path
 from app.config import DATA_DIR, MODELS_DIR, MODEL_CACHE_DIR
 from app.storage.paths import managed_prefix,category_prefix
@@ -70,7 +71,17 @@ def usage():
         pass
     fraction=used/total if total else 0
     required=reserve(total)
-    return {"disk":{"total_bytes":total,"used_bytes":used,"available_bytes":free,
+    from app.storage.categories import LOG_BUDGETS_MIB
+    journals={"at":None,"services":{name:{"bytes":None,"budget_bytes":n*1024*1024,"partial":True} for name,n in LOG_BUDGETS_MIB.items()}}
+    try:
+        report=json.loads(Path("/run/map-updater/log-usage.json").read_text())
+        journals["at"]=report.get("at")
+        for name,row in journals["services"].items():
+            sample=report.get("services",{}).get(name,{})
+            if isinstance(sample.get("bytes"),int) and sample["bytes"]>=0:
+                row.update(bytes=sample["bytes"],partial=bool(sample.get("partial")))
+    except (OSError,ValueError,TypeError,AttributeError):pass
+    return {"journals":journals,"disk":{"total_bytes":total,"used_bytes":used,"available_bytes":free,
             "reserved_bytes":required,"admission_ok":free>required,
             "used_fraction":fraction,"warning":"critical" if fraction>=.90
             else "warning" if fraction>=.80 else None},

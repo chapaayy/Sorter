@@ -133,6 +133,7 @@ def restore_drill(root,storage,cert,initial):
                 except OSError:
                     if time.monotonic()>deadline:raise
                     time.sleep(1)
+            run("docker","rm","-f",name)
             print("REAL_SNAPSHOT_RESTORE_POSTGRES_CADDY_TLS_OK",flush=True)
     finally:
         subprocess.run(["docker","rm","-f",name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -182,7 +183,11 @@ def main():
         assert proc.stdout.readline().strip()=="ready"
     finally:
         proc.kill();proc.wait()
-    assert not map_build.clean_owned_builders()
+    from host_logs import maintenance
+    maintenance(storage)
+    summary=json.loads((storage/"system/updater/control/log-usage.json").read_text())
+    assert len(summary["services"])==11
+    assert summary["services"]["postgres"]["bytes"]>0
     assert not marker.exists()
     assert builder not in run("docker","buildx","ls","--format","{{.Name}}").splitlines()
     assert "buildx_buildkit_"+builder+"0_state" not in run("docker","volume","ls","--format","{{.Name}}").splitlines()

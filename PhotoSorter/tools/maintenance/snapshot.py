@@ -327,6 +327,14 @@ def restore_test(archive,destination,url,*,confirmed=False):
                     safe_model_symlink(member.name,member.linkname)
                     os.symlink(member.linkname,dest)
                 else:raise ValueError("Unsupported archive item")
+        if os.geteuid()==0:
+            # Preserve app UID/GID on a root staging restore, without exposing
+            # Caddy private keys or host configuration to that UID.
+            app=destination/"storage/app"
+            for directory,dirs,files in os.walk(app,followlinks=False):
+                os.chown(directory,10001,10001)
+                os.chmod(directory,0o750)
+                for name in dirs+files:os.chown(Path(directory)/name,10001,10001,follow_symlinks=False)
         pg_run(["pg_restore","--exit-on-error","--no-owner","--no-acl",
                 "--dbname",db,str(archive/"database.dump")],url)
         for item in manifest["files"]:
