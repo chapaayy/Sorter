@@ -153,7 +153,25 @@ if [[ "$EXISTING_POSTGRES" -eq 0 ]]; then
 else
   echo '[INFO] Skipped recursive chown of existing model/photo storage.'
 fi
-"${COMPOSE[@]}" up -d --build
+# Host updater and disposable builder on production Ubuntu. CI uses Compose.
+if [[ "$(id -u)" == 0 && "${CI:-}" != true && "${GITHUB_ACTIONS:-}" != true ]] &&
+   [[ -d /run/systemd/system ]] && command -v systemctl >/dev/null; then
+  mkdir -p /var/lib/map-updater
+  if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
+    exec 9>/var/lib/map-updater/deploy.lock
+    flock -n 9 || { echo '[ERROR] Another MAP deployment is running'; exit 1; }
+  fi
+  bash PhotoSorter/tools/maintenance/install_map_updater.sh
+  if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
+    python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)"
+  fi
+  "${COMPOSE[@]}" up -d --no-build --wait --wait-timeout 180
+  if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
+    systemctl restart map-updater.service
+  fi
+else
+  "${COMPOSE[@]}" up -d --build
+fi
 # Optional root-owned, read-only file-event observer. It creates only its own
 # append-only audit logs, not user data or cleanup. No new Python packages.
 if [[ "$(id -u)" == 0 && "${CI:-}" != "true" && "${GITHUB_ACTIONS:-}" != "true" ]] &&
@@ -192,7 +210,7 @@ fi
 # Read-only host filesystem census after deployment. Root is needed for Docker
 # volumes, container overlay layers and /proc. This never deletes user files,
 # sets quotas or changes the behaviour of the workers.
-if [[ "$(id -u)" == 0 ]]; then
+if [[ "$(id -u)" == 0 && "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
   echo '[INFO] Auditing MAP storage, Docker volumes, images, logs and host runtime files.'
   if ! python3 PhotoSorter/tools/maintenance/audit_host.py --project-root "$PWD"; then
     echo '[WARN] Host audit reported coverage gaps; view Administration > Host audit.' >&2

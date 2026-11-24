@@ -17,6 +17,8 @@ from .api.routes.work_queue import router as work_queue_router
 from .api.routes.library_notices import router as library_notices_router
 from .jobs import router as jobs_router
 from .security.access_policy import authorize
+from .services.update_gate import UpdateGate
+from .api.routes import updater
 from .api.routes import access_requests,admin_users,auth,batches,downloads,images,logs,models,results,site,storage,thumbnails,references,originals,system,processing_settings,regions
 
 @asynccontextmanager
@@ -56,7 +58,9 @@ async def private_api(request:Request,call_next):
 @app.get("/api/health")
 def health():return {"status":"ok","version":"0.1.0-beta.1"}
 
-for router in (auth.router,access_requests.router,admin_users.router,batches.router,uploads_router,reference_imports_router,work_queue_router,library_notices_router,jobs_router,
+app.add_middleware(UpdateGate)
+
+for router in (updater.router,auth.router,access_requests.router,admin_users.router,batches.router,uploads_router,reference_imports_router,work_queue_router,library_notices_router,jobs_router,
                models.router,results.router,images.router,downloads.router,
                logs.router,storage.router,thumbnails.router,references.router,originals.router,system.router,processing_settings.router,regions.router,site.router):
     app.include_router(router)
