@@ -18,11 +18,11 @@ def sync_paths(db,keys,tree_key=None):
     if keys:observe(db,config.APP_STORAGE_ROOT,sorted(keys))
 
 class Lease:
-    def __init__(self,token=None):self.token=token
+    def __init__(self,token=None,limit=0):self.token=token;self.limit=limit
     def track(self,path,*,tree=False):
         if self.token is None:return
         key=key_for(path)
-        if not key:raise ValueError("Reservation path outside app storage")
+        if not key:return # standalone paths are not in the app registry
         with connect() as db:
             admission.lock(db)
             db.execute("UPDATE storage_reservations SET work_key=%s,work_tree=%s WHERE id=%s",(key,tree,self.token))
@@ -33,6 +33,24 @@ class Lease:
         with connect() as db:
             admission.lock(db)
             db.execute("UPDATE storage_reservations SET publish_keys=publish_keys||%s::text[] WHERE id=%s",(keys,self.token))
+    def grow(self,additional,*,personal=0,temporary=None):
+        if additional<=0:return
+        if self.token is None:
+            self.limit+=additional
+            return
+        additional=admission.rounded(additional)
+        personal=admission.rounded(personal)
+        temporary=additional if temporary is None else admission.rounded(temporary)
+        with connect() as db:
+            admission.lock(db)
+            row=db.execute("SELECT * FROM storage_reservations WHERE id=%s",(self.token,)).fetchone()
+            if not row:raise RuntimeError("Lost storage reservation")
+            admission.admit(db,additional,temporary=temporary,owner=row["owner_id"],personal=personal)
+            db.execute("""UPDATE storage_reservations SET requested_bytes=requested_bytes+%s,
+               personal_bytes=personal_bytes+%s,temporary_bytes=temporary_bytes+%s WHERE id=%s""",
+               (additional,personal,temporary,self.token))
+        self.limit+=additional
+
     def sync(self,db=None):
         if self.token is None:return
         if db is None:
@@ -53,9 +71,9 @@ def reservation(kind,requested,*,owner=None,personal=0,temporary=None,path=None,
     if not database.DB_URL:
         from ..services import disk_guard
         if path is not None:disk_guard.check_admission(requested,path=path)
-        yield Lease();return
-    requested=admission.rounded(requested)
-    temporary=requested if temporary is None else admission.rounded(temporary)
+        yield Lease(limit=requested);return
+    requested=admission.rounded(requested,path=path)
+    temporary=requested if temporary is None else admission.rounded(temporary,path=path)
     personal=admission.rounded(personal)
     token=uuid.uuid4();key=token.int & ((1<<63)-1)
     # Session lock lives until exit or process death. The short transaction
@@ -69,7 +87,7 @@ def reservation(kind,requested,*,owner=None,personal=0,temporary=None,path=None,
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (token,kind,key,requested,owner,personal,temporary,key_for(work) if work is not None else None,tree))
         db.commit()
-        try:yield Lease(token)
+        try:yield Lease(token,requested)
         finally:
             admission.lock(db)
             row=db.execute("SELECT * FROM storage_reservations WHERE id=%s",(token,)).fetchone()

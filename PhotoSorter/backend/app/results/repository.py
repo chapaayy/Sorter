@@ -43,8 +43,12 @@ def save_model(info,model,rows,query_stamps=None,progress=None,on_export_start=N
     media=result_media_dir(run_id,identity=identity)
     metadata=result_metadata_dir(run_id,identity=identity)
     if output.exists() or output.is_symlink():raise FileExistsError('Результат уже опубликован')
+    from server.storage.reservations import reservation
+    from server.storage.admission import rounded
     stored=[]
-    with pipeline_directory(Category.PROCESSING_STAGING,run_id=run_id) as scratch:
+    with pipeline_directory(Category.PROCESSING_STAGING,run_id=run_id) as scratch, \
+         reservation("result_export",0,owner=identity[1],work=scratch,tree=True) as budget:
+        def reserve_bytes(n):budget.grow(rounded(n),personal=rounded(n))
         staging=scratch/"publish"
         staged_media=staging/media.name
         staged_metadata=staging/metadata.name
@@ -55,14 +59,15 @@ def save_model(info,model,rows,query_stamps=None,progress=None,on_export_start=N
             winner=(row.get("top") or [None])[0]
             sam=winner["label"] if winner else "_Неопределено"
             file=copy_photo(source,staged_media,sam,
-                (query_stamps or {}).get(row["query"]) if query_stamps is not None else None)
+                (query_stamps or {}).get(row["query"]) if query_stamps is not None else None,reserve_copy=reserve_bytes)
             published=media/file.relative_to(staged_media)
             stored.append({**row,"assigned_sam":sam,
                 "score":row.get("match_score",winner.get("score") if winner else None),
                 "reference":winner.get("reference") if winner else None,"copy":str(published)})
             if progress:progress(i,len(rows),source.name)
         if on_export_start:on_export_start()
-        export(staged_metadata,stored,run_id=run_id,identity=identity)
+        export(staged_metadata,stored,run_id=run_id,identity=identity,reserve_bytes=reserve_bytes)
+        budget.publish(metadata/MANIFEST_NAME,*(Path(row["copy"]) for row in stored))
         # Publish media and metadata together under the same run tree.
         # Exclusive FIFO run ownership prevents concurrent publication.
         with parent_fd(APP_STORAGE_ROOT,staging.relative_to(APP_STORAGE_ROOT)) as (src_fd,src), \

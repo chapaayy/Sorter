@@ -84,8 +84,16 @@ def render(source:Path,destination:Path):
             img=base
         else:
             img=img.convert("RGB")
-        with atomic_write(config.APP_STORAGE_ROOT,destination.relative_to(config.APP_STORAGE_ROOT)) as output:
-            img.save(output,format="WEBP",quality=cache.QUALITY,method=4)
+        # Encode the bounded 480px preview in memory, then reserve its exact
+        # persisted bytes. Reuse an existing owner-scoped preview without charge.
+        encoded=io.BytesIO()
+        img.save(encoded,format="WEBP",quality=cache.QUALITY,method=4)
+        raw=encoded.getvalue()
+        from ..storage.registry import classify,key_for
+        _,scope,fields,_=classify(key_for(destination))
+        owner=int(fields["user_id"]) if scope=="personal" else None
+        with atomic_write(config.APP_STORAGE_ROOT,destination.relative_to(config.APP_STORAGE_ROOT),expected_size=len(raw),owner=owner) as output:
+            output.write(raw)
 
 def complete(task):
     token=None

@@ -12,7 +12,7 @@ def sha256(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
-def link_or_copy(source: Path, target: Path, *, expected_stamp=None, expected_hash=None):
+def link_or_copy(source: Path, target: Path, *, expected_stamp=None, expected_hash=None, reserve_copy=None):
     source, target = Path(source), Path(target)
     before = source.stat()
     if not source.is_file() or source.is_symlink():
@@ -32,6 +32,7 @@ def link_or_copy(source: Path, target: Path, *, expected_stamp=None, expected_ha
             if error.errno not in COPY_FALLBACK:
                 raise
             method = "copy"
+            if reserve_copy:reserve_copy(max(before.st_size,before.st_blocks*512))
             with source.open("rb") as src:
                 with target.open("xb") as dst:
                     created = True

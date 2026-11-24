@@ -92,7 +92,7 @@ class ReferenceCachedMegaLoc:
                         VALUES (%s,%s,%s,NULL,%s,%s) ON CONFLICT(source_hash,model_signature)
                         DO UPDATE SET cache_path=excluded.cache_path,unowned_since=NULL,
                             vector_sha256=excluded.vector_sha256,dimensions=excluded.dimensions""",(digest,self.fingerprint,str(target),hashlib.sha256(raw).hexdigest(),int(vector.size)))
-                with atomic_write(config.APP_STORAGE_ROOT,target.relative_to(config.APP_STORAGE_ROOT)) as stream:
+                with atomic_write(config.APP_STORAGE_ROOT,target.relative_to(config.APP_STORAGE_ROOT),expected_size=len(raw)) as stream:
                     stream.write(raw)
         for path in paths:
             vector,error=found.get(path,(None,RuntimeError('Missing feature')))

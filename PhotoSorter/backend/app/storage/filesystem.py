@@ -107,26 +107,37 @@ def file_stat(root, key):
                 "device": info.st_dev, "inode": info.st_ino, "links": info.st_nlink}
 
 @contextmanager
-def atomic_write(root, key):
+def atomic_write(root, key, *, expected_size=None, owner=None):
     """Stage in leased scratch, then atomically replace on the same mount.
 
     No adjacent fragments survive a crashed writer. The scratch sweeper owns
     recovery, including metadata, embeddings and thumbnails.
     """
     from .temporary import temporary_operation
+    from contextlib import nullcontext
     root=Path(root)
     key=relative_key(str(key))
     service=os.environ.get("MAP_SERVICE","worker")
     with temporary_operation(root,service) as stage:
         staged=stage.relative_to(root)/"fragment"
-        with parent_fd(root,staged) as (fd,name):
-            handle=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,
-                           0o600,dir_fd=fd)
-            with os.fdopen(handle,"wb") as stream:
-                yield stream
-                stream.flush()
-                os.fsync(stream.fileno())
-        atomic_publish(root,staged,key)
+        if expected_size is not None:
+            from server.storage.reservations import reservation
+            budget=reservation("atomic_write",expected_size,owner=owner,
+                personal=expected_size if owner is not None else 0,path=root,work=root/staged)
+        else:budget=nullcontext(None)
+        with budget as lease:
+            if lease:lease.publish(root/key)
+            with parent_fd(root,staged) as (fd,name):
+                handle=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,
+                               0o600,dir_fd=fd)
+                with os.fdopen(handle,"wb") as stream:
+                    if lease:
+                        from server.storage.bounded import BoundedWriter
+                        yield BoundedWriter(stream,expected_size)
+                    else:yield stream
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            atomic_publish(root,staged,key)
 
 
 def safe_remove_tree(root,key,*,missing_ok=False):

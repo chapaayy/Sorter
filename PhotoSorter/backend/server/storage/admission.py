@@ -21,12 +21,12 @@ def lock(db):
 def policy(db):
     return db.execute("SELECT personal_enabled,temporary_limit_bytes,disk_reserve_bytes FROM storage_limits").fetchone()
 
-def block_size():
-    return max(512,os.statvfs(config.APP_STORAGE_ROOT).f_frsize)
+def block_size(path=None):
+    return max(512,os.statvfs(path or config.APP_STORAGE_ROOT).f_frsize)
 
-def rounded(n):
+def rounded(n,path=None):
     n=max(0,int(n))
-    block=block_size()
+    block=block_size(path)
     return ((n+block-1)//block)*block
 
 def _actual(key):

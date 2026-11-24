@@ -117,8 +117,8 @@ def prepare(plan: ReferenceExport) -> Path:
                     return target
                 # Preserve the previous inode until publication succeeds.
             # ZIP_STORED needs almost as much free space as the source images.
-            with archive_cache.build_space(config.APP_STORAGE_ROOT,sum(size for _, _, size in plan.files)+1024*1024+len(plan.files)*2048):
-                return _build(plan,target,directory)
+            with archive_cache.build_space(config.APP_STORAGE_ROOT,sum(size+2*len(name.encode("utf8"))+512 for _,name,size in plan.files)+1024*1024) as lease:
+                return _build(plan,target,directory,lease=lease)
         except OSError as exc:
             if exc.errno == errno.ENOSPC:
                 raise HTTPException(507, "Недостаточно места для ZIP образцов") from exc
@@ -127,10 +127,14 @@ def prepare(plan: ReferenceExport) -> Path:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def _build(plan,target,directory):
+def _build(plan,target,directory,*,lease=None):
     fd, temporary = tempfile.mkstemp(prefix=".references-", suffix=".tmp", dir=directory)
     try:
         with os.fdopen(fd, "wb") as output:
+            if lease:
+                lease.track(Path(temporary));lease.publish(target)
+                from ..storage.bounded import BoundedWriter
+                output=BoundedWriter(output,lease.limit)
             with zipfile.ZipFile(output, mode="w", compression=zipfile.ZIP_STORED,
                                  allowZip64=True) as archive:
                 for source, name, size in plan.files:

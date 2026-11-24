@@ -85,15 +85,19 @@ def prepare(run_id:str,sam:str|None,selected:list[tuple[Path,str]],*,progress=No
                     if progress:progress(total,total)
                     return target
                 # Keep old inode until the verified replacement is ready.
-            with archive_cache.build_space(output_root(),total+1024*1024+len(selected)*2048):
-                return _build(target,selected,total,progress,should_stop,root)
+            with archive_cache.build_space(output_root(),total+1024*1024+sum(2*len(name.encode("utf8"))+512 for _,name in selected)) as lease:
+                return _build(target,selected,total,progress,should_stop,root,lease=lease)
         finally:
             fcntl.flock(handle.fileno(),fcntl.LOCK_UN)
 
-def _build(target,selected,total,progress,should_stop,root):
+def _build(target,selected,total,progress,should_stop,root,*,lease=None):
     fd,tmp=tempfile.mkstemp(dir=target.parent,prefix=".archive-",suffix=".tmp")
     try:
         with os.fdopen(fd,"wb") as output:
+            if lease:
+                lease.track(Path(tmp));lease.publish(target)
+                from ..storage.bounded import BoundedWriter
+                output=BoundedWriter(output,lease.limit)
             with zipfile.ZipFile(output,mode="w",compression=zipfile.ZIP_STORED,
                                  allowZip64=True) as archive:
                 done=0

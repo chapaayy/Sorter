@@ -4,7 +4,7 @@ import hashlib
 from ..photos.labels import check_label
 from server.storage.hardlinks import link_or_copy
 
-def copy_photo(source,model_dir,label,expected_stamp=None):
+def copy_photo(source,model_dir,label,expected_stamp=None,*,reserve_copy=None):
     source=Path(source)
     if not source.is_file(): raise FileNotFoundError(source)
     name=check_label(label) if label!='_Неопределено' else label
@@ -17,7 +17,7 @@ def copy_photo(source,model_dir,label,expected_stamp=None):
     for i in range(100000):
         dest=directory/(basename if i==0 else f'{digest}_{i}_{source.name}')
         try:
-            link_or_copy(source,dest,expected_stamp=expected_stamp)
+            link_or_copy(source,dest,expected_stamp=expected_stamp,reserve_copy=reserve_copy)
             return dest
         except FileExistsError: continue
     raise RuntimeError('Слишком много совпадений имён файлов')

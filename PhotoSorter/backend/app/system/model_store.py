@@ -100,5 +100,6 @@ def verified():return files_present()
 
 def remember_verified():
     verify_bundle(repo_folder(),weight_target())
-    with atomic_write(config.APP_STORAGE_ROOT,verification_path().relative_to(config.APP_STORAGE_ROOT)) as stream:
-        stream.write(json.dumps(metadata(),sort_keys=True).encode("utf8"))
+    raw=json.dumps(metadata(),sort_keys=True).encode("utf8")
+    with atomic_write(config.APP_STORAGE_ROOT,verification_path().relative_to(config.APP_STORAGE_ROOT),expected_size=len(raw)) as stream:
+        stream.write(raw)

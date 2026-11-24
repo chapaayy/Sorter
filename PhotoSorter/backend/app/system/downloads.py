@@ -107,7 +107,8 @@ class Downloads:
                 source=stage/"source"
                 source.mkdir()
                 weight=stage/model_store.WEIGHT_NAME
-                with build_space(root,model_store.MAX_WEIGHT_BYTES+10_000_000,message="Недостаточно места для установки MegaLoc",kind="model_download"):
+                with build_space(root,model_store.MAX_WEIGHT_BYTES+10_000_000,message="Недостаточно места для установки MegaLoc",kind="model_download",work=stage,tree=True) as budget:
+                    budget.publish(model_store.weight_target(),*(model_store.repo_folder()/name for name in model_store.SOURCE_BLOBS))
                     for name in model_store.SOURCE_BLOBS:
                         _fetch(f"https://raw.githubusercontent.com/gmberton/MegaLoc/{model_store.SOURCE_REVISION}/{name}",
                                source/name,maximum=1_000_000)
@@ -116,10 +117,10 @@ class Downloads:
                            weight,maximum=model_store.MAX_WEIGHT_BYTES,
                            progress=lambda n:self._set("downloading",f"Веса MegaLoc: {n/1024/1024:.1f} МБ",stage="weights",received_bytes=n))
                     model_store.verify_bundle(source,weight)
-                self._set("verifying","Проверяем реальные веса MegaLoc на CPU…",stage="verify")
-                self._verify(source,weight,stage,lease)
-                _publish(source,weight)
-                if not model_store.verified():raise RuntimeError("Publication verification failed")
+                    self._set("verifying","Проверяем реальные веса MegaLoc на CPU…",stage="verify")
+                    self._verify(source,weight,stage,lease)
+                    _publish(source,weight)
+                    if not model_store.verified():raise RuntimeError("Publication verification failed")
 
     def _verify(self,source,weight,stage,lease):
         # No automatic Torch Hub download or external dependency is allowed.
