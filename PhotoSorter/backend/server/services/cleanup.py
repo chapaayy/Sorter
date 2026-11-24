@@ -77,7 +77,7 @@ def _save_progress(db,batch_id,snapshot):
         WHERE batch_id=%s""",(snapshot,batch_id))
 
 def _files(batch_id,run_ids,upload_ids,report):
-    return remove_batch_files(batch_id,run_ids,upload_ids,DATA_DIR,RUNS_DIR,report)
+    return remove_batch_files(batch_id,run_ids,upload_ids,report)
 
 def _reporter(db,batch_id):
     last_phase=None

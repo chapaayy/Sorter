@@ -195,3 +195,13 @@ def test_storage_root_cannot_change_on_redeploy(deploy):
     assert "refusing to switch roots" in result.stderr
     assert not (root.parent/"different").exists()
     assert "up -d" not in log.read_text()
+
+
+def test_configure_never_replaces_existing_credentials(deploy):
+    root,run,log=deploy
+    before={p.name:p.read_bytes() for p in (root/".env",root/".env.generated")}
+    result=run("--configure")
+    assert result.returncode!=0
+    assert "Existing configuration" in result.stderr
+    assert not log.exists()
+    assert before=={p.name:p.read_bytes() for p in (root/".env",root/".env.generated")}

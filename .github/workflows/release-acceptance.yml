@@ -36,7 +36,8 @@ jobs:
           sudo apt-get install -y ffmpeg
           python -m pip install requests Pillow playwright
           python -m playwright install --with-deps chromium
-          curl --fail --retry 3 --location --output "$RUNNER_TEMP/coco-val2017.zip" https://images.cocodataset.org/zips/val2017.zip
+          curl --fail --retry 3 --location --output "$RUNNER_TEMP/coco-val2017.zip" https://huggingface.co/datasets/pcuenq/coco-2017-mirror/resolve/fbbee70f52f540987cca6936c9f1d7b1ff969ad1/val2017.zip
+          echo "4f7e2ccb2866ec5041993c9cf2a952bbed69647b115d0f74da7ce8f4bef82f05  $RUNNER_TEMP/coco-val2017.zip" | sha256sum -c -
       - name: Real MegaLoc 1100 unique photos, codecs, three cycles and actual ZIP TTL
         run: |
           sudo --preserve-env=CI,GITHUB_ACTIONS,PLAYWRIGHT_BROWSERS_PATH env PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" "$(command -v python)" PhotoSorter/tools/maintenance/ci_release_load.py "$RUNNER_TEMP/map-corpus" "$RUNNER_TEMP/coco-val2017.zip" "$RUNNER_TEMP/map-release-report.json"

@@ -343,6 +343,8 @@ def main():
             expire(s,real_hour=cycle==1)
             expired=storage_snapshot(s,f"cycle_{cycle}_expired")
             delete_batch(s,bid)
+            # Accelerate only the existing thumbnail grace, on disposable data.
+            app_python("from server.services.thumbnails import gc_unowned;print(gc_unowned(limit=2000,grace_seconds=0))")
             deleted=storage_snapshot(s,f"cycle_{cycle}_deleted")
             assert not list((STORAGE/"app/users").glob(f"*/batches/{bid}/originals/*"))
             assert not list((STORAGE/"app/users").glob(f"*/batches/{bid}/results/*/metadata/*"))

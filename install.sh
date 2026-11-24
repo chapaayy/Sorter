@@ -216,6 +216,10 @@ else
   fi
   "${COMPOSE[@]}" up -d --no-build --wait --wait-timeout 180
 fi
+# Remove an obsolete duplicate credential only after successful deployment.
+if grep -Eq '^ADMIN_PASSWORD=' .env.generated; then
+  sed -i '/^ADMIN_PASSWORD=/d' .env.generated
+fi
 printf '\n[OK] Site: https://%s\n' "$DOMAIN"
 echo '[INFO] Login: admin (ADMIN_PASSWORD in .env)'
 echo '[INFO] DNS and ports 80/443 must point to this VPS.'
