@@ -1,6 +1,9 @@
 import {api,post} from './client'
-import type {StorageUsage,StorageBreakdown,SystemStatus,RetentionPreference,StorageInventorySummary,StorageInventoryPage,HostAuditReport,LiveAuditStatus} from '../types/api'
+import type {StorageUsage,StorageBreakdown,SystemStatus,RetentionPreference,StorageInventorySummary,StorageInventoryPage,HostAuditReport,LiveAuditStatus,MapUpdateStatus} from '../types/api'
 export const systemApi={
+  updateStatus:()=>api<MapUpdateStatus>('/system/update'),
+  checkUpdate:()=>post<MapUpdateStatus>('/system/update/check',{}),
+  startUpdate:()=>post<MapUpdateStatus>('/system/update/start',{}),
   usage:()=>api<StorageUsage>('/storage/usage'),
   breakdown:()=>api<StorageBreakdown>('/storage/breakdown'),
   scanInventory:()=>post<StorageInventorySummary>('/storage/inventory/scan',{}),

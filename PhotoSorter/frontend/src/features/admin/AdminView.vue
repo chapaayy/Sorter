@@ -5,6 +5,7 @@ import Accounts from './users/Accounts.vue'
 import AccessRequests from './users/AccessRequests.vue'
 import StorageInventory from './StorageInventory.vue'
 import HostAudit from './HostAudit.vue'
+import MapUpdater from './MapUpdater.vue'
 import MegaLocSettings from '../settings/MegaLocSettings.vue'
 import PerformanceSettings from '../settings/PerformanceSettings.vue'
 import StorageSettings from '../settings/StorageSettings.vue'
@@ -25,6 +26,7 @@ const accountRefresh=ref(0),requestRefresh=ref(0)
     <section aria-label="Реестр файлов" class="stack"><StorageInventory/></section>
     <section aria-label="Аудит сервера" class="stack"><HostAudit/></section>
     <section aria-label="Хранилище" class="stack"><StorageSettings/></section>
+    <section aria-label="Обновления" class="stack"><MapUpdater/></section>
     <section aria-label="Система" class="stack"><SystemSettings/></section>
   </div>
 </template>

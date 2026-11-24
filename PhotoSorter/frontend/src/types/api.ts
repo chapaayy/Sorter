@@ -176,3 +176,9 @@ export interface LiveAuditStatus {
   watched_roots?:Array<{path:string;scope:string}>
   warnings?:string[];limitations?:string[]
 }
+
+export interface MapUpdateStatus {
+  available:boolean;busy?:boolean;phase?:string;detail?:string
+  installed?:string|null;target?:string|null;previous?:string|null;update_available?:boolean
+  free_before?:number;free_after?:number;free_change?:number;warnings?:string[]
+}
