@@ -137,16 +137,6 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
     return {**info,"queue_position":position}
 
 
-@router.get("/{run_id}/archive/status")
-def archive_status(run_id:str):
-    from .services.archive_retries import archive_status as inspect
-    return inspect(run_id)
-
-@router.post("/{run_id}/archive/retry",status_code=202)
-def retry_archive(run_id:str):
-    from .services.archive_retries import request
-    return request(run_id)
-
 @router.get("/{run_id}")
 def get_job(run_id:str):
     with connect() as db:
@@ -179,8 +169,8 @@ class ServerJob(Job):
         self._last_db_stop=0.0
         self._db_stopped=False
     def finalize_results(self):
-        from .services.archive_pipeline import build_for_job
-        build_for_job(self)
+        from .services.archive_pipeline import mark_on_demand
+        mark_on_demand(self)
 
     def save(self):
         with self._save_lock:

@@ -446,7 +446,6 @@ def test_legacy_interrupted_zip_stage_is_not_automatically_queued(system):
     """Old incomplete tasks remain interrupted; new downloads never enqueue jobs."""
     from psycopg.types.json import Jsonb
     from server.db.repositories import work_queue
-    from server.services import archive_retries
     add_published_reference(system)
     run_id=add_fo()
     with database.connect() as db:
@@ -458,11 +457,14 @@ def test_legacy_interrupted_zip_stage_is_not_automatically_queued(system):
         work_queue.mark_interrupted(db)
         row=db.execute("SELECT status,snapshot FROM jobs WHERE id=%s",(run_id,)).fetchone()
         assert row["status"]=="interrupted"
-        assert row["snapshot"]["archive_state"]=="failed"
-    from fastapi import HTTPException
-    with pytest.raises(HTTPException) as error:
-        archive_retries.request(run_id)
-    assert error.value.status_code==409
+        assert "archive_state" not in row["snapshot"]
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from server.jobs import router
+    app=FastAPI()
+    app.include_router(router)
+    with TestClient(app) as client:
+        assert client.post("/api/runs/"+run_id+"/archive/retry").status_code==404
     with database.connect() as db:
         assert db.execute("SELECT status FROM jobs WHERE id=%s",(run_id,)).fetchone()["status"]=="interrupted"
-        assert db.execute("SELECT count(*) AS n FROM archive_retries WHERE run_id=%s",(run_id,)).fetchone()["n"]==0
+        assert db.execute("SELECT to_regclass('archive_retries') AS t").fetchone()["t"] is None

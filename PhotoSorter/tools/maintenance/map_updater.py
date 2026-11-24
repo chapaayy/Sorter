@@ -99,8 +99,7 @@ def verify_idle():
        (SELECT count(*) FROM work_queue WHERE state='running') +
        (SELECT count(*) FROM batch_operations WHERE heartbeat_at>now()-interval '12 hours') +
        (SELECT count(*) FROM thumbnail_tasks WHERE state='running') +
-       (SELECT count(*) FROM cleanup_tasks WHERE state='running') +
-       (SELECT count(*) FROM archive_retries WHERE state='running')"""))
+       (SELECT count(*) FROM cleanup_tasks WHERE state='running')"""))
     if active:
         raise RuntimeError("В БД ещё есть незавершённые операции; переключение отменено")
     if recent_uploads():

@@ -172,12 +172,7 @@ def mark_interrupted(db):
     db.execute("SELECT pg_advisory_xact_lock(%s)",(LOCK,))
     db.execute("""
         UPDATE jobs SET status='interrupted',finished_at=now(),updated_at=now(),
-            snapshot=CASE
-              WHEN snapshot->>'archive_state'='preparing'
-              THEN jsonb_set(jsonb_set(snapshot,'{status}',to_jsonb('interrupted'::text)),
-                  '{archive_state}',to_jsonb('failed'::text))
-              ELSE jsonb_set(snapshot,'{status}',to_jsonb('interrupted'::text))
-            END
+            snapshot=jsonb_set(snapshot,'{status}',to_jsonb('interrupted'::text)) - 'archive_state' - 'archive_retry' - 'archive_file' - 'archive_bytes' - 'archive_title'
         WHERE status IN ('running','stopping')
     """)
     db.execute("""

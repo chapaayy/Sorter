@@ -7,7 +7,7 @@ import pytest
 from psycopg.types.json import Jsonb
 
 from server.database import connect
-from server.services import archives,archive_retries,archive_pipeline,cleanup
+from server.services import archives,archive_pipeline,cleanup
 from server.storage import paths
 from .test_stage1_lifecycle import sandbox,db,_batch,_job
 
@@ -20,21 +20,22 @@ def test_zip_absence_is_normal_and_never_changes_job_status(sandbox):
             db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(
                 Jsonb({"id":run,"status":"completed","archive_state":"ready",
                        "models":{"megaloc":{"status":"completed"}}}),run))
-        assert archive_retries.archive_status(run)=={
-            "run_id":run,"state":"on_demand","can_retry":False}
-        with pytest.raises(HTTPException) as rejected:
-            archive_retries.request(run)
-        assert rejected.value.status_code==409
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from server.jobs import router
+        app=FastAPI()
+        app.include_router(router)
+        with TestClient(app) as client:
+            assert client.post("/api/runs/"+run+"/archive/retry").status_code==404
         with connect() as db:
             assert db.execute("SELECT status FROM jobs WHERE id=%s",(run,)).fetchone()["status"]=="completed"
-            assert db.execute("SELECT count(*) AS n FROM archive_retries WHERE run_id=%s",(run,)).fetchone()["n"]==0
-        assert not list(paths.run_dir(run).rglob("*.zip"))
+            assert db.execute("SELECT to_regclass('archive_retries') AS t").fetchone()["t"] is None
+        assert not list(archives.archive_folder(run).glob("*.zip"))
     finally:
         cleanup.request(batch)
         cleanup.cleanup_one(batch)
 
-@pytest.mark.parametrize("legacy_format",[True,False])
-def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_format):
+def test_download_preserves_names_without_rerunning_megaloc(sandbox):
     from io import BytesIO
     from urllib.parse import unquote
     from fastapi import FastAPI
@@ -68,19 +69,16 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
             rows.append({"copy":str(source),"query":query,"assigned_sam":folder})
         from app.results.exporter import export
         manifest=export(paths.result_metadata_dir(run),rows,run_id=run)
-        if legacy_format:
-            initial=archives.prepare(run,None,archive_pipeline.legacy_selections(run))
-        else:
-            from types import SimpleNamespace
-            info={"id":run,"batch_id":str(batch),"status":"completed",
-                  "models":{"megaloc":{"status":"completed"}}}
-            noop=lambda *args:None
-            job=SimpleNamespace(info=info,progress=noop,log=noop,stopped=lambda:False,save=noop)
-            archive_pipeline.build_for_job(job)
-            assert info["archive_state"]=="on_demand"
-            assert not list(model.parent.rglob("*.zip"))
-            with connect() as db:
-                db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(Jsonb(info),run))
+        from types import SimpleNamespace
+        info={"id":run,"batch_id":str(batch),"status":"completed",
+              "models":{"megaloc":{"status":"completed"}}}
+        noop=lambda *args:None
+        job=SimpleNamespace(info=info,progress=noop,log=noop,stopped=lambda:False,save=noop)
+        archive_pipeline.mark_on_demand(job)
+        assert info["archive_state"]=="on_demand"
+        assert not list(model.parent.rglob("*.zip"))
+        with connect() as db:
+            db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(Jsonb(info),run))
 
         app=FastAPI()
         app.include_router(router)
@@ -102,7 +100,7 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
                 row=db.execute("SELECT status,snapshot FROM jobs WHERE id=%s",(run,)).fetchone()
                 assert row["status"]=="completed"
                 assert "archive_file" not in row["snapshot"]
-            assert archive_retries.archive_status(run)["state"]=="on_demand"
+            assert row["snapshot"]["archive_state"]=="on_demand"
             partial=client.get("/api/download/"+run,headers={"Range":"bytes=5-20"})
             assert partial.status_code==206
             assert partial.content==reply.content[5:21]

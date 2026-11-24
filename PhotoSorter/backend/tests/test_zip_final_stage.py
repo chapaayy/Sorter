@@ -32,8 +32,8 @@ def _execute(monkeypatch,tmp_path,finalize):
 
 def test_result_publication_must_finish_before_run_becomes_completed(monkeypatch,tmp_path):
     def publication_success(job):
-        from server.services.archive_pipeline import build_for_job
-        build_for_job(job)
+        from server.services.archive_pipeline import mark_on_demand
+        mark_on_demand(job)
     job,trace=_execute(monkeypatch,tmp_path,publication_success)
     assert job.info["status"]=="completed"
     assert job.info["progress"]["overall_percent"]==100

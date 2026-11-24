@@ -99,7 +99,9 @@ services:
       dockerfile: PhotoSorter/docker/app/Dockerfile
     restart: unless-stopped
     command: ["python", "-m", "server.workers.cleanup"]
-    environment: *app_env
+    environment:
+      <<: *app_env
+      MAP_SERVICE: cleanup
     volumes: *app_data
     depends_on:
       postgres:
@@ -117,7 +119,9 @@ services:
       dockerfile: PhotoSorter/docker/app/Dockerfile
     restart: unless-stopped
     command: ["python", "-m", "server.workers.thumbnail"]
-    environment: *app_env
+    environment:
+      <<: *app_env
+      MAP_SERVICE: thumbnail
     volumes: *app_data
     depends_on:
       postgres:

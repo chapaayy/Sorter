@@ -120,15 +120,19 @@ def test_publish_and_unlink_refuse_nonregular_targets(tmp_path):
 
 def test_model_roots_never_fall_back_to_operator_home(tmp_path,monkeypatch):
     from app.system import model_store
+    from app import config
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",tmp_path)
     cache=tmp_path/"cache"
     weights=tmp_path/"models"
-    monkeypatch.setattr(model_store,"MODEL_CACHE_DIR",cache)
-    monkeypatch.setattr(model_store,"WEIGHTS_DIR",weights)
     monkeypatch.setenv("PHOTOSORTER_LEGACY_DATA",str(tmp_path/"old"))
     monkeypatch.setenv("TORCH_HOME",str(tmp_path/"old/torch"))
     monkeypatch.setenv("HF_HUB_CACHE",str(tmp_path/"old/hf"))
-    assert model_store.torch_roots()==[cache/"torch/hub"]
-    assert model_store.hf_roots()==[cache/"huggingface/hub"]
+    assert model_store.repo_folder().is_relative_to(weights/"megaloc")
+    assert model_store.weight_target().is_relative_to(weights/"megaloc")
+    for directory in (cache/"torch/hub",cache/"huggingface/hub",tmp_path/"old/torch"):
+        directory.mkdir(parents=True)
+        (directory/"model.safetensors").write_bytes(b"not a working model")
+    assert model_store.checkpoint() is None
     for name in ("HOME","XDG_CACHE_HOME","HF_HOME","HF_XET_CACHE","HF_HUB_OFFLINE","HF_HUB_DISABLE_TELEMETRY"):
         monkeypatch.setenv(name,"test-before")
     model_store.configure_model_environment()
