@@ -8,6 +8,7 @@ from pathlib import Path
 from app import config
 from ..database import connect
 from .registry import observe,stat_key
+from .result_audit import ResultAudit
 LEADER=723409190
 BATCH=1024
 FULL_INTERVAL=900
@@ -45,7 +46,7 @@ def _walk_fd(fd,key,flags,onerror,depth=0):
 class Reconciler:
     def __init__(self,root=None):
         self.root=Path(root or config.APP_STORAGE_ROOT)
-        self.full=None;self.temp=None;self.dirty=None
+        self.full=None;self.temp=None;self.dirty=None;self.results=None
         self.generation=None;self.last_full=0;self.last_temp=0;self.errors=0
         self.sweep=False;self.cursor=0;self.temp_cursor=0;self.reservation_cursor=None
     def error(self):self.errors+=1
@@ -94,7 +95,7 @@ class Reconciler:
                         db.execute("DELETE FROM storage_dirty WHERE path=%s AND revision=%s",(row["path"],row["revision"]))
                         self.dirty=None
             now=time.monotonic();finished=False
-            if self.full is None and not self.sweep and (not self.last_full or now-self.last_full>=FULL_INTERVAL):
+            if self.full is None and not self.sweep and self.results is None and (not self.last_full or now-self.last_full>=FULL_INTERVAL):
                 self.generation=uuid.uuid4();self.errors=0;self.cursor=0
                 self.full=walk(self.root,onerror=self.error)
                 db.execute("UPDATE storage_accounting_state SET generation=%s,started_at=now(),errors=0",(self.generation,))
@@ -106,8 +107,10 @@ class Reconciler:
                 observe(db,self.root,[r["path"] for r in old],self.generation)
                 if old:self.cursor=old[-1]["id"]
                 else:
-                    db.execute("UPDATE storage_accounting_state SET reconciled_at=now(),errors=%s",(self.errors,))
-                    self.sweep=False;self.last_full=now;finished=True
+                    self.sweep=False;self.results=ResultAudit()
+            if self.results is not None and self.results.step(db,self.root,limit=min(limit,256)):
+                db.execute("UPDATE storage_accounting_state SET reconciled_at=now(),errors=%s",(self.errors,))
+                self.results=None;self.last_full=now;finished=True
             # Native writes are sampled in the temporary subtree, not traced.
             if self.temp is None and now-self.last_temp>=TEMP_INTERVAL:
                 self.temp=walk(self.root,"app/temporary",self.error)
@@ -128,4 +131,4 @@ class Reconciler:
         for iterator in (self.full,self.temp,self.dirty[1] if self.dirty else None):
             if iterator is not None:iterator.close()
     @property
-    def busy(self):return self.full is not None or self.sweep or self.dirty is not None
+    def busy(self):return self.full is not None or self.sweep or self.dirty is not None or self.results is not None

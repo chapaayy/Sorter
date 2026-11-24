@@ -134,6 +134,7 @@ def test_bounded_reconciliation_sparse_and_links_no_polling_walk(system,monkeypa
     with base.open("wb") as stream:
         stream.seek(64*1024*1024-1);stream.write(b"x")
     for i in range(2300):os.link(base,folder/str(i))
+    started=time.perf_counter()
     r=Reconciler()
     try:
         assert r.tick(limit=128)
@@ -144,6 +145,8 @@ def test_bounded_reconciliation_sparse_and_links_no_polling_walk(system,monkeypa
         assert row["logical_bytes"]==2301*base.stat().st_size
         assert row["allocated_bytes"]==base.stat().st_blocks*512
         assert row["hardlink_paths"]==2300
+        print("STAGE7_ACCOUNTING_FIXTURE",{"paths":row["files"],"logical_bytes":row["logical_bytes"],
+              "allocated_bytes":row["allocated_bytes"],"elapsed_seconds":round(time.perf_counter()-started,3)})
         from server.services import storage_usage,storage_breakdown,storage_inventory
         def forbidden(*args,**kwargs):raise AssertionError("HTTP must not scan disk")
         with monkeypatch.context() as patch:
@@ -186,10 +189,26 @@ def test_missing_published_manifest_and_stale_snapshot(system):
         db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(Jsonb({"models":{"megaloc":{"status":"completed"}}}),run))
     manifest=managed_path(Category.RESULT_METADATA,user_id=owner,batch_uuid=batch,run_id=run)/MANIFEST_NAME
     manifest.parent.mkdir(parents=True)
-    manifest.write_bytes(b"")
+    import json
+    media=managed_path(Category.RESULT_MEDIA,user_id=owner,batch_uuid=batch,run_id=run)/"SAM 0001"/"фото.jpg"
+    media.parent.mkdir(parents=True)
+    media.write_bytes(b"media")
+    manifest.write_text(json.dumps({"index":0,"copy":"SAM 0001/фото.jpg"})+"\n",encoding="utf8")
     data=settle()
     key=registry.key_for(manifest)
-    assert not any(row["path"]==key for row in reporting.issues()["missing"])
+    media_key=registry.key_for(media)
+    assert not any(row["path"] in (key,media_key) for row in reporting.issues()["missing"])
+    media.unlink()
+    data=settle()
+    assert data["issues"]["missing_result_media"]==1
+    assert any(row["path"]==media_key for row in reporting.issues()["missing"])
+    media.write_bytes(b"media")
+    data=settle()
+    assert not any(row["path"]==media_key for row in reporting.issues()["missing"])
+    assert "missing_result_media" not in data["issues"]
+    manifest.write_text(json.dumps({"index":0,"copy":"../escape.jpg"})+"\n",encoding="utf8")
+    data=settle()
+    assert data["issues"]["invalid_result_manifest"]==1
     manifest.unlink()
     data=settle()
     assert data["missing_expected"]>=1

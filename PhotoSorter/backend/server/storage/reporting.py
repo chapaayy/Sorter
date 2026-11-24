@@ -32,8 +32,14 @@ def expected_missing(db,limit=100,offset=0):
 
 def issues(limit=100,offset=0):
     with connect() as db:
-        rows=db.execute("""SELECT path,category,owner_id,batch_id,run_id,issue,logical_bytes,allocated_bytes
-          FROM storage_files WHERE issue IS NOT NULL ORDER BY path LIMIT %s OFFSET %s""",(limit,offset)).fetchall()
+        rows=db.execute("""SELECT * FROM (
+          SELECT path,category,owner_id,batch_id,run_id,issue,logical_bytes,allocated_bytes
+          FROM storage_files WHERE issue IS NOT NULL
+          UNION ALL SELECT r.path,CASE WHEN r.issue='invalid_result_manifest' THEN 'result_metadata' ELSE 'result_media' END,
+          b.owner_id,b.id,j.id,r.issue,coalesce(f.logical_bytes,0),coalesce(f.allocated_bytes,0)
+          FROM storage_result_issues r JOIN jobs j ON j.id=r.run_id JOIN batches b ON b.id=j.batch_id
+          LEFT JOIN storage_files f ON f.path=r.path WHERE b.delete_state='active'
+          ) observations ORDER BY path,issue LIMIT %s OFFSET %s""",(limit,offset)).fetchall()
         missing=expected_missing(db,limit,offset)
     return {"files":rows,"missing":missing,"offset":offset,"limit":limit,"snapshot":snapshot().get("sampled_at")}
 

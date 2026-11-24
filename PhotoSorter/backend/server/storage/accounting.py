@@ -30,6 +30,8 @@ def missing_keys():
         '{batch_uuid}',b.id::text),'{run_id}',j.id)
       FROM jobs j JOIN batches b ON b.id=j.batch_id
       WHERE b.delete_state='active' AND j.snapshot->'models'->'megaloc'->>'status'='completed'
+      UNION SELECT r.path FROM storage_result_issues r JOIN jobs j ON j.id=r.run_id
+      JOIN batches b ON b.id=j.batch_id WHERE b.delete_state='active' AND r.issue='missing_result_media'
     ), missing AS (
       SELECT e.path FROM expected e WHERE NOT EXISTS
         (SELECT 1 FROM storage_files f WHERE f.path=e.path AND f.kind='file')
@@ -71,7 +73,11 @@ def aggregate(db):
         elif group==9 and scope=="personal" and owner is not None:owners[str(owner)]=row
         elif group==13 and scope=="temporary":temporary=row
         elif group==14:devices[str(device)]=row
-    issues={r["issue"]:r["n"] for r in db.execute("SELECT issue,count(*) AS n FROM storage_files WHERE issue IS NOT NULL GROUP BY issue")}
+    issues={r["issue"]:r["n"] for r in db.execute("""SELECT issue,count(*) AS n FROM (
+      SELECT issue FROM storage_files WHERE issue IS NOT NULL
+      UNION ALL SELECT r.issue FROM storage_result_issues r JOIN jobs j ON j.id=r.run_id
+      JOIN batches b ON b.id=j.batch_id WHERE b.delete_state='active'
+      ) AS observations GROUP BY issue""")}
     query,params=missing_keys()
     missing=db.execute(query+"SELECT count(*) AS n FROM missing",params).fetchone()["n"]
     conflicts=db.execute("""SELECT count(*) AS n FROM (
