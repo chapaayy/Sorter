@@ -19,7 +19,7 @@ def test_storage_v2_target_contract():
     required = set("fo_original fo_normalized result_media result_metadata run_state fo_thumbnail reference_object reference_gallery reference_thumbnail reference_embedding fo_upload_part reference_upload_part transcode_temp video_frames processing_staging fo_embedding_temp zip_results zip_construction zip_references zip_fragment archive_lock atomic_fragment model_download model_weights model_source model_metadata technical_cache scratch postgres_data caddy_state service_log run_log access_log audit_snapshot audit_event updater_backup updater_workspace builder_marker runtime_image build_cache system_runtime tmpfs unknown".split())
     assert required <= by_id.keys()
     for row in rows:
-        for field in ("id", "scope", "path", "owner", "producer", "publication", "cleanup", "recovery", "coordination", "accounting", "verification"):
+        for field in ("id", "scope", "path", "owner", "producer", "publication", "cleanup", "recovery", "coordination", "accounting", "verification", "growth", "consumer"):
             assert isinstance(row[field], str) and row[field].strip()
         assert not row["path"].startswith("/")
         assert ".." not in row["path"].split("/")

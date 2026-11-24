@@ -44,7 +44,9 @@
       "stage": 3,
       "coordination": "owner and batch/run/operation lease with DB recheck",
       "accounting": "unique owner object charge; logical and allocated independently",
-      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "uploaded bytes per completed file",
+      "consumer": "original/gallery readers, normalization, sorting, archive and deletion"
     },
     {
       "id": "fo_normalized",
@@ -58,7 +60,9 @@
       "stage": 3,
       "coordination": "owner and batch/run/operation lease with DB recheck",
       "accounting": "unique owner object charge; logical and allocated independently",
-      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "one persisted compatible media per prepared upload",
+      "consumer": "sorting, gallery, archive, batch cleanup"
     },
     {
       "id": "result_media",
@@ -72,7 +76,9 @@
       "stage": 3,
       "coordination": "owner and batch/run/operation lease with DB recheck",
       "accounting": "unique owner object charge; logical and allocated independently",
-      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "links per published run, fallback copy bytes",
+      "consumer": "result pages, images, archive builder, run deletion"
     },
     {
       "id": "result_metadata",
@@ -86,7 +92,9 @@
       "stage": 3,
       "coordination": "owner and batch/run/operation lease with DB recheck",
       "accounting": "unique owner object charge; logical and allocated independently",
-      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "rows proportional to result count",
+      "consumer": "result pagination, archive plan, history and diagnostics"
     },
     {
       "id": "run_state",
@@ -100,7 +108,9 @@
       "stage": 3,
       "coordination": "owner and batch/run/operation lease with DB recheck",
       "accounting": "unique owner object charge; logical and allocated independently",
-      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "bounded per run snapshot/index",
+      "consumer": "jobs API, progress, worker recovery"
     },
     {
       "id": "fo_thumbnail",
@@ -114,7 +124,9 @@
       "stage": 4,
       "coordination": "owner and batch/run/operation lease with DB recheck",
       "accounting": "unique owner object charge; logical and allocated independently",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "one preview per owner and unique preview key",
+      "consumer": "FO/results galleries and thumbnail GC"
     },
     {
       "id": "reference_object",
@@ -128,7 +140,9 @@
       "stage": 4,
       "coordination": "library/version/job dependencies and GC publication lock",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "unique content bytes across retained memberships",
+      "consumer": "reference gallery, preparation, version pins, export"
     },
     {
       "id": "reference_gallery",
@@ -142,7 +156,9 @@
       "stage": 4,
       "coordination": "library/version/job dependencies and GC publication lock",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "links per published construction membership",
+      "consumer": "reference library and original download"
     },
     {
       "id": "reference_thumbnail",
@@ -156,7 +172,9 @@
       "stage": 4,
       "coordination": "library/version/job dependencies and GC publication lock",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "one preview per shared key",
+      "consumer": "reference library and GC"
     },
     {
       "id": "reference_embedding",
@@ -170,7 +188,9 @@
       "stage": 4,
       "coordination": "library/version/job dependencies and GC publication lock",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "one verified array per digest/signature",
+      "consumer": "MegaLoc reference preparation and matching"
     },
     {
       "id": "fo_upload_part",
@@ -184,7 +204,9 @@
       "stage": 3,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "received chunk bytes up to declared size",
+      "consumer": "PATCH/resume/finalize, cleanup"
     },
     {
       "id": "reference_upload_part",
@@ -198,7 +220,9 @@
       "stage": 4,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "received chunk bytes up to declared size",
+      "consumer": "reference import transfer/finalize, cleanup"
     },
     {
       "id": "transcode_temp",
@@ -212,7 +236,9 @@
       "stage": 3,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "temporary encoded bytes while FFmpeg runs",
+      "consumer": "media prepare task and cleanup"
     },
     {
       "id": "video_frames",
@@ -226,7 +252,9 @@
       "stage": 3,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "bounded selected frames per input video",
+      "consumer": "recognition pipeline, cleanup"
     },
     {
       "id": "processing_staging",
@@ -240,7 +268,9 @@
       "stage": 3,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "transient result links, metadata and fallback copies",
+      "consumer": "result publication and recovery"
     },
     {
       "id": "fo_embedding_temp",
@@ -254,7 +284,9 @@
       "stage": 5,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "optional transient feature spill; not required",
+      "consumer": "recognition task only"
     },
     {
       "id": "zip_results",
@@ -268,7 +300,9 @@
       "stage": 5,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "on-demand full archive bytes per export plan",
+      "consumer": "leased HTTP file response, expiry sweep"
     },
     {
       "id": "zip_construction",
@@ -282,7 +316,9 @@
       "stage": 5,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "on-demand construction archive bytes per plan",
+      "consumer": "leased HTTP file response, expiry sweep"
     },
     {
       "id": "zip_references",
@@ -296,7 +332,9 @@
       "stage": 5,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "on-demand reference archive bytes per version",
+      "consumer": "leased HTTP file response, expiry sweep"
     },
     {
       "id": "zip_fragment",
@@ -310,7 +348,9 @@
       "stage": 5,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "incomplete ZIP bytes while building",
+      "consumer": "archive builder and stale fragment cleanup"
     },
     {
       "id": "archive_lock",
@@ -324,7 +364,9 @@
       "stage": 5,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "small stable coordination file per namespace",
+      "consumer": "archive builder, response and cleanup"
     },
     {
       "id": "atomic_fragment",
@@ -338,7 +380,9 @@
       "stage": 2,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 2 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 2 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "in-flight adjacent staged bytes",
+      "consumer": "atomic publication and recovery"
     },
     {
       "id": "model_download",
@@ -352,7 +396,9 @@
       "stage": 5,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "in-flight downloaded and extracted bytes",
+      "consumer": "model verifier/installer and cleanup"
     },
     {
       "id": "model_weights",
@@ -366,7 +412,9 @@
       "stage": 5,
       "coordination": "service-native lock or active writer coordination",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "active model weight files",
+      "consumer": "offline MegaLoc loader"
     },
     {
       "id": "model_source",
@@ -380,7 +428,9 @@
       "stage": 5,
       "coordination": "service-native lock or active writer coordination",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "verified source tree for model version",
+      "consumer": "Torch Hub/MegaLoc loader"
     },
     {
       "id": "model_metadata",
@@ -394,7 +444,9 @@
       "stage": 5,
       "coordination": "service-native lock or active writer coordination",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "bounded verification and revision metadata",
+      "consumer": "model status and loader"
     },
     {
       "id": "technical_cache",
@@ -408,7 +460,9 @@
       "stage": 5,
       "coordination": "service-native lock or active writer coordination",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "provider cache growth bounded by policy after dependency proof",
+      "consumer": "HF/Torch/XDG clients and explicit cache cleanup"
     },
     {
       "id": "scratch",
@@ -422,7 +476,9 @@
       "stage": 5,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "operation-dependent native output/temp files or unnamed fd",
+      "consumer": "FFmpeg, PIL, native runtimes, cleanup"
     },
     {
       "id": "postgres_data",
@@ -436,7 +492,9 @@
       "stage": 6,
       "coordination": "native service lifecycle",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "tables/indexes, WAL, free pages and native metadata",
+      "consumer": "PostgreSQL; read-only accounting and snapshot"
     },
     {
       "id": "caddy_state",
@@ -450,7 +508,9 @@
       "stage": 6,
       "coordination": "native service lifecycle",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "TLS/ACME/config runtime files",
+      "consumer": "Caddy only; protected backup"
     },
     {
       "id": "service_log",
@@ -464,7 +524,9 @@
       "stage": 6,
       "coordination": "service-native lock or active writer coordination",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "bounded rotating service log segments",
+      "consumer": "authorized diagnostics and rotation"
     },
     {
       "id": "run_log",
@@ -478,7 +540,9 @@
       "stage": 6,
       "coordination": "service-native lock or active writer coordination",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "per-run events subject to per-run and aggregate budgets",
+      "consumer": "cursor log API/UI and cleanup"
     },
     {
       "id": "access_log",
@@ -492,7 +556,9 @@
       "stage": 6,
       "coordination": "service-native lock or active writer coordination",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "bounded redacted HTTP access records",
+      "consumer": "authorized diagnostics, Caddy rotation"
     },
     {
       "id": "audit_snapshot",
@@ -506,7 +572,9 @@
       "stage": 6,
       "coordination": "root-only operation lock and state",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "bounded diagnostic metadata snapshots",
+      "consumer": "owner storage audit UI and report export"
     },
     {
       "id": "audit_event",
@@ -520,7 +588,9 @@
       "stage": 6,
       "coordination": "service-native lock or active writer coordination",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "opt-in bounded sampled events",
+      "consumer": "host diagnostics only"
     },
     {
       "id": "updater_backup",
@@ -534,7 +604,9 @@
       "stage": 6,
       "coordination": "root-only operation lock and state",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "last verified rollback set plus in-flight candidate",
+      "consumer": "host updater and explicit restore"
     },
     {
       "id": "updater_workspace",
@@ -548,7 +620,9 @@
       "stage": 6,
       "coordination": "root-only operation lock and state",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "temporary verified source checkout/build context",
+      "consumer": "host updater and builder"
     },
     {
       "id": "builder_marker",
@@ -562,7 +636,9 @@
       "stage": 6,
       "coordination": "root-only operation lock and state",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "small marker per owned builder",
+      "consumer": "map_build cleanup/recovery"
     },
     {
       "id": "updater_control",
@@ -576,7 +652,9 @@
       "stage": 6,
       "coordination": "root-only operation lock and state",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "bounded durable status, maintenance and stable locks",
+      "consumer": "host updater; RO control mount"
     },
     {
       "id": "installation_state",
@@ -590,7 +668,9 @@
       "stage": 2,
       "coordination": "root-only operation lock and state",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 2 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 2 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "small durable layout/branch marker",
+      "consumer": "installer and updater"
     },
     {
       "id": "runtime_image",
@@ -604,7 +684,9 @@
       "stage": 6,
       "coordination": "own engine object identity and lifecycle",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "current/rollback image layers, possible shared engine layers",
+      "consumer": "Docker and host updater"
     },
     {
       "id": "build_cache",
@@ -618,7 +700,9 @@
       "stage": 6,
       "coordination": "own engine object identity and lifecycle",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "owned disposable builder layers/cache volumes",
+      "consumer": "BuildKit lifecycle"
     },
     {
       "id": "system_runtime",
@@ -632,7 +716,9 @@
       "stage": 6,
       "coordination": "service-native lock or active writer coordination",
       "accounting": "separate external filesystem or memory measurement",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "native sockets, PID, runtime and overlay metadata",
+      "consumer": "OS, engine, updater"
     },
     {
       "id": "tmpfs",
@@ -646,7 +732,9 @@
       "stage": 6,
       "coordination": "service-native lock or active writer coordination",
       "accounting": "separate external filesystem or memory measurement",
-      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "bounded memory-backed runtime use",
+      "consumer": "native runtime and separate measurement"
     },
     {
       "id": "unknown",
@@ -660,7 +748,9 @@
       "stage": 7,
       "coordination": "no destructive operations",
       "accounting": "reported separately; no charge or cleanup assumption",
-      "verification": "Stage 7 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract"
+      "verification": "Stage 7 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "growth": "unexplained; no assumption",
+      "consumer": "diagnostic reporting only"
     }
   ]
 }
