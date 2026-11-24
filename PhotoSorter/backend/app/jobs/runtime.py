@@ -47,7 +47,7 @@ class Job:
                     if x.get('status')=='error']
             if errors:
                 raise RuntimeError('; '.join(errors))
-            # Optional server hook: a run is not complete before its ZIP exists.
+            # Optional server hook: mark the saved results available for download.
             finalize=getattr(self,'finalize_results',None)
             if finalize is not None:
                 finalize()

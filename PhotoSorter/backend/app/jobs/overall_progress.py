@@ -70,7 +70,7 @@ class OverallProgress:
         for stage,count in [('queries',fo_count),('grouping',fo_count),
                             ('grouping_merge',1),('grouping_diagnostics',fo_count),
                             ('references',ref_count),('matching',fo_count),
-                            ('saving',fo_count),('export',1),('archive',fo_count)]:
+                            ('saving',fo_count),('export',1)]:
             self.phases.append(Phase('megaloc',stage,max(1,count)))
         self.configured = True
 

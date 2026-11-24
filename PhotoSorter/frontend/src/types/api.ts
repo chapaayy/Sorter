@@ -74,7 +74,7 @@ export interface Run {
   actual_started_at?: string; finished_at?: string; actual_finished_at?: string
   grouping_threshold?: number; min_match_score?:number;selected_models?: string[];source?:'manual'|'automatic'
   queue_position?: number | null; models?: Record<string, { status?: string; count?: number; processed?:number; assigned?:number; uncertain?:number; groups?: number }>
-  progress?: RunProgress; error?: string; archive_state?:'preparing'|'ready'|'failed'
+  progress?: RunProgress; error?: string; archive_state?:'preparing'|'ready'|'failed'|'on_demand'
 }
 export interface ResultPhoto {
   index: number; assigned_sam?: string; group_id?: string;side?:string|null

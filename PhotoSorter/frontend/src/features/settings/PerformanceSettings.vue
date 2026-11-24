@@ -55,7 +55,7 @@ async function save(){
   <p class="meta">Миниатюры и очистка выполняются в отдельных контейнерах с низким CPU-приоритетом и без жёстких квот. Linux распределяет свободное процессорное время автоматически.</p>
   <div class="row between wrap"><strong>Создание миниатюр</strong><span class="meta">Низкий приоритет</span></div>
   <div class="row between wrap"><strong>Очистка данных</strong><span class="meta">Минимальный приоритет</span></div>
-  <div class="row between wrap"><strong>ZIP-архив</strong><span class="meta">Без изменений · завершающий этап задачи</span></div>
+  <div class="row between wrap"><strong>ZIP-архив</strong><span class="meta">Только при скачивании · хранение 1 час</span></div>
  </section>
 </div>
 </template>
