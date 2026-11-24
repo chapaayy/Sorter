@@ -1,0 +1,24 @@
+name: MAP Storage V2 release acceptance
+on:
+  push:
+    branches: ["feature/storage-architecture-v2"]
+    paths:
+      - ".github/workflows/release-acceptance.yml"
+      - "install.sh"
+      - "compose.yaml"
+      - "PhotoSorter/**"
+      - "docs/storage-layout-v2.json"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: map-storage-v2-release-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  clean-ubuntu-systemd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - name: Boot pristine Ubuntu VM and verify actual systemd, reboot and update
+        run: bash PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh
