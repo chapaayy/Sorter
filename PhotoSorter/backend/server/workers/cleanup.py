@@ -7,7 +7,7 @@ import time
 from ..database import wait_and_initialize
 from ..services import heartbeat
 from ..services.update_gate import activity
-from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing,archive_retries
+from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing,archive_cache
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
 STOPPED=threading.Event()
@@ -32,8 +32,8 @@ def run_deletions(stopped):
 
 def run_cycle():
     global NEXT_GC
-    for run_id,state in archive_retries.process_pending(limit=1):
-        logging.info('ZIP-only retry %s: %s',run_id,state)
+    expired=archive_cache.collect()
+    if expired:logging.info("Removed %s expired ZIP cache files",expired)
     for batch_id,run_id in auto_processing.schedule_ready():
         logging.info('Auto processing queued for %s: %s',batch_id,run_id)
     for batch_id in retention.due_batch_ids():

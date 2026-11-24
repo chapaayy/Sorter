@@ -1,8 +1,8 @@
 """SAM gallery cursor endpoints: refs are independent of batch ownership."""
 from __future__ import annotations
 from fastapi import APIRouter,HTTPException
-from fastapi.responses import FileResponse
-from ...services import reference_archives,reference_sides
+from ..file_response import LeasedFileResponse
+from ...services import reference_archives,reference_sides,archive_cache
 from pydantic import BaseModel,Field
 import uuid
 from ...services import references as reference_service
@@ -16,11 +16,15 @@ router=APIRouter(prefix="/api/references",tags=["references"])
 @router.get("/export")
 def export_all_references():
     plan=reference_archives.current_plan()
-    archive=reference_archives.prepare(plan)
-    return FileResponse(archive,media_type="application/zip",
-        filename=f"Образцы — версия {plan.version}.zip",
-        headers={"Cache-Control":"private, no-store",
-                 "X-Content-Type-Options":"nosniff"})
+    pin=archive_cache.pin(reference_archives.EXPORTS)
+    try:
+        archive=reference_archives.prepare(plan)
+        return LeasedFileResponse(archive,archive_pin=pin,media_type="application/zip",
+            filename=f"Образцы — версия {plan.version}.zip",
+            headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
+    except BaseException:
+        pin.close()
+        raise
 
 class PreviewImport(BaseModel):
     folders:list[str]=Field(min_length=1,max_length=5000)
