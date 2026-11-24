@@ -1,4 +1,4 @@
-"""Release-scale disposable end-to-end load, real photos and real MegaLoc.
+"""Compact disposable end-to-end storage acceptance with real MegaLoc.
 
 COCO validation images are diverse public test photographs, NOT outdoor
 advertising ground truth. Videos are explicitly generated codec fixtures.
@@ -26,7 +26,9 @@ ROOT=Path(__file__).resolve().parents[3]
 STORAGE=ROOT/"storage"
 BASE="https://localhost"
 PASSWORD="stage10_disposable_password_only"
-COUNT=1100
+COUNT=10
+VIDEO_COUNT=1
+ZIP_TEST_REMAINING_SECONDS=60
 CHUNK=16*1024**2
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -80,8 +82,8 @@ def dataset(archive,folder):
             target=folder/Path(m.filename).name
             target.write_bytes(data)
             paths.append(target)
-            if len(paths)==COUNT+50:break
-    assert len(paths)==COUNT+50
+            if len(paths)==COUNT:break
+    assert len(paths)==COUNT
     print("REAL_DISTINCT_COCO_PHOTOS",len(paths),sum(p.stat().st_size for p in paths),flush=True)
     return paths
 
@@ -89,13 +91,11 @@ def fixtures(folder,photos):
     from PIL import Image
     png=folder/"normalization.png"
     with Image.open(photos[-1]) as image:image.convert("RGB").save(png)
-    videos=[]
-    for i,ext in enumerate(("mov","mp4","webm")):
-        p=folder/f"codec-fixture-{i}.{ext}"
-        codec=["-c:v","libvpx-vp9"] if ext=="webm" else ["-c:v","libx264","-pix_fmt","yuv420p"]
-        subprocess.run(["ffmpeg","-v","error","-y","-loop","1","-i",str(photos[i]),"-t","2","-vf","scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2","-r","12","-threads","1",*codec,str(p)],check=True)
-        videos.append(p)
-    return [png,*videos]
+    # MOV forces the actual video preparation path; PNG replaces one JPEG.
+    video=folder/"codec-fixture.mov"
+    subprocess.run(["ffmpeg","-v","error","-y","-loop","1","-i",str(photos[0]),"-t","2","-vf","scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2","-r","12","-threads","1","-c:v","libx264","-pix_fmt","yuv420p",str(video)],check=True)
+    return [*photos[:-1],png,video]
+
 
 def transfer(s,url,p,*,resume=False):
     data=p.read_bytes()
@@ -265,17 +265,49 @@ def browser_probe(stop,samples):
             stop.wait(30)
         browser.close()
 
-def expire(s,*,real_hour):
-    # First cycle requires the actual default TTL and automatic cleanup. Later
-    # cycles use explicit age acceleration on the isolated test ZIP files.
+def expire(s):
+    # Keep the production 3600-second policy intact. Only age disposable
+    # cache files so the real cleanup worker observes the final 60 seconds.
+    ttl=int(app_python("from server.services.archive_cache import TTL_SECONDS;print(TTL_SECONDS)"))
+    assert ttl==3600,ttl
     archives=STORAGE/"app/temporary/archives"
     paths=list(archives.rglob("*.zip"))
     assert paths
-    if not real_hour:
-        for p in paths:os.utime(p,(time.time()-3700,time.time()-3700))
     start=time.monotonic()
-    wait(lambda:not list(archives.rglob("*.zip")),timeout=3780 if real_hour else 120,period=5,description="automatic ZIP expiration")
-    print("ZIP_AUTO_EXPIRY",{"elapsed_seconds":round(time.monotonic()-start,3),"real_hour":real_hour,"files":len(paths)},flush=True)
+    stamp=time.time()-(ttl-ZIP_TEST_REMAINING_SECONDS)
+    for path in paths:
+        os.utime(path,(stamp,stamp))
+    time.sleep(10)
+    assert all(path.is_file() for path in paths),"ZIP expired before its deadline"
+    wait(lambda:not list(archives.rglob("*.zip")),timeout=150,period=2,description="automatic ZIP expiration")
+    elapsed=time.monotonic()-start
+    assert elapsed>=ZIP_TEST_REMAINING_SECONDS-1,elapsed
+    result={"elapsed_seconds":round(elapsed,3),"production_ttl_seconds":ttl,"remaining_seconds":ZIP_TEST_REMAINING_SECONDS,"files":len(paths)}
+    print("ZIP_AUTO_EXPIRY",result,flush=True)
+    return result
+
+def assert_batch_hardlinks(bid,rid,count):
+    batches=list((STORAGE/"app/users").glob(f"*/batches/{bid}"))
+    assert len(batches)==1,batches
+    batch=batches[0]
+    def inode(path):
+        stat=path.stat()
+        return (stat.st_dev,stat.st_ino)
+    source={inode(p) for folder in ("originals","normalized") for p in (batch/folder).rglob("*") if p.is_file()}
+    media=[p for p in (batch/"results"/rid/"media").rglob("*") if p.is_file()]
+    assert len(media)==count,(len(media),count)
+    assert all(inode(p) in source for p in media),"same-filesystem result was not hardlinked"
+    return len(media)
+
+def assert_released_media(snapshot,baseline):
+    # Persistent model, PostgreSQL and log bytes may legitimately grow.
+    # Batch-owned file categories and temporary payloads must not.
+    current=snapshot["registry"]["categories"]
+    previous=baseline["registry"]["categories"]
+    for category in ("fo_original","fo_normalized","result_media","result_metadata","fo_thumbnail","fo_upload_part","transcode_temp","video_frames","processing_staging","fo_embedding_temp"):
+        actual=current.get(category,{}).get("files",0)
+        expected=previous.get(category,{}).get("files",0)
+        assert actual==expected,(category,actual,expected)
 
 def delete_batch(s,bid):
     obj(s,"DELETE",f"/api/batches/{bid}")
@@ -314,7 +346,8 @@ def main():
     archive=Path(sys.argv[2]).resolve()
     report=Path(sys.argv[3]).resolve()
     photos=dataset(archive,folder)
-    clips=fixtures(folder,photos)
+    paths=fixtures(folder,photos)
+    assert len(paths)==COUNT+VIDEO_COUNT
     env=dict(os.environ,GIT_CONFIG_COUNT="1",GIT_CONFIG_KEY_0="safe.directory",GIT_CONFIG_VALUE_0=str(ROOT))
     # Fixture runner is disposable, configure the same installer as a real VPS.
     subprocess.run(["bash","install.sh","--configure"],cwd=ROOT,input=f"localhost\n{PASSWORD}\n",text=True,env=env,check=True)
@@ -328,19 +361,20 @@ def main():
     quota_probe(s,photos[0])
     stamps=app_python("from pathlib import Path;from app import config;import json;print(json.dumps({str(p):(p.stat().st_ino,p.stat().st_mtime_ns) for p in (config.APP_STORAGE_ROOT/'shared/references/embeddings').rglob('*.npy')},sort_keys=True))")
     assert len(json.loads(stamps))==8
-    samples=[];browser_samples=[];cycles=[];stop=threading.Event()
+    samples=[];browser_samples=[];cycles=[];final=None;stop=threading.Event()
     thread=threading.Thread(target=sampler,args=(stop,samples),daemon=True)
     browser_thread=threading.Thread(target=browser_probe,args=(stop,browser_samples),daemon=True)
     thread.start();browser_thread.start()
     try:
-        for cycle,paths in enumerate([photos[:COUNT]+clips,photos[COUNT:COUNT+25],photos[COUNT+25:COUNT+49]],1):
+        for cycle in range(1,4):
             bid=upload_batch(s,paths,cycle)
             uploaded=storage_snapshot(s,f"cycle_{cycle}_uploaded")
             rid,info,seconds=run_sort(s,bid)
             rows=gallery(s,rid,len(paths))
+            assert len([r for r in rows if r.get("media_kind")=="video"])==VIDEO_COUNT
+            hardlinks=assert_batch_hardlinks(bid,rid,len(paths))
             if cycle==1:
                 assert any(r.get("side") in ("A1","B2") for r in rows)
-                assert len([r for r in rows if r.get("media_kind")=="video"])==3
                 # Reprocessing does not replace the previous run or recompute refs.
                 # Repeat on a later small cycle to keep full real load bounded.
                 viewer=obj(s,"POST","/api/admin/users",json={"email":"ci-viewer@example.test","password":PASSWORD,"confirmation":PASSWORD,"run_ids":[rid]})
@@ -353,6 +387,7 @@ def main():
                 second,_,_=run_sort(s,bid)
                 assert second!=rid
                 gallery(s,second,len(paths))
+                assert_batch_hardlinks(bid,second,len(paths))
                 rid=second
             assert app_python("from pathlib import Path;from app import config;import json;print(json.dumps({str(p):(p.stat().st_ino,p.stat().st_mtime_ns) for p in (config.APP_STORAGE_ROOT/'shared/references/embeddings').rglob('*.npy')},sort_keys=True))")==stamps
             sorted_state=storage_snapshot(s,f"cycle_{cycle}_sorted")
@@ -364,16 +399,16 @@ def main():
                 zip_download(s,"/api/references/export",folder/"references.zip",len(refs))
             else:names,size=zip_download(s,"/api/download/"+rid,folder/"download.zip",len(paths),True)
             zipped=storage_snapshot(s,f"cycle_{cycle}_zipped")
-            expire(s,real_hour=cycle==1)
+            expiry=expire(s)
             expired=storage_snapshot(s,f"cycle_{cycle}_expired")
             delete_batch(s,bid)
             # Accelerate only the existing thumbnail grace, on disposable data.
             app_python("from server.services.thumbnails import gc_unowned;print(gc_unowned(limit=2000,grace_seconds=0))")
             deleted=storage_snapshot(s,f"cycle_{cycle}_deleted")
-            assert not list((STORAGE/"app/users").glob(f"*/batches/{bid}/originals/*"))
-            assert not list((STORAGE/"app/users").glob(f"*/batches/{bid}/results/*/metadata/*"))
+            assert not any(p.is_file() for batch in (STORAGE/"app/users").glob(f"*/batches/{bid}") for p in batch.rglob("*"))
+            assert_released_media(deleted,initial)
             assert deleted["limits"]["disk"]["reserved_bytes"]==0,deleted["limits"]
-            cycles.append({"cycle":cycle,"files":len(paths),"sort_seconds":seconds,"zip_bytes":size,"uploaded":uploaded,"sorted":sorted_state,"zipped":zipped,"expired":expired,"deleted":deleted})
+            cycles.append({"cycle":cycle,"files":len(paths),"photos":COUNT,"videos":VIDEO_COUNT,"hardlinks":hardlinks,"zip_expiry":expiry,"sort_seconds":seconds,"zip_bytes":size,"uploaded":uploaded,"sorted":sorted_state,"zipped":zipped,"expired":expired,"deleted":deleted})
         # Active grants do not own media; deleted FO releases run pins.
         for ref in refs:obj(s,"DELETE","/api/references/files/"+ref["id"])
         # Explicitly test dependency/grace policy using existing collector;
@@ -394,7 +429,7 @@ def main():
     finally:
         stop.set();thread.join(timeout=150);browser_thread.join(timeout=150)
         report.parent.mkdir(parents=True,exist_ok=True)
-        report.write_text(json.dumps({"source":"COCO val2017 distinct photos; generated codec videos; not outdoor quality ground truth","count":COUNT,"cycles":cycles,"samples":samples,"browser_samples":browser_samples,"host":{"cpu_count":os.cpu_count(),"meminfo":Path("/proc/meminfo").read_text().splitlines()[:3]}},ensure_ascii=False,indent=2))
+        report.write_text(json.dumps({"source":"COCO val2017 distinct photos; generated codec videos; not outdoor quality ground truth","count":COUNT,"videos":VIDEO_COUNT,"baseline":initial,"final":final,"cycles":cycles,"samples":samples,"browser_samples":browser_samples,"host":{"cpu_count":os.cpu_count(),"meminfo":Path("/proc/meminfo").read_text().splitlines()[:3]}},ensure_ascii=False,indent=2))
         for key in ("storage_api_seconds","batches_api_seconds","browser_storage_seconds"):
             vals=[x[key] for x in samples+browser_samples if key in x]
             if vals:print("MEASURED_LATENCY",key,"count",len(vals),"median",statistics.median(vals),"max",max(vals),flush=True)

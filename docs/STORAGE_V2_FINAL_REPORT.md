@@ -14,8 +14,8 @@
 | Единый контракт, отсутствие старых mounts | Реализовано и проверялось этапами 2–9; финальная сверка и регрессия отдельно |
 | Чистая Ubuntu, автоматическая установка Docker и systemd, перезагрузка, обновление API | **ПРОЙДЕНО** — 45505109384 / 138838181284, фактическое здоровье всех 6, hashes/DB/TLS и реальное API update |
 | Основной функционал, права, квоты, восстановление | 42e678b и e8675d2: обычный CI 7/7, реальные restore/update/offline MegaLoc; комплексная нагрузка ещё не подтверждена |
-| 1100 различных реальных фото, 3 тестовых видео, повторная сортировка, 3 цикла | Сценарий создан; не подтверждён |
-| Фактические CPU/RAM, disk peak, скорость сверки и Chromium, ZIP TTL 1h | Нет измеренного отчёта, критерий открыт |
+| 10 различных реальных фото, 1 тестовое видео, повторная сортировка, 3 цикла | Компактный сценарий по решению владельца; результат ожидается |
+| Фактические CPU/RAM, disk peak, скорость сверки и Chromium, ZIP TTL (ускоренное наблюдение последних 60 секунд) | Нет измеренного отчёта, критерий открыт |
 | Долговременный рост, очистка, сохранение модели после обновления | Предыдущие точечные проверки есть; комплексный цикл не подтверждён |
 | Финальный CI | 42e678b, e8675d2, 2d2bbc4 обычный push CI 7/7; VM gate PASS; обязательный load и окончательная ревизция ещё открыты |
 | PR без merge | PR #22 открыт в draft, не объединён |
@@ -64,3 +64,9 @@ COCO — реальные публичные фотографии общего �
 Mandatory markers STAGE10_ALL_SERVICES_AUTO_RECOVERED_OK, STAGE10_REAL_REBOOT_OK, STAGE10_REAL_SYSTEMD_API_UPDATE_OK, STAGE10_FRESH_UBUNTU_COMPLETE observed. Earlier missing Health issue is confirmed as wrong harness assumption: only PostgreSQL/API declare native Health, the other four have no native Health property. Functional probes confirmed them, not merely process presence. This closes the fresh install/systemd/reboot/update criterion, **not stage 10**.
 
 Load job [138817659578](https://github.com/chapaayy/Sorter/actions/runs/45499161841/job/138817659578) still in progress; no final report or log yet. Preserve original real workload, no duplicate launched. The last changes are docs-only; no further VM retest for those. Source alias cleanup, measured growth, TTL, three cycles and reserve release still mandatory; do not invent metrics or declare release-ready. Main d6ca808 is explicitly independent per owner; PR #22 not merged.
+
+
+## Revised stage 10 acceptance (owner decision, 25.11.2026)
+- Replace the 1100-photo performance workload with 10 distinct source photos (9 JPEG + one PNG conversion), one MOV video and three complete cycles reusing that corpus; the same source photos are reused as reference fixtures. Actual MegaLoc, upload/resume, codecs, reprocessing, permissions, quota rejection, hardlinks, ZIP CRC/Range, registry snapshots, cleanup and zero reservations remain required.
+- Production ZIP TTL stays 3600s; only disposable archives are aged to leave 60s, then the actual cleanup worker must expire them automatically, not early. This is functional acceptance, not a full-hour wall-clock or VPS throughput benchmark.
+- The original run is superseded by owner decision; cancellation requires Actions write access. The previous successful VM gate is retained for harness-only edits. Do not mark compact acceptance passed before the new artifact and CI results. Main, PR merge and VPS remain untouched.

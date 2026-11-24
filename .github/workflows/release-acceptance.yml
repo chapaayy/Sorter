@@ -20,10 +20,11 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       load: ${{ steps.scope.outputs.load }}
+      vm: ${{ steps.scope.outputs.vm }}
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
-      - name: Preserve the load run for a strictly VM-harness-only change
+      - name: Select only acceptance gates affected by the change
         id: scope
         env:
           BEFORE: ${{ github.event.before }}
@@ -32,11 +33,13 @@ jobs:
           python3 - <<'PY'
           import os, subprocess
           load = True
+          vm = True
           if os.environ["EVENT"] == "push":
               before = os.environ.get("BEFORE", "")
               try:
                   paths = subprocess.check_output(["git", "diff", "--name-only", before, "HEAD"], text=True).splitlines()
                   allowed = {"PhotoSorter/tools/maintenance/ci_vm_health.py", "PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md"}
+                  load_only = {"PhotoSorter/tools/maintenance/ci_release_load.py", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md", "AGENTS.md"}
                   old = subprocess.check_output(["git", "show", before+":.github/workflows/release-acceptance.yml"], text=True)
                   new = open(".github/workflows/release-acceptance.yml").read()
                   # Only skip if the load job itself and every workload/runtime file are identical.
@@ -45,6 +48,13 @@ jobs:
                   new_load = new.split(marker, 1)[1]
                   old_load = old_load.removeprefix("    needs: scope\n    if: needs.scope.outputs.load == 'true'\n")
                   new_load = new_load.removeprefix("    needs: scope\n    if: needs.scope.outputs.load == 'true'\n")
+                  vm_marker = "  clean-ubuntu-systemd:\n"
+                  old_vm = old.split(vm_marker, 1)[1].split(marker, 1)[0]
+                  new_vm = new.split(vm_marker, 1)[1].split(marker, 1)[0]
+                  vm_guard = "    needs: scope\n    if: needs.scope.outputs.vm == 'true'\n"
+                  if paths and set(paths) <= load_only and old_vm.removeprefix(vm_guard) == new_vm.removeprefix(vm_guard):
+                      vm = False
+                      print("Load-harness-only change; preserve successful VM evidence")
                   if paths and set(paths) <= allowed and old_load == new_load:
                       load = False
                       print("VM-harness-only change; load evidence remains tied to", before)
@@ -52,8 +62,11 @@ jobs:
                   pass
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write("load="+str(load).lower()+"\n")
+              f.write("vm="+str(vm).lower()+"\n")
           PY
   clean-ubuntu-systemd:
+    needs: scope
+    if: needs.scope.outputs.vm == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     steps:
@@ -65,7 +78,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.load == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -78,7 +91,7 @@ jobs:
           python -m playwright install --with-deps chromium
           curl --fail --retry 3 --location --output "$RUNNER_TEMP/coco-val2017.zip" https://huggingface.co/datasets/pcuenq/coco-2017-mirror/resolve/fbbee70f52f540987cca6936c9f1d7b1ff969ad1/val2017.zip
           echo "4f7e2ccb2866ec5041993c9cf2a952bbed69647b115d0f74da7ce8f4bef82f05  $RUNNER_TEMP/coco-val2017.zip" | sha256sum -c -
-      - name: Real MegaLoc 1100 unique photos, codecs, three cycles and actual ZIP TTL
+      - name: Real MegaLoc 10 photos, 1 video, three cycles and accelerated ZIP expiry
         run: |
           sudo --preserve-env=CI,GITHUB_ACTIONS,PLAYWRIGHT_BROWSERS_PATH env PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" "$(command -v python)" PhotoSorter/tools/maintenance/ci_release_load.py "$RUNNER_TEMP/map-corpus" "$RUNNER_TEMP/coco-val2017.zip" "$RUNNER_TEMP/map-release-report.json"
       - uses: actions/upload-artifact@v4
