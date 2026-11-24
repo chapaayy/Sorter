@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import posixpath
+import re
 import shutil
 import stat
 import subprocess
@@ -54,9 +55,39 @@ def pg_env(url):
 
 def pg_run(args,url,*,capture=False):
     env=pg_env(url)
+    if os.environ.get("MAP_SNAPSHOT_COMPOSE_PG")=="1":
+        return compose_pg_run(args,env,capture=capture)
     # Never place plaintext DB URL/password in child process argv or log output.
     return subprocess.run(args,env=env,check=True,stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
                           stderr=subprocess.PIPE)
+
+def compose_pg_run(args,env,*,capture=False):
+    """Explicit root-only local Compose client transport; no published DB port."""
+    if os.geteuid()!=0 or env["PGHOST"]!="postgres" or env["PGUSER"]!="sorter":
+        raise ValueError("Compose snapshot requires root and the local MAP PostgreSQL service")
+    db=env["PGDATABASE"]
+    if db!="sorter" and not re.fullmatch(r"sorter_restore_[a-z0-9_]+",db):
+        raise ValueError("Unexpected database")
+    ids=subprocess.check_output(["docker","ps","-q","--filter","label=com.docker.compose.project=outdoor-sorter",
+                                 "--filter","label=com.docker.compose.service=postgres"],text=True).splitlines()
+    if len(ids)!=1 or not re.fullmatch(r"[0-9a-f]{12,64}",ids[0]):
+        raise ValueError("Expected one local PostgreSQL container")
+    client=args[0]
+    prefix=["docker","exec","-i",ids[0],client,"-U","sorter"]
+    if client=="pg_dump":
+        if args[1:5]!=["--format=custom","--no-owner","--no-acl","--file"] or len(args)!=6:
+            raise ValueError("Unexpected dump arguments")
+        with open(args[5],"xb") as out:
+            return subprocess.run(prefix+["-d",db,*args[1:4]],stdout=out,stderr=subprocess.PIPE,check=True)
+    if client=="pg_restore":
+        if db=="sorter" or args[1:6]!=["--exit-on-error","--no-owner","--no-acl","--dbname",db] or len(args)!=7:
+            raise ValueError("Restore requires a dedicated staging DB")
+        with open(args[6],"rb") as src:
+            return subprocess.run(prefix+args[1:6],stdin=src,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,check=True)
+    if client=="psql" and capture:
+        return subprocess.run(prefix+["-d",db,"-v","ON_ERROR_STOP=1",*args[1:]],
+                              stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True)
+    raise ValueError("Unexpected local client operation")
 
 def validate_rel(name):
     posix=PurePosixPath(name)

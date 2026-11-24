@@ -49,7 +49,7 @@ def configure(storage,project):
     info=pin.stat(follow_symlinks=False)
     if pin.is_symlink() or info.st_uid!=0 or info.st_mode&0o077:raise ValueError("Unsafe update branch pin")
     branch=pin.read_text().strip()
-    if branch not in ("main","feature/storage-architecture-v2"):raise ValueError("Invalid trusted branch")
+    if branch != "feature/storage-architecture-v2":raise ValueError("Invalid trusted branch")
     expected=[line.split("=",1)[1] for line in (project/".env.generated").read_text().splitlines() if line.startswith("MAP_STORAGE_ROOT=")]
     if expected!=[str(storage)]:raise ValueError("Storage pin mismatch")
     STORAGE=storage
@@ -170,9 +170,9 @@ def backup(project,revision):
     name="backup-"+revision[:12]+"-"+uuid.uuid4().hex
     directory=BACKUPS/(".pending-"+name)
     directory.mkdir(mode=0o700)
-    for name in (".env",".env.generated","compose.yaml"):
-        shutil.copy2(project/name,directory/name)
-        os.chmod(directory/name,0o600)
+    for filename in (".env",".env.generated","compose.yaml"):
+        shutil.copy2(project/filename,directory/filename)
+        os.chmod(directory/filename,0o600)
     dump=directory/"postgres.dump"
     with dump.open("wb") as stream:
         subprocess.run(["docker","exec",service_id("postgres"),"pg_dump","-Fc",

@@ -21,8 +21,8 @@ def run(*args,cwd=None,env=None,timeout=120):
 def compose(root,*args,timeout=180):
     return run("docker","compose","--env-file",".env","--env-file",".env.generated",*args,cwd=root,timeout=timeout)
 
-def tls():
-    with socket.create_connection(("127.0.0.1",443),timeout=5) as raw:
+def tls(port=443):
+    with socket.create_connection(("127.0.0.1",port),timeout=5) as raw:
         with ssl._create_unverified_context().wrap_socket(raw,server_hostname="localhost") as conn:
             return hashlib.sha256(conn.getpeercert(binary_form=True)).hexdigest()
 
@@ -81,6 +81,52 @@ def check_logs(root,storage):
     assert prune_postgres(storage,budget=1)>=1
     assert active_file.exists()
     print("REAL_CADDY_POSTGRES_ROTATION_AND_REDACTION_OK",flush=True)
+
+
+def restore_drill(root,storage,cert,initial):
+    import snapshot
+    from urllib.parse import quote
+    compose(root,"stop","api","worker","cleanup","thumbnail","caddy")
+    db="sorter_restore_"+uuid.uuid4().hex
+    name="map-ci-restore-"+uuid.uuid4().hex[:12]
+    password=next(x.split("=",1)[1] for x in (root/".env.generated").read_text().splitlines() if x.startswith("POSTGRES_PASSWORD="))
+    url="postgresql://sorter:"+quote(password,safe="")+"@postgres:5432/"
+    os.environ["MAP_SNAPSHOT_COMPOSE_PG"]="1"
+    host.sql("CREATE DATABASE "+db)
+    try:
+        with tempfile.TemporaryDirectory(prefix="map-ci-snapshot-") as folder:
+            temp=Path(folder)
+            (temp/".photosorter-staging-only").write_text("STAGING_ONLY")
+            archive=temp/"snapshot"; dest=temp/"restored"
+            snapshot.capture(root,archive,url+"sorter",quiesced=True)
+            snapshot.restore_test(archive,dest,url+db,confirmed=True)
+            for path,stamp in initial.items():
+                assert snapshot.digest(dest/"storage"/path)==stamp[3],path
+            for table in ("jobs","uploads","reference_cache"):
+                expected=host.sql("SELECT count(*) FROM "+table)
+                actual=run("docker","exec",host.service_id("postgres"),"psql","-XAt","-U","sorter","-d",db,"-c","SELECT count(*) FROM "+table)
+                assert expected==actual,table
+            restored=dest/"storage/infrastructure/caddy"
+            logs=temp/"caddy-logs"
+            for part in ("access","runtime"): (logs/part).mkdir(parents=True)
+            run("docker","run","-d","--name",name,"-p","127.0.0.1:9443:443","-e","DOMAIN=localhost",
+                "-v",str(restored/"data")+":/data","-v",str(restored/"config")+":/config",
+                "-v",str(logs)+":/logs","-v",str(dest/"PhotoSorter/docker/caddy/Caddyfile")+":/etc/caddy/Caddyfile:ro",
+                "caddy:2-alpine")
+            deadline=time.monotonic()+40
+            while True:
+                try:
+                    assert tls(9443)==cert
+                    break
+                except OSError:
+                    if time.monotonic()>deadline:raise
+                    time.sleep(1)
+            print("REAL_SNAPSHOT_RESTORE_POSTGRES_CADDY_TLS_OK",flush=True)
+    finally:
+        subprocess.run(["docker","rm","-f",name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        host.sql("DROP DATABASE "+db)
+        os.environ.pop("MAP_SNAPSHOT_COMPOSE_PG",None)
+        compose(root,"up","-d","--no-build","--wait","--wait-timeout","180")
 
 def main():
     if os.environ.get("CI")!="true" or os.environ.get("GITHUB_ACTIONS")!="true" or os.geteuid()!=0:
@@ -184,6 +230,7 @@ def main():
         print("REAL_TWO_COMMIT_UPDATER_PRESERVATION_OK",old,target,flush=True)
         # Project bind paths for Caddy must outlive this fixture checkout.
         compose(root,"up","-d","--no-build","--force-recreate","--wait","--wait-timeout","180","caddy")
+    restore_drill(root,storage,cert,initial)
     print("STAGE6_REAL_HOST_HARNESS_OK",flush=True)
 
 if __name__=="__main__":main()
