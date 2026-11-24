@@ -55,8 +55,12 @@ chown() { return 0; }
 # Actual bootstrap is tested independently and under real UID in Docker CI.
 python3() {
   if [[ "$1" == PhotoSorter/tools/maintenance/bootstrap_storage.py ]]; then
-    mkdir -p "$2/system/state"
-    printf '2\n' > "$2/system/state/layout-version"
+    if [[ "${3:-}" == --check ]]; then
+      [[ "$(cat "$2/system/state/layout-version")" == 2 ]]
+    else
+      mkdir -p "$2/system/state"
+      printf '2\n' > "$2/system/state/layout-version"
+    fi
   else
     command python3 "$@"
   fi

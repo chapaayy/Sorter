@@ -10,6 +10,9 @@ usage() {
 }
 MODE="${1:---deploy}"
 if [[ "$MODE" != "--check" && "$MODE" != "--deploy" ]]; then usage >&2; exit 2; fi
+if [[ -L .env || -L .env.generated ]]; then
+  echo '[ERROR] Symlinked deployment configuration is forbidden.' >&2; exit 1
+fi
 if [[ ! -f .env ]]; then
   if [[ "$MODE" == "--check" ]]; then echo '[ERROR] .env missing' >&2; exit 1; fi
   cp .env.example .env
@@ -145,6 +148,7 @@ then
 fi
 
 if [[ "$MODE" == "--check" ]]; then
+  python3 PhotoSorter/tools/maintenance/bootstrap_storage.py "$MAP_STORAGE_ROOT" --check
   bash PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --check
   echo '[OK] Read-only preflight passed. No files or containers changed.'
   exit 0

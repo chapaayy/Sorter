@@ -129,6 +129,8 @@ def test_model_roots_never_fall_back_to_operator_home(tmp_path,monkeypatch):
     monkeypatch.setenv("HF_HUB_CACHE",str(tmp_path/"old/hf"))
     assert model_store.torch_roots()==[cache/"torch/hub"]
     assert model_store.hf_roots()==[cache/"huggingface/hub"]
+    for name in ("HOME","XDG_CACHE_HOME","HF_HOME","HF_XET_CACHE","HF_HUB_OFFLINE","HF_HUB_DISABLE_TELEMETRY"):
+        monkeypatch.setenv(name,"test-before")
     model_store.configure_model_environment()
     assert os.environ["TORCH_HOME"]==str(cache/"torch")
     assert os.environ["HF_HUB_CACHE"]==str(cache/"huggingface/hub")
