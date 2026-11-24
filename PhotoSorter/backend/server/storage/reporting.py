@@ -2,7 +2,7 @@
 from datetime import datetime,timezone
 from app import config
 from ..database import connect
-from .accounting import SUMS,snapshot,aggregate
+from .accounting import SUMS,snapshot,aggregate,missing_keys
 from app.storage.categories import CATEGORIES,Category
 
 # Stable legacy response labels; stage 8 can consume native category IDs.
@@ -26,16 +26,9 @@ def legacy_categories(categories):
     return groups
 
 def expected_missing(db,limit=100,offset=0):
-    prefix=str(config.APP_STORAGE_ROOT)+"/"
-    return db.execute("""WITH expected AS (
-        SELECT target_path AS path FROM uploads WHERE finalized AND target_path IS NOT NULL
-        UNION SELECT media_output_path FROM uploads WHERE media_output_path IS NOT NULL
-        UNION SELECT cache_path FROM reference_cache
-        UNION SELECT target_path FROM reference_version_members)
-      SELECT 'app/'||substr(e.path,%s) AS path,'expected_not_observed' AS issue
-      FROM expected e WHERE starts_with(e.path,%s) AND NOT EXISTS
-        (SELECT 1 FROM storage_files f WHERE f.path='app/'||substr(e.path,%s))
-      ORDER BY e.path LIMIT %s OFFSET %s""",(len(prefix)+1,prefix,len(prefix)+1,limit,offset)).fetchall()
+    query,params=missing_keys()
+    return db.execute(query+"""SELECT path,'expected_not_observed' AS issue
+      FROM missing ORDER BY path LIMIT %s OFFSET %s""",(*params,limit,offset)).fetchall()
 
 def issues(limit=100,offset=0):
     with connect() as db:

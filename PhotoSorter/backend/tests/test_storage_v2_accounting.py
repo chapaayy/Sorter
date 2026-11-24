@@ -107,6 +107,8 @@ with reservation('archive',1048576),temporary_operation(config.APP_STORAGE_ROOT,
         assert path.is_file() and path.is_relative_to(config.APP_STORAGE_ROOT)
         data=settle()
         assert data["reserved_bytes"]==1048576
+        assert any(row["operation_key"]==registry.key_for(path.parent) and row["logical_bytes"]>=131072
+                   for row in data["temporary_operations"]["rows"])
         assert exact(path)["logical_bytes"]==131072
         assert data["temporary"]["allocated_bytes"]>=path.stat().st_blocks*512
         assert collect_abandoned(config.APP_STORAGE_ROOT,grace_seconds=0)==0
@@ -151,3 +153,47 @@ def test_bounded_reconciliation_sparse_and_links_no_polling_walk(system,monkeypa
             assert storage_breakdown.breakdown()
             assert storage_inventory.scan()
     finally:r.close()
+
+def test_reservation_recovery_advances_past_active_leases(system):
+    from server.storage.reservations import recover
+    ids=[uuid.UUID(int=i) for i in (1,2,3)]
+    keys=[900001,900002,900003]
+    with database.connect() as holder:
+        for key in keys[:2]:
+            holder.execute("SELECT pg_advisory_lock(%s)",(key,))
+        with database.connect() as db:
+            for ident,key in zip(ids,keys):
+                db.execute("INSERT INTO storage_reservations(id,kind,lease_key,requested_bytes) VALUES(%s,'fixture',%s,100)",(ident,key))
+        with database.connect() as db:
+            after=recover(db,limit=2)
+            assert after==ids[1]
+        with database.connect() as db:
+            assert recover(db,limit=2,after=after) is None
+            assert [r["id"] for r in db.execute("SELECT id FROM storage_reservations ORDER BY id")]==ids[:2]
+    with database.connect() as db:
+        recover(db,limit=10)
+        assert db.execute("SELECT count(*) AS n FROM storage_reservations").fetchone()["n"]==0
+
+def test_missing_published_manifest_and_stale_snapshot(system):
+    from app.results.exporter import MANIFEST_NAME
+    from psycopg.types.json import Jsonb
+    from .test_stage1_lifecycle import _job
+    from server.storage.accounting import snapshot
+    batch=_batch(system)
+    run=_job(system,batch)
+    with database.connect() as db:
+        owner=db.execute("SELECT owner_id FROM batches WHERE id=%s",(batch,)).fetchone()["owner_id"]
+        db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(Jsonb({"models":{"megaloc":{"status":"completed"}}}),run))
+    manifest=managed_path(Category.RESULT_METADATA,user_id=owner,batch_uuid=batch,run_id=run)/MANIFEST_NAME
+    manifest.parent.mkdir(parents=True)
+    manifest.write_bytes(b"")
+    data=settle()
+    key=registry.key_for(manifest)
+    assert not any(row["path"]==key for row in reporting.issues()["missing"])
+    manifest.unlink()
+    data=settle()
+    assert data["missing_expected"]>=1
+    assert any(row["path"]==key for row in reporting.issues()["missing"])
+    with database.connect() as db:
+        db.execute("UPDATE storage_accounting_state SET sampled_at=now()-interval '2 minutes'")
+    assert snapshot()["stale"] and snapshot()["partial"]

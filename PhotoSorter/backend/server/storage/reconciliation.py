@@ -47,7 +47,7 @@ class Reconciler:
         self.root=Path(root or config.APP_STORAGE_ROOT)
         self.full=None;self.temp=None;self.dirty=None
         self.generation=None;self.last_full=0;self.last_temp=0;self.errors=0
-        self.sweep=False;self.cursor=0;self.temp_cursor=0
+        self.sweep=False;self.cursor=0;self.temp_cursor=0;self.reservation_cursor=None
     def error(self):self.errors+=1
     def _consume(self,db,iterator,limit,generation=None):
         keys=[];done=False
@@ -120,7 +120,7 @@ class Reconciler:
             observe(db,self.root,[r["path"] for r in old],self.generation)
             self.temp_cursor=old[-1]["id"] if old else 0
             from .reservations import recover
-            recover(db)
+            self.reservation_cursor=recover(db,after=self.reservation_cursor)
             from .accounting import refresh
             refresh(db,force=finished)
             return True

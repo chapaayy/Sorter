@@ -1,10 +1,12 @@
 """Registry-backed totals; physical, logical and prospective charge are independent."""
 from __future__ import annotations
-import os,json
-from pathlib import Path
+import os
+from datetime import datetime,timezone
 from psycopg.types.json import Jsonb
 from ..database import connect
 from app import config
+from app.storage.categories import CATEGORIES,Category
+from app.results.exporter import MANIFEST_NAME
 from ..services.disk_guard import reserve
 
 SUMS="""count(*) AS files,coalesce(sum(logical_bytes),0)::bigint AS logical_bytes,
@@ -12,6 +14,52 @@ SUMS="""count(*) AS files,coalesce(sum(logical_bytes),0)::bigint AS logical_byte
  coalesce(sum(charged_bytes),0)::bigint AS charged_bytes,
  count(*) FILTER(WHERE physical_rank>1) AS hardlink_paths,
  coalesce(sum(logical_bytes) FILTER(WHERE physical_rank>1),0)::bigint AS hardlink_reused_bytes"""
+# Business metadata is the expected-file index; a completed model must have
+# its canonical manifest even when the run stopped after model publication.
+def missing_keys():
+    prefix=str(config.APP_STORAGE_ROOT)+"/"
+    template=CATEGORIES[Category.RESULT_METADATA]["path"]+MANIFEST_NAME
+    return """WITH expected AS (
+      SELECT 'app/'||substr(path,%s) AS path FROM (
+        SELECT target_path AS path FROM uploads WHERE finalized AND target_path IS NOT NULL
+        UNION SELECT media_output_path FROM uploads WHERE media_output_path IS NOT NULL
+        UNION SELECT cache_path FROM reference_cache
+        UNION SELECT target_path FROM reference_version_members
+      ) e WHERE starts_with(e.path,%s)
+      UNION SELECT replace(replace(replace(%s,'{user_id}',b.owner_id::text),
+        '{batch_uuid}',b.id::text),'{run_id}',j.id)
+      FROM jobs j JOIN batches b ON b.id=j.batch_id
+      WHERE b.delete_state='active' AND j.snapshot->'models'->'megaloc'->>'status'='completed'
+    ), missing AS (
+      SELECT e.path FROM expected e WHERE NOT EXISTS
+        (SELECT 1 FROM storage_files f WHERE f.path=e.path AND f.kind='file')
+    ) """,(len(prefix)+1,prefix,template)
+
+def temporary_operations(db,limit=100):
+    # Group only observed current paths, never invent future bytes. Archive
+    # fragments are attributed to their containing run, reference exports to
+    # their file key; scratch is a leased service/operation directory.
+    rows=db.execute("""WITH operations AS (
+      SELECT category,owner_id,batch_id,run_id,
+        CASE
+          WHEN starts_with(path,'app/temporary/uploads/') THEN array_to_string((string_to_array(path,'/'))[1:5],'/')
+          WHEN starts_with(path,'app/temporary/archives/results/') OR starts_with(path,'app/temporary/scratch/')
+            THEN array_to_string((string_to_array(path,'/'))[1:5],'/')
+          WHEN starts_with(path,'app/temporary/archives/references/') THEN path
+          ELSE array_to_string((string_to_array(path,'/'))[1:4],'/')
+        END AS operation_key, logical_bytes,physical_bytes
+      FROM storage_accounted_files WHERE scope='temporary'
+    ), totals AS (
+      SELECT operation_key,category,owner_id,batch_id::text,run_id,
+        count(*) AS files,sum(logical_bytes)::bigint AS logical_bytes,
+        sum(physical_bytes)::bigint AS allocated_bytes
+      FROM operations GROUP BY operation_key,category,owner_id,batch_id,run_id
+    ) SELECT *,count(*) OVER() AS total_groups FROM totals
+      ORDER BY allocated_bytes DESC,operation_key,category LIMIT %s""",(limit,)).fetchall()
+    total=rows[0]["total_groups"] if rows else 0
+    for row in rows:row.pop("total_groups")
+    return {"rows":rows,"total_groups":total,"partial":total>len(rows)}
+
 def aggregate(db):
     categories={};owners={};devices={};temporary={"allocated_bytes":0,"logical_bytes":0,"files":0,"charged_bytes":0,"hardlink_paths":0,"hardlink_reused_bytes":0}
     # Materialize the ranked evidence once for all dimensions.
@@ -24,15 +72,8 @@ def aggregate(db):
         elif group==13 and scope=="temporary":temporary=row
         elif group==14:devices[str(device)]=row
     issues={r["issue"]:r["n"] for r in db.execute("SELECT issue,count(*) AS n FROM storage_files WHERE issue IS NOT NULL GROUP BY issue")}
-    # Existing business metadata is the expected-file index, not copied into a second table.
-    missing=db.execute("""SELECT count(*) AS n FROM (
-      SELECT target_path AS path FROM uploads WHERE finalized AND target_path IS NOT NULL
-      UNION SELECT media_output_path FROM uploads WHERE media_output_path IS NOT NULL
-      UNION SELECT cache_path FROM reference_cache
-      UNION SELECT target_path FROM reference_version_members
-    ) e WHERE starts_with(e.path,%s) AND NOT EXISTS
-      (SELECT 1 FROM storage_files f WHERE f.path='app/'||substr(e.path,%s))""",
-      (str(config.APP_STORAGE_ROOT)+"/",len(str(config.APP_STORAGE_ROOT))+2)).fetchone()["n"]
+    query,params=missing_keys()
+    missing=db.execute(query+"SELECT count(*) AS n FROM missing",params).fetchone()["n"]
     conflicts=db.execute("""SELECT count(*) AS n FROM (
       SELECT device,inode FROM storage_files WHERE scope='personal' GROUP BY device,inode
       HAVING count(DISTINCT owner_id)>1) x""").fetchone()["n"]
@@ -43,6 +84,7 @@ def aggregate(db):
     return {"categories":categories,"owners":owners,"devices":devices,"temporary":temporary,"issues":issues,
             "missing_expected":missing,"cross_owner_inode_conflicts":conflicts,"reserved_bytes":reserved,"reservations":reservations,
             "unfinished_fo":incoming,"unfinished_references":reference_incoming,
+            "temporary_operations":temporary_operations(db),
             "allocated_bytes":sum(r["allocated_bytes"] for r in categories.values()),
             "logical_bytes":sum(r["logical_bytes"] for r in categories.values())}
 def refresh(db,*,force=False):
@@ -59,11 +101,14 @@ def snapshot():
         row=db.execute("SELECT * FROM storage_accounting_state").fetchone()
         pending=db.execute("SELECT count(*) AS n FROM storage_dirty").fetchone()["n"]
     summary=dict(row["summary"])
+    age=(datetime.now(timezone.utc)-row["sampled_at"]).total_seconds() if row["sampled_at"] else None
+    stale=age is None or age>60 or age< -60
     for field in ("sampled_at","reconciled_at","started_at"):
         summary[field]=row[field].isoformat() if row[field] else None
     reconciling=bool(row["started_at"] and (not row["reconciled_at"] or row["started_at"]>row["reconciled_at"]))
     summary.update(pending_changes=pending,reconciling=reconciling,errors=row["errors"],temporary_peak_bytes=row["temporary_peak_bytes"],
-                   partial=row["reconciled_at"] is None or bool(row["errors"]) or bool(pending) or reconciling)
+                   sample_age_seconds=age,stale=stale,
+                   partial=stale or row["reconciled_at"] is None or bool(row["errors"]) or bool(pending) or reconciling)
     return summary
 def disk():
     fs=os.statvfs(config.APP_STORAGE_ROOT)

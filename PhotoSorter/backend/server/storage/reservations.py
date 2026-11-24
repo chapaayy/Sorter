@@ -22,8 +22,17 @@ def reservation(kind,requested):
             db.execute("DELETE FROM storage_reservations WHERE id=%s",(token,))
             db.commit()
 
-def recover(db,limit=100):
-    rows=db.execute("SELECT id,lease_key FROM storage_reservations ORDER BY created_at LIMIT %s",(limit,)).fetchall()
+def recover(db,limit=100,after=None):
+    """Advance through all leases, including those behind long-lived holders.
+
+    A crash may reset the cursor safely: a deleted row never resurrects, and
+    a complete pass wraps around to catch inserts before the cursor.
+    """
+    if after is None:
+        rows=db.execute("SELECT id,lease_key FROM storage_reservations ORDER BY id LIMIT %s",(limit,)).fetchall()
+    else:
+        rows=db.execute("SELECT id,lease_key FROM storage_reservations WHERE id>%s ORDER BY id LIMIT %s",(after,limit)).fetchall()
     for row in rows:
         if db.execute("SELECT pg_try_advisory_xact_lock(%s) AS ok",(row["lease_key"],)).fetchone()["ok"]:
             db.execute("DELETE FROM storage_reservations WHERE id=%s",(row["id"],))
+    return rows[-1]["id"] if len(rows)==limit else None
