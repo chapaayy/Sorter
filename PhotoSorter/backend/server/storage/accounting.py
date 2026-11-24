@@ -50,6 +50,8 @@ def refresh(db,*,force=False):
     row=db.execute("SELECT sampled_at,now()-sampled_at<interval '15 seconds' AS fresh FROM storage_accounting_state").fetchone()
     if row["fresh"] and not force:return
     summary=aggregate(db)
+    from .reporting import history
+    summary["reference_history"]=history(db)
     db.execute("""UPDATE storage_accounting_state SET summary=%s,sampled_at=now(),
       temporary_peak_bytes=greatest(temporary_peak_bytes,%s)""",(Jsonb(summary),summary["temporary"]["allocated_bytes"]))
 def snapshot():

@@ -156,38 +156,10 @@ def collect(limit=50,*,history_grace=HISTORY_GRACE_SECONDS,grace_seconds=OBJECT_
             except (OSError,ValueError):continue
     return report
 
-def history_usage(limit=250_000):
-    """Bounded-by-registry, read-only physical sizes for retained historical data."""
-    summary={"objects":0,"object_bytes":0,"embeddings":0,"embedding_bytes":0,"missing":0,"partial":False}
-    with connect() as db:
-        historical=db.execute("""SELECT DISTINCT m.source_hash FROM reference_version_members m
-            WHERE NOT EXISTS(SELECT 1 FROM reference_library_state s JOIN reference_version_members c
-                ON c.version_id=s.current_version_id WHERE c.source_hash=m.source_hash)
-            AND NOT EXISTS(SELECT 1 FROM uploads u WHERE u.kind='reference' AND u.finalized AND u.checksum=m.source_hash)
-            AND NOT EXISTS(SELECT 1 FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id
-                WHERE f.checksum=m.source_hash AND s.upload_state<>'cancelled'
-                  AND s.preparation_state NOT IN ('completed','stopped')) ORDER BY m.source_hash LIMIT %s""",(limit+1,)).fetchall()
-        summary["partial"]=len(historical)>limit
-        digests=[r["source_hash"] for r in historical[:limit]]
-        vectors=db.execute("SELECT source_hash,model_signature,cache_path FROM reference_cache WHERE source_hash=ANY(%s) ORDER BY source_hash,model_signature LIMIT %s",(digests,limit+1)).fetchall()
-        summary["partial"] |= len(vectors)>limit
-        vectors=vectors[:limit]
-    seen=set()
-    def measure(path,count_key,byte_key):
-        try:
-            info=file_stat(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT))
-            inode=(info["device"],info["inode"])
-            if inode in seen:return
-            seen.add(inode)
-            summary[count_key]+=1
-            summary[byte_key]+=info["allocated"]
-        except (ValueError,OSError):summary["missing"]+=1
-    for digest in digests:
-        measure(objects.object_path(digest),"objects","object_bytes")
-    for row in vectors:
-        try:
-            path=location(row["source_hash"],row["model_signature"])
-            if path!=Path(row["cache_path"]):raise ValueError("Bad cache path")
-            measure(path,"embeddings","embedding_bytes")
-        except (ValueError,TypeError):summary["missing"]+=1
-    return summary
+def history_usage():
+    """Historical references use the same registry evidence as storage reports."""
+    from ..storage.reporting import history
+    from ..storage.accounting import snapshot
+    with connect() as db:result=history(db)
+    result["partial"] |= snapshot()["partial"]
+    return result

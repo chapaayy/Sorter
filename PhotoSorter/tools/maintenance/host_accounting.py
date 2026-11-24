@@ -136,4 +136,5 @@ def measure(storage,contract,*,limit=100000,seconds=4,engine=None,include_engine
     for row in journals.values():row["partial"]=partial
     if engine is None:engine=engine_metrics() if include_engine else {"available":False}
     if engine.get("root"):fs(Path(engine["root"]))
+    partial=partial or bool(errors)
     return {"at":datetime.now(timezone.utc).isoformat(),"categories":categories,"devices":devices,"filesystems":filesystems,"unknown_sample":unknown,"partial":partial,"errors":errors,"postgres_wal_subset_bytes":wal,"docker":engine,"deleted_open":deleted_open(storage) if include_engine else None,"journals":journals,"basis":"bounded_host_protected_inode_sample; app registry separate"}

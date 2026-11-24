@@ -112,6 +112,7 @@ def test_reference_lifecycle_shared_bytes_pins_and_cache_reuse(system,monkeypatc
     assert reference_gc.collect(history_grace=0,grace_seconds=0)["objects"]==0
     assert target.exists() and embedding.exists() and preview.exists()
     assert thumbnails.gc_unowned(grace_seconds=0)==0
+    settle()
     history=reference_gc.history_usage()
     assert history["objects"]==1 and history["embeddings"]==1
     with database.connect() as db:
