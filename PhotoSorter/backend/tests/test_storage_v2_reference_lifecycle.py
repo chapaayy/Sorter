@@ -150,6 +150,7 @@ def test_reference_upload_expiry_respects_transfer_lock(system):
 
 def test_model_signature_stable_under_relocation_and_touch(tmp_path,monkeypatch):
     from app.system import model_store
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",tmp_path)
     root=tmp_path/"source"
     root.mkdir()
     (root/"hubconf.py").write_text("example=1")
