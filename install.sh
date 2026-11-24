@@ -4,18 +4,39 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 usage() {
-  echo "Usage: ./install.sh [--check | --deploy]"
+  echo "Usage: ./install.sh [--check | --deploy | --configure]"
+  echo "  --configure: fresh install; prompt for hostname and admin password, then deploy"
   echo "  --check : read-only env/Compose/CPU prerequisite checks"
   echo "  --deploy: install missing prerequisites on Ubuntu/Debian, then deploy Sorter"
 }
 MODE="${1:---deploy}"
-if [[ "$MODE" != "--check" && "$MODE" != "--deploy" ]]; then usage >&2; exit 2; fi
+if [[ "$MODE" != "--check" && "$MODE" != "--deploy" && "$MODE" != "--configure" ]]; then usage >&2; exit 2; fi
+if [[ "$MODE" != "--check" && "$(id -u)" != 0 ]]; then
+  echo '[ERROR] Run the installer as root.' >&2; exit 1
+fi
 if [[ -L .env || -L .env.generated ]]; then
   echo '[ERROR] Symlinked deployment configuration is forbidden.' >&2; exit 1
 fi
+if [[ "$MODE" == "--configure" ]]; then
+  if [[ -e .env || -e .env.generated ]]; then
+    echo '[ERROR] Existing configuration: use --deploy, never overwrite credentials.' >&2; exit 1
+  fi
+  read -r -p 'Domain (DNS hostname): ' domain
+  if [[ -z "$domain" || "$domain" == 'sorter.example.com' || ! "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
+    echo '[ERROR] Invalid hostname.' >&2; exit 1
+  fi
+  read -r -s -p 'Admin password (16–256 characters; no single quote or backslash): ' password
+  printf '\n'
+  if [[ "${#password}" -lt 16 || "${#password}" -gt 256 || "$password" == *"'"* || "$password" == *\\* || "$password" == *[[:cntrl:]]* ]]; then
+    echo '[ERROR] Invalid password.' >&2; exit 1
+  fi
+  (umask 077; set -o noclobber; printf "DOMAIN=%s\nADMIN_PASSWORD='%s'\nPHOTOSORTER_ENABLE_BBR=1\n" "$domain" "$password" > .env)
+  unset domain password
+  MODE=--deploy
+fi
 if [[ ! -f .env ]]; then
   if [[ "$MODE" == "--check" ]]; then echo '[ERROR] .env missing' >&2; exit 1; fi
-  cp .env.example .env
+  (umask 077; cp .env.example .env)
 fi
 unset ADMIN_PASSWORD POSTGRES_PASSWORD
 unset MAP_STORAGE_ROOT
@@ -194,12 +215,6 @@ else
     python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)" --storage-root "$MAP_STORAGE_ROOT"
   fi
   "${COMPOSE[@]}" up -d --no-build --wait --wait-timeout 180
-fi
-# The historical observer writes to the legacy layout. Do not launch it in v2.
-# Bounded host diagnostics are restored in stage 6.
-# Clean up the previous installer’s copy after Compose accepts the deployment.
-if grep -Eq '^ADMIN_PASSWORD=' .env.generated; then
-  sed -i '/^ADMIN_PASSWORD=/d' .env.generated
 fi
 printf '\n[OK] Site: https://%s\n' "$DOMAIN"
 echo '[INFO] Login: admin (ADMIN_PASSWORD in .env)'

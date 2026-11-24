@@ -1,6 +1,6 @@
 {
   "layout_version": 2,
-  "status": "foundation_active_lifecycle_pending",
+  "status": "active_v2_final_acceptance_pending",
   "base_sha": "c6d77ebb1c9c80c732df209a17a993dd38ec381f",
   "host_root_default": "/opt/Sorter/storage",
   "container_app_root": "/storage/app",
@@ -46,7 +46,8 @@
       "accounting": "unique owner object charge; logical and allocated independently",
       "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "uploaded bytes per completed file",
-      "consumer": "original/gallery readers, normalization, sorting, archive and deletion"
+      "consumer": "original/gallery readers, normalization, sorting, archive and deletion",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "fo_normalized",
@@ -62,7 +63,8 @@
       "accounting": "unique owner object charge; logical and allocated independently",
       "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "one persisted compatible media per prepared upload",
-      "consumer": "sorting, gallery, archive, batch cleanup"
+      "consumer": "sorting, gallery, archive, batch cleanup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "result_media",
@@ -78,7 +80,8 @@
       "accounting": "unique owner object charge; logical and allocated independently",
       "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "links per published run, fallback copy bytes",
-      "consumer": "result pages, images, archive builder, run deletion"
+      "consumer": "result pages, images, archive builder, run deletion",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "result_metadata",
@@ -94,7 +97,8 @@
       "accounting": "unique owner object charge; logical and allocated independently",
       "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "rows proportional to result count",
-      "consumer": "result pagination, archive plan, history and diagnostics"
+      "consumer": "result pagination, archive plan, history and diagnostics",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "run_state",
@@ -110,7 +114,8 @@
       "accounting": "unique owner object charge; logical and allocated independently",
       "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "bounded per run snapshot/index",
-      "consumer": "jobs API, progress, worker recovery"
+      "consumer": "jobs API, progress, worker recovery",
+      "runtime_usage": "Run state authoritative in PostgreSQL; reserved directory only, no active JSON run-state writer."
     },
     {
       "id": "fo_thumbnail",
@@ -126,7 +131,8 @@
       "accounting": "unique owner object charge; logical and allocated independently",
       "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
       "growth": "one preview per owner and unique preview key",
-      "consumer": "FO/results galleries and thumbnail GC"
+      "consumer": "FO/results galleries and thumbnail GC",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "reference_object",
@@ -142,7 +148,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
       "growth": "unique content bytes across retained memberships",
-      "consumer": "reference gallery, preparation, version pins, export"
+      "consumer": "reference gallery, preparation, version pins, export",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "reference_gallery",
@@ -158,7 +165,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
       "growth": "logical memberships in PostgreSQL; no gallery media bytes",
-      "consumer": "reference library and original download"
+      "consumer": "reference library and original download",
+      "runtime_usage": "Virtual gallery from PostgreSQL; directory reserved, unexpected files diagnosed; no materialized duplicate gallery."
     },
     {
       "id": "reference_thumbnail",
@@ -174,7 +182,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
       "growth": "one preview per shared key",
-      "consumer": "reference library and GC"
+      "consumer": "reference library and GC",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "reference_embedding",
@@ -190,7 +199,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
       "growth": "one verified array per digest/signature",
-      "consumer": "MegaLoc reference preparation and matching"
+      "consumer": "MegaLoc reference preparation and matching",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "fo_upload_part",
@@ -206,7 +216,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "received chunk bytes up to declared size",
-      "consumer": "PATCH/resume/finalize, cleanup"
+      "consumer": "PATCH/resume/finalize, cleanup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "reference_upload_part",
@@ -222,7 +233,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
       "growth": "received chunk bytes up to declared size",
-      "consumer": "reference import transfer/finalize, cleanup"
+      "consumer": "reference import transfer/finalize, cleanup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "transcode_temp",
@@ -238,7 +250,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "temporary encoded bytes while FFmpeg runs",
-      "consumer": "media prepare task and cleanup"
+      "consumer": "media prepare task and cleanup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "video_frames",
@@ -254,7 +267,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "bounded selected frames per input video",
-      "consumer": "recognition pipeline, cleanup"
+      "consumer": "recognition pipeline, cleanup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "processing_staging",
@@ -270,7 +284,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 3 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "transient result links, metadata and fallback copies",
-      "consumer": "result publication and recovery"
+      "consumer": "result publication and recovery",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "fo_embedding_temp",
@@ -286,7 +301,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "optional transient feature spill; not required",
-      "consumer": "recognition task only"
+      "consumer": "recognition task only",
+      "runtime_usage": "MegaLoc FO embeddings currently in memory; namespace reserved, no persistent writer."
     },
     {
       "id": "zip_results",
@@ -302,7 +318,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "on-demand full archive bytes per export plan",
-      "consumer": "leased HTTP file response, expiry sweep"
+      "consumer": "leased HTTP file response, expiry sweep",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "zip_construction",
@@ -318,7 +335,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "on-demand construction archive bytes per plan",
-      "consumer": "leased HTTP file response, expiry sweep"
+      "consumer": "leased HTTP file response, expiry sweep",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "zip_references",
@@ -334,7 +352,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "on-demand reference archive bytes per version",
-      "consumer": "leased HTTP file response, expiry sweep"
+      "consumer": "leased HTTP file response, expiry sweep",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "zip_fragment",
@@ -350,7 +369,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "incomplete ZIP bytes while building",
-      "consumer": "archive builder and stale fragment cleanup"
+      "consumer": "archive builder and stale fragment cleanup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "archive_lock",
@@ -366,7 +386,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "small stable coordination file per namespace",
-      "consumer": "archive builder, response and cleanup"
+      "consumer": "archive builder, response and cleanup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "atomic_fragment",
@@ -382,7 +403,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 5 crash and atomic-publication tests",
       "growth": "in-flight staged bytes",
-      "consumer": "atomic publication and recovery"
+      "consumer": "atomic publication and recovery",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "model_download",
@@ -398,7 +420,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "in-flight downloaded and extracted bytes",
-      "consumer": "model verifier/installer and cleanup"
+      "consumer": "model verifier/installer and cleanup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "model_weights",
@@ -414,7 +437,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "active model weight files",
-      "consumer": "offline MegaLoc loader"
+      "consumer": "offline MegaLoc loader",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "model_source",
@@ -430,7 +454,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "verified source tree for model version",
-      "consumer": "Torch Hub/MegaLoc loader"
+      "consumer": "Torch Hub/MegaLoc loader",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "model_metadata",
@@ -446,7 +471,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "bounded verification and revision metadata",
-      "consumer": "model status and loader"
+      "consumer": "model status and loader",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "technical_cache",
@@ -462,7 +488,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "provider cache growth bounded by policy after dependency proof",
-      "consumer": "HF/Torch/XDG clients and explicit cache cleanup"
+      "consumer": "HF/Torch/XDG clients and explicit cache cleanup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "scratch",
@@ -478,7 +505,8 @@
       "accounting": "logical/allocated; reservation separately; zero personal charge",
       "verification": "Stage 5 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "operation-dependent native output/temp files or unnamed fd",
-      "consumer": "FFmpeg, PIL, native runtimes, cleanup"
+      "consumer": "FFmpeg, PIL, native runtimes, cleanup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "postgres_data",
@@ -494,7 +522,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "tables/indexes, WAL, free pages and native metadata",
-      "consumer": "PostgreSQL; read-only accounting and snapshot"
+      "consumer": "PostgreSQL; read-only accounting and snapshot",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "caddy_state",
@@ -510,7 +539,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "TLS/ACME/config runtime files",
-      "consumer": "Caddy only; protected backup"
+      "consumer": "Caddy only; protected backup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "service_log",
@@ -526,7 +556,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "bounded rotating service log segments",
-      "consumer": "authorized diagnostics and rotation"
+      "consumer": "authorized diagnostics and rotation",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "run_log",
@@ -542,7 +573,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "per-run events subject to per-run and aggregate budgets",
-      "consumer": "cursor log API/UI and cleanup"
+      "consumer": "cursor log API/UI and cleanup",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "access_log",
@@ -558,7 +590,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "bounded redacted HTTP access records",
-      "consumer": "authorized diagnostics, Caddy rotation"
+      "consumer": "authorized diagnostics, Caddy rotation",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "audit_snapshot",
@@ -574,7 +607,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "bounded diagnostic metadata snapshots",
-      "consumer": "owner storage audit UI and report export"
+      "consumer": "owner storage audit UI and report export",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "audit_event",
@@ -590,7 +624,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "opt-in bounded sampled events",
-      "consumer": "host diagnostics only"
+      "consumer": "host diagnostics only",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "updater_backup",
@@ -606,7 +641,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "last verified rollback set plus in-flight candidate",
-      "consumer": "host updater and explicit restore"
+      "consumer": "host updater and explicit restore",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "updater_workspace",
@@ -622,7 +658,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "temporary verified source checkout/build context",
-      "consumer": "host updater and builder"
+      "consumer": "host updater and builder",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "builder_marker",
@@ -638,7 +675,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "small marker per owned builder",
-      "consumer": "map_build cleanup/recovery"
+      "consumer": "map_build cleanup/recovery",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "updater_control",
@@ -654,7 +692,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "bounded durable status, maintenance and stable locks",
-      "consumer": "host updater; RO control mount"
+      "consumer": "host updater; RO control mount",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "installation_state",
@@ -670,7 +709,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 2 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "small durable layout/branch marker",
-      "consumer": "installer and updater"
+      "consumer": "installer and updater",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "runtime_image",
@@ -686,7 +726,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "current/rollback image layers, possible shared engine layers",
-      "consumer": "Docker and host updater"
+      "consumer": "Docker and host updater",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "build_cache",
@@ -702,7 +743,8 @@
       "accounting": "logical/allocated; no personal charge",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "owned disposable builder layers/cache volumes",
-      "consumer": "BuildKit lifecycle"
+      "consumer": "BuildKit lifecycle",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "system_runtime",
@@ -718,7 +760,8 @@
       "accounting": "separate external filesystem or memory measurement",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "native sockets, PID, runtime and overlay metadata",
-      "consumer": "OS, engine, updater"
+      "consumer": "OS, engine, updater",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "tmpfs",
@@ -734,7 +777,8 @@
       "accounting": "separate external filesystem or memory measurement",
       "verification": "Stage 6 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "bounded memory-backed runtime use",
-      "consumer": "native runtime and separate measurement"
+      "consumer": "native runtime and separate measurement",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "unknown",
@@ -750,7 +794,8 @@
       "accounting": "reported separately; no charge or cleanup assumption",
       "verification": "Stage 7 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
       "growth": "unexplained; no assumption",
-      "consumer": "diagnostic reporting only"
+      "consumer": "diagnostic reporting only",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "deployment_config",
@@ -766,7 +811,8 @@
       "accounting": "excluded from managed/user totals; report separately if measurable, no double count",
       "verification": "Stage 6 boundary checks and stage 7 accounting; external artifacts are not managed by MAP",
       "growth": "fixed small configuration; secrets excluded from reporting",
-      "consumer": "installation/API/compose"
+      "consumer": "installation/API/compose",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "host_config",
@@ -782,7 +828,8 @@
       "accounting": "excluded from managed/user totals; report separately if measurable, no double count",
       "verification": "Stage 6 boundary checks and stage 7 accounting; external artifacts are not managed by MAP",
       "growth": "small configuration; package cache outside MAP",
-      "consumer": "systemd, apt, sysctl, updater"
+      "consumer": "systemd, apt, sysctl, updater",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "external_backup",
@@ -798,7 +845,8 @@
       "accounting": "excluded from managed/user totals; report separately if measurable, no double count",
       "verification": "Stage 6 boundary checks and stage 7 accounting; external artifacts are not managed by MAP",
       "growth": "bounded by operator policy, not user quota",
-      "consumer": "restore tool and operator"
+      "consumer": "restore tool and operator",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "test_artifact",
@@ -814,7 +862,8 @@
       "accounting": "excluded from managed/user totals; report separately if measurable, no double count",
       "verification": "Stage 6 boundary checks and stage 7 accounting; external artifacts are not managed by MAP",
       "growth": "ephemeral runner or fixture, outside production",
-      "consumer": "test assertions, CI logs/artifacts"
+      "consumer": "test assertions, CI logs/artifacts",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "external_diagnostic",
@@ -830,7 +879,8 @@
       "accounting": "excluded from managed/user totals; report separately if measurable, no double count",
       "verification": "Stage 6 boundary checks and stage 7 accounting; external artifacts are not managed by MAP",
       "growth": "operator-controlled report size",
-      "consumer": "operator and comparison tooling"
+      "consumer": "operator and comparison tooling",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
       "id": "client_storage",
@@ -846,7 +896,8 @@
       "accounting": "excluded from managed/user totals; report separately if measurable, no double count",
       "verification": "Stage 6 boundary checks and stage 7 accounting; external artifacts are not managed by MAP",
       "growth": "outside server disk and user server quota",
-      "consumer": "frontend and browser user"
+      "consumer": "frontend and browser user",
+      "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     }
   ],
   "foundation_paths": {

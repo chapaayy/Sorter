@@ -9,8 +9,8 @@ Branch: feature/storage-architecture-v2; base: c6d77ebb1c9c80c732df209a17a993dd3
 6. **COMPLETED — 2026-11-25** — 97dc4de, CI 45476432794 7/7; systemd installation deferred to stage 10.
 7. **ACCEPTED — 2026-11-25** — implementation 82acf81, CI 45482207462 7/7; closing commit 14d9f02 CI 45483614880 7/7.
 8. **ACCEPTED — 2026-11-25** — implementation 048ed3440856af711cd69a3204c9994b6a90469b, CI 45486293741 7/7; closing 8f47b59 CI 45487412211 7/7; owner accepted before stage 9.
-9. **COMPLETED — 2026-11-25** — implementation 6b14fb0cfda0b9b9b4d311b17216dcf1c878a768, CI 45492993969 7/7; awaiting owner acceptance. Stage 10 not started.
-10. Final install and PR (no merge) — not started.
+9. **ACCEPTED — 2026-11-25** — implementation 6b14fb0, CI 45492993969 7/7; closing 5ce1808 CI 45494437011 7/7; owner accepted stage 9.
+10. **OPEN — final acceptance in progress**; real clean Ubuntu/systemd/reboot and realistic load are mandatory, no merge.
 ## Baseline
 [Actions run 45408161752](https://github.com/chapaayy/Sorter/actions/runs/45408161752) at exact base SHA succeeded: backend, restore, frontend, chromium-desktop, webkit-desktop, webkit-mobile, docker-runtime. Prior WebKit mobile failures not reproduced by that run; this is not proof of absence of flakiness.
 ## Findings and blockers
@@ -192,3 +192,7 @@ Owner accepted stage 7. Closing commit `14d9f02`: CI [45483614880](https://githu
 - UI: Administration / Storage / Limits and per-account detail, current usage, reserved, available, configured limit, warnings near limit and blocked state. API returns explicit rejection reason. No data deletion when lowering limits. Enabled policy requires fresh reconciled evidence; short-lived unsampled writes can conservatively occupy reservation headroom until handoff, not an independent accounting ledger. External OS/Docker allocations and filesystem metadata cannot be made into a hard quota by application logic; updater checks headroom before/during its own build, protects outstanding reservations conservatively and retains its independent floor. Existing physical disk guard remains active even for accepted upload chunks.
 - Implementation commits: d4e055c, 03f95af, de7a257, 9a84b36, f2f728b, d5d3a89, 6b14fb0. This closing commit changes documentation only, subsequent CI is separate from exact tested implementation. Main verified unchanged c6d77ebb1c9c80c732df209a17a993dd38ec381f. No merge, deployment, legacy migration or actual systemd installation. Actual clean Ubuntu systemd service gate remains stage 10.
 - **Stage 10 NOT STARTED.** Await explicit owner authorization.
+
+
+## Stage 10 entry
+Owner accepted stage 9. Closing CI 45494437011: all seven jobs successful. Original MAP_storage_architecture_implementation_plan(5).md stage 10 and final matrix re-read. Local environment: Debian 13, PID1 supervisord, no Docker/QEMU/KVM and GitHub DNS unavailable. Remote Actions is the available executable environment. Do not claim VM or large-load execution unless exact job evidence exists.
