@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from functools import lru_cache
 from pathlib import Path
 from ..config import WEIGHTS_DIR, MODEL_CACHE_DIR
 from ..storage.filesystem import atomic_write
@@ -60,16 +61,23 @@ def files_present():
     folder = repo_folder()
     return bool(checkpoint() and (folder / 'hubconf.py').is_file() and (folder / 'megaloc_model.py').is_file())
 
+@lru_cache(maxsize=8)
+def _weight_digest(path,device,inode,size,mtime,ctime):
+    with Path(path).open("rb") as stream:
+        return hashlib.file_digest(stream,"sha256").hexdigest()
+
 def signature():
-    weight = checkpoint()
-    if weight is None or not files_present(): return None
-    repo = repo_folder()
-    stat = weight.stat()
-    hasher = hashlib.sha256()
+    weight=checkpoint()
+    if weight is None or not files_present():return None
+    repo=repo_folder()
+    info=weight.stat()
+    digest=_weight_digest(str(weight),info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+    hasher=hashlib.sha256()
     for source in sorted(repo.rglob('*.py')):
-        hasher.update(source.relative_to(repo).as_posix().encode())
-        hasher.update(source.read_bytes())
-    return hashlib.sha256(f'megaloc:{weight.resolve()}:{stat.st_size}:{stat.st_mtime_ns}:{hasher.hexdigest()}:loader-v2'.encode()).hexdigest()
+        hasher.update(source.relative_to(repo).as_posix().encode()+b"\0")
+        hasher.update(hashlib.sha256(source.read_bytes()).digest())
+    # Content identity independent of cache location, rename or unchanged redeploy.
+    return hashlib.sha256(f'megaloc:{digest}:{hasher.hexdigest()}:loader-v2'.encode()).hexdigest()
 
 def verified():
     sig = signature()

@@ -35,13 +35,11 @@ def system(tmp_path,monkeypatch):
     config.APP_STORAGE_ROOT.mkdir(parents=True)
     refs=root/"references"
     refs.mkdir(parents=True)
-    monkeypatch.setattr(reference_prepare,"signature",lambda:"stage3-model")
-    monkeypatch.setattr(reference_publication,"signature",lambda:"stage3-model")
-    monkeypatch.setattr(work_queue,"signature",lambda:"stage3-model")
+    monkeypatch.setattr(reference_prepare,"signature",lambda:("a"*64))
+    monkeypatch.setattr(reference_publication,"signature",lambda:("a"*64))
+    monkeypatch.setattr(work_queue,"signature",lambda:("a"*64))
     from server import reference_cache
-    cache=root/"cache"/"megaloc"/"references"
-    cache.mkdir(parents=True)
-    monkeypatch.setattr(reference_cache,"CACHE_DIR",cache)
+    monkeypatch.setattr(reference_cache,"signature",lambda:"a"*64)
     database.initialize()
     from .test_stage1_lifecycle import owner_for_test
     with database.connect() as db:
@@ -77,7 +75,7 @@ def add_published_reference(root,sam="SAM 0001",address="Победы 12"):
         entry={"reference_id":key,"sam":sam,"filename":"one.jpg",
                "source_hash":digest,"target_path":str(file),
                "declared_size":len(raw),"source_kind":"staged"}
-        reference_publication.publish(db,[entry],"stage3-model")
+        reference_publication.publish(db,[entry],("a"*64))
         reference_gallery.index_published(db,{
             "upload_id":key,"sam":sam,"filename":"one.jpg",
             "checksum":digest,"declared_size":len(raw),"stored_path":str(file)})
@@ -112,11 +110,13 @@ def prepare_import(root):
     return sid,fid,path,hashlib.sha256(raw).hexdigest(),state["preparation_job_id"]
 
 def cache_vector(root,digest):
-    target=root/"cache"/"megaloc"/"references"/(digest+".npy")
+    from server.reference_cache import location
+    target=location(digest,"a"*64)
+    target.parent.mkdir(parents=True,exist_ok=True)
     np.save(target,np.asarray([0.9,0.1],dtype="float32"))
     with database.connect() as db:
         db.execute("""INSERT INTO reference_cache(source_hash,model_signature,cache_path)
-        VALUES (%s,'stage3-model',%s)""",(digest,str(target)))
+        VALUES (%s,%s,%s)""",(digest,"a"*64,str(target)))
 
 def finish_fo(run_id):
     with database.connect() as db:

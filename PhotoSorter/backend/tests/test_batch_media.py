@@ -133,12 +133,10 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     for module in (jobs,sorting,media_prepare,archives,images):
         monkeypatch.setattr(module,'DATA_DIR',thumbs,raising=False)
     monkeypatch.setattr(repository,'RUNS_DIR',thumbs/'runs')
-    monkeypatch.setattr(reference_publication,'signature',lambda:'stage3-model')
-    monkeypatch.setattr(work_queue,'signature',lambda:'stage3-model')
+    monkeypatch.setattr(reference_publication,'signature',lambda:('a'*64))
+    monkeypatch.setattr(work_queue,'signature',lambda:('a'*64))
     monkeypatch.setattr(model_store,'files_present',lambda:True)
-    monkeypatch.setattr(reference_cache,'CACHE_DIR',thumbs/'ref-cache')
-    monkeypatch.setattr(reference_cache,"REFERENCE_ROOT",reference_objects.object_root())
-    monkeypatch.setattr(reference_cache,"signature",lambda:"stage3-model")
+    monkeypatch.setattr(reference_cache,"signature",lambda:("a"*64))
     add_published_reference(thumbs)
     ahead=_batch(thumbs,with_photo=True)
     older=jobs.enqueue(jobs.NewRun(batch_id=ahead))['id']
