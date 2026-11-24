@@ -65,3 +65,16 @@ def test_read_only_check_does_not_recreate_missing_dir(tmp_path):
     assert not (root/"app/users").exists()
     bootstrap(root)
     assert (root/"app/users").is_dir()
+
+
+def test_secure_umask_does_not_make_shared_activity_lock_unreadable(tmp_path):
+    root=tmp_path/"storage"
+    before=os.umask(0o077)
+    try:bootstrap(root)
+    finally:os.umask(before)
+    lock=root/"system/updater/control/activity.lock"
+    inode=lock.stat().st_ino
+    assert lock.stat().st_mode&0o777==0o644
+    bootstrap(root,check=True)
+    bootstrap(root)
+    assert lock.stat().st_ino==inode

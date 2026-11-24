@@ -17,7 +17,11 @@ def activity():
         # Direct development/CI Compose without host updater.
         yield not marker.exists()
         return
-    fd=os.open(lock,os.O_RDONLY|os.O_NOFOLLOW)
+    try:fd=os.open(lock,os.O_RDONLY|os.O_NOFOLLOW)
+    except OSError:
+        # Missing/inaccessible protected lock is a closed gate, not HTTP 500.
+        yield False
+        return
     try:
         if marker.exists():
             yield False

@@ -124,9 +124,16 @@ def bootstrap(root, *, host_uid=0, host_gid=0, app_uid=APP_UID, app_gid=APP_GID,
                     os.replace(".log-policy.tmp","log-policy.json",src_dir_fd=state,dst_dir_fd=state)
                     os.fsync(state)
             with directory_fd(root,"system/updater/control") as control:
-                if not check:
-                    fd=os.open("activity.lock",os.O_CREAT|os.O_RDONLY|os.O_NOFOLLOW,0o644,dir_fd=control)
-                    os.close(fd)
+                flags=os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC
+                if not check:flags|=os.O_CREAT
+                fd=os.open("activity.lock",flags,0o644,dir_fd=control)
+                try:
+                    info=os.fstat(fd)
+                    if not stat.S_ISREG(info.st_mode) or info.st_uid!=host_uid or info.st_nlink!=1:
+                        raise ValueError("Unsafe activity lock")
+                    if not check:os.fchmod(fd,0o644)
+                    elif stat.S_IMODE(info.st_mode)!=0o644:raise ValueError("Invalid activity lock mode")
+                finally:os.close(fd)
             if not marked:
                 with walk_directory(root_fd, "system/state", host_uid, host_gid, 0o700, create=False) as state:
                     fd = os.open("layout-version", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,

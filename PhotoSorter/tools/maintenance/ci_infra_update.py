@@ -108,6 +108,7 @@ def main():
     assert host.sql("SELECT system_identifier FROM pg_control_system()")==pgid and tls()==cert
     assert permanent(storage)==initial
     assert (storage/"infrastructure/postgres/data").stat().st_uid==70
+    assert (storage/"system/updater/control/activity.lock").stat().st_mode&0o777==0o644
     assert (storage/"infrastructure/caddy/data").stat().st_uid==0
     assert not run("docker","volume","ls","-q","--filter","label=com.docker.compose.project=outdoor-sorter")
     print("REAL_REPEAT_INSTALL_AND_RECREATE_PERSISTENCE_OK",flush=True)
