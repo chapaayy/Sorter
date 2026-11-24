@@ -1,3 +1,5 @@
+> **Историческая документация прежних этапов.** Описания старых каталогов, миграции и команды установки ниже не применяются к Storage V2. Актуальные инструкции: [README](README.md), [контракт и жизненный цикл](docs/STORAGE_V2_FINAL_CATALOG.md), [архитектура V2](docs/STORAGE_ARCHITECTURE_V2.md).
+
 # PROJECT_MAP.md — текущая архитектура PhotoSorter
 
 ```text

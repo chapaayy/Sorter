@@ -1,30 +1,40 @@
-# Бэкап и восстановление PhotoSorter
+# Резервное копирование и восстановление Storage V2
 
-**Перед любым обновлением или сбросом бета-сервера:** согласованный бэкап и его восстановление нужно проверить на отдельном стенде. Наличие файла архива на том же VPS не равно проверенной защите.
+Полная копия не равна локальной копии обновлятора. Updater сохраняет ограниченные служебные копии БД/конфигурации; оператору нужен независимый защищённый носитель для пользовательских файлов, модели и TLS. Инструмент `PhotoSorter/tools/maintenance/snapshot.py` поддерживает capture, verify и restore-test с manifest и SHA-256 каждого файла/архива/дампа. Hardlinks сохраняются; опасные ссылки и выход за корень отклоняются. 
 
-1. Приостановить приём новых upload/run и убедиться, что активные дисковые записи завершились; обеспечить согласованность снимка каталога `PhotoSorter/data/` с PostgreSQL. Простой `pg_dump` при одновременно меняющихся файлах не гарантирует согласованный filesystem state.
-2. Сохранить в защищённое **другое хранилище**: `pg_dump --format=custom` соответствующей БД; `PhotoSorter/data/references/`, `uploads/`, `outputs/`, `runs/`, `incoming/` и service cache по политике; `.env` и `.env.generated` с правами 0600; модельные веса `Models/models/` и информацию о version/code SHA.
-3. Восстановить копии на **отдельный пустой тестовый VPS/volume**: сначала секреты и файлы с правильным UID, затем `pg_restore` в новую PostgreSQL DB, затем контейнеры тестового приложения. Никогда не использовать production тома для restore-test.
-4. Проверить count/size/checksum uploads/refs, индекс jobs/run/manifest, старый/новый ZIP, авторизацию, модель и безопасное удаление **созданной специально тестовой партии**.
-5. Записать даты backup/restore, исходный commit SHA, результат checksum smoke test и точку возврата.
+## Согласованная копия (root)
 
-Отсутствие offsite backup означает отсутствие проверенной аварийной защиты. Hard Links и второй путь в `outputs/` не спасают при повреждении диска. Никаких команд `down -v`.
+Останови приём задач, дождись завершения активных операций; проверь отсутствие активного обновления. Пример для обычного корня, заранее подключённого независимого носителя /mnt/map-backups и свободного имени снимка:
 
-## Дополнительные данные PostgreSQL и WebP
+```bash
+sudo -i
+cd /opt/Sorter
+systemctl stop map-log-maintenance.timer map-updater.service
+docker compose --env-file .env --env-file .env.generated stop caddy api worker thumbnail cleanup
+# PostgreSQL остаётся запущенным.
+MAP_SNAPSHOT_COMPOSE_PG=1 python3 PhotoSorter/tools/maintenance/snapshot.py capture \
+  --root /opt/Sorter --destination /mnt/map-backups/map-2026-11-25 \
+  --database-url postgresql://sorter:local-transport@postgres/sorter --ack-writers-stopped
+python3 PhotoSorter/tools/maintenance/snapshot.py verify --archive /mnt/map-backups/map-2026-11-25
+docker compose --env-file .env --env-file .env.generated up -d
+systemctl start map-updater.service map-log-maintenance.timer
+```
 
-В резервную копию PostgreSQL входят `thumbnail_tasks`, `uploads.updated_at`, новые jobs timestamps и indexes. `data/cache/thumbnails/v1/` — пересчитываемый WebP cache, но для точного восстановления состояния очереди разумно снимать его согласованно с БД. Общий MegaLoc reference embedding cache сохранять отдельно, не трактовать thumbnails как резерв ФО. Во время snapshot приостановить thumbnail/cleanup/worker и завершить pending uploads. Реальное offsite восстановление нужно проверять отдельно от CI.
+local-transport — не пароль пользователя: в специальном режиме MAP_SNAPSHOT_COMPOSE_PG=1 dump/restore выполняется через Docker exec в локальном PostgreSQL. Не публикуй .env, .env.generated, приватные TLS-ключи, архив или дамп. Включены постоянное app-хранилище, незавершённые передачи, модель, эмбеддинги, Caddy data/config, настройки и логический дамп PostgreSQL. Исключены ZIP, scratch, незавершённые скачивания модели, transcoding, frames, processing, логи и служебные рабочие копии. Не копируется живой PGDATA. Если capture/verify завершается ошибкой, снимок не считать годным; возобновить сервисы после устранения проблемы.
 
-Vue UI — клиент существующих серверных состояний. Он не создает новую резервную систему, а показывает предупреждение, если проверенная внешняя копия неизвестна. Сохранение `package-lock.json` и dist assets **не заменяет** snapshot PostgreSQL+data+Models при реальном обновлении. Rename SAM изменяет пути Образцов — перед production тестом понадобится согласованная копия данных и проверка зависимостей старых manifests.
+## Проверка восстановления
 
-## Утилита snapshot и границы CI
+Только на отдельном изолированном стенде с PostgreSQL и пустой тестовой БД, не поверх production. Пример с Compose-транспортом на таком стенде:
 
-`PhotoSorter/tools/maintenance/snapshot.py`: команды `capture`/`verify`/`restore-test`. Перед backup **оператор выключает всех writers**, после чего явно передаёт `--ack-writers-stopped`. Snapshot включает `PhotoSorter/data`, `Models/models`, `Models/cache`, конфигурацию/секреты, `pg_dump` custom format. SHA-256 каждой записи и всего tar/dump; повторные inode оформляются tar Hard Link. Архив создаётся в другом каталоге, владеет 0700, ни один исходный файл не меняется.
+```bash
+sudo -i
+cd /opt/Sorter
+docker compose --env-file .env --env-file .env.generated exec -T postgres createdb -U sorter sorter_restore_manual
+mkdir -p /mnt/map-restore-test
+printf 'STAGING_ONLY\n' > /mnt/map-restore-test/.photosorter-staging-only
+MAP_SNAPSHOT_COMPOSE_PG=1 python3 PhotoSorter/tools/maintenance/snapshot.py restore-test \
+  --archive /mnt/map-backups/map-2026-11-25 --destination /mnt/map-restore-test/restored \
+  --database-url postgresql://sorter:local-transport@postgres/sorter_restore_manual --confirm-staging
+```
 
-Restore требует `--confirm-staging`, **новый каталог** и marker `.photosorter-staging-only` со значением `STAGING_ONLY` в его родителе. БД должна существовать, быть пустой и называться `sorter_restore_*`; при некорректном/подменённом tar никакой распаковки до `verify()`.
-
-CI `ci_restore_drill.py` действительно вызывает `pg_dump` и `pg_restore` с PostgreSQL17 на двух disposable базах и проверяет SHA файлов, запись БД и inode. **Это не снимок VPS**. Настоящая резервная копия должна быть зашифрована offsite (внутри находятся пароли `.env.generated` и фотографии). Caddy Docker volume с TLS private keys нужно отдельно копировать и восстанавливать. Без offsite restore-test не давать согласие на production rollout. Команды: [STAGE4_ROLLOUT](ROLLOUT.md).
-
-
-## Единый beta pipeline
-
-Очередь ФО и подготовок образцов — только `work_queue.seq`; загрузка образцов всегда доступна через `/api/reference-imports` и сохраняет файлы в `reference_staging`. После полной подготовки публикуется неизменяемая версия библиотеки. Обе версии планировщика и условные флаги переключения удалены. Приёмка — тесты на пустой базе, докачку, FIFO, публикацию и браузеры Chromium/WebKit. Текущая архитектура: [REFERENCE_PIPELINE](REFERENCE_PIPELINE.md).
+Путь назначения не должен существовать, тестовая база должна быть пустой и называться sorter_restore_*. Проверить состав и хеши, SQL-связи и записи, hardlinks, запуск Caddy с восстановленным TLS, доступность модели и совпадение эмбеддингов. После проверки только оператор удаляет тестовое окружение. Этот инструмент намеренно не переключает боевую БД или работающий сайт: автоматический production failover не реализован. При потере VPS требуется отдельная изолированная процедура развёртывания с восстановленными данными и секретами; перенос путей и запуск должны быть проверены до переключения DNS. Не использовать старые инструкции для PhotoSorter/data/Models.

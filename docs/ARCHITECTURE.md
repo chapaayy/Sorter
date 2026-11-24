@@ -1,3 +1,5 @@
+> **Историческая документация прежних этапов.** Описания старых каталогов, миграции и команды установки ниже не применяются к Storage V2. Актуальные инструкции: [README](../README.md), [контракт и жизненный цикл](STORAGE_V2_FINAL_CATALOG.md), [архитектура V2](STORAGE_ARCHITECTURE_V2.md).
+
 # Архитектура PhotoSorter (beta)
 
 Исходное приложение было одним FastAPI `main.py` и modules `uploads/jobs/database`. После этапа 1 `server/main.py` выполняет только сборку приложения, middleware авторизации и lifecycle. `server/api/routes/*` имеют HTTP-контракты, `server/services/*` владеют batch/retention/cleanup/storage use cases, `server/storage/*` — проверками файловой системы, `server/db/*` — SQL-миграциями.
