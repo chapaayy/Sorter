@@ -1,8 +1,10 @@
 # Обновление MAP из админки
 
-Однократная установка владельцем VPS (после завершения текущих обработок):
+Только новая экспериментальная установка на отдельном VPS. После клонирования закреплённой ветки, настройки .env и проверки root-владения:
 
-    cd /opt/Sorter && git pull --ff-only origin main && bash install.sh --deploy
+    cd /opt/Sorter && git switch feature/storage-architecture-v2 && git pull --ff-only origin feature/storage-architecture-v2 && sudo bash install.sh --deploy
+
+Не применять к действующей установке или старым Docker volumes.
 
 В разделе «Администрирование → Обновление MAP» проверить GitHub и запустить
 обновление. Браузер можно закрыть: host-служба map-updater.service независима
@@ -12,7 +14,7 @@
 
 - Только владелец admin, только фиксированные команды status/check/update по
   Unix-сокету. Нет Docker socket, произвольного shell или доступа к root из API.
-- Источник — закреплённый репозиторий chapaayy/Sorter, ветка main, fast-forward.
+- Источник — закреплённый репозиторий chapaayy/Sorter, ветка feature/storage-architecture-v2, fast-forward. Ветка записана в root-only storage/system/state/update-branch, API не может её менять.
   Локальные изменения отслеживаемых файлов блокируют обновление.
 - Сборка нового образа из проверенного Git SHA в отдельном BuildKit. После
   сборки удаляется именно созданный builder (без keep-state). Четыре сервиса
@@ -27,7 +29,7 @@
   полноценную резервную копию фото и независимую проверку восстановления.
 - Только после успешной проверки новой версии удаляются устаревшие
   маркированные образы MAP без ссылок контейнеров и более старые собственные
-  резервные копии обновлятора. Тома, модели, ФО, ZIP, кэш других проектов
+  резервные копии обновлятора. Постоянные bind mounts PostgreSQL/Caddy, модели, ФО, ZIP, кэш других проектов
   и общий исторический кэш Docker не удаляются. Никаких global prune/volumes.
   Старый общий BuildKit не имеет доказанной принадлежности MAP; его очистка
   требует отдельного решения оператора.
@@ -38,11 +40,13 @@
 
 ## Файлы обновлятора
 
-* /var/lib/map-updater/control — root-owned состояние, activity.lock,
+* storage/system/updater/control — root-owned состояние, activity.lock,
   maintenance, только чтение в контейнерах;
-* /var/lib/map-updater/rpc — локальный Unix socket, монтируется только в API;
-* /var/lib/map-updater/private — ограниченные резервные копии, временный
-  исходный код и идентификаторы собственных BuildKit builder; root-only;
+* storage/system/updater/rpc — локальный Unix socket, монтируется только в API;
+* storage/system/backups/updater — последний проверенный дамп и конфигурация;
+* storage/system/updater/workspace — временный Git source, очищаемый при завершении/восстановлении;
+* storage/system/updater/private — root-only блокировки и маркеры своих builder;
+* storage/logs/updater — ограниченный журнал фаз, без вывода секретов;
 * /usr/local/lib/map-updater — установленные Python-скрипты root;
 * /etc/systemd/system/map-updater.service — служба;
 * map-local/app:current, map-local/app:rollback, map-local/app:rev-SHA —
@@ -55,7 +59,7 @@
 
     systemctl status map-updater.service
     journalctl -u map-updater.service -n 80 --no-pager
-    cat /var/lib/map-updater/control/status.json
+    cat storage/system/updater/control/status.json
 
 При recovery_required не удалять marker и не восстанавливать базу вслепую.
 Проверить текущий Git SHA, состояние Compose, сохранённый предыдущий образ

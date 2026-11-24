@@ -135,9 +135,9 @@ def main():
     storage=Path(sys.argv[2]).resolve()
     assert storage==root/"storage" and (root/".env.generated").exists()
     old=run("git","rev-parse","HEAD",cwd=root)
-    assert host.installed()[0]==old
     compose(root,"up","-d","--no-build","--wait","--wait-timeout","180")
     await_health()
+    assert host.installed()[0]==old
     initial=permanent(storage)
     credentials=(root/".env.generated").read_bytes()
     cert=tls()
@@ -159,6 +159,22 @@ def main():
     assert not run("docker","volume","ls","-q","--filter","label=com.docker.compose.project=outdoor-sorter")
     print("REAL_REPEAT_INSTALL_AND_RECREATE_PERSISTENCE_OK",flush=True)
     check_logs(root,storage)
+    # Actual abandoned BuildKit: start a marked disposable builder in a child,
+    # kill the owner after bootstrap, then recover by the normal cleanup path.
+    map_build.configure(storage)
+    builder="map-sorter-"+uuid.uuid4().hex
+    marker=map_build.STATE/builder
+    with marker.open("x"):pass
+    proc=subprocess.Popen(["bash","-c",'docker buildx create --name "$1" --driver docker-container >/dev/null && docker buildx inspect "$1" --bootstrap >/dev/null && echo ready && exec sleep 600',"_",builder],stdout=subprocess.PIPE,text=True)
+    try:
+        assert proc.stdout.readline().strip()=="ready"
+    finally:
+        proc.kill();proc.wait()
+    assert not map_build.clean_owned_builders()
+    assert not marker.exists()
+    assert builder not in run("docker","buildx","ls","--format","{{.Name}}").splitlines()
+    assert "buildx_buildkit_"+builder+"0_state" not in run("docker","volume","ls","--format","{{.Name}}").splitlines()
+    print("REAL_ABANDONED_BUILDKIT_RECOVERY_OK",flush=True)
     with tempfile.TemporaryDirectory(prefix="map-ci-update-") as folder:
         temp=Path(folder);project=temp/"project";remote=temp/"origin.git"
         # Git data stays strictly local to this disposable CI host. The
