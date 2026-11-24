@@ -123,8 +123,11 @@ def disk():
     fs=os.statvfs(config.APP_STORAGE_ROOT)
     total=fs.f_frsize*fs.f_blocks;free=fs.f_frsize*fs.f_bavail
     used=total-fs.f_frsize*fs.f_bfree
-    from .admission import policy
-    with connect() as db:guard=reserve(total,configured=policy(db)['disk_reserve_bytes'])
+    from .admission import policy,counters
+    with connect() as db:
+        guard=reserve(total,configured=policy(db)['disk_reserve_bytes'])
+        outstanding=counters(db)["disk_reserved_bytes"]
     return {"device":os.stat(config.APP_STORAGE_ROOT).st_dev,"total_bytes":total,"used_bytes":used,
-            "available_bytes":free,"reserved_bytes":guard,"allocatable_bytes":max(0,free-guard),"admission_ok":free>guard,
+            "available_bytes":free,"reserved_bytes":guard,"operation_reserved_bytes":outstanding,
+            "allocatable_bytes":max(0,free-guard-outstanding),"admission_ok":free>guard+outstanding,
             "used_fraction":used/total if total else 0,"warning":"critical" if used>=total*.90 else "warning" if used>=total*.80 else None}

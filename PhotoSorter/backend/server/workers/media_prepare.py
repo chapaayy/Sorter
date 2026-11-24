@@ -1,6 +1,7 @@
 """Convert immutable originals using the same exclusive leader as MegaLoc."""
 import os
-import shutil
+import io
+from fastapi import HTTPException
 import time
 from pathlib import Path
 
@@ -94,23 +95,42 @@ def run(item, *, stopping, cpus=2):
                 with pipeline_directory(Category.TRANSCODE_TEMP, task_id=row["id"]) as stage:
                     partial = stage / f"output.{ext}"
                     source = owned_file(Path(row['target_path']), root)
-                    usage=shutil.disk_usage(dest)
-                    if usage.free-max(64*1024**2,source.stat().st_size)<disk_guard.reserve(usage.total):
-                        raise ValueError('Недостаточно места для подготовленной копии')
                     from ..storage.reservations import reservation
-                    with reservation('transcode',max(64*1024**2,source.stat().st_size)):
-                        if is_video:duration=encode(source,partial,ext,stop=stop,meta=meta,
-                            progress=video_progress,cpus=cpus).duration
-                        else:normalized_image(source,partial,ext)
-                    if stop():raise InterruptedError()
-                    with partial.open('rb') as file:os.fsync(file.fileno())
-                    partial.chmod(0o444)
-                    atomic_publish(config.APP_STORAGE_ROOT,partial.relative_to(config.APP_STORAGE_ROOT),output.relative_to(config.APP_STORAGE_ROOT))
+                    if is_video:
+                        # Start with a bounded estimate and grow before allowing
+                        # the native encoder to extend its file-size limit.
+                        size=max(8*1024**2,source.stat().st_size*2)
+                        raw=None
+                    else:
+                        buffer=io.BytesIO()
+                        normalized_image(source,buffer,ext)
+                        raw=buffer.getvalue()
+                        size=len(raw)
+                    with reservation("transcode",size,owner=settings["owner_id"],
+                        personal=size,work=partial) as budget:
+                        budget.publish(output)
+                        if is_video:
+                            duration=encode(source,partial,ext,stop=stop,meta=meta,
+                                progress=video_progress,cpus=cpus,budget=budget).duration
+                        else:
+                            with partial.open("xb") as file:file.write(raw)
+                        if stop():raise InterruptedError()
+                        with partial.open('rb') as file:os.fsync(file.fileno())
+                        partial.chmod(0o444)
+                        atomic_publish(config.APP_STORAGE_ROOT,partial.relative_to(config.APP_STORAGE_ROOT),output.relative_to(config.APP_STORAGE_ROOT))
+                        # Receipt and registry must be valid before releasing
+                        # personal headroom to concurrent transfers.
+                        with connect() as db:
+                            from ..storage import admission
+                            admission.lock(db)
+                            db.execute("UPDATE uploads SET media_output_path=%s,media_duration=coalesce(%s,media_duration) WHERE id=%s",
+                                (str(output),duration,row["id"]))
+                            budget.sync(db)
             except InterruptedError:
                 raise
             except Exception as exc:
                 # Do not expose command lines, local paths or raw FFmpeg output.
-                failure = str(exc)[:300] if isinstance(exc,ValueError) else 'Не удалось прочитать или перекодировать файл'
+                failure = str(exc.detail)[:300] if isinstance(exc,HTTPException) else str(exc)[:300] if isinstance(exc,ValueError) else 'Не удалось прочитать или перекодировать файл'
                 failures += 1
             if not failure:estimate.observe(index,1,time.monotonic()-started)
             percent,eta=estimate.snapshot(index+1,0)

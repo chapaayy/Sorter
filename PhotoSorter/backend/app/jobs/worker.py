@@ -15,9 +15,11 @@ from ..results.sides import attach_sides
 
 def process(job):
     if job.info.get('has_media_profile'):
-        with pipeline_directory(Category.VIDEO_FRAMES, run_id=job.info['id']) as temp:
-            from server.media.sorting import MediaQueries
-            media=MediaQueries(job,Path(temp))
+        from server.storage.reservations import reservation
+        from server.media.sorting import MediaQueries
+        with pipeline_directory(Category.VIDEO_FRAMES, run_id=job.info['id']) as temp, \
+             reservation("video_frames",0,work=temp,tree=True) as budget:
+            media=MediaQueries(job,Path(temp),budget=budget)
             _process(job,media)
     else:
         _process(job,None)

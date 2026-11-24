@@ -56,6 +56,9 @@ def counters(db):
         "SELECT owner_id,coalesce(sum(charged_bytes),0)::bigint AS n FROM storage_accounted_files WHERE scope='personal' AND owner_id IS NOT NULL GROUP BY owner_id")}
     pending=_receipt_rows(db)
     leases=db.execute("SELECT * FROM storage_reservations").fetchall()
+    exact_keys=[r["work_key"] for r in [*pending,*leases] if r["work_key"] and not r.get("work_tree")]
+    exact={r["path"]:r["physical_bytes"] for r in db.execute(
+        "SELECT path,physical_bytes FROM storage_accounted_files WHERE scope='temporary' AND path=ANY(%s)",(exact_keys,))}
     for row in pending:
         amount=rounded(row["declared_size"])
         row.update(requested_bytes=amount,temporary_bytes=amount,personal_bytes=amount if row["owner_id"] is not None else 0,
@@ -70,15 +73,15 @@ def counters(db):
         personal=int(row["personal_bytes"])
         key=row["work_key"]
         seen=physical=0
-        if key:
+        if key and row["work_tree"]:
             evidence=db.execute("""SELECT path,physical_bytes FROM storage_accounted_files
-              WHERE scope='temporary' AND (path=%s OR (%s AND starts_with(path,%s)))""",
-              (key,row["work_tree"],key+"/")).fetchall()
+              WHERE scope='temporary' AND starts_with(path,%s)""",(key+"/",)).fetchall()
             for e in evidence:
                 seen+=e["physical_bytes"]
                 if e["physical_bytes"]:physical+=min(e["physical_bytes"],_actual(e["path"]))
-            if not row["work_tree"]:
-                physical=max(physical,_actual(key))
+        elif key:
+            seen=exact.get(key,0)
+            physical=_actual(key)
         disk_remaining=max(0,requested-physical)
         temp_remaining=max(0,temporary-seen)
         temp_future+=temp_remaining;disk_future+=disk_remaining
@@ -98,8 +101,10 @@ def _ready(db):
 def admit(db,requested,*,temporary=0,owner=None,personal=0,path=None):
     """Caller holds LOCK before creating a receipt or transient reservation."""
     settings=policy(db)
-    total,available=disk_guard.stat(path or config.APP_STORAGE_ROOT)
     values=counters(db)
+    # Sample free after allocation credits: active append-only producers may
+    # allocate more blocks, never credit bytes newer than the free sample.
+    total,available=disk_guard.stat(path or config.APP_STORAGE_ROOT)
     guard=disk_guard.reserve(total,configured=settings["disk_reserve_bytes"])
     if available-values["disk_reserved_bytes"]-requested<guard:
         raise HTTPException(507,"Недостаточно места на диске: сохранён системный резерв и место для принятых операций")

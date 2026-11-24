@@ -108,10 +108,13 @@ def complete(task):
             source=_image_source(task)
             if (task.get("original_media_type") or "").startswith("video/"):
                 from ..media.video import poster
+                from ..media.video import FRAME_LIMIT
+                from ..storage.reservations import reservation
                 with temporary_operation(config.APP_STORAGE_ROOT,"thumbnail") as tmp:
                     frame=Path(tmp)/'poster.jpg'
-                    poster(source,frame)
-                    render(frame,output)
+                    with reservation("video_poster",FRAME_LIMIT,work=frame):
+                        poster(source,frame)
+                        render(frame,output)
             else:
                 render(source,output)
         with connect() as db:

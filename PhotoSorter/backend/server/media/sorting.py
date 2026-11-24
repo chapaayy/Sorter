@@ -8,11 +8,12 @@ from app.recognition.errors import JobCancelled
 from ..database import connect
 from ..storage.paths import owned_file,batch_root
 from .formats import output_name
-from .video import extract_frames
+from .video import extract_frames,FRAME_LIMIT
 
 
 class MediaQueries:
-    def __init__(self, job, directory):
+    def __init__(self, job, directory, *,budget=None):
+        self.budget=budget
         self.videos = {}
         self.information = {}
         self.photos = []
@@ -45,7 +46,8 @@ class MediaQueries:
             if video:
                 folder = directory / str(row['id'])
                 folder.mkdir()
-                frames = extract_frames(source,folder,stop=job.stopped)
+                if self.budget:self.budget.grow(8*FRAME_LIMIT)
+                frames = extract_frames(source,folder,stop=job.stopped,managed=self.budget is not None)
                 self.frame_paths.extend(frames)
                 self.videos[str(source)] = [str(frame) for frame in frames], None
             else:
