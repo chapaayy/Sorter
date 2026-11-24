@@ -493,7 +493,10 @@ def test_orphan_unpublished_export_only_terminal_jobs(sandbox):
     from app.storage.categories import Category
     folder1=managed_path(Category.PROCESSING_STAGING,run_id=finished)
     folder2=managed_path(Category.PROCESSING_STAGING,run_id=running)
-    for folder in (folder1,folder2):
+    frames1=managed_path(Category.VIDEO_FRAMES,run_id=finished)
+    frames2=managed_path(Category.VIDEO_FRAMES,run_id=running)
+    unknown=managed_path(Category.VIDEO_FRAMES,run_id="20261105T000000-000000000001")
+    for folder in (folder1,folder2,frames1,frames2,unknown):
         folder.mkdir(parents=True)
         (folder/"unfinished.jpg").write_bytes(b"temporary")
         os.utime(folder,(time.time()-7200,time.time()-7200))
@@ -501,6 +504,7 @@ def test_orphan_unpublished_export_only_terminal_jobs(sandbox):
     assert finished in removed
     assert not folder1.exists()
     assert folder2.exists(), "Do not clear still-running inference outputs"
+    assert not frames1.exists() and frames2.exists() and unknown.exists()
     cleanup.request(own)
     from server.database import connect
     with connect() as db:

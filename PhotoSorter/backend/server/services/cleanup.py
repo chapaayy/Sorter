@@ -8,8 +8,9 @@ from ..storage.batch_cleanup import remove_batch_files
 from ..storage.paths import run_dir,owned_directory
 from app.config import DATA_DIR,RUNS_DIR
 from app import config
-from app.storage.paths import managed_path
+from app.storage.paths import managed_path,managed_prefix,run_key,uuid_key
 from app.storage.categories import Category
+from app.storage.filesystem import safe_remove_tree
 from .batches import uid
 
 IN_USE = ("queued","running","stopping")
@@ -164,32 +165,44 @@ def process_pending(limit=20):
     return [(str(r["batch_id"]),cleanup_one(r["batch_id"])) for r in rows]
 
 def reconcile_incomplete_exports(limit=100, grace_seconds=3600):
-    """Remove stale unpublished staging only for confirmed terminal runs.
+    """Sweep only known terminal operation directories; keep unknown objects.
 
-    No generic recursive temp purge: a running inference may still be writing.
+    The queue gate prevents a new claim during removal. The batch row lock
+    prevents a new IO lease; the cleanup lock coordinates full deletion.
     """
-    with connect() as db:
-        rows=db.execute("""SELECT j.id FROM jobs j
-             WHERE j.status IN ('completed','completed_with_errors','failed',
-                                'interrupted','stopped')
-             ORDER BY j.updated_at DESC LIMIT %s""",(limit,)).fetchall()
     removed=[]
-    for record in rows:
-        try:
-            staging=managed_path(Category.PROCESSING_STAGING,run_id=record["id"])
-            staging=owned_directory(staging,config.APP_STORAGE_ROOT)
-            if not staging.is_dir():continue
-            if time.time()-staging.stat().st_mtime<grace_seconds:continue
-            # A late worker update must not race the final cleanup decision.
-            with connect() as db:
-                current=db.execute("SELECT status FROM jobs WHERE id=%s",(record["id"],)).fetchone()
-                if not current or current["status"] in IN_USE:continue
-                if db.execute("""SELECT 1 FROM batch_operations b
-                    JOIN jobs j ON j.batch_id=b.batch_id WHERE j.id=%s LIMIT 1""",
-                    (record["id"],)).fetchone():continue
-            shutil.rmtree(staging)
-            removed.append(record["id"])
-        except (OSError,ValueError):
-            # Never delete an untrusted or inaccessible path; leave for inspection.
-            continue
+    for category,field,validate in ((Category.PROCESSING_STAGING,"run_id",run_key),
+                                    (Category.VIDEO_FRAMES,"run_id",run_key),
+                                    (Category.TRANSCODE_TEMP,"task_id",uuid_key)):
+        root=managed_prefix(category)
+        if not root.is_dir() or root.is_symlink():continue
+        for entry in root.iterdir():
+            try:
+                key=validate(entry.name)
+                staging=managed_path(category,**{field:key})
+                if not staging.is_dir() or staging.is_symlink():continue
+                if time.time()-staging.stat().st_mtime<grace_seconds:continue
+                with connect() as db:
+                    db.execute("SELECT pg_advisory_xact_lock(723409133)")
+                    if field=="run_id":
+                        row=db.execute("SELECT batch_id,status FROM jobs WHERE id=%s",(key,)).fetchone()
+                        if not row or row["status"] not in ("completed","completed_with_errors","failed","interrupted","stopped"):continue
+                    else:
+                        row=db.execute("""SELECT batch_id FROM uploads WHERE id=%s
+                            AND kind='fo' AND finalized AND media_action='prepare'""",(key,)).fetchone()
+                        if not row:continue
+                    batch=row["batch_id"]
+                    locked=db.execute("SELECT pg_try_advisory_xact_lock(714932,hashtext(%s)) AS ok",(str(batch),)).fetchone()
+                    if not locked["ok"]:continue
+                    if not db.execute("SELECT id FROM batches WHERE id=%s FOR UPDATE",(batch,)).fetchone():continue
+                    if db.execute("SELECT 1 FROM batch_operations WHERE batch_id=%s LIMIT 1",(batch,)).fetchone():continue
+                    if db.execute("""SELECT 1 FROM work_queue WHERE media_batch_id=%s
+                        AND state IN ('queued','running') LIMIT 1""",(batch,)).fetchone():continue
+                    if field=="task_id" and not db.execute("""SELECT 1 FROM work_queue WHERE media_batch_id=%s
+                        AND kind='media_preparation' AND state IN ('completed','completed_with_errors','failed','interrupted','stopped') LIMIT 1""",(batch,)).fetchone():continue
+                    safe_remove_tree(config.APP_STORAGE_ROOT,staging.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
+                    removed.append(key)
+                if len(removed)>=limit:return removed
+            except (OSError,ValueError):
+                continue
     return removed

@@ -9,7 +9,7 @@ from .paths import batch_dir,batch_root,part_path,normalized_dir,owned_directory
 from app import config
 from app.storage.paths import managed_path,managed_prefix,run_key
 from app.storage.categories import Category
-from app.storage.filesystem import safe_unlink
+from app.storage.filesystem import safe_unlink,safe_remove_tree
 from app.photos.reader import EXTS
 from pathlib import Path
 from .paths import original_path
@@ -51,11 +51,14 @@ def remove_batch_files(batch_id,run_ids,upload_ids,data_dir,runs_dir,report):
         done=0
         report("files",done,total)
         for path in trees:
-            shutil.rmtree(path)
+            if path.is_relative_to(config.APP_STORAGE_ROOT):
+                safe_remove_tree(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
+            else:
+                safe_remove_tree(runs_dir,path.relative_to(runs_dir),missing_ok=True)
             done+=1
             report("files",done,total)
         for path in parts:
-            path.unlink(missing_ok=True)
+            safe_unlink(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
             done+=1
             report("files",done,total)
         if fd is not None:

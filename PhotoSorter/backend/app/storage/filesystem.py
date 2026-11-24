@@ -6,6 +6,7 @@ opened for in-place modification.
 """
 import os
 import stat
+import shutil
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -123,3 +124,16 @@ def atomic_write(root, key):
                 os.unlink(fragment, dir_fd=fd)
             except FileNotFoundError:
                 pass
+
+
+def safe_remove_tree(root,key,*,missing_ok=False):
+    """Remove only a validated directory through its trusted parent descriptor."""
+    try:
+        with parent_fd(root,key) as (fd,name):
+            info=os.stat(name,dir_fd=fd,follow_symlinks=False)
+            if not stat.S_ISDIR(info.st_mode):
+                raise ValueError("Not a managed directory")
+            shutil.rmtree(name,dir_fd=fd)
+            os.fsync(fd)
+    except FileNotFoundError:
+        if not missing_ok:raise

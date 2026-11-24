@@ -39,7 +39,7 @@ def run_cycle():
     for batch_id in retention.due_batch_ids():
         cleanup.request(batch_id,only_if_due=True)
     removed=cleanup.reconcile_incomplete_exports()
-    if removed:logging.info("Removed %s orphaned unpublished exports",len(removed))
+    if removed:logging.info("Removed %s orphaned FO staging directories",len(removed))
     if time.monotonic()>=NEXT_GC:
         NEXT_GC=time.monotonic()+600
         abandoned=temp_cleanup.reclaim_abandoned(limit=50)+temp_cleanup.reclaim_finalized_parts(limit=50)
