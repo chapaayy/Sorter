@@ -175,6 +175,12 @@ function downloadAll(){
   document.body.append(anchor)
   anchor.click();anchor.remove()
 }
+function downloadSides(){
+  const anchor=document.createElement('a')
+  anchor.href=referenceApi.downloadSides()
+  document.body.append(anchor)
+  anchor.click();anchor.remove()
+}
 function openUpload(mode:'single'){
   uploader.launch(mode,selected.value,selectedEntry.value?.display_name||selected.value)
 }
@@ -199,6 +205,7 @@ async function removeSam(){
 <PageHeader eyebrow="БИБЛИОТЕКА КОНСТРУКЦИЙ" title="Образцы">
   <template #actions>
   <UiButton :disabled="listLoading||!list.some(s=>s.photos>0)" @click="downloadAll">↓ Скачать все образцы ZIP</UiButton>
+  <UiButton :disabled="listLoading" @click="downloadSides">↓ Скачать стороны JSON</UiButton>
   <UiButton kind="primary" @click="uploader.launch('construction')">+ Создать конструкцию</UiButton>
 </template>
 </PageHeader>

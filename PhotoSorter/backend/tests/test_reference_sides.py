@@ -95,3 +95,43 @@ def test_reference_deletion_queue_is_idempotent_and_crash_retriable(system):
                          (retry["id"],)).fetchone()
         assert state["state"]=="completed"
         assert reference_versions.members(db,reference_versions.current(db)["id"])==[]
+
+
+def test_export_portable_sides_without_photos_or_changes(system):
+    import hashlib
+    import json
+    from server.security.access_policy import authorize
+
+    ident, original = add_published_reference(system)
+    digest = hashlib.sha256(original.read_bytes()).hexdigest()
+    reference_sides.assign("SAM 0001", [ident], "B3")
+    before = original.stat()
+    response = api.export_reference_sides()
+    payload = json.loads(response.body)
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith(
+        'attachment; filename="map-reference-sides-')
+    assert response.headers["cache-control"] == "private, no-store"
+    assert payload["schema"] == "map-reference-sides-v1"
+    assert (payload["total"], payload["assigned"], payload["unassigned"]) == (1, 1, 0)
+    assert payload["photos"] == [{
+        "reference_id": str(ident), "sam": "SAM 0001", "filename": "one.jpg",
+        "sha256": digest, "size": before.st_size, "side": "B3",
+        "construction": {"kind": "standard", "city_code": "SAM",
+                         "number": "0001", "address": "Победы 12"},
+    }]
+    assert str(original) not in response.body.decode()
+    assert original.stat().st_ino == before.st_ino
+    assert original.stat().st_mtime_ns == before.st_mtime_ns
+    assert reference_sides.export_snapshot()["photos"] == payload["photos"]
+    reference_sides.assign("SAM 0001", [ident], None)
+    cleared = reference_sides.export_snapshot()
+    assert cleared["photos"][0]["side"] is None
+    assert (cleared["assigned"], cleared["unassigned"]) == (0, 1)
+    references.delete_photo(str(ident))
+    assert reference_sides.export_snapshot()["photos"] == []
+    assert original.is_file()  # historical object is not exported or altered
+    with pytest.raises(HTTPException) as error:
+        authorize({"username": "viewer", "access_role": "viewer"},
+                  "GET", "/api/references/sides/export")
+    assert error.value.status_code == 403

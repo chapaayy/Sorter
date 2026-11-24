@@ -64,3 +64,54 @@ def assign(sam: str, identifiers: list, side: str | None) -> dict:
                     DO UPDATE SET sam=excluded.sam,side=excluded.side,updated_at=now()""",
                     [(ident,sam,side) for ident in ids])
     return {"updated":len(ids),"side":side}
+
+
+def export_snapshot() -> dict:
+    """Portable metadata only; one SQL statement gives a consistent library view.
+
+    The construction label and content digest survive re-import with new UUIDs.
+    Preserve unassigned and historical nonstandard labels as-is. No file reads,
+    mutations, archive creation, or persistent export files.
+    """
+    from datetime import datetime, timezone
+
+    with connect() as db:
+        rows = db.execute("""
+            SELECT v.version_number, v.manifest_digest, m.reference_id,
+                   m.sam, m.filename, m.source_hash, m.declared_size,
+                   c.kind, c.city_code, c.construction_number, c.address, s.side
+            FROM reference_library_state state
+            JOIN reference_library_versions v ON v.id=state.current_version_id
+            LEFT JOIN reference_version_members m ON m.version_id=v.id
+            LEFT JOIN reference_constructions c ON c.sam=m.sam
+            LEFT JOIN reference_photo_sides s ON s.reference_id=m.reference_id
+            WHERE state.id=1
+            ORDER BY m.sam, m.reference_id
+        """).fetchall()
+    if not rows:
+        raise HTTPException(409, "Библиотека образцов ещё не инициализирована")
+    photos = [{
+        "reference_id": str(row["reference_id"]),
+        "sam": row["sam"],
+        "filename": row["filename"],
+        "sha256": row["source_hash"],
+        "size": row["declared_size"],
+        "side": row["side"],
+        "construction": {
+            "kind": row["kind"],
+            "city_code": row["city_code"],
+            "number": row["construction_number"],
+            "address": row["address"],
+        },
+    } for row in rows if row["reference_id"] is not None]
+    assigned = sum(photo["side"] is not None for photo in photos)
+    return {
+        "schema": "map-reference-sides-v1",
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "library_version": rows[0]["version_number"],
+        "manifest_digest": rows[0]["manifest_digest"],
+        "total": len(photos),
+        "assigned": assigned,
+        "unassigned": len(photos) - assigned,
+        "photos": photos,
+    }

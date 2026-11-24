@@ -19,6 +19,7 @@ export const referenceApi={
     '/references/constructions/'+encodeURIComponent(sam)+'/address',{address}),
   list:()=>api<{sam:SamCount[];total:number}>('/references'),
   downloadAll:()=>'/api/references/export',
+  downloadSides:()=>'/api/references/sides/export',
   gallery:(sam:string,cursor?:string|null,limit=60)=>api<CursorPage<Photo>>('/references/'+encodeURIComponent(sam)+'/photos'+query({cursor,limit})),
   setSides:(sam:string,photoIds:string[],side:string|null)=>patch<{updated:number;side:string|null}>(
     '/references/'+encodeURIComponent(sam)+'/sides',{photo_ids:photoIds,side}),

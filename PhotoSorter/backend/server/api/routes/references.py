@@ -1,6 +1,8 @@
 """SAM gallery cursor endpoints: refs are independent of batch ownership."""
 from __future__ import annotations
 from fastapi import APIRouter,HTTPException
+from fastapi.responses import JSONResponse
+from datetime import datetime, timezone
 from ..file_response import LeasedFileResponse
 from ...services import reference_archives,reference_sides,archive_cache
 from pydantic import BaseModel,Field
@@ -12,6 +14,16 @@ from ...database import connect
 from ...db.repositories.pagination import page
 
 router=APIRouter(prefix="/api/references",tags=["references"])
+
+@router.get("/sides/export")
+def export_reference_sides():
+    payload = reference_sides.export_snapshot()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return JSONResponse(payload, headers={
+        "Content-Disposition": f'attachment; filename="map-reference-sides-{stamp}.json"',
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    })
 
 @router.get("/export")
 def export_all_references():
