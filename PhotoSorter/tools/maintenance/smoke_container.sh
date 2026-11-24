@@ -10,7 +10,7 @@ cd "$(dirname "$0")/../../.."
 export DOMAIN="localhost"
 unset POSTGRES_PASSWORD
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$PWD"
-export MAP_CADDY_ACCESS_ROLL=1KiB MAP_CADDY_RUNTIME_ROLL=1KiB
+export MAP_CADDY_ACCESS_ROLL=1MiB MAP_CADDY_RUNTIME_ROLL=1MiB
 export ADMIN_PASSWORD="ci_only_disposable_admin_password"
 export PHOTOSORTER_WORKER_CPUSET
 PHOTOSORTER_WORKER_CPUSET="$(python3 - <<'PY'

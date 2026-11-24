@@ -52,18 +52,30 @@ def check_logs(root,storage):
     # Actual Caddy logs use small test-only roll thresholds. Send confidential
     # synthetic values in headers and query; none may reach the files.
     secret="CI_LOG_SECRET_7b3f1a"
-    for _ in range(35):
+    # Caddy rolls at MiB granularity. Seed CLOSED logs just below the
+    # threshold, then let the genuine native logger perform every rotation.
+    # Six cycles also exercise roll_keep=4 without generating millions of HTTP requests.
+    for _ in range(6):
+        compose(root,"stop","caddy")
+        for kind,basename in (("access","access"),("runtime","caddy")):
+            log=storage/"logs/caddy"/kind/(basename+".jsonl")
+            with log.open("ab") as out:
+                remaining=1024*1024-64-out.tell()
+                if remaining>20:out.write(b'{"ci_padding":"'+b"x"*(remaining-18)+b'"}\n')
+        compose(root,"up","-d","--no-build","--wait","--wait-timeout","180","caddy")
+        await_health()
         run("curl","-kfsS","--max-time","5","-o","/dev/null","-H","Authorization: Bearer "+secret,
             "-H","Cookie: ci="+secret,"https://localhost/api/health?token="+secret)
+        time.sleep(1.1)
     for kind,basename in (("access","access"),("runtime","caddy")):
         path=storage/"logs/caddy"/kind
         assert (path/(basename+".jsonl")).is_file(),path
-        if kind=="runtime":
-            for _ in range(5):
-                compose(root,"exec","-T","caddy","caddy","reload","--config","/etc/caddy/Caddyfile","--force")
-        rotated=[p for p in path.iterdir() if p.name!=basename+".jsonl"]
-        assert rotated,(kind,list(path.iterdir()))
-        assert len(rotated)<=4
+        deadline=time.monotonic()+15
+        while True:
+            rotated=[p for p in path.iterdir() if p.name!=basename+".jsonl"]
+            if len(rotated)==4 and all(p.suffix==".gz" for p in rotated):break
+            if time.monotonic()>deadline:raise AssertionError((kind,list(path.iterdir())))
+            time.sleep(.2)
         import gzip
         for p in path.iterdir():
             data=gzip.open(p,"rb").read() if p.suffix==".gz" else p.read_bytes()
