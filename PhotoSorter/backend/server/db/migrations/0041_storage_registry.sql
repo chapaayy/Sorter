@@ -44,6 +44,7 @@ INSERT INTO storage_accounting_state(singleton) VALUES(true);
 CREATE TABLE storage_reservations (
  id UUID PRIMARY KEY,
  kind TEXT NOT NULL,
+ lease_key BIGINT NOT NULL UNIQUE,
  requested_bytes BIGINT NOT NULL CHECK(requested_bytes>=0),
  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -55,7 +56,7 @@ CREATE VIEW storage_ranked_files AS
  WHEN 'temporary' THEN 4 ELSE 3 END,
  CASE category WHEN 'fo_original' THEN 0 WHEN 'fo_normalized' THEN 1 ELSE 2 END,path) AS physical_rank,
  row_number() OVER(PARTITION BY device,inode,owner_id ORDER BY
- CASE scope WHEN 'personal' THEN 0 ELSE 1 END,path) AS charge_rank
+ CASE WHEN scope='personal' AND issue IS NULL THEN 0 ELSE 1 END,path) AS charge_rank
  FROM storage_files f;
 CREATE VIEW storage_accounted_files AS SELECT *,
  CASE WHEN physical_rank=1 THEN allocated_bytes ELSE 0 END AS physical_bytes,

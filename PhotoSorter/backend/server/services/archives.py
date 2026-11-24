@@ -17,6 +17,7 @@ from . import archive_cache
 from app.storage.categories import Category
 from app.storage.paths import managed_prefix
 from app.storage.filesystem import directory_fd
+from app.storage.changes import changed
 from ..storage import paths as storage_paths
 from ..storage.paths import owned_file, owned_directory
 
@@ -117,7 +118,9 @@ def _build(target,selected,total,progress,should_stop,root):
         os.utime(tmp,None)
         os.chmod(tmp,0o444)
         os.replace(tmp,target)
+        changed(target,Path(tmp),target.with_suffix('.lock'))
         with directory_fd(output_root(),target.parent.relative_to(output_root())) as parent:os.fsync(parent)
         return target
     finally:
         Path(tmp).unlink(missing_ok=True)
+        changed(Path(tmp))

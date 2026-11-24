@@ -97,9 +97,11 @@ def run(item, *, stopping, cpus=2):
                     usage=shutil.disk_usage(dest)
                     if usage.free-max(64*1024**2,source.stat().st_size)<disk_guard.reserve(usage.total):
                         raise ValueError('Недостаточно места для подготовленной копии')
-                    if is_video:duration=encode(source,partial,ext,stop=stop,meta=meta,
-                        progress=video_progress,cpus=cpus).duration
-                    else:normalized_image(source,partial,ext)
+                    from ..storage.reservations import reservation
+                    with reservation('transcode',max(64*1024**2,source.stat().st_size)):
+                        if is_video:duration=encode(source,partial,ext,stop=stop,meta=meta,
+                            progress=video_progress,cpus=cpus).duration
+                        else:normalized_image(source,partial,ext)
                     if stop():raise InterruptedError()
                     with partial.open('rb') as file:os.fsync(file.fileno())
                     partial.chmod(0o444)
@@ -115,6 +117,8 @@ def run(item, *, stopping, cpus=2):
             with connect() as db:
                 db.execute("UPDATE uploads SET media_output_path=%s,media_error=%s,media_duration=coalesce(%s,media_duration) WHERE id=%s",
                            (str(output) if not failure else None,failure,duration,row['id']))
+                from ..storage.registry import note
+                note([output],db=db)
                 db.execute("""UPDATE work_queue SET media_completed_count=media_completed_count+1,
                     media_failed_count=media_failed_count+%s,media_progress_percent=%s,media_eta_seconds=%s
                     WHERE seq=%s""",(int(bool(failure)),percent,eta,seq))

@@ -11,6 +11,7 @@ from .categories import Category
 from .paths import app_key,category_prefix,uuid_key
 from .filesystem import parent_fd,directory_fd
 import stat
+from .changes import changed
 
 @contextmanager
 def leased_operation(root,category,**fields):
@@ -31,7 +32,9 @@ def leased_operation(root,category,**fields):
             yield root/key,fd
         finally:
             try:shutil.rmtree(name,dir_fd=parent)
-            finally:os.close(fd)
+            finally:
+                os.close(fd)
+                changed(root/key,subtree=True)
 
 @contextmanager
 def temporary_operation(root,service):
@@ -75,6 +78,7 @@ def collect_abandoned(root,*,grace_seconds=None,now=None,limit=100):
                             except BlockingIOError:continue
                             if now-os.fstat(fd).st_mtime<grace_seconds:continue
                             shutil.rmtree(name,dir_fd=parent)
+                            changed(root/key,subtree=True)
                             removed+=1
                         finally:os.close(fd)
                     except (OSError,ValueError):continue

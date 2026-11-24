@@ -10,6 +10,7 @@ import fcntl
 import hashlib
 import json
 import os
+from app.storage.changes import changed
 import tempfile
 import zipfile
 from collections import defaultdict
@@ -143,7 +144,9 @@ def _build(plan,target,directory):
         os.utime(temporary, None)
         os.chmod(temporary, 0o444)
         os.replace(temporary, target)
+        changed(target,Path(temporary),target.with_suffix('.lock'))
         with directory_fd(config.APP_STORAGE_ROOT,directory.relative_to(config.APP_STORAGE_ROOT)) as parent:os.fsync(parent)
         return target
     finally:
         Path(temporary).unlink(missing_ok=True)
+        changed(Path(temporary))

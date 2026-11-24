@@ -47,7 +47,7 @@ class Reconciler:
         self.root=Path(root or config.APP_STORAGE_ROOT)
         self.full=None;self.temp=None;self.dirty=None
         self.generation=None;self.last_full=0;self.last_temp=0;self.errors=0
-        self.sweep=False;self.cursor=0
+        self.sweep=False;self.cursor=0;self.temp_cursor=0
     def error(self):self.errors+=1
     def _consume(self,db,iterator,limit,generation=None):
         keys=[];done=False
@@ -102,6 +102,14 @@ class Reconciler:
                 self.temp=walk(self.root,"app/temporary",self.error)
             if self.temp is not None and self._consume(db,self.temp,limit,self.generation):
                 self.temp=None;self.last_temp=now
+            # Recheck disappeared temporary paths in bounded ID windows even
+            # between full passes (native unlink and crashed process recovery).
+            old=db.execute("SELECT id,path FROM storage_files WHERE scope='temporary' AND id>%s ORDER BY id LIMIT %s",
+                           (self.temp_cursor,limit)).fetchall()
+            observe(db,self.root,[r["path"] for r in old],self.generation)
+            self.temp_cursor=old[-1]["id"] if old else 0
+            from .reservations import recover
+            recover(db)
             from .accounting import refresh
             refresh(db)
             return True

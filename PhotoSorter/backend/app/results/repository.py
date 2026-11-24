@@ -7,6 +7,7 @@ from .copier import copy_photo
 from ..storage.categories import Category
 from ..storage.temporary import pipeline_directory
 from ..storage.filesystem import parent_fd
+from ..storage.changes import changed
 
 def run_path(run_id):
     if not re.fullmatch(r'\d{8}T\d{6}-[a-f0-9]{12}',str(run_id)):
@@ -71,6 +72,7 @@ def save_model(info,model,rows,query_stamps=None,progress=None,on_export_start=N
             else:raise FileExistsError("Результат уже опубликован")
             os.rename(src,dst,src_dir_fd=src_fd,dst_dir_fd=dst_fd)
             os.fsync(dst_fd)
+        changed(output,staging,subtree=True)
     return stored
 
 def load_model(run_id,model):

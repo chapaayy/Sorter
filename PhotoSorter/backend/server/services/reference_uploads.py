@@ -54,6 +54,8 @@ def append(session_id,upload_id,offset,data):
             raise HTTPException(422,"Отрицательное смещение")
         actual=storage.append(session_id,upload_id,offset,entry["declared_size"],data)
         repository.update_received(db,session_id,upload_id,actual)
+        from ..storage.registry import note
+        note([storage.partial(session_id,upload_id)],db=db)
     return {"offset":actual}
 
 def finish(session_id,upload_id):

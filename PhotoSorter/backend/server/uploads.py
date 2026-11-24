@@ -18,6 +18,8 @@ from .services.disk_guard import check_admission
 from .storage.paths import original_path,part_path,owned_file,batch_dir
 from .storage.batch_cleanup import discard_uncommitted_upload
 from app.storage.filesystem import parent_fd,safe_read,safe_unlink
+from app.storage.changes import changed
+from .storage.registry import note
 from app.storage.paths import app_key
 from app.storage.categories import Category
 from app import config
@@ -161,8 +163,9 @@ def _append_chunk(path: Path, expected: int, data: bytes, declared_size: int) ->
 
 def _record_chunk(upload_id: uuid.UUID, received: int) -> None:
     with connect() as db:
-        db.execute('UPDATE uploads SET received=%s,updated_at=now() WHERE id=%s',
-                   (received, upload_id))
+        row=db.execute('UPDATE uploads SET received=%s,updated_at=now() WHERE id=%s RETURNING batch_id',
+                   (received, upload_id)).fetchone()
+        if row:note([part_path(row['batch_id'],upload_id)],db=db)
 
 
 @router.patch('/uploads/{upload_id}')
@@ -281,6 +284,7 @@ def _finalize_sync(upload_id:str):
             checksum=%s,target_path=%s,original_media_type=%s,media_action=%s,
             media_duration=%s,media_error=%s WHERE id=%s""",
             (digest,str(target),media_type,action,duration,media_error,row['id']))
+        note([target],db=db)
         if media_type is None or action is not None:
             thumbnails.enqueue(db,row['id'],digest)
         complete=upload_manifest.reconcile_locked(db,row['batch_id'])

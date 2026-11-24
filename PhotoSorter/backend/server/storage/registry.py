@@ -95,7 +95,10 @@ def observe(db,root,keys,generation=None):
         if kind!="file" and not (kind=="symlink" and category=="technical_cache"):
             issue="unexpected_"+kind
         pending.append((key,st,category,scope,fields,issue,kind))
+    tasks=[p[4]["task_id"] for p in pending if p[2]=="transcode_temp"]
+    task_rows={str(r["id"]):str(r["batch_id"]) for r in db.execute("SELECT id,batch_id FROM uploads WHERE id=ANY(%s::uuid[])",(tasks,))}
     batches={p[4]["batch_uuid"] for p in pending if "batch_uuid" in p[4]}
+    batches.update(task_rows.values())
     runs={p[4]["run_id"] for p in pending if "run_id" in p[4]}
     run_rows={r["id"]:r for r in db.execute("SELECT j.id,j.batch_id,b.owner_id FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE j.id=ANY(%s)",(list(runs),))}
     batches.update(str(r["batch_id"]) for r in run_rows.values())
@@ -105,10 +108,18 @@ def observe(db,root,keys,generation=None):
     uploads={str(r["id"]):r for r in db.execute("SELECT id,batch_id,target_path,media_output_path,declared_size,finalized FROM uploads WHERE id=ANY(%s::uuid[])",([p[4]["upload_uuid"] for p in pending if "upload_uuid" in p[4] and p[2] in ("fo_original","fo_normalized","fo_upload_part")],))}
     hashes=[p[4]["sha256"] for p in pending if p[2]=="reference_object"]
     refs={r["source_hash"]:r["declared_size"] for r in db.execute("SELECT source_hash,declared_size FROM reference_physical_objects WHERE source_hash=ANY(%s)",(hashes,))}
+    embeddings={(r["source_hash"],r["model_signature"]):r["cache_path"] for r in db.execute(
+        "SELECT source_hash,model_signature,cache_path FROM reference_cache WHERE source_hash=ANY(%s)",
+        ([p[4]["sha256"] for p in pending if p[2]=="reference_embedding"],))}
+    ref_parts={(str(r["session_id"]),str(r["upload_id"])) for r in db.execute(
+        "SELECT session_id,upload_id FROM reference_import_files WHERE upload_id=ANY(%s::uuid[])",
+        ([p[4]["upload_uuid"] for p in pending if p[2]=="reference_upload_part"],))}
     values=[]
     for key,st,category,scope,fields,issue,kind in pending:
         user=int(fields["user_id"]) if "user_id" in fields else None
         batch=fields.get("batch_uuid");run=fields.get("run_id")
+        if category=="transcode_temp":batch=task_rows.get(fields["task_id"])
+        if category=="reference_upload_part" and (fields["session_uuid"],fields["upload_uuid"]) not in ref_parts:issue=issue or "orphan_reference_upload"
         if run:
             row=run_rows.get(run)
             if row:
@@ -133,6 +144,8 @@ def observe(db,root,keys,generation=None):
             size=refs.get(fields["sha256"])
             if size is None:issue=issue or "orphan_reference"
             elif size!=st.st_size:issue="size_mismatch"
+        if category=="reference_embedding" and embeddings.get((fields["sha256"],fields["model_signature"]))!=str(root/key[4:]):
+            issue=issue or "orphan_or_mismatched_embedding"
         values.append((key,category,scope,user,batch,run,st.st_dev,st.st_ino,st.st_size,
                        st.st_blocks*512,st.st_nlink,st.st_mtime_ns,st.st_ctime_ns,kind,issue,generation))
     if values:

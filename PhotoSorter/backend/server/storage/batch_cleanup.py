@@ -10,6 +10,7 @@ from app import config
 from app.storage.paths import managed_path,managed_prefix,run_key
 from app.storage.categories import Category
 from app.storage.filesystem import safe_unlink,safe_remove_tree
+from app.storage.changes import changed
 from app.photos.reader import EXTS
 from pathlib import Path
 from .paths import original_path
@@ -75,6 +76,7 @@ def remove_batch_files(batch_id,run_ids,upload_ids,data_dir,runs_dir,report):
                 done+=1
                 report("files",done,total)
             originals.rmdir()
+            changed(originals,subtree=True)
             done+=1
             report("files",done,total)
         # Empty batch/transfer containers have no user data of their own.

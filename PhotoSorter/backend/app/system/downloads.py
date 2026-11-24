@@ -12,6 +12,7 @@ from app.storage.categories import Category
 from app.storage.paths import managed_prefix
 from app.storage.filesystem import directory_fd,atomic_publish,safe_remove_tree
 from app.storage.temporary import download_operation
+from app.storage.changes import changed
 from . import model_store
 
 def _fetch(url,target,*,maximum,progress=lambda n:None):
@@ -44,6 +45,7 @@ def _publish(stage_source,stage_weight):
         with directory_fd(root,source.parent.relative_to(root),create=True) as fd:
             os.rename(stage_source,source.name,dst_dir_fd=fd)
             os.fsync(fd)
+        changed(stage_source,source,subtree=True)
     if weight.exists():
         if model_store.content_digest(weight)!=model_store.WEIGHT_SHA256:
             raise ValueError("Unexpected existing weight; automatic overwrite refused")
@@ -105,7 +107,7 @@ class Downloads:
                 source=stage/"source"
                 source.mkdir()
                 weight=stage/model_store.WEIGHT_NAME
-                with build_space(root,model_store.MAX_WEIGHT_BYTES+10_000_000,message="Недостаточно места для установки MegaLoc"):
+                with build_space(root,model_store.MAX_WEIGHT_BYTES+10_000_000,message="Недостаточно места для установки MegaLoc",kind="model_download"):
                     for name in model_store.SOURCE_BLOBS:
                         _fetch(f"https://raw.githubusercontent.com/gmberton/MegaLoc/{model_store.SOURCE_REVISION}/{name}",
                                source/name,maximum=1_000_000)

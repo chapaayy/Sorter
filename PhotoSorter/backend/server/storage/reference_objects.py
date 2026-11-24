@@ -16,6 +16,7 @@ from app import config
 from app.storage.categories import Category
 from app.storage.paths import managed_path,managed_prefix,digest_key
 from app.storage.filesystem import parent_fd,safe_read,safe_unlink
+from app.storage.changes import changed
 from .paths import owned_file
 from ..database import connect
 import stat
@@ -61,6 +62,7 @@ def create_partial(session_id,upload_id):
                 if not stat.S_ISREG(os.stat(name,dir_fd=fd,follow_symlinks=False).st_mode):raise ValueError("Invalid part")
     except (OSError,ValueError) as exc:
         raise HTTPException(409,"Некорректный временный файл") from exc
+    changed(target)
     return target
 
 def offset(session_id,upload_id,expected_size):
@@ -125,6 +127,7 @@ def publish_staged_file(session_id,upload_id,filename,size,digest):
             os.fchmod(stream.fileno(),0o444)
             os.fsync(stream.fileno())
         os.fsync(dst)
+    changed(target)
     return target
 
 def remove_partial_after_commit(session_id,upload_id):

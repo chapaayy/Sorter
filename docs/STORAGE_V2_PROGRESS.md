@@ -133,3 +133,5 @@ Stage 5 accepted; closing CI 45468345763 successful. Infrastructure bind mounts,
 
 ### Stage 7 checkpoint 1
 Registry schema, typed classification, dirty coalescing and bounded background reconciler. Native producer hooks, API adapters, host measurements and acceptance still open.
+
+Stage 7 checkpoint 2: durable coalesced hooks in publication/unlink/rename, upload receipts, archive builds/expiry, model, transcode, scratch and batch deletion. Session-lock reservation evidence with crash recovery; not quota enforcement.

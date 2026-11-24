@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from app.storage.categories import ARCHIVE_TTL_SECONDS,Category
 from app.storage.paths import managed_prefix,run_key
 from app.storage.filesystem import directory_fd
+from app.storage.changes import changed
 from app import config
 
 TTL_SECONDS=ARCHIVE_TTL_SECONDS
@@ -59,7 +60,7 @@ class DirectoryPin:
         self.close()
 
 @contextmanager
-def build_space(root,needed,*,message="Недостаточно места для временного ZIP"):
+def build_space(root,needed,*,message="Недостаточно места для временного ZIP",kind="archive"):
     """Serialize archive allocations across results/reference caches on data mount."""
     fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
     try:
@@ -67,7 +68,8 @@ def build_space(root,needed,*,message="Недостаточно места дл�
         total,available=disk_guard.stat(root)
         if available-needed<disk_guard.reserve(total):
             raise HTTPException(507,message)
-        yield
+        from ..storage.reservations import reservation
+        with reservation(kind,needed):yield
     finally:
         os.close(fd)
 
@@ -107,6 +109,7 @@ def sweep_folder(folder,*,reference=False,now=None):
                     except FileNotFoundError:
                         pass
                 os.unlink(name,dir_fd=fd)
+                changed(folder/name)
                 removed+=1
             except OSError:
                 continue
