@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import fcntl
 import json
+import http.client
+import ssl
 import os
 import re
 import shutil
@@ -20,6 +22,7 @@ import map_build
 
 ROOT=Path("/var/lib/map-updater")
 CONTROL=ROOT/"control"
+RPC=ROOT/"rpc"
 PRIVATE=ROOT/"private"
 STATE=CONTROL/"status.json"
 MARKER=CONTROL/"maintenance"
@@ -102,6 +105,27 @@ def verify_idle():
         raise RuntimeError("В БД ещё есть незавершённые операции; переключение отменено")
     if recent_uploads():
         raise RuntimeError("Есть недавние незавершённые загрузки. Завершите их и повторите.")
+
+def worker_instances():
+    return set(sql("""SELECT instance_id::text FROM service_heartbeats
+                       WHERE service IN ('megaloc','thumbnail','cleanup')""").splitlines())
+
+def check_proxy():
+    env=inspect_container("caddy")["Config"].get("Env",[])
+    domains=[x.split("=",1)[1] for x in env if x.startswith("DOMAIN=")]
+    if len(domains)!=1 or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]*",domains[0]):
+        raise RuntimeError("Некорректный домен Caddy")
+    # Probe only localhost's real HTTPS proxy, with its actual SNI/Host.
+    # Certificate validation belongs to external clients; this is local health.
+    domain=domains[0]
+    with socket.create_connection(("127.0.0.1",443),timeout=8) as raw:
+        with ssl._create_unverified_context().wrap_socket(raw,server_hostname=domain) as tls:
+            tls.sendall(("GET /api/health HTTP/1.1\r\nHost: "+domain+
+                         "\r\nConnection: close\r\n\r\n").encode("ascii"))
+            response=http.client.HTTPResponse(tls)
+            response.begin()
+            if response.status!=200 or json.loads(response.read(65536)).get("status")!="ok":
+                raise RuntimeError("Caddy не возвращает здоровый API")
 
 def disk_available(project):
     paths=[project,ROOT,Path("/var/lib/docker"),Path("/var/lib/containerd")]
@@ -228,6 +252,7 @@ class Updater:
         switched=False
         marked=False
         warnings=[]
+        candidate=None
         try:
             locked=(ROOT/"deploy.lock").open("a")
             fcntl.flock(locked,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -247,6 +272,7 @@ class Updater:
                            and not m.get("RW") for m in info.get("Mounts",[])):
                     raise RuntimeError("Отсутствует защищённый канал обновления: "+service)
                 docker("exec",service_id(service),"test","-f","/run/map-updater/activity.lock")
+            check_proxy()
             before=shutil.disk_usage(self.project).free
             self.publish(phase="building",detail="Сборка нового образа; MAP продолжает работать",
                          free_before=before,free_change=None,warnings=[])
@@ -257,7 +283,8 @@ class Updater:
                                    stdout=out,check=True,timeout=120)
                 subprocess.run(["tar","-xf",str(archive),"-C",directory],check=True,timeout=120)
                 archive.unlink()
-                warnings+=map_build.build(Path(directory),target,"map-local/app:rev-"+target)
+                candidate="map-local/app:rev-"+target
+                warnings+=map_build.build(Path(directory),target,candidate)
             self.publish(phase="draining",detail="Ожидание завершения текущих операций",warnings=warnings)
             MARKER.touch(mode=0o644,exist_ok=False)
             marked=True
@@ -273,6 +300,7 @@ class Updater:
                     time.sleep(1)
             verify_idle()
             self.publish(phase="backup",detail="Резервная копия базы и конфигурации")
+            old_workers=worker_instances()
             backup_dir=backup(self.project,old)
             docker("tag",old_image,ROLLBACK)
             docker("tag",old_image,"map-local/app:rev-"+old)
@@ -293,12 +321,14 @@ class Updater:
                         state=inspect_container(service)["State"]
                         if not state["Running"] or state.get("Health",{}).get("Status","healthy")!="healthy":
                             raise RuntimeError("Контейнер не готов: "+service)
-                    if int(sql("""SELECT count(*) FROM service_heartbeats
-                          WHERE service IN ('megaloc','thumbnail','cleanup')
-                            AND seen_at>now()-interval '35 seconds'"""))!=3:
-                        raise RuntimeError("Нет heartbeat всех работников")
+                    fresh=set(sql("""SELECT instance_id::text FROM service_heartbeats
+                           WHERE service IN ('megaloc','thumbnail','cleanup')
+                             AND seen_at>now()-interval '35 seconds'""").splitlines())
+                    if len(fresh)!=3 or fresh.intersection(old_workers):
+                        raise RuntimeError("Нет новых heartbeat всех работников")
+                    check_proxy()
                     break
-                except (RuntimeError,OSError,subprocess.SubprocessError):
+                except (RuntimeError,OSError,ValueError,http.client.HTTPException,subprocess.SubprocessError):
                     if time.monotonic()>=deadline:
                         raise
                     time.sleep(3)
@@ -318,6 +348,13 @@ class Updater:
                          free_change=after-before,busy=False)
             self.exit_requested=True
         except Exception as exc:
+            if not switched and candidate:
+                try:
+                    info=image_info(candidate)
+                    if (info["Config"].get("Labels") or {}).get("io.map.project")==PROJECT and not docker("ps","-aq","--filter","ancestor="+info["Id"]):
+                        docker("image","rm",candidate)
+                except Exception:
+                    warnings.append("Проверка временного образа потребуется при следующем обновлении")
             if not switched and marked:
                 MARKER.unlink(missing_ok=True)
             self.publish(phase="recovery_required" if switched else "failed",
@@ -354,7 +391,7 @@ def main():
     project=args.project_root.resolve(strict=True)
     if project.stat().st_uid!=0 or project.stat().st_mode&0o022:
         parser.error("project must be root-owned and not group/world writable")
-    socket_path=CONTROL/"control.sock"
+    socket_path=RPC/"control.sock"
     socket_path.unlink(missing_ok=True)
     updater=Updater(project)
     with socketserver.UnixStreamServer(str(socket_path),Handler) as server:

@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 [[ "$(id -u)" == 0 ]] || exit 1
 [[ "$ROOT" =~ ^/[a-zA-Z0-9_./-]+$ ]] || { echo "Unsupported project path"; exit 1; }
-install -d -o root -g root -m 0755 /var/lib/map-updater /var/lib/map-updater/control /usr/local/lib/map-updater
+install -d -o root -g root -m 0755 /var/lib/map-updater /var/lib/map-updater/control /var/lib/map-updater/rpc /usr/local/lib/map-updater
 install -d -o root -g root -m 0700 /var/lib/map-updater/private
 # Keep the same lock inode for every container.
 touch /var/lib/map-updater/control/activity.lock

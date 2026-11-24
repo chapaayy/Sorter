@@ -5,7 +5,7 @@ from fastapi import APIRouter,HTTPException,Request
 from ...security.access_policy import is_owner
 
 router=APIRouter(prefix="/api/system/update",tags=["update"])
-SOCKET="/run/map-updater/control.sock"
+SOCKET="/run/map-updater-rpc/control.sock"
 
 def request_host(request,command):
     user=getattr(request.state,"user",None)
