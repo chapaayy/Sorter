@@ -168,8 +168,14 @@ def test_cleanup_only_owned_paths_multiple_runs_and_idempotent(sandbox):
         target=paths.result_media_dir(run)/"SAM-0001"/"photo.jpg"
         target.parent.mkdir(parents=True)
         os.link(source,target)
-        run_folder=sandbox/"runs"/run
-        run_folder.mkdir()
+        from app.storage.paths import managed_path
+        from app.storage.categories import Category
+        run_folder=managed_path(Category.RUN_STATE,run_id=run)
+        run_folder.mkdir(parents=True)
+        # A legacy directory outside the contract must never be removed.
+        outside=sandbox/"runs"/run
+        outside.mkdir()
+        (outside/"sentinel").write_text("keep")
         (run_folder/"run.json").write_text("{}",encoding="utf8")
         from server.services.archives import archive_folder
         zip_dir=archive_folder(run)
@@ -179,7 +185,8 @@ def test_cleanup_only_owned_paths_multiple_runs_and_idempotent(sandbox):
     assert cleanup.cleanup_one(own)=="completed"
     assert not paths.batch_dir(own).exists()
     assert not (paths.batch_root(own)/"results").exists()
-    assert all(not (sandbox/"runs"/run).exists() for run in runs)
+    assert all(not managed_path(Category.RUN_STATE,run_id=run).exists() for run in runs)
+    assert all((sandbox/"runs"/run/"sentinel").read_text()=="keep" for run in runs)
     assert all(not archive_folder(run).exists() for run in runs)
     assert paths.batch_dir(other).exists()
     assert protected.read_bytes()==b"permanent-reference"

@@ -21,3 +21,8 @@
 | PR без merge | Отдельно фиксируется в прогрессе |
 
 COCO — реальные публичные фотографии общего назначения, не размеченный набор конструкций SAM. Видео в нагрузочном сценарии сгенерированы для проверки кодеков. Даже успешный load не доказывает точность сортировки рекламных конструкций. Реальная Ubuntu VM проверяет localhost TLS, а не публичный ACME конкретного VPS. Локальная среда Debian без Docker/KVM; никакая ручная имитация systemd не принимается за успех. Метрики будут доступны только при фактическом выполнении job (JSON artifact). 
+
+## Subsequent checkpoint
+- [PR #22](https://github.com/chapaayy/Sorter/pull/22) opened as draft; main untouched, no merge.
+- [Release 45498523215](https://github.com/chapaayy/Sorter/actions/runs/45498523215) downloaded and verified the pinned COCO archive but failed before processing due to ZipInfo sorting; corrected. A load report has not yet been produced.
+- Backend CI 45498523284 revealed an old test fixture expecting unmanaged runs to be deleted. The updated fixture tests canonical managed cleanup and verifies unmanaged files survive. New API quota rejection probe added to the release load.

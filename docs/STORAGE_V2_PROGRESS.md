@@ -196,3 +196,8 @@ Owner accepted stage 7. Closing commit `14d9f02`: CI [45483614880](https://githu
 
 ## Stage 10 entry
 Owner accepted stage 9. Closing CI 45494437011: all seven jobs successful. Original MAP_storage_architecture_implementation_plan(5).md stage 10 and final matrix re-read. Local environment: Debian 13, PID1 supervisord, no Docker/QEMU/KVM and GitHub DNS unavailable. Remote Actions is the available executable environment. Do not claim VM or large-load execution unless exact job evidence exists.
+
+## Stage 10 checkpoint — 2026-11-25
+- 24dc058 interactive install, b293bc9 clean Ubuntu VM harness, 11f0cbd load harness, 8ee4607 typed cleanup and pinned HTTPS dataset, 2681d10 installation/backup/catalogue docs. [Draft PR #22](https://github.com/chapaayy/Sorter/pull/22) opened, not merged; main remains c6d77ebb.
+- First release run 45497828371: COCO TLS failure before load. Second release run 45498523215: dataset SHA-256 verified, extraction failed before inference due to ZipInfo ordering. Corrected deterministic sort by filename; no measured workload claimed.
+- CI 45498523284 backend: 378 passed, 28 subtests, one failed historical fixture constructing an unmanaged run directory; updated fixture to test canonical RUN_STATE and preservation of the unmanaged sentinel. New live quota probe added. Stage 10 remains OPEN until exact revision CI, true Ubuntu systemd/reboot and measured full load are confirmed.

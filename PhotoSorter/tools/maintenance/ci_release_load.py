@@ -71,7 +71,7 @@ def dataset(archive,folder):
     seen=set()
     paths=[]
     with zipfile.ZipFile(archive) as z:
-        members=sorted(x for x in z.infolist() if re.fullmatch(r"val2017/\d{12}\.jpg",x.filename) and 0<x.file_size<20*1024**2)
+        members=sorted((x for x in z.infolist() if re.fullmatch(r"val2017/\d{12}\.jpg",x.filename) and 0<x.file_size<20*1024**2),key=lambda x:x.filename)
         for m in members:
             data=z.read(m)
             digest=hashlib.sha256(data).hexdigest()
@@ -284,6 +284,29 @@ def delete_batch(s,bid):
     # fixtures after dependency disappearance, not a new production policy.
     print("BATCH_DELETED",bid,flush=True)
 
+def quota_probe(s,photo):
+    account=next(x for x in obj(s,"GET","/api/storage/accounts")["rows"] if x["access_role"]=="owner")
+    owner=account["id"]
+    bid=obj(s,"POST","/api/batches",json={"display_name":"CI quota probe"})["batch_id"]
+    file_id=str(uuid.uuid4())
+    entry={"upload_id":file_id,"relative_path":"quota/"+photo.name,"filename":photo.name,"size":photo.stat().st_size}
+    obj(s,"PUT",f"/api/batches/{bid}/upload-manifest",json={"files":[entry],"image_format":"jpg","video_format":"mp4","auto_process":False})
+    payload={"kind":"fo","batch_id":bid,"client_upload_id":file_id,"filename":photo.name,"size":entry["size"]}
+    settle(s)
+    obj(s,"PATCH",f"/api/storage/accounts/{owner}/limit",json={"limit_bytes":0})
+    obj(s,"PATCH","/api/storage/limits",json={"personal_enabled":True})
+    try:
+        response=s.post(BASE+"/api/uploads",json=payload,timeout=30)
+        assert response.status_code==507,response.text
+        obj(s,"PATCH","/api/storage/limits",json={"personal_enabled":False,"temporary_limit_bytes":0})
+        response=s.post(BASE+"/api/uploads",json=payload,timeout=30)
+        assert response.status_code==507,response.text
+    finally:
+        obj(s,"PATCH","/api/storage/limits",json={"personal_enabled":False})
+        obj(s,"PATCH",f"/api/storage/accounts/{owner}/limit",json={"limit_bytes":None})
+    delete_batch(s,bid)
+    print("STAGE10_HTTP_QUOTA_REJECTION_OK",flush=True)
+
 def main():
     if os.geteuid()!=0 or os.environ.get("CI")!="true" or os.environ.get("GITHUB_ACTIONS")!="true" or STORAGE.exists() or (ROOT/".env").exists():
         raise RuntimeError("Requires a fresh disposable GitHub Actions checkout, root")
@@ -302,6 +325,7 @@ def main():
     refs=references(s,photos[:8])
     initial=storage_snapshot(s,"baseline_after_reference_preparation")
     assert not initial["limits"]["policy"]["personal_enabled"] and initial["limits"]["policy"]["temporary_limit_bytes"] is None
+    quota_probe(s,photos[0])
     stamps=app_python("from pathlib import Path;from app import config;import json;print(json.dumps({str(p):(p.stat().st_ino,p.stat().st_mtime_ns) for p in (config.APP_STORAGE_ROOT/'shared/references/embeddings').rglob('*.npy')},sort_keys=True))")
     assert len(json.loads(stamps))==8
     samples=[];browser_samples=[];cycles=[];stop=threading.Event()
