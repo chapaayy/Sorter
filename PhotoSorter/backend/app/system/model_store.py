@@ -98,8 +98,8 @@ def signature():
 
 def verified():return files_present()
 
-def remember_verified():
+def remember_verified(*,already_reserved=False):
     verify_bundle(repo_folder(),weight_target())
     raw=json.dumps(metadata(),sort_keys=True).encode("utf8")
-    with atomic_write(config.APP_STORAGE_ROOT,verification_path().relative_to(config.APP_STORAGE_ROOT),expected_size=len(raw)) as stream:
+    with atomic_write(config.APP_STORAGE_ROOT,verification_path().relative_to(config.APP_STORAGE_ROOT),expected_size=None if already_reserved else len(raw)) as stream:
         stream.write(raw)

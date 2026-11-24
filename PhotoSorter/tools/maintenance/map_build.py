@@ -72,7 +72,7 @@ def build(root,revision,tag,*,check_space=None):
         run(["docker","buildx","build","--builder",name,"--load",
              "--label","io.map.project="+PROJECT,
              "--label","org.opencontainers.image.revision="+revision,
-             "--tag",tag,"--file","PhotoSorter/docker/app/Dockerfile","."],cwd=root,check_space=check_space)
+             "--tag",tag,"--file","PhotoSorter/docker/app/Dockerfile","."],cwd=root,**({"check_space":check_space} if check_space is not None else {}))
     finally:
         try:
             run(["docker","buildx","rm",name],timeout=120)

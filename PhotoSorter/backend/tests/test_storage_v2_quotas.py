@@ -19,6 +19,7 @@ from server.services import cleanup,archives
 from .test_unified_queue_stage3 import system
 from .test_stage1_lifecycle import _batch,_job
 from .test_stage2_platform import _jpg
+from .test_batch_media import clips
 from .test_storage_v2_admin import clients
 from .accounting_checks import settle,exact
 
@@ -219,3 +220,44 @@ def test_owner_only_limits_validation_and_stale_disable(system,monkeypatch):
     with database.connect() as db:db.execute("UPDATE storage_accounting_state SET sampled_at=now()-interval '2 minutes'")
     assert owner.patch(url,json=policy(False)).status_code==200
     assert owner.patch(path,json={"limit_bytes":None}).json()["state"]=="unlimited"
+
+def test_real_transcode_admission_and_preserve_original(system,clips):
+    from server.db.repositories import work_queue
+    from server.workers import media_prepare
+    from .test_batch_media import _import
+    from io import BytesIO
+    from PIL import Image
+    raw=clips[1].read_bytes()
+    batch=_batch(system,with_photo=False)
+    owner=owner_of(batch)
+    saved=_import(system,batch,[("clip.mov",raw)])
+    settle()
+    original=Path(saved[0][1]["path"])
+    before=budget(owner)["used_bytes"]
+    admission.set_account(owner,before+32*1024**2)
+    admission.configure(policy(temp=32*1024**2))
+    with database.connect() as db:item=work_queue.claim_next(db)
+    assert item["kind"]=="media_preparation"
+    media_prepare.run(item,stopping=lambda:False)
+    with database.connect() as db:
+        row=db.execute("SELECT media_output_path,media_error FROM uploads WHERE batch_id=%s",(batch,)).fetchone()
+    assert row["media_error"] is None and row["media_output_path"]
+    out=Path(row["media_output_path"])
+    assert out.exists() and original.read_bytes()==raw
+    settle()
+    assert budget(owner)["used_bytes"]==before+max(out.stat().st_size,out.stat().st_blocks*512)
+    assert budget(owner)["reserved_bytes"]==0
+    second=_batch(system,with_photo=False)
+    photo=BytesIO()
+    Image.new("RGB",(64,32),"red").save(photo,format="PNG")
+    saved=_import(system,second,[("photo.png",photo.getvalue())])
+    settle()
+    admission.set_account(owner,budget(owner)["used_bytes"])
+    with database.connect() as db:item=work_queue.claim_next(db)
+    assert item["kind"]=="media_preparation"
+    media_prepare.run(item,stopping=lambda:False)
+    with database.connect() as db:
+        row=db.execute("SELECT media_output_path,media_error FROM uploads WHERE batch_id=%s",(second,)).fetchone()
+    assert row["media_output_path"] is None and "личной квоте" in row["media_error"]
+    assert Path(saved[0][1]["path"]).read_bytes()==photo.getvalue()
+    assert budget(owner)["reserved_bytes"]==0

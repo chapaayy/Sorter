@@ -84,9 +84,15 @@ def append(session_id,upload_id,expected,size,data):
         actual=stream.seek(0,os.SEEK_END)
         if actual!=expected:raise HTTPException(409,{"expected_offset":actual})
         if actual+len(data)>size:raise HTTPException(413,"Превышен размер образца")
-        stream.write(data)
-        stream.flush()
-        os.fsync(stream.fileno())
+        from ..services.disk_guard import check_accepted_chunk
+        check_accepted_chunk(stream.fileno(),actual+len(data))
+        try:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        except OSError:
+            stream.truncate(actual)
+            raise
         return actual+len(data)
 
 def verify_picture(path):

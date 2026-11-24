@@ -299,8 +299,19 @@ def main():
             rpc("check")
             state=wait_phase("checked")
             assert state["target"]==target and state["update_available"],state
+            # Exercise the real daemon against an impossible configured reserve.
+            host.sql("UPDATE storage_limits SET disk_reserve_bytes="+str(shutil.disk_usage(storage).total))
+            rpc("update")
+            state=wait_phase("failed")
+            assert "резерв" in state["detail"].lower(),state
+            assert host.installed()[0]==old and not host.MARKER.exists()
+            host.sql("UPDATE storage_limits SET disk_reserve_bytes=1073741824")
+            rpc("check")
+            wait_phase("checked")
             rpc("update")
             wait_phase("success",1200)
+            assert host.sql("SELECT disk_reserve_bytes FROM storage_limits")=="1073741824"
+            print("STAGE9_REAL_UPDATER_RESERVE_OK",flush=True)
             assert daemon.wait(timeout=10)==0
         finally:
             if daemon.poll() is None:

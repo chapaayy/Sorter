@@ -1961,3 +1961,54 @@ test('storage temporary view distinguishes future bytes and observed archives; h
   await expect.poll(()=>confirmed).toBe(1)
   await expect(button).toBeDisabled()
 })
+
+
+test('storage quotas are opt-in and owner edits exact GiB limits',async({page})=>{
+  const gib=1024**3
+  let policy={personal_enabled:false,temporary_limit_bytes:null as number|null,disk_reserve_bytes:null as number|null}
+  let accountLimit:number|null=null
+  let saves=0
+  const budget=(limit:number|null,used=0,reserved=0,enabled=true)=>({limit_bytes:limit,used_bytes:used,reserved_bytes:reserved,
+    enabled:enabled&&limit!==null,available_bytes:enabled&&limit!==null?Math.max(0,limit-used-reserved):null,
+    state:!enabled||limit===null?'unlimited':used+reserved>limit?'exceeded':used+reserved===limit?'full':'ok'})
+  const account=()=>({id:'1',username:'admin',access_role:'owner',usage:stat(4096,4096,1,0),quota:budget(accountLimit,gib,0,policy.personal_enabled)})
+  await page.route('**/api/storage/limits',route=>{
+    if(route.request().method()==='PATCH'){policy=route.request().postDataJSON();saves++}
+    return respond(route,{policy,registry_ready:true,total_bytes:100*gib,disk:{used_bytes:10*gib,free_bytes:90*gib,reserved_bytes:0,minimum_bytes:Math.max(6*gib,policy.disk_reserve_bytes??0),baseline_bytes:6*gib,available_bytes:84*gib},temporary:budget(policy.temporary_limit_bytes)})
+  })
+  await page.route('**/api/storage/accounts?**',route=>respond(route,{rows:[account()],total:1,offset:0,limit:25,partial:false,sampled_at:'2026-11-25T00:00:00Z'}))
+  await page.route('**/api/storage/accounts/1?**',route=>respond(route,{account:account(),categories:{},batches:[],total:0,offset:0,limit:25,sampled_at:'2026-11-25T00:00:00Z'}))
+  await page.route('**/api/storage/accounts/1/limit',route=>{
+    accountLimit=route.request().postDataJSON().limit_bytes
+    return respond(route,account().quota)
+  })
+  await page.goto('/admin')
+  const storage=page.getByRole('region',{name:'Хранилище'})
+  await storage.getByRole('button',{name:'Лимиты',exact:true}).click()
+  const toggle=storage.getByLabel('Включить личные квоты')
+  await expect(toggle).not.toBeChecked()
+  await toggle.check()
+  await storage.getByLabel('Лимит временного пула, ГиБ',{exact:true}).fill('1.5')
+  await storage.getByLabel('Минимальное свободное место, ГиБ',{exact:true}).fill('20')
+  await storage.getByRole('button',{name:'Сохранить настройки лимитов'}).click()
+  await expect(storage.getByText('Настройки лимитов сохранены')).toBeVisible()
+  expect(policy).toEqual({personal_enabled:true,temporary_limit_bytes:1.5*gib,disk_reserve_bytes:20*gib})
+  await storage.getByRole('button',{name:'По аккаунтам'}).click()
+  await storage.getByRole('button',{name:/admin.*Владелец/}).click()
+  await storage.getByLabel('Индивидуальный лимит, ГиБ',{exact:true}).fill('0.5')
+  await storage.getByRole('button',{name:'Сохранить лимит',exact:true}).click()
+  await expect(storage.getByText('Лимит сохранён')).toBeVisible()
+  expect(accountLimit).toBe(.5*gib)
+  await storage.getByRole('button',{name:'Без ограничения',exact:true}).click()
+  await storage.getByRole('button',{name:'Сохранить лимит',exact:true}).click()
+  await expect.poll(()=>accountLimit).toBeNull()
+  await storage.getByRole('button',{name:'Лимиты',exact:true}).click()
+  await expect(toggle).toBeChecked()
+  await toggle.uncheck()
+  await storage.getByLabel('Лимит временного пула, ГиБ',{exact:true}).fill('')
+  await storage.getByRole('button',{name:'Сохранить настройки лимитов'}).click()
+  await expect.poll(()=>saves).toBe(2)
+  expect(policy.personal_enabled).toBe(false)
+  expect(policy.temporary_limit_bytes).toBeNull()
+  expect(await storage.evaluate(el=>el.scrollWidth<=el.clientWidth+2)).toBeTruthy()
+})

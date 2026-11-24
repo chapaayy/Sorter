@@ -27,7 +27,7 @@ def _fetch(url,target,*,maximum,progress=lambda n:None):
         stream.flush()
         os.fsync(stream.fileno())
 
-def _publish(stage_source,stage_weight):
+def _publish(stage_source,stage_weight,*,already_reserved=False):
     root=config.APP_STORAGE_ROOT
     source=model_store.repo_folder()
     weight=model_store.weight_target()
@@ -51,7 +51,7 @@ def _publish(stage_source,stage_weight):
             raise ValueError("Unexpected existing weight; automatic overwrite refused")
     else:
         atomic_publish(root,stage_weight.relative_to(root),weight.relative_to(root))
-    model_store.remember_verified()
+    model_store.remember_verified(already_reserved=already_reserved)
 
 class Downloads:
     def __init__(self):
@@ -108,7 +108,7 @@ class Downloads:
                 source.mkdir()
                 weight=stage/model_store.WEIGHT_NAME
                 with build_space(root,model_store.MAX_WEIGHT_BYTES+10_000_000,message="Недостаточно места для установки MegaLoc",kind="model_download",work=stage,tree=True) as budget:
-                    budget.publish(model_store.weight_target(),*(model_store.repo_folder()/name for name in model_store.SOURCE_BLOBS))
+                    budget.publish(model_store.verification_path(),model_store.weight_target(),*(model_store.repo_folder()/name for name in model_store.SOURCE_BLOBS))
                     for name in model_store.SOURCE_BLOBS:
                         _fetch(f"https://raw.githubusercontent.com/gmberton/MegaLoc/{model_store.SOURCE_REVISION}/{name}",
                                source/name,maximum=1_000_000)
@@ -119,12 +119,16 @@ class Downloads:
                     model_store.verify_bundle(source,weight)
                     self._set("verifying","Проверяем реальные веса MegaLoc на CPU…",stage="verify")
                     self._verify(source,weight,stage,lease)
-                    _publish(source,weight)
+                    _publish(source,weight,already_reserved=True)
                     if not model_store.verified():raise RuntimeError("Publication verification failed")
 
     def _verify(self,source,weight,stage,lease):
         # No automatic Torch Hub download or external dependency is allowed.
-        code=("import sys,torch;from pathlib import Path;"
+        code=("import sys,os,resource,ctypes,signal;"
+              "assert ctypes.CDLL(None,use_errno=True).prctl(1,signal.SIGKILL,0,0,0)==0;"
+              "os.getppid()==int(sys.argv[3]) or os._exit(125);"
+              "resource.setrlimit(resource.RLIMIT_FSIZE,(1048576,resource.getrlimit(resource.RLIMIT_FSIZE)[1]));"
+              "import torch;from pathlib import Path;"
               "from app.recognition.engines.megaloc.loader import load_megaloc;"
               "torch.set_num_threads(2);"
               "m=load_megaloc(staged=(Path(sys.argv[1]),Path(sys.argv[2])));"
@@ -134,7 +138,7 @@ class Downloads:
         env.update({k:str(stage) for k in ("TMPDIR","TEMP","TMP")})
         log=stage/"verify.log"
         with log.open("wb") as output:
-            result=subprocess.run([sys.executable,"-c",code,str(source),str(weight)],stdout=output,
+            result=subprocess.run([sys.executable,"-c",code,str(source),str(weight),str(os.getpid())],stdout=output,
                                   stderr=subprocess.STDOUT,env=env,pass_fds=(lease,),timeout=420)
         if result.returncode or b"MODEL_OK" not in log.read_bytes():
             raise RuntimeError("MegaLoc verification failed: "+log.read_bytes()[-1400:].decode(errors="replace"))
