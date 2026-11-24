@@ -108,6 +108,7 @@ export interface StorageBatchBreakdown {
   results_zip:StorageCounter;results_temporary:StorageCounter
 }
 export interface StorageBreakdown {
+  reference_history?:{objects:number;object_bytes:number;embeddings:number;embedding_bytes:number;missing:number;partial?:boolean}|null
   categories:Record<string,StorageCounter>
   batches:StorageBatchBreakdown[];total_batches:number;unlisted_batches:number
   files_scanned:number;hardlink_paths:number;hardlink_reused_bytes:number

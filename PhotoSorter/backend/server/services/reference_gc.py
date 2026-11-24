@@ -28,7 +28,18 @@ def _inconsistent_pins(db):
         WHERE (j.reference_version_id IS NOT NULL OR j.snapshot ? 'reference_version_id'
                OR j.snapshot ? 'reference_members')
           AND (j.reference_version_id IS NULL OR v.id IS NULL OR v.members_retired_at IS NOT NULL
-               OR j.snapshot->>'reference_version_id' IS DISTINCT FROM j.reference_version_id::text)
+               OR j.snapshot->>'reference_version_id' IS DISTINCT FROM j.reference_version_id::text
+               OR jsonb_typeof(j.snapshot->'reference_members') IS DISTINCT FROM 'array'
+               OR EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(
+                     CASE WHEN jsonb_typeof(j.snapshot->'reference_members')='array'
+                          THEN j.snapshot->'reference_members' ELSE '[]'::jsonb END
+                   ) AS pin
+                   WHERE NOT EXISTS(SELECT 1 FROM reference_version_members m
+                       WHERE m.version_id=j.reference_version_id AND m.reference_id::text=pin->>'id'
+                         AND m.source_hash=pin->>'hash' AND m.sam=pin->>'sam'
+                         AND m.target_path=pin->>'path')
+               ))
         LIMIT 1""").fetchone()
 
 def mark_candidates(db):
@@ -145,9 +156,9 @@ def collect(limit=50,*,history_grace=HISTORY_GRACE_SECONDS,grace_seconds=OBJECT_
             except (OSError,ValueError):continue
     return report
 
-def history_usage():
+def history_usage(limit=250_000):
     """Bounded-by-registry, read-only physical sizes for retained historical data."""
-    summary={"objects":0,"object_bytes":0,"embeddings":0,"embedding_bytes":0,"missing":0}
+    summary={"objects":0,"object_bytes":0,"embeddings":0,"embedding_bytes":0,"missing":0,"partial":False}
     with connect() as db:
         historical=db.execute("""SELECT DISTINCT m.source_hash FROM reference_version_members m
             WHERE NOT EXISTS(SELECT 1 FROM reference_library_state s JOIN reference_version_members c
@@ -155,9 +166,12 @@ def history_usage():
             AND NOT EXISTS(SELECT 1 FROM uploads u WHERE u.kind='reference' AND u.finalized AND u.checksum=m.source_hash)
             AND NOT EXISTS(SELECT 1 FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id
                 WHERE f.checksum=m.source_hash AND s.upload_state<>'cancelled'
-                  AND s.preparation_state NOT IN ('completed','stopped'))""").fetchall()
-        digests=[r["source_hash"] for r in historical]
-        vectors=db.execute("SELECT source_hash,model_signature,cache_path FROM reference_cache WHERE source_hash=ANY(%s)",(digests,)).fetchall()
+                  AND s.preparation_state NOT IN ('completed','stopped')) ORDER BY m.source_hash LIMIT %s""",(limit+1,)).fetchall()
+        summary["partial"]=len(historical)>limit
+        digests=[r["source_hash"] for r in historical[:limit]]
+        vectors=db.execute("SELECT source_hash,model_signature,cache_path FROM reference_cache WHERE source_hash=ANY(%s) ORDER BY source_hash,model_signature LIMIT %s",(digests,limit+1)).fetchall()
+        summary["partial"] |= len(vectors)>limit
+        vectors=vectors[:limit]
     seen=set()
     def measure(path,count_key,byte_key):
         try:

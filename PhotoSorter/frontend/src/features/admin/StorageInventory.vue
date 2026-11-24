@@ -15,7 +15,7 @@ const categoryNames:Record<string,string>={
   results_temporary:'Временные результаты',reference_objects:'Объекты образцов',
   reference_gallery:'Галерея образцов',references_zip:'ZIP образцов',
   reference_uploads:'Загрузка образцов',reference_other:'Прочие образцы',
-  thumbnails:'Миниатюры',reference_cache:'Признаки MegaLoc',
+  thumbnails:'Миниатюры ФО',reference_thumbnails:'Миниатюры образцов',reference_cache:'Признаки MegaLoc',
   other_cache:'Кэши',runs:'Данные обработок',logs:'Журналы',
   incoming:'Незавершённые загрузки',models:'Модели',other:'Прочее'
 }

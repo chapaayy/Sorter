@@ -124,7 +124,7 @@
       "stage": 4,
       "coordination": "owner and batch/run/operation lease with DB recheck",
       "accounting": "unique owner object charge; logical and allocated independently",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
       "growth": "one preview per owner and unique preview key",
       "consumer": "FO/results galleries and thumbnail GC"
     },
@@ -140,7 +140,7 @@
       "stage": 4,
       "coordination": "library/version/job dependencies and GC publication lock",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
       "growth": "unique content bytes across retained memberships",
       "consumer": "reference gallery, preparation, version pins, export"
     },
@@ -150,14 +150,14 @@
       "path": "app/shared/references/gallery/{construction_id}/",
       "owner": "library",
       "producer": "reference publication",
-      "publication": "hardlink or DB projection",
+      "publication": "PostgreSQL projection of shared immutable objects; no filesystem duplicates",
       "cleanup": "publication/deletion under library lock",
       "recovery": "rebuild from published members",
       "stage": 4,
       "coordination": "library/version/job dependencies and GC publication lock",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
-      "growth": "links per published construction membership",
+      "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
+      "growth": "logical memberships in PostgreSQL; no gallery media bytes",
       "consumer": "reference library and original download"
     },
     {
@@ -172,7 +172,7 @@
       "stage": 4,
       "coordination": "library/version/job dependencies and GC publication lock",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
       "growth": "one preview per shared key",
       "consumer": "reference library and GC"
     },
@@ -182,13 +182,13 @@
       "path": "app/shared/references/embeddings/{model_signature}/{prefix}/{sha256}.npy",
       "owner": "library",
       "producer": "reference preparation",
-      "publication": "verified dtype/shape/signature/digest then atomic publish",
+      "publication": "full model/content signature plus NPY checksum, dimensions and dtype verification",
       "cleanup": "all version/job dependencies absent + grace + recheck; no TTL",
       "recovery": "recompute corrupt only",
       "stage": 4,
       "coordination": "library/version/job dependencies and GC publication lock",
       "accounting": "logical/allocated; no personal charge",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
       "growth": "one verified array per digest/signature",
       "consumer": "MegaLoc reference preparation and matching"
     },
@@ -215,12 +215,12 @@
       "owner": "session attribution",
       "producer": "reference transfer",
       "publication": "append under session lease",
-      "cleanup": "commit/cancel or proposed 30d abandoned with no holder",
+      "cleanup": "commit/cancel or 30 days idle with transfer lock and recheck",
       "recovery": "resume or discard proven abandoned",
       "stage": 4,
       "coordination": "operation lease, lock or authoritative task state",
       "accounting": "logical/allocated; reservation separately; zero personal charge",
-      "verification": "Stage 4 lifecycle acceptance and stage 7 reconciliation; not implemented by this contract",
+      "verification": "Stage 4 lifecycle tests; stage 7 reconciliation pending",
       "growth": "received chunk bytes up to declared size",
       "consumer": "reference import transfer/finalize, cleanup"
     },
@@ -868,5 +868,7 @@
     "logs/caddy/runtime",
     "logs/models",
     "logs/updater"
-  ]
+  ],
+  "reference_history_grace_days": 30,
+  "reference_unowned_grace_hours": 24
 }

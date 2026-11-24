@@ -1,7 +1,7 @@
-"""Isolated, immutable staging objects for reference import sessions.
+"""Typed transient import parts and immutable shared SHA-256 objects.
 
-The old data/references tree is never written here. All file names used on disk
-are UUID-derived; source paths are verified and no symlinks are accepted.
+Paths never depend on construction or original display name. Verify digest and
+size before reuse; never mutate an existing content object in place.
 """
 from __future__ import annotations
 

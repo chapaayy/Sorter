@@ -70,6 +70,10 @@ def test_reference_lifecycle_shared_bytes_pins_and_cache_reuse(system,monkeypatc
         assert reference_cache.cached_feature(db,digest,"a"*64) is None
     third=upload("SAM 0006","third.jpg")
     assert inferred==[target,target]
+    from server.services import reference_sides
+    from app.results.sides import attach_sides
+    reference_sides.assign("SAM 0004",[first],"A1")
+    reference_sides.assign("SAM 0005",[second],"B2")
     assert target.read_bytes()==raw
     assert target.stat().st_ino==inode
     while (task:=thumbnails.claim()) is not None:
@@ -90,6 +94,8 @@ def test_reference_lifecycle_shared_bytes_pins_and_cache_reuse(system,monkeypatc
         pin=db.execute("SELECT reference_version_id FROM jobs WHERE id=%s",(run,)).fetchone()["reference_version_id"]
         assert pin is not None
         assert len(task["info"]["reference_members"])==3
+        rows=[{"top":[{"label":sam,"reference":str(target)}]} for sam in ("SAM 0004","SAM 0005")]
+        assert [row["side"] for row in attach_sides(rows,task["info"]["reference_members"])]==["A1","B2"]
     assert references.delete_photo(first)["queued"]
     assert reference_gc.collect(history_grace=0,grace_seconds=0)["objects"]==0
     finish_fo(run)

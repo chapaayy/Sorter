@@ -20,9 +20,9 @@ const breakdownLabels:Record<string,string>={
   originals:'Оригиналы ФО',normalized:'Перекодированные ФО (.normalized)',
   results_files:'Готовые файлы результатов',results_zip:'ZIP готовых результатов',
   results_temporary:'Временные файлы результатов',reference_objects:'Хранилище объектов образцов',
-  reference_gallery:'Галерея образцов (hardlink)',references_zip:'ZIP библиотеки образцов',
+  reference_gallery:'Галерея образцов',references_zip:'ZIP библиотеки образцов',
   reference_uploads:'Незавершённые загрузки образцов',reference_other:'Прочие файлы образцов',
-  thumbnails:'Миниатюры',reference_cache:'Кэш MegaLoc',other_cache:'Прочий кэш',
+  thumbnails:'Миниатюры ФО',reference_thumbnails:'Миниатюры образцов',reference_cache:'Кэш MegaLoc',other_cache:'Прочий кэш',
   runs:'Состояния запусков',logs:'Журналы',incoming:'Временные загрузки ФО',
   models:'Модели',other:'Другие файлы данных'
 }
@@ -39,7 +39,7 @@ async function scanStorage(){
 const due=computed(()=>batches.value.filter(b=>b.delete_state==='active'&&b.delete_after_at)
   .sort((a,b)=>(a.delete_after_at||'').localeCompare(b.delete_after_at||'')))
 const labels:Record<string,string>={photos:'Оригиналы ФО',results:'Готовые результаты',
-  references:'Образцы',thumbnails:'Миниатюры',reference_cache:'Кэш MegaLoc',
+  references:'Образцы',reference_uploads:'Загрузки образцов',thumbnails:'Миниатюры ФО',reference_thumbnails:'Миниатюры образцов',reference_cache:'Кэш MegaLoc',
   models:'Модели',logs:'Журналы',runs:'Состояния запусков',incoming:'Временные загрузки',other:'Прочее'}
 async function refresh(){
   try{
@@ -151,6 +151,17 @@ async function cleanup(){
           <span class="meta">{{bytes(stat.logical_bytes)}}</span>
         </div>
       </div>
+      <template v-if="breakdown.reference_history">
+        <h3>Образцы, сохранённые только в истории</h3>
+        <div class="row wrap meta">
+          <span>Объекты: {{breakdown.reference_history.objects}} / {{bytes(breakdown.reference_history.object_bytes)}}</span>
+          <span>Эмбеддинги: {{breakdown.reference_history.embeddings}} / {{bytes(breakdown.reference_history.embedding_bytes)}}</span>
+          <span v-if="breakdown.reference_history.missing">Недоступно файлов: {{breakdown.reference_history.missing}}</span>
+          <span v-if="breakdown.reference_history.partial">Ограниченная выборка</span>
+        </div>
+        <p class="meta">Это часть общего объёма образцов и кэша, а не дополнительные байты. Используемые версии не удаляются по возрасту.</p>
+      </template>
+      <p v-else-if="breakdown.reference_history===null" class="meta">Данные истории образцов временно недоступны.</p>
       <h3>Партии ФО — больше всего места</h3>
       <p v-if="!breakdown.batch_metadata_available" class="meta">
         Метаданные партий временно недоступны, ниже могут отсутствовать подписи.
