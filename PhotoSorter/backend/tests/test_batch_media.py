@@ -209,7 +209,13 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
         source, target = Path(row['query']), Path(row['copy'])
         assert (source.stat().st_dev,source.stat().st_ino)==(target.stat().st_dev,target.stat().st_ino)
     assert job.info['archive_state']=='on_demand'
-    assert not list((thumbs/'outputs'/item['id']).rglob('*.zip'))
+    from server.storage.paths import run_dir,result_media_dir,result_metadata_dir
+    first_dir=run_dir(item['id'])
+    assert first_dir.parent.parent==batch_dir(batch).parent
+    assert not list(first_dir.rglob('*.zip'))
+    assert not (APP_STORAGE_ROOT/app_key(Category.PROCESSING_STAGING,run_id=item['id']).relative).exists()
+    assert set(p.name for p in result_metadata_dir(item['id']).iterdir())=={'manifest.rows.jsonl'}
+    assert not (job.path/'run.json').exists()
     from server.api.routes.downloads import router as download_router
     app=FastAPI()
     app.include_router(download_router)
@@ -230,8 +236,31 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     with TestClient(app) as client:
         result=client.get(f"/api/images/{item['id']}/megaloc/{index}?kind=copy",headers={'Range':'bytes=0-19'})
     assert result.status_code==206 and result.content==normalized.read_bytes()[:20]
+    # Repeat the actual FIFO -> sorting -> export path, without reconversion.
+    rerun=jobs.enqueue(jobs.NewRun(batch_id=batch))['id']
+    with database.connect() as conn:
+        second=work_queue.claim_next(conn)
+    assert second['id']==rerun
+    repeat=jobs.ServerJob(second['info'],warm_megaloc=Warm())
+    repeat.run()
+    assert repeat.info['status']=='completed',repeat.info.get('error')
+    again=repository.load_model(rerun,'megaloc')
+    assert len(again)==len(rows)
+    old={r['query']:r for r in rows}
+    for row in again:
+        assert row['assigned_sam']==old[row['query']]['assigned_sam']
+        assert Path(row['copy']).is_relative_to(result_media_dir(rerun))
+        assert Path(row['copy']).stat().st_ino==Path(old[row['query']]['copy']).stat().st_ino
+    assert first_dir.exists() and not list(run_dir(rerun).rglob('*.zip'))
+    assert not (APP_STORAGE_ROOT/app_key(Category.PROCESSING_STAGING,run_id=rerun).relative).exists()
+    assert not (APP_STORAGE_ROOT/app_key(Category.VIDEO_FRAMES,run_id=rerun).relative).exists()
+    with database.connect() as conn:
+        status=conn.execute("SELECT status FROM jobs WHERE id=%s",(rerun,)).fetchone()
+        assert status['status']=='completed'
+    assert not (repeat.path/'run.json').exists()
     cleanup.request(batch)
     assert cleanup.cleanup_one(batch)=='completed'
+    assert not first_dir.exists()
     from server.storage.paths import batch_root
     assert not batch_root(batch).exists()
 

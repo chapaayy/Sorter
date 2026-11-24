@@ -116,7 +116,7 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
     now=datetime.now(timezone.utc)
     run_id=now.strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:12]
     info={"id":run_id,"status":"queued","new_photos":str(batch_dir(data.batch_id,batch_owner(data.batch_id,db))),
-          "output":str(DATA_DIR/"outputs"),"batch_id":str(data.batch_id),
+          "batch_id":str(data.batch_id),
           "selected_models":["megaloc"],"grouping_threshold":data.grouping_threshold,
           "selected_regions":selected_regions,
           "min_match_score":float(score_setting["min_match_score"]),

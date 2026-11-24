@@ -21,19 +21,23 @@ def existing(run_id:str,sam:str|None,selected:list[tuple[Path,str]])->Path|None:
     """Only return validated complete ZIPs; never create one on download."""
     target=_cache_path(run_id,sam,selected)
     if target.is_file() and zipfile.is_zipfile(target):
-        return owned_file(target,output_root())
+        return owned_file(target,archive_folder(run_id))
     return None
 
 def output_root()->Path:
-    return storage_paths.OUTPUTS
+    # Common filesystem for reservation locking, not a result namespace.
+    from app.config import APP_STORAGE_ROOT
+    return APP_STORAGE_ROOT
+
+def archive_folder(run_id):
+    run=storage_paths.run_dir(run_id)
+    return owned_directory(run/".archives",output_root())
 
 def published(run_id:str,filename:str)->Path|None:
     """Look up a saved archive by its validated run-local cache filename."""
     if not re.fullmatch(r"[a-f0-9]{12}-[a-f0-9]{20}\.zip",filename):
         return None
-    root=output_root()
-    run=owned_directory(storage_paths.run_dir(run_id,root),root)
-    folder=owned_directory(run/".archives",run)
+    folder=archive_folder(run_id)
     target=owned_file(folder/filename,folder)
     return target if target.is_file() and zipfile.is_zipfile(target) else None
 
@@ -51,13 +55,13 @@ def archive_member(sam:str,filename:str)->str:
 def _cache_path(run_id:str, sam:str|None, selected:list[tuple[Path,str]])->Path:
     # Every output is uniquely identified by its immutable input manifest.
     digest=hashlib.sha256()
+    media=storage_paths.result_media_dir(run_id)
     for file,name in selected:
-        info=file.stat()
+        info=owned_file(file,media).stat()
         digest.update(json.dumps([str(file),name,info.st_size,info.st_mtime_ns],
                     ensure_ascii=False).encode())
     token=hashlib.sha256((sam or "all").encode()).hexdigest()[:12]
-    root=output_root()
-    folder=owned_directory(storage_paths.run_dir(run_id,root)/".archives",root)
+    folder=archive_folder(run_id)
     if folder.is_symlink():raise HTTPException(409,"Недопустимый каталог архивов")
     folder.mkdir(parents=True,exist_ok=True)
     return folder/(token+"-"+digest.hexdigest()[:20]+".zip")
@@ -69,15 +73,15 @@ def prepare(run_id:str,sam:str|None,selected:list[tuple[Path,str]],*,progress=No
     lock=target.with_suffix(".lock")
     with archive_cache.pin(target.parent), os.fdopen(os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600),"a+b") as handle:
         fcntl.flock(handle.fileno(),fcntl.LOCK_EX)
-        root=output_root()
+        root=storage_paths.result_media_dir(run_id)
         try:
             if target.exists():
-                owned_file(target,root)
+                owned_file(target,archive_folder(run_id))
                 if zipfile.is_zipfile(target):
                     if progress:progress(total,total)
                     return target
                 target.unlink()
-            with archive_cache.build_space(output_root().parent,total+1024*1024+len(selected)*2048):
+            with archive_cache.build_space(output_root(),total+1024*1024+len(selected)*2048):
                 return _build(target,selected,total,progress,should_stop,root)
         finally:
             fcntl.flock(handle.fileno(),fcntl.LOCK_UN)

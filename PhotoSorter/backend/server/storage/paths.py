@@ -6,7 +6,6 @@ from app.config import DATA_DIR, RUNS_DIR
 from app.storage.paths import uuid_key, run_key, managed_prefix, managed_path
 from app.storage.categories import Category
 
-OUTPUTS = DATA_DIR / "outputs"
 RUN_PATTERN = re.compile(r"\d{8}T\d{6}-[a-f0-9]{12}\Z")
 
 def batch_owner(batch_id, db=None):
@@ -42,8 +41,29 @@ def normalized_dir(batch_id, owner_id=None):
 def part_path(batch_id, upload_id):
     return managed_path(Category.FO_UPLOAD_PART,batch_uuid=batch_id,upload_uuid=upload_id)
 
-def run_dir(run_id, root=None):
-    return Path(OUTPUTS if root is None else root) / run_key(run_id)
+def run_identity(run_id,db=None):
+    from ..database import connect
+    run_id=run_key(run_id)
+    if db is None:
+        with connect() as conn:
+            return run_identity(run_id,conn)
+    row=db.execute("""SELECT j.batch_id,b.owner_id FROM jobs j
+        JOIN batches b ON b.id=j.batch_id WHERE j.id=%s""",(run_id,)).fetchone()
+    if not row:raise FileNotFoundError("Unknown run")
+    return row["batch_id"],row["owner_id"]
+
+def run_dir(run_id,*,db=None,identity=None):
+    batch_id,owner_id=run_identity(run_id,db) if identity is None else identity
+    return managed_path(Category.RESULT_MEDIA,user_id=owner_id,batch_uuid=batch_id,run_id=run_id).parent
+
+def result_media_dir(run_id,*,db=None,identity=None):
+    batch_id,owner_id=run_identity(run_id,db) if identity is None else identity
+    return managed_path(Category.RESULT_MEDIA,user_id=owner_id,batch_uuid=batch_id,run_id=run_id)
+
+def result_metadata_dir(run_id,*,db=None,identity=None):
+    batch_id,owner_id=run_identity(run_id,db) if identity is None else identity
+    return managed_path(Category.RESULT_METADATA,user_id=owner_id,batch_uuid=batch_id,run_id=run_id)
+
 
 def _contained(path, root):
     root, candidate = Path(root), Path(path)

@@ -45,7 +45,7 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
     batch=_batch(sandbox)
     title=batches.rename(batch,"Самара 15.11")["display_name"]
     run=_job(sandbox,batch)
-    model=paths.run_dir(run)/"megaloc"
+    model=paths.result_media_dir(run)
     sam="SAM 9961"
     address="Гагарина 64"
     with connect() as db:
@@ -67,7 +67,7 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
             source.write_bytes(name.encode())
             rows.append({"copy":str(source),"query":query,"assigned_sam":folder})
         from app.results.exporter import export
-        manifest=export(model,rows)
+        manifest=export(paths.result_metadata_dir(run),rows)
         if legacy_format:
             initial=archives.prepare(run,None,archive_pipeline.legacy_selections(run))
         else:
@@ -124,9 +124,10 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
 
 
 def test_zip_failed_integrity_check_is_never_published(tmp_path,monkeypatch):
-    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
+    from .test_archives import mock_run_storage
+    mock_run_storage(tmp_path,monkeypatch)
     run="20261107T120000-abcdef123456"
-    source=tmp_path/run/"megaloc"/"SAM 0001"/"one.jpg"
+    source=paths.result_media_dir(run)/"SAM 0001"/"one.jpg"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"photo")
     monkeypatch.setattr(zipfile.ZipFile,"testzip",lambda _self:"SAM 0001/one.jpg")
@@ -141,7 +142,7 @@ def test_manual_date_and_video_zip_layout(sandbox):
     from datetime import date
     batch=_batch(sandbox)
     run=_job(sandbox,batch)
-    model=paths.run_dir(run)/"megaloc"
+    model=paths.result_media_dir(run)
     items=[]
     try:
         with connect() as db:
@@ -158,7 +159,7 @@ def test_manual_date_and_video_zip_layout(sandbox):
             items.append({"query":str(source),"copy":str(source),"assigned_sam":sam,
                           "media_kind":kind,"export_name":name,"side":side})
         from app.results.exporter import export
-        manifest=export(model,items)
+        manifest=export(paths.result_metadata_dir(run),items)
         plan=archive_pipeline.named_plan(run,batch,"Отчёт по выезду")
         members={name for _,name in plan.files}
         assert members=={
@@ -177,12 +178,12 @@ def test_manual_date_and_video_zip_layout(sandbox):
 def test_processing_date_uses_job_start_not_upload_date(sandbox):
     batch=_batch(sandbox)
     run=_job(sandbox,batch)
-    model=paths.run_dir(run)/"megaloc"
+    model=paths.result_media_dir(run)
     source=model/"SAM 0001"/"one.jpg"
     source.parent.mkdir(parents=True,exist_ok=True)
     source.write_bytes(b"photo")
     from app.results.exporter import export
-    manifest=export(model,[{"copy":str(source),"assigned_sam":"SAM 0001"}])
+    manifest=export(paths.result_metadata_dir(run),[{"copy":str(source),"assigned_sam":"SAM 0001"}])
     try:
         with connect() as db:
             db.execute("UPDATE jobs SET started_at=%s WHERE id=%s",

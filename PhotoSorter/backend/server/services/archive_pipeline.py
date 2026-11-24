@@ -3,14 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from app.results.repository import load_model
 from ..database import connect
-from ..storage.paths import owned_directory,owned_file,run_dir
+from ..storage.paths import owned_directory,owned_file,result_media_dir
 from . import archive_layout,archives
 
 def legacy_selections(run_id):
     """Only used to check pre-upgrade cached archives, never to create them."""
     rows=load_model(run_id,"megaloc")
-    run=owned_directory(run_dir(run_id,archives.output_root()),archives.output_root())
-    root=owned_directory(run/"megaloc",run)
+    root=result_media_dir(run_id)
     selected=[]
     for item in rows:
         source=owned_file(Path(item["copy"]),root)

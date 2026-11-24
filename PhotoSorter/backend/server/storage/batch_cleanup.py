@@ -7,14 +7,14 @@ import stat
 
 from .paths import batch_dir,batch_root,part_path,normalized_dir,owned_directory,owned_file,run_dir
 from app import config
-from app.storage.paths import managed_path,managed_prefix
+from app.storage.paths import managed_path,managed_prefix,run_key
 from app.storage.categories import Category
 
 
 def remove_batch_files(batch_id,run_ids,upload_ids,data_dir,runs_dir,report):
     # Run trees (including the ZIP), temporary parts and individual originals.
-    trees=[owned_directory(run_dir(run_id,root),root) for run_id in run_ids
-           for root in (data_dir/"outputs",runs_dir)]
+    trees=[owned_directory(run_dir(run_id),config.APP_STORAGE_ROOT) for run_id in run_ids]
+    trees.extend(owned_directory(runs_dir/run_key(run_id),runs_dir) for run_id in run_ids)
     trees=[path for path in trees if path.exists()]
     incoming=managed_prefix(Category.FO_UPLOAD_PART,batch_uuid=batch_id)
     parts=[owned_file(part_path(batch_id,upload_id),config.APP_STORAGE_ROOT) for upload_id in upload_ids]
@@ -57,7 +57,7 @@ def remove_batch_files(batch_id,run_ids,upload_ids,data_dir,runs_dir,report):
             done+=1
             report("files",done,total)
         # Empty batch/transfer containers have no user data of their own.
-        for folder in (incoming,batch_root(batch_id)):
+        for folder in (incoming,batch_root(batch_id)/"results",batch_root(batch_id)):
             try:folder.rmdir()
             except FileNotFoundError:pass
         return total

@@ -24,8 +24,7 @@ def download_results(run_id:str,sam:str|None=None,request:Request=None):
     lease=operations.start(row["batch_id"],"download")
     pin=None
     try:
-        root=archives.output_root()
-        folder=owned_directory(run_dir(run_id,root)/".archives",root)
+        folder=archives.archive_folder(run_id)
         pin=archive_cache.pin(folder)
         plan=archive_pipeline.named_plan(run_id,row["batch_id"],row["display_name"],sam)
         file=archives.prepare(run_id,sam,plan.files)

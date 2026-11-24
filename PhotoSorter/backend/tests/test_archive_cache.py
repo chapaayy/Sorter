@@ -58,10 +58,11 @@ def test_response_pin_released_on_range_error(tmp_path):
     assert archive_cache.sweep_folder(tmp_path,reference=True)==1
 
 def test_low_disk_space_rejects_zip_without_partial_file(tmp_path,monkeypatch):
-    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
+    from .test_archives import mock_run_storage
+    mock_run_storage(tmp_path,monkeypatch)
     monkeypatch.setattr(archive_cache.disk_guard,"stat",lambda _: (1000000000,1))
     run="20261107T120000-abcdef123456"
-    source=tmp_path/run/"megaloc"/"one.jpg"
+    source=archives.storage_paths.result_media_dir(run)/"one.jpg"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"test")
     with pytest.raises(HTTPException) as e:

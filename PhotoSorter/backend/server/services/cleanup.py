@@ -7,6 +7,9 @@ from ..database import connect
 from ..storage.batch_cleanup import remove_batch_files
 from ..storage.paths import run_dir,owned_directory
 from app.config import DATA_DIR,RUNS_DIR
+from app import config
+from app.storage.paths import managed_path
+from app.storage.categories import Category
 from .batches import uid
 
 IN_USE = ("queued","running","stopping")
@@ -173,8 +176,8 @@ def reconcile_incomplete_exports(limit=100, grace_seconds=3600):
     removed=[]
     for record in rows:
         try:
-            staging=run_dir(record["id"])/".megaloc.building"
-            staging=owned_directory(staging,DATA_DIR/"outputs")
+            staging=managed_path(Category.PROCESSING_STAGING,run_id=record["id"])
+            staging=owned_directory(staging,config.APP_STORAGE_ROOT)
             if not staging.is_dir():continue
             if time.time()-staging.stat().st_mtime<grace_seconds:continue
             # A late worker update must not race the final cleanup decision.

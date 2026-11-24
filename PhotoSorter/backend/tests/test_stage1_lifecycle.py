@@ -563,3 +563,23 @@ def test_upload_state_transitions_with_real_finalization(sandbox,monkeypatch):
     assert exc.value.status_code==409
     cleanup.request(own)
     assert cleanup.cleanup_one(own)=="completed"
+
+
+def test_result_export_refuses_other_owner_even_with_valid_file(sandbox):
+    from app.results import repository
+    from server.database import connect
+    own=_batch(sandbox)
+    other=_batch(sandbox)
+    with connect() as db:
+        second=db.execute("INSERT INTO users(username,access_role) VALUES (%s,'viewer') RETURNING id",
+                          ("isolation-"+uuid.uuid4().hex,)).fetchone()["id"]
+        db.execute("UPDATE batches SET owner_id=%s WHERE id=%s",(second,other))
+    # Put a file in the second user's actual directory, not in the first owner's.
+    alien=paths.batch_dir(other)/"private.jpg"
+    alien.parent.mkdir(parents=True,exist_ok=True)
+    alien.write_bytes(b"private")
+    run=_job(sandbox,own)
+    with pytest.raises(ValueError,match="outside owned storage"):
+        repository.save_model({"id":run,"batch_id":str(own)},"megaloc",[{"query":str(alien),"top":[]}])
+    assert not paths.run_dir(run).exists()
+    assert alien.read_bytes()==b"private"

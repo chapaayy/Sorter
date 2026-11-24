@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from ...database import connect
 from ...services import operations
 from ..file_response import LeasedFileResponse
-from ...storage.paths import owned_file,batch_root
+from ...storage.paths import owned_file,batch_root,result_media_dir
 from ...storage import thumbnail_cache as cache
 from app.config import DATA_DIR
 from app.photos.reader import EXTS
@@ -20,10 +20,10 @@ def file_allowed(file:Path, run_id=None, kind=None):
             row=db.execute("SELECT batch_id FROM jobs WHERE id=%s",(run_id,)).fetchone()
         if not row:raise HTTPException(404,"Запуск не найден")
         roots=([batch_root(row["batch_id"])] if kind=="query" else
-               [DATA_DIR/"outputs"/run_id/"megaloc"] if kind=="copy" else
+               [result_media_dir(run_id)] if kind=="copy" else
                [DATA_DIR/"references",DATA_DIR/"reference_staging"])
     else:
-        roots=[DATA_DIR/"references",DATA_DIR/"outputs"]
+        roots=[DATA_DIR/"references"]
     for root in roots:
         try:
             owned_file(file,root)
@@ -54,8 +54,6 @@ def image(run_id:str,index:int,kind:str="query",candidate:int=0,request:Request=
         filename=top[candidate]["reference"]
     else:raise HTTPException(422,"Неверный тип изображения")
     file = file_allowed(Path(filename),run_id,kind)
-    if is_viewer(request) and not file.resolve().is_relative_to((DATA_DIR/"outputs").resolve()):
-        raise HTTPException(404,"Готовый файл не найден")
     return FileResponse(file, headers={"Cache-Control":"private, no-store"})
 
 
@@ -75,7 +73,7 @@ def _video(run_id,row,kind):
             file=cache.safe_location(cache.location(thumb["checksum"],thumb["version"]))
             mime="image/webp"
         else:
-            file=owned_file(Path(row["copy"]),DATA_DIR/"outputs"/run_id/"megaloc")
+            file=owned_file(Path(row["copy"]),result_media_dir(run_id))
             mime="video/webm" if Path(row["export_name"]).suffix.lower()==".webm" else "video/mp4"
         if not file.is_file():raise FileNotFoundError()
         return LeasedFileResponse(file,lease=token,media_type=mime,

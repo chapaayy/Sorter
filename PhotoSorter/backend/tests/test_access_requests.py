@@ -122,7 +122,10 @@ def test_approval_is_required_and_viewer_cannot_use_working_area(isolated, tmp_p
     assert [row["id"] for row in public.get("/api/results/catalog").json()["items"]] == [RUN]
     assert public.get(f"/api/results/{RUN}").json() == {"id":RUN,"status":"completed","display_name":"Тестовый ФО"}
 
-    file = tmp_path/"outputs"/RUN/"megaloc"/"test.jpg"
+    from app import config
+    from server.storage.paths import result_media_dir
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",tmp_path)
+    file = result_media_dir(RUN)/"test.jpg"
     file.parent.mkdir(parents=True)
     file.write_bytes(b"published-photo")
     monkeypatch.setattr(images,"DATA_DIR",tmp_path)

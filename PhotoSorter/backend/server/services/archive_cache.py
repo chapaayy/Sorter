@@ -96,13 +96,20 @@ def sweep_folder(folder,*,reference=False,now=None):
 
 def collect():
     from . import archives,reference_archives
-    from ..storage.paths import RUN_PATTERN
-    root=archives.output_root()
+    from ..database import connect
+    from ..storage.paths import run_dir,owned_directory
+    with connect() as db:
+        rows=db.execute("""SELECT j.id,j.batch_id,b.owner_id FROM jobs j
+            JOIN batches b ON b.id=j.batch_id
+            WHERE j.status IN ('completed','completed_with_errors')""").fetchall()
     removed=0
-    if root.is_dir() and not root.is_symlink():
-        for run in root.iterdir():
-            if RUN_PATTERN.fullmatch(run.name) and not run.is_symlink() and run.is_dir():
-                removed+=sweep_folder(run/".archives")
+    for row in rows:
+        try:
+            run=run_dir(row["id"],identity=(row["batch_id"],row["owner_id"]))
+            folder=owned_directory(run/".archives",archives.output_root())
+            removed+=sweep_folder(folder)
+        except (OSError,ValueError):
+            continue
     if not reference_archives.EXPORTS.is_symlink():
         removed+=sweep_folder(reference_archives.EXPORTS,reference=True)
     return removed
