@@ -1,55 +1,37 @@
-"""Official MegaLoc assets in new layout, with read-only legacy compatibility.
-
-New downloads live under Models/models/megaloc. Existing gigabyte weights
-remain usable from Models/megaloc, Torch Hub checkpoints or Hugging Face
-snapshots; nothing is moved, deleted, or duplicated automatically.
-"""
+"""MegaLoc assets under the configured app storage root; no legacy host fallbacks."""
 from __future__ import annotations
 import hashlib
 import json
 import os
 from pathlib import Path
-from ..config import MODELS_DIR, WEIGHTS_DIR, MODEL_CACHE_DIR, DATA_DIR
+from ..config import WEIGHTS_DIR, MODEL_CACHE_DIR
+from ..storage.filesystem import atomic_write
 
 REPO = 'gberton/MegaLoc'
 SOURCE_FOLDER = 'gmberton_MegaLoc_main'
 WEIGHT_NAME = 'model.safetensors'
 MINIMUM_SIZE = 50_000_000
 VERIFICATIONS = MODEL_CACHE_DIR / 'downloads' / 'verified_megaloc.json'
-LEGACY_VERIFICATIONS = MODEL_CACHE_DIR / 'downloads' / 'verified_hub.json'
-
-def unique(paths):
-    result, seen = [], set()
-    for path in paths:
-        value = Path(path).expanduser()
-        key = os.path.normcase(os.path.abspath(value))
-        if key not in seen:
-            seen.add(key);result.append(value)
-    return result
 
 def torch_roots():
-    roots = [MODEL_CACHE_DIR / 'torch' / 'hub', DATA_DIR / 'torch' / 'hub']
-    if os.environ.get('TORCH_HOME'):
-        roots.insert(0, Path(os.environ['TORCH_HOME']) / 'hub')
-    if os.environ.get('PHOTOSORTER_LEGACY_DATA'):
-        roots.append(Path(os.environ['PHOTOSORTER_LEGACY_DATA']) / 'torch' / 'hub')
-    roots.append(Path.home() / '.cache' / 'torch' / 'hub')
-    return unique(roots)
+    return [MODEL_CACHE_DIR / 'torch' / 'hub']
 
 def hf_roots():
-    roots = []
-    if os.environ.get('HF_HUB_CACHE'): roots.append(os.environ['HF_HUB_CACHE'])
-    if os.environ.get('HF_HOME'): roots.append(Path(os.environ['HF_HOME']) / 'hub')
-    roots += [MODEL_CACHE_DIR / 'huggingface' / 'hub', Path.home() / '.cache' / 'huggingface' / 'hub']
-    return unique(roots)
+    return [MODEL_CACHE_DIR / 'huggingface' / 'hub']
 
 def configure_model_environment():
     (MODEL_CACHE_DIR / 'torch' / 'hub').mkdir(parents=True,exist_ok=True)
     (MODEL_CACHE_DIR / 'huggingface' / 'hub').mkdir(parents=True,exist_ok=True)
-    os.environ.setdefault('TORCH_HOME', str(MODEL_CACHE_DIR / 'torch'))
-    os.environ.setdefault('HF_HUB_CACHE', str(MODEL_CACHE_DIR / 'huggingface' / 'hub'))
-    os.environ['HF_HUB_OFFLINE'] = '1'
-    os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
+    os.environ.update({
+        'HOME':str(MODEL_CACHE_DIR),
+        'XDG_CACHE_HOME':str(MODEL_CACHE_DIR/'xdg'),
+        'TORCH_HOME':str(MODEL_CACHE_DIR/'torch'),
+        'HF_HOME':str(MODEL_CACHE_DIR/'huggingface'),
+        'HF_HUB_CACHE':str(MODEL_CACHE_DIR/'huggingface'/'hub'),
+        'HF_XET_CACHE':str(MODEL_CACHE_DIR/'huggingface'/'xet'),
+        'HF_HUB_OFFLINE':'1',
+        'HF_HUB_DISABLE_TELEMETRY':'1',
+    })
 
 def repo_folder():
     for root in torch_roots():
@@ -59,8 +41,8 @@ def repo_folder():
     return MODEL_CACHE_DIR / 'torch' / 'hub' / SOURCE_FOLDER
 
 def checkpoint():
-    # Prefer stable new weight location; legacy paths remain read-only.
-    candidates = [WEIGHTS_DIR / 'megaloc' / WEIGHT_NAME, MODELS_DIR / 'megaloc' / WEIGHT_NAME]
+    # Current managed weights and cache only; offline source separation is stage 5.
+    candidates = [WEIGHTS_DIR / 'megaloc' / WEIGHT_NAME]
     candidates += [root / 'checkpoints' / WEIGHT_NAME for root in torch_roots()]
     for candidate in candidates:
         if candidate.is_file() and candidate.stat().st_size >= MINIMUM_SIZE:
@@ -92,7 +74,7 @@ def signature():
 def verified():
     sig = signature()
     if not sig:return False
-    for location in (VERIFICATIONS, LEGACY_VERIFICATIONS):
+    for location in (VERIFICATIONS,):
         try:
             data = json.loads(location.read_text('utf8'))
             if data.get('megaloc') == sig:return True
@@ -102,7 +84,5 @@ def verified():
 def remember_verified():
     sig = signature()
     if not sig:raise RuntimeError('Веса и исходники MegaLoc не обнаружены')
-    VERIFICATIONS.parent.mkdir(parents=True,exist_ok=True)
-    tmp = VERIFICATIONS.with_suffix('.tmp')
-    tmp.write_text(json.dumps({'megaloc':sig},indent=2),encoding='utf8')
-    tmp.replace(VERIFICATIONS)
+    with atomic_write(MODEL_CACHE_DIR, VERIFICATIONS.relative_to(MODEL_CACHE_DIR)) as stream:
+        stream.write(json.dumps({'megaloc':sig},indent=2).encode('utf8'))

@@ -116,3 +116,19 @@ def test_publish_and_unlink_refuse_nonregular_targets(tmp_path):
     assert (tmp_path / "published/a").read_bytes()==b"payload"
     safe_unlink(tmp_path, "published/a")
     assert not (tmp_path / "published/a").exists()
+
+
+def test_model_roots_never_fall_back_to_operator_home(tmp_path,monkeypatch):
+    from app.system import model_store
+    cache=tmp_path/"cache"
+    weights=tmp_path/"models"
+    monkeypatch.setattr(model_store,"MODEL_CACHE_DIR",cache)
+    monkeypatch.setattr(model_store,"WEIGHTS_DIR",weights)
+    monkeypatch.setenv("PHOTOSORTER_LEGACY_DATA",str(tmp_path/"old"))
+    monkeypatch.setenv("TORCH_HOME",str(tmp_path/"old/torch"))
+    monkeypatch.setenv("HF_HUB_CACHE",str(tmp_path/"old/hf"))
+    assert model_store.torch_roots()==[cache/"torch/hub"]
+    assert model_store.hf_roots()==[cache/"huggingface/hub"]
+    model_store.configure_model_environment()
+    assert os.environ["TORCH_HOME"]==str(cache/"torch")
+    assert os.environ["HF_HUB_CACHE"]==str(cache/"huggingface/hub")

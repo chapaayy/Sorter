@@ -13,7 +13,7 @@ import time
 from datetime import datetime,timezone
 from pathlib import Path
 from ..database import connect
-from app.config import DATA_DIR,MODELS_DIR
+from app.config import DATA_DIR,MODELS_DIR,MODEL_CACHE_DIR
 
 MAX_FILES=250_000
 MAX_SECONDS=10.0
@@ -71,7 +71,7 @@ def _metadata():
     return batches,jobs
 
 def _scan(data_dir:Path,models_dir:Path,batch_names:dict,run_to_batch:dict,
-          *,max_files=MAX_FILES,max_seconds=MAX_SECONDS):
+          *,max_files=MAX_FILES,max_seconds=MAX_SECONDS,model_cache_dir=None):
     """Standalone scanner, also used by tests; no database or write access."""
     groups={key:_counter() for key in BUCKETS}
     batches={}
@@ -151,6 +151,7 @@ def _scan(data_dir:Path,models_dir:Path,batch_names:dict,run_to_batch:dict,
 
     walk(data_dir)
     if not partial:walk(models_dir,True)
+    if not partial and model_cache_dir is not None:walk(model_cache_dir,True)
     rows=sorted(batches.values(),key=lambda row:(-row["allocated_bytes"],row["batch_id"]))
     return {"categories":groups,"batches":rows[:50],"total_batches":len(rows),
             "unlisted_batches":max(0,len(rows)-50),"files_scanned":scanned,
@@ -168,6 +169,6 @@ def breakdown():
     metadata_available=True
     try:names,lookup=_metadata()
     except Exception:metadata_available=False
-    report=_scan(DATA_DIR,MODELS_DIR,names,lookup)
+    report=_scan(DATA_DIR,MODELS_DIR,names,lookup,model_cache_dir=MODEL_CACHE_DIR)
     report["batch_metadata_available"]=metadata_available
     return report

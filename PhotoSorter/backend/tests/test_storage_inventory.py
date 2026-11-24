@@ -11,7 +11,8 @@ from server.services import storage_inventory as inventory
 
 def test_inventory_lists_real_paths_and_owners_without_writing(tmp_path):
     data = tmp_path / "data"
-    models = tmp_path / "Models"
+    models = tmp_path / "models"
+    model_cache=tmp_path/"model_cache"
     batch_id = "11111111-1111-4111-8111-111111111111"
     run_id = "20261123T123000-abcdef123456"
     original = data / "uploads" / batch_id / "one.jpg"
@@ -26,30 +27,33 @@ def test_inventory_lists_real_paths_and_owners_without_writing(tmp_path):
     cache = data / "cache" / "megaloc" / "references" / "one.npy"
     cache.parent.mkdir(parents=True)
     cache.write_bytes(b"c" * 20)
-    model = models / "models" / "megaloc" / "model.safetensors"
+    model = models / "megaloc" / "model.safetensors"
     model.parent.mkdir(parents=True)
     model.write_bytes(b"m" * 10)
 
+    model_cache.mkdir()
+    (model_cache/"fixture.bin").write_bytes(b"cache")
     before = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*"))
     summary, records = inventory._collect(
-        data, models, {batch_id: "Фотоотчёт 321"}, {run_id: batch_id}
+        data, models, {batch_id: "Фотоотчёт 321"}, {run_id: batch_id}, model_cache_dir=model_cache
     )
     after = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*"))
     assert before == after, "Inventory must not create, rewrite or remove files"
     assert summary["partial"] is False
-    assert summary["files_scanned"] == 5
+    assert summary["files_scanned"] == 6
     by_path = {r["path"]: r for r in records}
-    assert by_path["PhotoSorter/data/incoming/pending.part"]["purpose"] == "temporary"
-    assert by_path["PhotoSorter/data/cache/megaloc/references/one.npy"]["purpose"] == "cache"
-    assert by_path["Models/models/megaloc/model.safetensors"]["purpose"] == "system"
-    assert by_path["PhotoSorter/data/uploads/" + batch_id + "/one.jpg"]["owner_name"] == "Фотоотчёт 321"
+    assert by_path["storage/app/state/incoming/pending.part"]["purpose"] == "temporary"
+    assert by_path["storage/app/state/cache/megaloc/references/one.npy"]["purpose"] == "cache"
+    assert by_path["storage/app/models/megaloc/model.safetensors"]["purpose"] == "system"
+    assert by_path["storage/app/cache/fixture.bin"]["purpose"] == "system"
+    assert by_path["storage/app/state/uploads/" + batch_id + "/one.jpg"]["owner_name"] == "Фотоотчёт 321"
     # Only one of the two physical hardlinks receives disk-block allocation.
     shared = [r for r in records if r["path"].endswith("/one.jpg")]
     assert len(shared) == 2
     assert sum(int(r["hardlink"]) for r in shared) == 1
     assert sum(r["allocated_bytes"] for r in shared) == original.stat().st_blocks * 512
-    assert by_path["PhotoSorter/data/uploads/" + batch_id + "/one.jpg"]["allocated_bytes"] > 0
-    assert by_path["PhotoSorter/data/outputs/" + run_id + "/megaloc/SAM 0004/one.jpg"]["allocated_bytes"] == 0
+    assert by_path["storage/app/state/uploads/" + batch_id + "/one.jpg"]["allocated_bytes"] > 0
+    assert by_path["storage/app/state/outputs/" + run_id + "/megaloc/SAM 0004/one.jpg"]["allocated_bytes"] == 0
     assert summary["allocated_bytes"] == sum(r["allocated_bytes"] for r in records)
 
 
@@ -77,15 +81,15 @@ def test_inventory_does_not_follow_symlinks_and_reports_partial(tmp_path):
 def test_inventory_pagination_rejects_expired_snapshot(monkeypatch):
     summary = {"snapshot_id": "test", "files_scanned": 3}
     rows = [
-        {"path": "PhotoSorter/data/a", "category": "originals", "owner_name": "A"},
-        {"path": "PhotoSorter/data/b", "category": "logs", "owner_name": None},
-        {"path": "PhotoSorter/data/c", "category": "originals", "owner_name": "A"},
+        {"path": "storage/app/state/a", "category": "originals", "owner_name": "A"},
+        {"path": "storage/app/state/b", "category": "logs", "owner_name": None},
+        {"path": "storage/app/state/c", "category": "originals", "owner_name": "A"},
     ]
     monkeypatch.setattr(inventory, "_snapshot", (summary, rows))
     page = inventory.files(snapshot_id="test", offset=1, limit=1)
     assert page["total"] == 3
     assert page["files"][0]["path"].endswith("/b")
-    filtered = inventory.files(snapshot_id="test", category="originals", search="data/c")
+    filtered = inventory.files(snapshot_id="test", category="originals", search="state/c")
     assert filtered["total"] == 1
     with pytest.raises(HTTPException) as exc:
         inventory.files(snapshot_id="old")
@@ -97,7 +101,7 @@ def test_complete_csv_export_has_every_row_and_blocks_excel_formulas(monkeypatch
     snapshot = {"snapshot_id": "full", "captured_at": "2026-11-23T14:00:00+00:00"}
     entries = [
         {
-            "path": f"PhotoSorter/data/uploads/photo-{index}.jpg",
+            "path": f"storage/app/state/uploads/photo-{index}.jpg",
             "category": "originals",
             "purpose": "permanent",
             "owner_name": "=HYPERLINK(\"https://unsafe.example\")" if index == 3 else "ФО 321",

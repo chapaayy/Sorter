@@ -2,7 +2,7 @@
 from __future__ import annotations
 import os
 from pathlib import Path
-from app.config import DATA_DIR, MODELS_DIR
+from app.config import DATA_DIR, MODELS_DIR, MODEL_CACHE_DIR
 from .disk_guard import reserve
 from ..database import connect
 from app.config import RUNS_DIR
@@ -38,6 +38,7 @@ def usage():
                       ("reference_cache",DATA_DIR/"cache"/"megaloc"),("models",MODELS_DIR),
                       ("runs",DATA_DIR/"runs"),("incoming",DATA_DIR/"incoming")):
         groups[key]=_size(root,seen)
+    groups["models"]+=_size(MODEL_CACHE_DIR,seen)
     groups["other"]= _size(DATA_DIR,seen)
     db_size=None
     try:
