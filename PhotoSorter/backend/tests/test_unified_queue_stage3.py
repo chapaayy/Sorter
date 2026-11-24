@@ -115,8 +115,8 @@ def cache_vector(root,digest):
     target.parent.mkdir(parents=True,exist_ok=True)
     np.save(target,np.asarray([0.9,0.1],dtype="float32"))
     with database.connect() as db:
-        db.execute("""INSERT INTO reference_cache(source_hash,model_signature,cache_path)
-        VALUES (%s,%s,%s)""",(digest,"a"*64,str(target)))
+        db.execute("""INSERT INTO reference_cache(source_hash,model_signature,cache_path,vector_sha256,dimensions)
+        VALUES (%s,%s,%s,%s,2)""",(digest,"a"*64,str(target),hashlib.sha256(target.read_bytes()).hexdigest()))
 
 def finish_fo(run_id):
     with database.connect() as db:

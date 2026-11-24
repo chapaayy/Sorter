@@ -76,6 +76,10 @@ def signature():
     for source in sorted(repo.rglob('*.py')):
         hasher.update(source.relative_to(repo).as_posix().encode()+b"\0")
         hasher.update(hashlib.sha256(source.read_bytes()).digest())
+    app_root=Path(__file__).resolve().parents[1]
+    for rel in ('recognition/engines/megaloc/loader.py','recognition/engines/megaloc/extractor.py','photos/reader.py'):
+        hasher.update(rel.encode()+b"\0")
+        hasher.update(hashlib.sha256((app_root/rel).read_bytes()).digest())
     # Content identity independent of cache location, rename or unchanged redeploy.
     return hashlib.sha256(f'megaloc:{digest}:{hasher.hexdigest()}:loader-v2'.encode()).hexdigest()
 

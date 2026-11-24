@@ -146,6 +146,8 @@ def counts(batch_id):
 
 def _has_owner(db,digest,owner):
     if owner is None:
+        from .reference_gc import _inconsistent_pins
+        if _inconsistent_pins(db):return True
         # Historical/pinned library members also protect their shared previews.
         return db.execute("""SELECT 1 FROM uploads WHERE kind='reference' AND finalized AND checksum=%s
             UNION ALL SELECT 1 FROM reference_version_members WHERE source_hash=%s
@@ -193,7 +195,7 @@ def gc_incomplete(limit=50,grace_seconds=86400):
         for path in root.glob("*/atomic-*.tmp"):
             if removed>=limit:return removed
             try:
-                if not re.fullmatch(r"atomic-[a-f0-9]{32}\\.tmp",path.name):continue
+                if not re.fullmatch(r"atomic-[a-f0-9]{32}\.tmp",path.name):continue
                 if not re.fullmatch(r"[a-f0-9]{2}",path.parent.name):continue
                 cache.safe_location(path)
                 if time.time()-path.stat().st_mtime<grace_seconds:continue

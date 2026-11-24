@@ -37,9 +37,9 @@ def usage():
     seen=set()
     groups={}
     groups["logs"]=_size_logfiles(RUNS_DIR,seen)
-    groups.update(photos=0,results=0,incoming=0)
+    groups.update(photos=0,results=0,incoming=0,thumbnails=0,reference_thumbnails=0,references=0,reference_cache=0,reference_uploads=0)
     # Walk only managed personal and temp trees, with inode dedup shared with other groups.
-    for prefix in (category_prefix(Category.FO_ORIGINAL),category_prefix(Category.PROCESSING_STAGING).parent):
+    for prefix in (category_prefix(Category.FO_ORIGINAL),category_prefix(Category.REFERENCE_OBJECT).parent,category_prefix(Category.PROCESSING_STAGING).parent):
         root=config.APP_STORAGE_ROOT/prefix
         for directory,subdirs,files in os.walk(root,followlinks=False):
             subdirs[:]=[d for d in subdirs if not (Path(directory)/d).is_symlink()]
@@ -53,13 +53,13 @@ def usage():
                 if identity in seen:continue
                 seen.add(identity)
                 category=_kind(path.relative_to(config.APP_STORAGE_ROOT).parts)
-                key="photos" if category in ("originals","normalized") else "incoming" if category=="incoming" else "results"
+                key={"originals":"photos","normalized":"photos","incoming":"incoming","reference_objects":"references","reference_gallery":"references","reference_cache":"reference_cache","reference_thumbnails":"reference_thumbnails","thumbnails":"thumbnails","reference_uploads":"reference_uploads"}.get(category,"results")
                 groups[key]+=st.st_size
     for key,root in (
                       ("references",DATA_DIR/"references"),("thumbnails",DATA_DIR/"cache"/"thumbnails"),
                       ("reference_cache",DATA_DIR/"cache"/"megaloc"),("models",MODELS_DIR),
                       ("runs",DATA_DIR/"runs")):
-        groups[key]=_size(root,seen)
+        groups[key]=groups.get(key,0)+_size(root,seen)
     groups["models"]+=_size(MODEL_CACHE_DIR,seen)
     groups["other"]= _size(DATA_DIR,seen)
     db_size=None

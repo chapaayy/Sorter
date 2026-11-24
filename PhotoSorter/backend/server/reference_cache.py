@@ -1,6 +1,7 @@
 """Persistent content/model-addressed reference embeddings, never FO vectors."""
 from __future__ import annotations
 import hashlib
+import io
 from pathlib import Path
 from typing import Iterable, Callable
 import numpy as np
@@ -22,15 +23,17 @@ def valid_vector(arr):
             and np.linalg.norm(arr.astype(np.float64))>0)
 
 def cached_feature(db,digest,fingerprint):
-    row=db.execute("""SELECT cache_path FROM reference_cache
+    row=db.execute("""SELECT cache_path,vector_sha256,dimensions FROM reference_cache
         WHERE source_hash=%s AND model_signature=%s""",(digest,fingerprint)).fetchone()
     if not row:return None
     target=location(digest,fingerprint)
     if Path(row["cache_path"])!=target:return None
     try:
         with safe_read(config.APP_STORAGE_ROOT,target.relative_to(config.APP_STORAGE_ROOT)) as stream:
-            arr=np.load(stream,allow_pickle=False)
-        if valid_vector(arr):return arr
+            raw=stream.read(4_100_001)
+        if len(raw)>4_100_000 or hashlib.sha256(raw).hexdigest()!=row['vector_sha256']:return None
+        arr=np.load(io.BytesIO(raw),allow_pickle=False)
+        if valid_vector(arr) and arr.size==row['dimensions']:return arr
     except (OSError,ValueError,EOFError):pass
     return None
 
@@ -81,12 +84,16 @@ class ReferenceCachedMegaLoc:
                 target=location(digest,self.fingerprint)
                 # Persist intent before atomic publication so a crash never creates
                 # an untracked canonical cache object. A missing file is a cache miss.
+                buffer=io.BytesIO()
+                np.save(buffer,vector,allow_pickle=False)
+                raw=buffer.getvalue()
                 with connect() as db:
-                    db.execute("""INSERT INTO reference_cache(source_hash,model_signature,cache_path,unowned_since)
-                        VALUES (%s,%s,%s,NULL) ON CONFLICT(source_hash,model_signature)
-                        DO UPDATE SET cache_path=excluded.cache_path,unowned_since=NULL""",(digest,self.fingerprint,str(target)))
+                    db.execute("""INSERT INTO reference_cache(source_hash,model_signature,cache_path,unowned_since,vector_sha256,dimensions)
+                        VALUES (%s,%s,%s,NULL,%s,%s) ON CONFLICT(source_hash,model_signature)
+                        DO UPDATE SET cache_path=excluded.cache_path,unowned_since=NULL,
+                            vector_sha256=excluded.vector_sha256,dimensions=excluded.dimensions""",(digest,self.fingerprint,str(target),hashlib.sha256(raw).hexdigest(),int(vector.size)))
                 with atomic_write(config.APP_STORAGE_ROOT,target.relative_to(config.APP_STORAGE_ROOT)) as stream:
-                    np.save(stream,vector,allow_pickle=False)
+                    stream.write(raw)
         for path in paths:
             vector,error=found.get(path,(None,RuntimeError('Missing feature')))
             yield path,vector,error

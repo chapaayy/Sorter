@@ -24,7 +24,7 @@ BUCKETS=(
     "originals","normalized","results_files","results_zip",
     "results_temporary","reference_objects","reference_gallery",
     "references_zip","reference_uploads","reference_other",
-    "thumbnails","reference_cache","other_cache",
+    "thumbnails","reference_thumbnails","reference_cache","other_cache",
     "runs","logs","incoming","models","other",
 )
 BATCH_METRICS=("originals","normalized","results_files","results_zip","results_temporary")
@@ -41,7 +41,11 @@ def _kind(parts: tuple[str,...]) -> str:
             if len(parts)>6 and parts[6]==".archives":
                 return "results_zip" if parts[-1].lower().endswith(".zip") else "results_temporary"
             return "results_files"
+    if section=="users" and len(parts)>2 and parts[2]=="thumbnails":return "thumbnails"
+    if parts[:2]==("shared","references") and len(parts)>2:
+        return {"objects":"reference_objects","gallery":"reference_gallery","thumbnails":"reference_thumbnails","embeddings":"reference_cache"}.get(parts[2],"reference_other")
     if section=="temporary":
+        if parts[:3]==("temporary","uploads","references"):return "reference_uploads"
         if parts[1:3]==("uploads","fo"):return "incoming"
         if len(parts)>1 and parts[1] in ("processing","transcoding","video-frames"):return "results_temporary"
         return "other"
@@ -170,6 +174,8 @@ def _scan(data_dir:Path,models_dir:Path,batch_names:dict,run_to_batch:dict,
         users=category_prefix(Category.FO_ORIGINAL)
         temporary=category_prefix(Category.PROCESSING_STAGING).parent
         walk(app_root/users,prefix=users.parts)
+        shared=category_prefix(Category.REFERENCE_OBJECT).parent
+        if not partial:walk(app_root/shared,prefix=shared.parts)
         if not partial:walk(app_root/temporary,prefix=temporary.parts)
     if not partial:walk(data_dir)
     if not partial:walk(models_dir,True)
@@ -193,4 +199,7 @@ def breakdown():
     except Exception:metadata_available=False
     report=_scan(DATA_DIR,MODELS_DIR,names,lookup,model_cache_dir=MODEL_CACHE_DIR,app_root=config.APP_STORAGE_ROOT)
     report["batch_metadata_available"]=metadata_available
+    from .reference_gc import history_usage
+    try:report["reference_history"]=history_usage()
+    except Exception:report["reference_history"]=None
     return report

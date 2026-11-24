@@ -65,6 +65,9 @@ def _owner(parts: tuple[str, ...], names: dict, jobs: dict):
     if len(parts) < 2:
         return ("system", None, None)
     section, identity = parts[0], parts[1]
+    if section=="users" and len(parts)>2 and parts[2]=="thumbnails":return ("user",identity,None)
+    if section=="shared":return ("shared",None,None)
+    if parts[:3]==("temporary","uploads","references") and len(parts)>3:return ("reference_session",parts[3],None)
     if section=="users" and len(parts)>4 and parts[2]=="batches":
         batch_id=parts[3]
         return ("batch",batch_id,names.get(batch_id))
@@ -101,7 +104,7 @@ def _collect(data_dir: Path, models_dir: Path, names: dict, jobs: dict,
     roots=[("data", data_dir), ("models", models_dir)]
     personal_prefixes={}
     if app_root is not None:
-        for name,prefix in (("users",category_prefix(Category.FO_ORIGINAL)),("temporary",category_prefix(Category.PROCESSING_STAGING).parent)):
+        for name,prefix in (("users",category_prefix(Category.FO_ORIGINAL)),("shared",category_prefix(Category.REFERENCE_OBJECT).parent),("temporary",category_prefix(Category.PROCESSING_STAGING).parent)):
             personal_prefixes[name]=prefix
         roots=[(name,app_root/prefix) for name,prefix in personal_prefixes.items()]+roots
     if model_cache_dir is not None:
@@ -276,7 +279,8 @@ _CATEGORY_LABELS = {
     "references_zip": "ZIP образцов",
     "reference_uploads": "Загрузка образцов",
     "reference_other": "Прочие образцы",
-    "thumbnails": "Миниатюры",
+    "thumbnails": "Миниатюры ФО",
+    "reference_thumbnails": "Миниатюры образцов",
     "reference_cache": "Признаки MegaLoc",
     "other_cache": "Кэши",
     "runs": "Данные обработок",

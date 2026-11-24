@@ -4,6 +4,8 @@ from __future__ import annotations
 import hashlib
 import uuid
 from pathlib import Path
+from app import config
+from app.storage.filesystem import safe_read
 
 from fastapi import HTTPException
 from ..database import connect
@@ -77,7 +79,7 @@ def finish(session_id,upload_id):
                 raise HTTPException(409,"Образец загружен не полностью") from exc
         else:
             raise HTTPException(409,"Исходный файл отсутствует, повторите передачу")
-        with part.open("rb") as stream:
+        with safe_read(config.APP_STORAGE_ROOT,part.relative_to(config.APP_STORAGE_ROOT)) as stream:
             digest=hashlib.file_digest(stream,"sha256").hexdigest()
         if entry["checksum"] is not None and entry["checksum"]!=digest:
             raise HTTPException(422,"SHA-256 образца не совпадает")
