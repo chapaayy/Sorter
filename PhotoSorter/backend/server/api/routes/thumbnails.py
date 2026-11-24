@@ -5,7 +5,9 @@ from fastapi import APIRouter,HTTPException
 from fastapi.responses import FileResponse
 from ...database import connect
 from ...storage import thumbnail_cache as cache
-from ...services import thumbnails
+from ...services import thumbnails,operations
+from ...storage.reference_lifecycle import ReadPin
+from ..file_response import LeasedFileResponse
 
 router=APIRouter(prefix="/api/thumbnails",tags=["thumbnails"])
 
@@ -15,7 +17,7 @@ def thumbnail(photo_id:str):
     except ValueError:raise HTTPException(404,"Фотография не найдена")
     with connect() as db:
         row=db.execute("""SELECT t.state,t.checksum,t.version,
-           u.kind,u.batch_id,u.original_media_type,u.media_action,b.delete_state
+           u.kind,u.batch_id,u.original_media_type,u.media_action,b.delete_state,b.owner_id
            FROM uploads u LEFT JOIN thumbnail_tasks t ON t.upload_id=u.id
            LEFT JOIN batches b ON b.id=u.batch_id WHERE u.id=%s AND u.finalized""",
            (uid,)).fetchone()
@@ -24,11 +26,20 @@ def thumbnail(photo_id:str):
     if row["original_media_type"] is not None and row["media_action"] is None:
         raise HTTPException(404,"Для этого формата нет миниатюры")
     if row["state"]!="ready":raise HTTPException(202,"Миниатюра готовится")
-    try:file=cache.safe_location(cache.location(row["checksum"],row["version"]))
-    except ValueError:raise HTTPException(404,"Миниатюра недоступна")
-    if not file.is_file():raise HTTPException(202,"Миниатюра готовится")
-    return FileResponse(file,media_type="image/webp",
-                        headers={"Cache-Control":"private, max-age=3600"})
+    token=None
+    pin=ReadPin()
+    try:
+        if row["kind"]=="fo":
+            if row["owner_id"] is None:raise ValueError("Missing owner")
+            token=operations.start(row["batch_id"],"original")
+        file=cache.safe_location(cache.location(row["checksum"],row["version"],owner_id=row["owner_id"]))
+        if not file.is_file():raise HTTPException(202,"Миниатюра готовится")
+        return LeasedFileResponse(file,lease=token,archive_pin=pin,media_type="image/webp",
+                            headers={"Cache-Control":"private, max-age=3600"})
+    except BaseException:
+        pin.close()
+        if token:operations.finish(token)
+        raise
 
 @router.get("/status/{batch_id}/counts")
 def counts(batch_id:str):

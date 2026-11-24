@@ -1,23 +1,32 @@
-"""Versioned content-addressed preview paths. Never write into uploads or references."""
-from __future__ import annotations
-import re
+"""Owner-scoped, versioned thumbnail keys using the shared storage contract."""
 from pathlib import Path
-from app.config import DATA_DIR
+from app import config
+from app.storage.categories import Category
+from app.storage.paths import managed_path,managed_prefix,digest_key,user_key
+from .paths import owned_file
 
 VERSION=1
 MAX_SIDE=480
 QUALITY=78
 PIXEL_LIMIT=30_000_000
-ROOT=DATA_DIR/"cache"/"thumbnails"
 
-def location(checksum:str,version:int=VERSION)->Path:
-    if not re.fullmatch(r"[0-9a-f]{64}",str(checksum)) or version!=VERSION:
-        raise ValueError("Invalid thumbnail key or version")
-    return ROOT/f"v{version}"/checksum[:2]/f"{checksum}.webp"
+def location(checksum:str,version:int=VERSION,*,owner_id=None)->Path:
+    digest=digest_key(checksum)
+    if version!=VERSION:raise ValueError("Invalid thumbnail version")
+    if owner_id is None:
+        return managed_path(Category.REFERENCE_THUMBNAIL,version=version,prefix=digest[:2],hash=digest)
+    return managed_path(Category.FO_THUMBNAIL,user_id=owner_id,version=version,prefix=digest[:2],hash=digest)
 
 def safe_location(path:Path)->Path:
-    root=ROOT.resolve()
-    value=Path(path)
-    if value.is_symlink() or not value.resolve().is_relative_to(root):
-        raise ValueError("Unsafe thumbnail path")
-    return value
+    return owned_file(path,config.APP_STORAGE_ROOT)
+
+def roots():
+    """Yield (owner, version directory); no SAM/filename-derived paths."""
+    yield None,managed_prefix(Category.REFERENCE_THUMBNAIL,version=VERSION)
+    users=managed_prefix(Category.FO_THUMBNAIL)
+    if not users.is_dir() or users.is_symlink():return
+    for item in users.iterdir():
+        if item.is_symlink() or not item.is_dir():continue
+        try:owner=user_key(item.name)
+        except ValueError:continue
+        yield int(owner),managed_prefix(Category.FO_THUMBNAIL,user_id=owner,version=VERSION)

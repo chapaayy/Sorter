@@ -8,6 +8,7 @@ from ..file_response import LeasedFileResponse
 from ...storage.paths import owned_file,batch_root,result_media_dir
 from ...storage import thumbnail_cache as cache
 from ...storage.reference_objects import object_root
+from ...storage.reference_lifecycle import ReadPin
 from app.config import DATA_DIR
 from app.photos.reader import EXTS
 from ...security.access_policy import check_published,is_viewer
@@ -54,8 +55,20 @@ def image(run_id:str,index:int,kind:str="query",candidate:int=0,request:Request=
         if not 0<=candidate<len(top):raise HTTPException(404,"Образец не найден")
         filename=top[candidate]["reference"]
     else:raise HTTPException(422,"Неверный тип изображения")
-    file = file_allowed(Path(filename),run_id,kind)
-    return FileResponse(file, media_type="application/octet-stream" if kind=="reference" else None, headers={"Cache-Control":"private, no-store"})
+    if kind=="reference":
+        pin=ReadPin()
+        try:
+            from PIL import Image
+            file=file_allowed(Path(filename),run_id,kind)
+            with Image.open(file) as picture:
+                mime=Image.MIME.get(picture.format,"application/octet-stream")
+            return LeasedFileResponse(file,archive_pin=pin,media_type=mime,
+                headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
+        except BaseException:
+            pin.close()
+            raise
+    file=file_allowed(Path(filename),run_id,kind)
+    return FileResponse(file,headers={"Cache-Control":"private, no-store"})
 
 
 def _video(run_id,row,kind):
@@ -64,14 +77,14 @@ def _video(run_id,row,kind):
         if not job:raise HTTPException(404,"Видео не найдено")
         thumb=None
         if kind=="poster":
-            thumb=db.execute("""SELECT t.checksum,t.version FROM thumbnail_tasks t
-                JOIN uploads u ON u.id=t.upload_id WHERE u.id=%s AND u.batch_id=%s AND t.state='ready'""",
+            thumb=db.execute("""SELECT t.checksum,t.version,b.owner_id FROM thumbnail_tasks t
+                JOIN uploads u ON u.id=t.upload_id JOIN batches b ON b.id=u.batch_id WHERE u.id=%s AND u.batch_id=%s AND t.state='ready'""",
                 (row.get("upload_id"),job["batch_id"])).fetchone()
     token=operations.start(job["batch_id"],"original")
     try:
         if kind=="poster":
             if not thumb:raise FileNotFoundError()
-            file=cache.safe_location(cache.location(thumb["checksum"],thumb["version"]))
+            file=cache.safe_location(cache.location(thumb["checksum"],thumb["version"],owner_id=thumb["owner_id"]))
             mime="image/webp"
         else:
             file=owned_file(Path(row["copy"]),result_media_dir(run_id))

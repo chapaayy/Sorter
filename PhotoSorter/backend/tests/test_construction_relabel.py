@@ -43,6 +43,9 @@ def test_rename_changes_current_version_and_keeps_historical_originals(system,mo
     response = originals.original(str(reference_id))
     assert Path(response.path).read_bytes() == source.read_bytes()
     assert str(response.path)==str(source)
+    import asyncio
+    from .asgi_response import response_bytes
+    assert asyncio.run(response_bytes(response))==source.read_bytes()
 
 
 def test_only_address_changes_without_new_version_even_with_queued_fo(system):

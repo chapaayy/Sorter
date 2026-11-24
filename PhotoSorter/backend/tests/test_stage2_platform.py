@@ -15,7 +15,6 @@ def thumbs(sandbox,monkeypatch):
     from server import uploads
     from server.api.routes import thumbnails as endpoint
     monkeypatch.setattr(thumbnails,"DATA_DIR",sandbox)
-    monkeypatch.setattr(cache,"ROOT",sandbox/"cache"/"thumbnails")
     return sandbox
 
 def _finalize_picture(root,batch_id,raw,filename="image.jpg"):
@@ -59,6 +58,9 @@ def test_finalize_enqueues_webp_later_and_uses_exif(thumbs):
         assert rendered.height>rendered.width, "EXIF rotation must be applied"
         assert max(rendered.size)<=cache.MAX_SIDE
     assert batches.get(own)["thumbnail_state"]=="ready"
+    import asyncio
+    from .asgi_response import response_bytes
+    assert asyncio.run(response_bytes(response))
     cleanup.request(own)
     assert cleanup.cleanup_one(own)=="completed"
 
@@ -91,7 +93,8 @@ def test_content_addressed_cache_reuse_and_owner_safe_gc(thumbs,monkeypatch):
     assert thumbnails.complete(thumbnails.claim())=="ready"
     assert thumbnails.complete(thumbnails.claim())=="ready"
     assert len(rendered)==1
-    shared=cache.location(hashlib.sha256(data).hexdigest())
+    from server.storage.paths import batch_owner
+    shared=cache.location(hashlib.sha256(data).hexdigest(),owner_id=batch_owner(first))
     assert shared.is_file()
     cleanup.request(first)
     assert cleanup.cleanup_one(first)=="completed"
@@ -230,9 +233,11 @@ def test_expired_final_attempt_becomes_failed(thumbs):
 
 def test_stale_temp_webp_cleanup_never_removes_real_preview(thumbs):
     import time
-    root=cache.ROOT/"v1"/"aa"
+    from app.storage.paths import managed_prefix
+    from app.storage.categories import Category
+    root=managed_prefix(Category.REFERENCE_THUMBNAIL,version=1)/"aa"
     root.mkdir(parents=True)
-    temp=root/".thumb-123.webp.tmp"
+    temp=root/("atomic-"+"a"*32+".tmp")
     temp.write_bytes(b"temporary")
     os.utime(temp,(time.time()-90000,time.time()-90000))
     live=root/("a"*64+".webp")
@@ -240,3 +245,34 @@ def test_stale_temp_webp_cleanup_never_removes_real_preview(thumbs):
     assert thumbnails.gc_incomplete(limit=10,grace_seconds=86400)==1
     assert not temp.exists()
     assert live.exists()
+
+
+def test_previews_are_shared_only_within_same_owner(thumbs):
+    from server.storage.paths import batch_owner
+    from server.services import cleanup
+    from .test_stage1_lifecycle import _batch
+    first=_batch(thumbs,with_photo=False)
+    second=_batch(thumbs,with_photo=False)
+    with connect() as db:
+        owner=db.execute("INSERT INTO users(username,access_role) VALUES (%s,'viewer') RETURNING id",
+                         ("thumb-"+uuid.uuid4().hex,)).fetchone()["id"]
+        db.execute("UPDATE batches SET owner_id=%s WHERE id=%s",(owner,second))
+    data=_jpg()
+    digest=hashlib.sha256(data).hexdigest()
+    a=_finalize_picture(thumbs,first,data)
+    b=_finalize_picture(thumbs,second,data)
+    assert thumbnails.complete(thumbnails.claim())=="ready"
+    assert thumbnails.complete(thumbnails.claim())=="ready"
+    paths=[cache.location(digest,owner_id=batch_owner(batch)) for batch in (first,second)]
+    assert all(path.is_file() for path in paths)
+    assert paths[0]!=paths[1]
+    assert paths[0].stat().st_ino!=paths[1].stat().st_ino
+    assert not cache.location(digest).exists()
+    cleanup.request(first)
+    assert cleanup.cleanup_one(first)=="completed"
+    assert thumbnails.gc_unowned(grace_seconds=0)>=1
+    assert not paths[0].exists() and paths[1].exists()
+    cleanup.request(second)
+    assert cleanup.cleanup_one(second)=="completed"
+    assert thumbnails.gc_unowned(grace_seconds=0)>=1
+    assert not paths[1].exists()

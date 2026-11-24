@@ -27,11 +27,9 @@ def reference(thumbs,monkeypatch):
     from server.services import reference_publication
     from server.db.repositories import reference_versions
     from app.photos.construction import parse_key
-    staging=thumbs/"reference_staging"
-    monkeypatch.setattr(reference_objects,"ROOT",staging)
     raw=_jpg()
     uid=uuid.uuid4()
-    target=staging/str(uuid.uuid4())/"files"/(str(uid)+".jpg")
+    target=reference_objects.object_path(hashlib.sha256(raw).hexdigest())
     target.parent.mkdir(parents=True)
     target.write_bytes(raw)
     sam="SAM "+str(uuid.uuid4().int%10**8).zfill(8)
@@ -47,7 +45,7 @@ def reference(thumbs,monkeypatch):
             "reference_id":uid,"sam":sam,"filename":"one.jpg",
             "source_hash":hashlib.sha256(raw).hexdigest(),
             "target_path":str(target),"declared_size":len(raw),
-            "source_kind":"staged"}],before["model_signature"] or "test-model")
+            "source_kind":"staged"}],before["model_signature"] or "a"*64)
     try:
         yield uid
     finally:

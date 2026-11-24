@@ -35,7 +35,8 @@ class LeasedFileResponse(FileResponse):
             # FileResponse can return early for 400/416 or stop on disconnect.
             # Don't defer the release to its success-only background callback.
             if self.archive_pin is not None:
-                self.archive_pin.close()
+                with CancelScope(shield=True):
+                    await run_in_threadpool(self.archive_pin.close)
             if self.lease:
                 with CancelScope(shield=True):
                     await run_in_threadpool(operations.finish, self.lease)

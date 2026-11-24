@@ -10,6 +10,7 @@ from ...database import connect
 from ...media.preview import INLINE_TYPES
 from ...storage.paths import owned_file,batch_dir,batch_root
 from ...services import operations
+from ...storage.reference_lifecycle import ReadPin
 from ..file_response import LeasedFileResponse
 
 router=APIRouter(prefix="/api/photos",tags=["photos"])
@@ -73,7 +74,9 @@ def original(photo_id:str):
             WHERE u.id=%s""",(uid,)).fetchone()
     if not row or not row["finalized"]:raise HTTPException(404,"Фотография не найдена")
     token=operations.start(row["batch_id"],"original") if row["batch_id"] else None
+    pin=None
     try:
+        if row["kind"]=="reference":pin=ReadPin()
         if row["kind"]=="fo":
             root=batch_dir(row["batch_id"])
         else:
@@ -88,7 +91,8 @@ def original(photo_id:str):
         headers={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
         if attachment:
             headers["Content-Disposition"]="attachment; filename*=UTF-8''"+quote(row["filename"],safe="")
-        return LeasedFileResponse(path,lease=token,media_type=content_type,headers=headers)
+        return LeasedFileResponse(path,lease=token,archive_pin=pin,media_type=content_type,headers=headers)
     except BaseException:
+        if pin:pin.close()
         operations.finish(token)
         raise

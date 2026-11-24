@@ -2,7 +2,6 @@
 from __future__ import annotations
 import io
 import os
-import tempfile
 import uuid
 from pathlib import Path
 from PIL import Image,ImageOps,ImageCms,UnidentifiedImageError
@@ -11,6 +10,10 @@ from . import operations
 from ..storage import thumbnail_cache as cache
 from ..storage.paths import owned_file,batch_dir
 from app.config import DATA_DIR
+from app import config
+from app.storage.filesystem import atomic_write,safe_unlink
+from app.storage.temporary import temporary_operation
+from ..storage.reference_lifecycle import ReadPin,try_collect
 from ..storage.reference_objects import object_root
 
 MAX_ATTEMPTS=3
@@ -30,8 +33,9 @@ def claim():
             WHERE state='running' AND lease_until<now() AND attempts>=%s""",
             (MAX_ATTEMPTS,))
         row=db.execute("""SELECT t.upload_id,t.checksum,t.version,u.kind,u.batch_id,u.sam,u.target_path,
-                 u.media_action,u.original_media_type
+                 u.media_action,u.original_media_type,b.owner_id
           FROM thumbnail_tasks t JOIN uploads u ON u.id=t.upload_id
+          LEFT JOIN batches b ON b.id=u.batch_id
           WHERE u.finalized AND (t.state='queued' OR
             (t.state='running' AND t.lease_until<now()))
             AND t.attempts<%s
@@ -55,55 +59,45 @@ def render(source:Path,destination:Path):
     from ..media.formats import register_heif
     register_heif()
     Image.MAX_IMAGE_PIXELS=cache.PIXEL_LIMIT
-    destination.parent.mkdir(parents=True,exist_ok=True)
-    fd,name=tempfile.mkstemp(prefix=".thumb-",suffix=".webp.tmp",dir=destination.parent)
-    tmp=Path(name)
-    try:
-        with Image.open(source) as img:
-            img.load()
-            img=ImageOps.exif_transpose(img)
-            # Convert tagged RGB sources to sRGB; malformed ICC never alters originals.
-            icc=img.info.get("icc_profile")
-            if icc and len(icc)<=131072 and img.mode=="RGB":
-                try:
-                    src_profile=ImageCms.ImageCmsProfile(io.BytesIO(icc))
-                    img=ImageCms.profileToProfile(img,src_profile,
-                        ImageCms.createProfile("sRGB"),outputMode="RGB")
-                except (OSError,ValueError,TypeError):
-                    pass
-            if img.width*img.height>cache.PIXEL_LIMIT:
-                raise ValueError("Image too large")
-            img.thumbnail((cache.MAX_SIDE,cache.MAX_SIDE),Image.Resampling.LANCZOS)
-            if img.mode in ("P","LA","RGBA") or "transparency" in img.info:
-                alpha=img.convert("RGBA")
-                base=Image.new("RGB",alpha.size,(255,255,255))
-                base.paste(alpha,mask=alpha.getchannel("A"))
-                img=base
-            else:
-                img=img.convert("RGB")
-            fileobj=os.fdopen(fd,"wb")
-            fd=-1
-            with fileobj as output:
-                img.save(output,format="WEBP",quality=cache.QUALITY,method=4)
-                output.flush()
-                os.fsync(output.fileno())
-        if destination.is_symlink():raise ValueError("Invalid cached thumbnail")
-        os.replace(tmp,destination)
-    finally:
-        if fd!=-1:os.close(fd)
-        tmp.unlink(missing_ok=True)
+    with Image.open(source) as img:
+        img.load()
+        img=ImageOps.exif_transpose(img)
+        # Convert tagged RGB sources to sRGB; malformed ICC never alters originals.
+        icc=img.info.get("icc_profile")
+        if icc and len(icc)<=131072 and img.mode=="RGB":
+            try:
+                src_profile=ImageCms.ImageCmsProfile(io.BytesIO(icc))
+                img=ImageCms.profileToProfile(img,src_profile,
+                    ImageCms.createProfile("sRGB"),outputMode="RGB")
+            except (OSError,ValueError,TypeError):
+                pass
+        if img.width*img.height>cache.PIXEL_LIMIT:
+            raise ValueError("Image too large")
+        img.thumbnail((cache.MAX_SIDE,cache.MAX_SIDE),Image.Resampling.LANCZOS)
+        if img.mode in ("P","LA","RGBA") or "transparency" in img.info:
+            alpha=img.convert("RGBA")
+            base=Image.new("RGB",alpha.size,(255,255,255))
+            base.paste(alpha,mask=alpha.getchannel("A"))
+            img=base
+        else:
+            img=img.convert("RGB")
+        with atomic_write(config.APP_STORAGE_ROOT,destination.relative_to(config.APP_STORAGE_ROOT)) as output:
+            img.save(output,format="WEBP",quality=cache.QUALITY,method=4)
 
 def complete(task):
     token=None
+    pin=None
     try:
         if task["batch_id"]:
             token=operations.start(task["batch_id"],"thumbnail")
-        output=cache.location(task["checksum"],task["version"])
+        pin=ReadPin()
+        if task["kind"]=="fo" and task["owner_id"] is None:raise ValueError("Missing thumbnail owner")
+        output=cache.safe_location(cache.location(task["checksum"],task["version"],owner_id=task["owner_id"]))
         if not output.is_file():
             source=_image_source(task)
             if (task.get("original_media_type") or "").startswith("video/"):
                 from ..media.video import poster
-                with tempfile.TemporaryDirectory() as tmp:
+                with temporary_operation(config.APP_STORAGE_ROOT,"thumbnail") as tmp:
                     frame=Path(tmp)/'poster.jpg'
                     poster(source,frame)
                     render(frame,output)
@@ -127,6 +121,7 @@ def complete(task):
                 _refresh_batch(db,task["batch_id"])
         return "error"
     finally:
+        if pin:pin.close()
         if token:operations.finish(token)
 
 def _refresh_batch(db,batch_id):
@@ -146,40 +141,52 @@ def counts(batch_id):
            WHERE u.kind='fo' AND u.finalized AND (u.original_media_type IS NULL OR u.media_action IS NOT NULL) AND u.batch_id=%s""",(batch_id,)).fetchone()
     return row
 
+def _has_owner(db,digest,owner):
+    if owner is None:
+        # Historical/pinned library members also protect their shared previews.
+        return db.execute("""SELECT 1 FROM uploads WHERE kind='reference' AND finalized AND checksum=%s
+            UNION ALL SELECT 1 FROM reference_version_members WHERE source_hash=%s
+            UNION ALL SELECT 1 FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id
+            WHERE f.checksum=%s AND s.upload_state<>'cancelled' AND s.preparation_state NOT IN ('completed','stopped')
+            LIMIT 1""",(digest,digest,digest)).fetchone()
+    return db.execute("""SELECT 1 FROM uploads u JOIN batches b ON b.id=u.batch_id
+        WHERE u.kind='fo' AND u.finalized AND u.checksum=%s AND b.owner_id=%s LIMIT 1""",(digest,owner)).fetchone()
+
 def gc_unowned(limit=100,grace_seconds=86400):
-    """Only cache files without *any* live upload owner; never raw photographs."""
+    """Remove canonical ownerless previews only, synchronized with all readers."""
     import time
     removed=0
-    root=cache.ROOT
-    if not root.exists():return 0
-    for path in root.glob(f"v{cache.VERSION}/*/*.webp"):
-        if removed>=limit:break
-        try:
-            cache.safe_location(path)
-            if time.time()-path.stat().st_mtime<grace_seconds:continue
-            digest=path.stem
-            expected=cache.location(digest)
-            if expected!=path:continue
-            with connect() as db:
-                owner=db.execute("SELECT 1 FROM uploads WHERE finalized AND checksum=%s LIMIT 1",
-                                 (digest,)).fetchone()
-            if owner:continue
-            path.unlink(missing_ok=True)
-            removed+=1
-        except (OSError,ValueError):continue
+    for owner,root in cache.roots():
+        for path in root.glob("*/*.webp"):
+            if removed>=limit:return removed
+            try:
+                expected=cache.location(path.stem,owner_id=owner)
+                if expected!=path:continue
+                cache.safe_location(path)
+                if time.time()-path.stat().st_mtime<grace_seconds:continue
+                with connect() as db:
+                    if not try_collect(db):return removed
+                    if _has_owner(db,path.stem,owner):continue
+                    safe_unlink(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
+                    removed+=1
+            except (OSError,ValueError):continue
     return removed
 
 def gc_incomplete(limit=50,grace_seconds=86400):
-    """Remove only stale random temporary WebP fragments left by dead workers."""
-    import time
+    """Only the atomic_write fragments in known preview namespaces."""
+    import time,re
     removed=0
-    for path in cache.ROOT.glob(f"v{cache.VERSION}/*/.thumb-*.webp.tmp"):
-        if removed>=limit:break
-        try:
-            cache.safe_location(path)
-            if path.is_symlink():continue
-            if time.time()-path.stat().st_mtime<grace_seconds:continue
-            path.unlink(missing_ok=True)
-            removed+=1
-        except (OSError,ValueError):continue
+    for owner,root in cache.roots():
+        for path in root.glob("*/atomic-*.tmp"):
+            if removed>=limit:return removed
+            try:
+                if not re.fullmatch(r"atomic-[a-f0-9]{32}\\.tmp",path.name):continue
+                if not re.fullmatch(r"[a-f0-9]{2}",path.parent.name):continue
+                cache.safe_location(path)
+                if time.time()-path.stat().st_mtime<grace_seconds:continue
+                with connect() as db:
+                    if not try_collect(db):return removed
+                    safe_unlink(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
+                    removed+=1
+            except (OSError,ValueError):continue
     return removed
