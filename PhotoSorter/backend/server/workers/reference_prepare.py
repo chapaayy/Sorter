@@ -112,8 +112,7 @@ def run(job_id,*,warm_megaloc=None):
             raise PreparationCancelled("Подготовка остановлена")
         if item["state"]=="finalized":
             try:
-                file=reference_objects.verify(item["stored_path"],
-                    reference_objects.session_root(session_id),item["declared_size"],
+                file=reference_objects.verify_object(item["stored_path"],item["declared_size"],
                     digest=item["checksum"])
             except (ValueError,OSError,TypeError) as exc:
                 _record_file_error(job_id,item["upload_id"],exc)

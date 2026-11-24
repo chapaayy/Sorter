@@ -118,7 +118,7 @@ def compare(files):
         if key in matches:
             continue
         try:
-            storage.verify(row["target_path"],storage.ROOT,key[2],digest=key[1])
+            storage.verify_object(row["target_path"],key[2],digest=key[1])
         except (OSError,TypeError,ValueError):
             continue
         matches.add(key)
@@ -185,8 +185,7 @@ def _complete_locked(db,session_id):
             return None
         if entry["state"]=="finalized":
             try:
-                storage.verify(entry["stored_path"],storage.session_root(session_id),
-                               entry["declared_size"])
+                storage.verify_object(entry["stored_path"],entry["declared_size"],digest=entry["checksum"])
             except (OSError,TypeError,ValueError):
                 return None
     if all(entry["state"]=="duplicate" for entry in entries):
@@ -229,7 +228,7 @@ def status(session_id):
             if saved_offset==0:missing+=1
         elif state=="finalized":
             try:
-                storage.verify(entry["stored_path"],storage.session_root(session_id),size)
+                storage.verify_object(entry["stored_path"],size,digest=entry["checksum"])
                 finalized+=1
             except (ValueError,OSError,TypeError):
                 state="missing_saved"

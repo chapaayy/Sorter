@@ -51,7 +51,7 @@ def build_plan(version, members, constructions) -> ReferenceExport:
             raise HTTPException(409, "В библиотеке найден неподдерживаемый образец")
         source = Path(item["target_path"])
         try:
-            reference_objects.verify(source, reference_objects.ROOT, item["declared_size"])
+            reference_objects.verify_object(source,item["declared_size"],digest=item["source_hash"])
         except (OSError, ValueError) as exc:
             raise HTTPException(409, "Не удалось прочитать один из опубликованных образцов") from exc
         groups[item["sam"]].append((source, item))
@@ -128,7 +128,7 @@ def _build(plan,target,directory):
             with zipfile.ZipFile(output, mode="w", compression=zipfile.ZIP_STORED,
                                  allowZip64=True) as archive:
                 for source, name, size in plan.files:
-                    reference_objects.verify(source, reference_objects.ROOT, size)
+                    reference_objects.verify_object(source,size,digest=source.name)
                     archive.write(source, arcname=name, compress_type=zipfile.ZIP_STORED)
             output.flush()
             os.fsync(output.fileno())

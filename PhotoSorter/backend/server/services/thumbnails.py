@@ -11,6 +11,7 @@ from . import operations
 from ..storage import thumbnail_cache as cache
 from ..storage.paths import owned_file,batch_dir
 from app.config import DATA_DIR
+from ..storage.reference_objects import object_root
 
 MAX_ATTEMPTS=3
 LEASE_SECONDS=300
@@ -44,7 +45,7 @@ def claim():
 
 def _image_source(task):
     root=batch_dir(task["batch_id"]) if task["kind"]=="fo" else (
-        DATA_DIR/"references"/str(task["sam"]))
+        object_root())
     path=owned_file(Path(task["target_path"]),root)
     if not path.is_file():raise FileNotFoundError(path)
     return path

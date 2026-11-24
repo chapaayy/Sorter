@@ -23,15 +23,13 @@ def _verified_duplicate(db,session_id,entry,digest,upload_id):
                                       entry["declared_size"],upload_id)
     for match in published:
         try:
-            storage.verify(match["target_path"],storage.ROOT,
-                           entry["declared_size"],digest=digest)
+            storage.verify_object(match["target_path"],entry["declared_size"],digest=digest)
             return True
         except (OSError,ValueError,TypeError):
             continue
     for match in staged:
         try:
-            storage.verify(match["stored_path"],storage.session_root(session_id),
-                           entry["declared_size"],digest=digest)
+            storage.verify_object(match["stored_path"],entry["declared_size"],digest=digest)
             return True
         except (OSError,ValueError,TypeError):
             continue
@@ -62,8 +60,10 @@ def finish(session_id,upload_id):
         db.execute("SELECT pg_advisory_xact_lock(723409133)")
         session,entry=reference_imports._file_state(db,session_id,upload_id,lock=True)
         if entry["state"]=="finalized":
+            storage.remove_partial_after_commit(session_id,upload_id)
             return {"sha256":entry["checksum"],"already_finalized":True}
         if entry["state"]=="duplicate":
+            storage.remove_partial_after_commit(session_id,upload_id)
             return {"sha256":entry["checksum"],"already_present":True}
         if session["upload_state"]!="uploading":
             raise HTTPException(409,"Сессия уже закрыта")
@@ -75,11 +75,7 @@ def finish(session_id,upload_id):
             except (ValueError,OSError) as exc:
                 raise HTTPException(409,"Образец загружен не полностью") from exc
         else:
-            part=storage.object_path(session_id,upload_id,entry["filename"])
-            try:
-                storage.verify(part,storage.session_root(session_id),entry["declared_size"])
-            except (ValueError,OSError) as exc:
-                raise HTTPException(409,"Исходный файл отсутствует, повторите передачу") from exc
+            raise HTTPException(409,"Исходный файл отсутствует, повторите передачу")
         with part.open("rb") as stream:
             digest=hashlib.file_digest(stream,"sha256").hexdigest()
         if entry["checksum"] is not None and entry["checksum"]!=digest:
@@ -91,11 +87,7 @@ def finish(session_id,upload_id):
             # A server-side duplicate also counts as a completed manifest item.
             repository.mark_duplicate(db,session_id,upload_id,digest)
         else:
-            if part==storage.partial(session_id,upload_id):
-                target=storage.publish_staged_file(session_id,upload_id,entry["filename"],
-                                                   entry["declared_size"],digest)
-            else:
-                target=part
+            target=storage.publish_staged_file(session_id,upload_id,entry["filename"],entry["declared_size"],digest)
             repository.finish_file(db,session_id,upload_id,digest,target)
         # This takes session FOR UPDATE only after per-file processing.
         reference_imports.reconcile(db,session_id)

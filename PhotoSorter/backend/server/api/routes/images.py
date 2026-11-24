@@ -7,6 +7,7 @@ from ...services import operations
 from ..file_response import LeasedFileResponse
 from ...storage.paths import owned_file,batch_root,result_media_dir
 from ...storage import thumbnail_cache as cache
+from ...storage.reference_objects import object_root
 from app.config import DATA_DIR
 from app.photos.reader import EXTS
 from ...security.access_policy import check_published,is_viewer
@@ -21,9 +22,9 @@ def file_allowed(file:Path, run_id=None, kind=None):
         if not row:raise HTTPException(404,"Запуск не найден")
         roots=([batch_root(row["batch_id"])] if kind=="query" else
                [result_media_dir(run_id)] if kind=="copy" else
-               [DATA_DIR/"references",DATA_DIR/"reference_staging"])
+               [object_root()])
     else:
-        roots=[DATA_DIR/"references"]
+        roots=[object_root()]
     for root in roots:
         try:
             owned_file(file,root)
@@ -31,7 +32,7 @@ def file_allowed(file:Path, run_id=None, kind=None):
         except (ValueError,OSError):
             continue
     else:raise HTTPException(404,"Файл недоступен")
-    if not file.is_file() or file.suffix.lower() not in EXTS:
+    if not file.is_file() or (kind!="reference" and file.suffix.lower() not in EXTS):
         raise HTTPException(404,"Файл не найден")
     return file
 
@@ -54,7 +55,7 @@ def image(run_id:str,index:int,kind:str="query",candidate:int=0,request:Request=
         filename=top[candidate]["reference"]
     else:raise HTTPException(422,"Неверный тип изображения")
     file = file_allowed(Path(filename),run_id,kind)
-    return FileResponse(file, headers={"Cache-Control":"private, no-store"})
+    return FileResponse(file, media_type="application/octet-stream" if kind=="reference" else None, headers={"Cache-Control":"private, no-store"})
 
 
 def _video(run_id,row,kind):

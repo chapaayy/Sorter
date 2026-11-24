@@ -12,94 +12,75 @@ from pathlib import Path
 from fastapi import HTTPException
 from PIL import Image,UnidentifiedImageError
 
-from app.config import DATA_DIR
+from app import config
+from app.storage.categories import Category
+from app.storage.paths import managed_path,managed_prefix,digest_key
+from app.storage.filesystem import parent_fd,safe_read,safe_unlink
+from .paths import owned_file
+import stat
 from .thumbnail_cache import PIXEL_LIMIT
 
-ROOT = DATA_DIR / "reference_staging"
-LEGACY_ROOT = DATA_DIR / "references"
 CHUNK_LIMIT = 16 * 1024 * 1024
 
+def object_root():
+    return managed_prefix(Category.REFERENCE_OBJECT)
+
 def session_root(session_id):
-    return ROOT / str(session_id)
+    return managed_prefix(Category.REFERENCE_UPLOAD_PART,session_uuid=session_id)
 
 def partial(session_id,upload_id):
-    return session_root(session_id) / "incoming" / (str(upload_id) + ".part")
+    return managed_path(Category.REFERENCE_UPLOAD_PART,session_uuid=session_id,upload_uuid=upload_id)
 
-def object_path(session_id,upload_id,filename):
-    return session_root(session_id) / "files" / (str(upload_id) + Path(filename).suffix.lower())
+def object_path(digest):
+    digest=digest_key(digest)
+    return managed_path(Category.REFERENCE_OBJECT,prefix=digest[:2],sha256=digest)
 
 def verify(path,root,size,*,digest=None):
-    """Verify immutable owned bytes, checking every path component for symlinks."""
-    path=Path(path)
-    root=Path(root).resolve()
-    if not path.is_absolute() or not path.is_relative_to(root):
-        raise ValueError("Reference file is outside its trusted directory")
-    cur=path
-    while cur!=root:
-        if cur.is_symlink():
-            raise ValueError("Symlink reference file is forbidden")
-        cur=cur.parent
-    if not path.is_file() or path.stat().st_size!=size:
-        raise ValueError("Reference file is missing or has a wrong size")
-    if not path.resolve().is_relative_to(root):
-        raise ValueError("Reference file resolves outside its trusted directory")
-    if digest is not None:
-        with path.open("rb") as stream:
-            if hashlib.file_digest(stream,"sha256").hexdigest()!=digest:
-                raise ValueError("Reference content checksum mismatch")
+    path=owned_file(Path(path),root)
+    with safe_read(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT)) as stream:
+        if os.fstat(stream.fileno()).st_size!=size:
+            raise ValueError("Reference file has wrong size")
+        if digest is not None and hashlib.file_digest(stream,"sha256").hexdigest()!=digest:
+            raise ValueError("Reference checksum mismatch")
     return path
 
-def _safe_directory(path):
-    """Fail closed before any writes if a staging parent is a symlink."""
-    path=Path(path)
-    root=Path(ROOT)
-    if not path.is_relative_to(root):
-        raise HTTPException(409,"Путь вне временного хранилища")
-    current=root
-    if current.is_symlink():
-        raise HTTPException(409,"Ссылка вместо staging каталога")
-    for segment in path.relative_to(root).parts:
-        current=current/segment
-        if current.is_symlink():
-            raise HTTPException(409,"Ссылка внутри staging каталога")
-    path.mkdir(parents=True,exist_ok=True)
-    if not path.resolve().is_relative_to(root.resolve()):
-        raise HTTPException(409,"Путь вне временного хранилища")
+def verify_object(path,size,*,digest):
+    if Path(path)!=object_path(digest):
+        raise ValueError("Noncanonical reference object")
+    return verify(path,object_root(),size,digest=digest)
 
 def create_partial(session_id,upload_id):
     target=partial(session_id,upload_id)
-    _safe_directory(target.parent)
-    if target.is_symlink():
-        raise HTTPException(409,"Некорректный временный файл")
-    if not target.exists():
-        try:
-            with target.open("xb"):
-                pass
-        except FileExistsError:
-            pass
+    try:
+        with parent_fd(config.APP_STORAGE_ROOT,target.relative_to(config.APP_STORAGE_ROOT),create=True) as (fd,name):
+            try:
+                handle=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=fd)
+                os.close(handle)
+            except FileExistsError:
+                if not stat.S_ISREG(os.stat(name,dir_fd=fd,follow_symlinks=False).st_mode):raise ValueError("Invalid part")
+    except (OSError,ValueError) as exc:
+        raise HTTPException(409,"Некорректный временный файл") from exc
     return target
 
 def offset(session_id,upload_id,expected_size):
     path=partial(session_id,upload_id)
-    if path.is_symlink():
-        raise HTTPException(409,"Некорректный временный файл")
-    if not path.exists():
-        return 0
-    length=path.stat().st_size
-    if length>expected_size:
-        raise HTTPException(409,"Временный файл превышает заявленный размер")
+    try:
+        with safe_read(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT)) as stream:
+            length=os.fstat(stream.fileno()).st_size
+    except FileNotFoundError:return 0
+    except (OSError,ValueError) as exc:raise HTTPException(409,"Некорректный временный файл") from exc
+    if length>expected_size:raise HTTPException(409,"Временный файл превышает заявленный размер")
     return length
 
 def append(session_id,upload_id,expected,size,data):
-    if not data or len(data)>CHUNK_LIMIT:
-        raise HTTPException(413,"Неверный размер блока")
+    if not data or len(data)>CHUNK_LIMIT:raise HTTPException(413,"Неверный размер блока")
     path=create_partial(session_id,upload_id)
-    with path.open("r+b") as stream:
+    with parent_fd(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT)) as (fd,name), os.fdopen(os.open(name,os.O_RDWR|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=fd),"r+b") as stream:
+        info=os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1:raise HTTPException(409,"Файл уже опубликован")
         actual=stream.seek(0,os.SEEK_END)
-        if actual!=expected:
-            raise HTTPException(409,{"expected_offset":actual})
-        if actual+len(data)>size:
-            raise HTTPException(413,"Превышен размер образца")
+        if actual!=expected:raise HTTPException(409,{"expected_offset":actual})
+        if actual+len(data)>size:raise HTTPException(413,"Превышен размер образца")
         stream.write(data)
         stream.flush()
         os.fsync(stream.fileno())
@@ -115,29 +96,24 @@ def verify_picture(path):
         raise HTTPException(422,"Файл не является корректным изображением") from exc
 
 def publish_staged_file(session_id,upload_id,filename,size,digest):
-    """Hardlink-first, recoverable after a process crash before the SQL commit.
-
-    Keep the partial file until the surrounding DB transaction is committed.
-    A retry checks an existing destination's checksum rather than overwriting.
-    """
+    """Caller holds FIFO publication lock; keep part until SQL commits."""
     source=verify(partial(session_id,upload_id),session_root(session_id),size,digest=digest)
-    target=object_path(session_id,upload_id,filename)
-    _safe_directory(target.parent)
-    if target.is_symlink():
-        raise HTTPException(409,"Неверный путь образца")
-    if not target.exists():
+    target=object_path(digest)
+    root=config.APP_STORAGE_ROOT
+    with parent_fd(root,target.relative_to(root),create=True) as (dst,name):
         try:
-            os.link(source,target,follow_symlinks=False)
-        except FileExistsError:
-            pass
-    try:
-        verify(target,session_root(session_id),size,digest=digest)
-    except ValueError as exc:
-        raise HTTPException(409,"Конфликт сохранения образца") from exc
-    target.chmod(0o444)
+            with parent_fd(root,source.relative_to(root)) as (src,part):
+                os.link(part,name,src_dir_fd=src,dst_dir_fd=dst,follow_symlinks=False)
+        except FileExistsError:pass
+        try:
+            verify_object(target,size,digest=digest)
+        except (OSError,ValueError) as exc:raise HTTPException(409,"Конфликт сохранения образца") from exc
+        with safe_read(root,target.relative_to(root)) as stream:
+            os.fchmod(stream.fileno(),0o444)
+            os.fsync(stream.fileno())
+        os.fsync(dst)
     return target
 
 def remove_partial_after_commit(session_id,upload_id):
     path=partial(session_id,upload_id)
-    if not path.is_symlink():
-        path.unlink(missing_ok=True)
+    safe_unlink(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)

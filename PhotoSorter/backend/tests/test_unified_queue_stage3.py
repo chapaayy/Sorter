@@ -35,9 +35,6 @@ def system(tmp_path,monkeypatch):
     config.APP_STORAGE_ROOT.mkdir(parents=True)
     refs=root/"references"
     refs.mkdir(parents=True)
-    staging=root/"reference_staging"
-    monkeypatch.setattr(reference_objects,"ROOT",staging)
-    monkeypatch.setattr(reference_gallery,"GALLERY",refs)
     monkeypatch.setattr(reference_prepare,"signature",lambda:"stage3-model")
     monkeypatch.setattr(reference_publication,"signature",lambda:"stage3-model")
     monkeypatch.setattr(work_queue,"signature",lambda:"stage3-model")
@@ -65,7 +62,8 @@ def add_published_reference(root,sam="SAM 0001",address="Победы 12"):
     raw=_jpg()
     key=uuid.uuid4()
     sid=uuid.uuid4()
-    file=reference_objects.object_path(sid,key,"one.jpg")
+    digest=hashlib.sha256(raw).hexdigest()
+    file=reference_objects.object_path(digest)
     file.parent.mkdir(parents=True,exist_ok=True)
     file.write_bytes(raw)
     digest=hashlib.sha256(raw).hexdigest()
@@ -110,7 +108,7 @@ def prepare_import(root):
     assert reference_uploads.finish(sid,fid)["already_present"] is False
     state=reference_imports.status(sid)
     assert state["state"]=="complete"
-    path=reference_objects.object_path(sid,fid,"new.jpg")
+    path=reference_objects.object_path(hashlib.sha256(raw).hexdigest())
     return sid,fid,path,hashlib.sha256(raw).hexdigest(),state["preparation_job_id"]
 
 def cache_vector(root,digest):
@@ -145,7 +143,7 @@ def test_fifo_5_fo_prep_fo_has_frozen_v_before_and_after(system):
         initial_versions.append(task["info"]["reference_version"])
         first_path=task["info"]["reference_members"][0]["path"]
         assert Path(first_path).is_file()
-        assert "/reference_staging/" in first_path
+        assert "/shared/references/objects/" in first_path
         finish_fo(run_id)
     assert len(set(initial_versions))==1
     with database.connect() as db:
@@ -205,9 +203,10 @@ def test_pinned_reference_is_not_the_mutable_gallery_file(system):
         item=work_queue.claim_next(db)
     pinned=Path(item["info"]["reference_members"][0]["path"])
     original=pinned.read_bytes()
-    gallery=system/"references"/"SAM 0001"/(str(key)+"_one.jpg")
-    assert gallery.is_file() and pinned!=gallery
-    gallery.unlink()
+    with database.connect() as db:
+        gallery=db.execute("SELECT target_path FROM uploads WHERE id=%s",(key,)).fetchone()
+    assert Path(gallery["target_path"])==pinned
+    assert not list((system/"references").iterdir())
     assert pinned.read_bytes()==original
     finish_fo(run)
 

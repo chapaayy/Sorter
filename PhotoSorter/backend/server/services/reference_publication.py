@@ -21,8 +21,7 @@ def digest_members(members,model_signature):
 def verify_member(member):
     if member["source_kind"]!="staged":
         raise ValueError("Only prepared staged objects may belong to the library")
-    reference_objects.verify(member["target_path"],reference_objects.ROOT,
-                             member["declared_size"],digest=member["source_hash"])
+    reference_objects.verify_object(member["target_path"],member["declared_size"],digest=member["source_hash"])
 
 def ensure_initial_version(db):
     """Create V1 with no references. Importing the first reference is fully legal."""

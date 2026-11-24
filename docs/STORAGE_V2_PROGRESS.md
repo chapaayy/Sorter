@@ -4,7 +4,7 @@ Branch: feature/storage-architecture-v2; base: c6d77ebb1c9c80c732df209a17a993dd3
 1. **ACCEPTED — 2026-11-24** — 96 remaining modules mapped, 573 original candidate lines dispositioned, 35 migrations indexed, 51 categories (45 + 6 external boundaries), consumer/native dependency review and documentation corrections committed. Coverage tests added. Accepted on a2645c7 with CI 7/7; runtime evidence deferred to the designated implementation stages.
 2. **COMPLETED — 2026-11-24** — code SHA 475a585fcf3dc3be9f58b52b105b80d30d69bef6, CI 45451924195: 7/7 successful; owner accepted stage 2 before stage 3 entry.
 3. **COMPLETED — 2026-11-24** — implementation SHA ab8f9fa9a4908020c7f49e81a0dac8f47ce73b77; CI 45456816578: 7/7 successful. Stage 4 not started.
-4. References — not started.
+4. References — in progress.
 5. Temporary pool, ZIP and models — not started.
 6. Logs and infrastructure — not started.
 7. Accounting and reconciliation — not started.
@@ -83,3 +83,6 @@ Owner accepted stage 2; closing-doc SHA e7d641f passed [CI 45452611814](https://
 - Batch deletion waits for leases and running tasks; descriptor-relative cleanup, uncommitted/finalized-part reconciliation, terminal scratch recovery with queue/batch/deletion locks and grace period, unknown paths preserved. Tests reject other-owner result sources, preserve active operations and references, verify owner-tree inode dedup in physical diagnostics. Existing single-file deletion rule preserved (before first processing only). No quota enforcement introduced.
 - Acceptance scenario: actual PostgreSQL, JPG + PNG + MOV/MP4 fixtures, real FFmpeg normalization and eight-frame extraction, deterministic test MegaLoc engine, result hardlinks, repeat processing without rewriting media, actual ZIP download and whole normalized video, correct names/dates/sides/regions, batch cleanup and no completed scratch or auto-created ZIP. Existing 1315-entry synthetic result/ZIP test, TTL expiry and rebuild, queue and browser regressions passed. No real model weights or production photos used; real offline MegaLoc assets remain stage 5 acceptance, as specified. One-hour ZIP TTL and on-demand behavior retained; moving cache itself to temporary/zip belongs to stage 5. Thumbnail/reference storage migration belongs to stage 4; native infrastructure/log relocation stage 6; complete accounting reconciliation stage 7.
 - Main verified unchanged at c6d77ebb1c9c80c732df209a17a993dd38ec381f. No production deployment, no global reinventory, no migration of old data, no merge. Stage 4 NOT STARTED.
+
+## Stage 4 entry
+Owner accepted stage 3, closing SHA c1802a9 passed [CI 45457511601](https://github.com/chapaayy/Sorter/actions/runs/45457511601). Original stage 4 specification re-read. First checkpoint: global SHA256 objects, managed reference transfer parts, verified immutable publication, DB gallery projection and label-aware side association. Existing version/queue behavior retained. Thumbnail owner paths, embedding cache, dependency retention/GC, accounting and full CI remain open. No stage 5 work.

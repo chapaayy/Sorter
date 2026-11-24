@@ -78,12 +78,13 @@ def original(photo_id:str):
             root=batch_dir(row["batch_id"])
         else:
             # Renaming updates the UUID gallery index, not the immutable hardlink path.
-            root=DATA_DIR/"references"
+            from ...storage.reference_objects import object_root
+            root=object_root()
         path=owned_file(Path(row["target_path"]),root)
         attachment=row["kind"]=="fo" and row["original_media_type"] is not None
-        if not path.is_file() or (not attachment and path.suffix.lower() not in EXTS):
+        if not path.is_file() or (not attachment and row["kind"]=="fo" and path.suffix.lower() not in EXTS):
             raise HTTPException(404,"Фотография не найдена")
-        content_type="application/octet-stream" if attachment else mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        content_type="application/octet-stream" if attachment else mimetypes.guess_type(row["filename"])[0] or "application/octet-stream"
         headers={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
         if attachment:
             headers["Content-Disposition"]="attachment; filename*=UTF-8''"+quote(row["filename"],safe="")

@@ -42,7 +42,7 @@ def test_rename_changes_current_version_and_keeps_historical_originals(system,mo
     monkeypatch.setattr(originals, "DATA_DIR", system)
     response = originals.original(str(reference_id))
     assert Path(response.path).read_bytes() == source.read_bytes()
-    assert "references/SAM 0001/" in str(response.path)
+    assert str(response.path)==str(source)
 
 
 def test_only_address_changes_without_new_version_even_with_queued_fo(system):
