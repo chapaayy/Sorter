@@ -14,15 +14,31 @@ from contextlib import contextmanager
 from . import disk_guard
 from fastapi import HTTPException
 
-TTL_SECONDS=3600
+from app.storage.categories import ARCHIVE_TTL_SECONDS,Category
+from app.storage.paths import managed_prefix,run_key
+from app.storage.filesystem import directory_fd
+from app import config
+
+TTL_SECONDS=ARCHIVE_TTL_SECONDS
+
+def fresh(path,*,now=None):
+    try:
+        info=path.stat(follow_symlinks=False)
+        return stat.S_ISREG(info.st_mode) and (time.time() if now is None else now)-info.st_mtime<TTL_SECONDS
+    except FileNotFoundError:return False
 FO_NAME=re.compile(r"[a-f0-9]{12}-[a-f0-9]{20}\.(?:zip|lock)")
 REF_NAME=re.compile(r"[a-f0-9]{64}\.(?:zip|lock)")
 FO_TMP=re.compile(r"\.archive-[A-Za-z0-9_-]+\.tmp")
 REF_TMP=re.compile(r"\.references-[A-Za-z0-9_-]+\.tmp")
 
 def pin(directory:Path):
-    directory.mkdir(parents=True,exist_ok=True)
-    fd=os.open(directory,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    directory=Path(directory)
+    if directory.is_relative_to(config.APP_STORAGE_ROOT):
+        with directory_fd(config.APP_STORAGE_ROOT,directory.relative_to(config.APP_STORAGE_ROOT),create=True) as opened:fd=os.dup(opened)
+    else:
+        # Standalone test paths; production callers always use managed paths.
+        directory.mkdir(parents=True,exist_ok=True)
+        fd=os.open(directory,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
     try:
         fcntl.flock(fd,fcntl.LOCK_SH)
         return DirectoryPin(fd)
@@ -95,21 +111,15 @@ def sweep_folder(folder,*,reference=False,now=None):
         os.close(fd)
 
 def collect():
-    from . import archives,reference_archives
-    from ..database import connect
-    from ..storage.paths import run_dir,owned_directory
-    with connect() as db:
-        rows=db.execute("""SELECT j.id,j.batch_id,b.owner_id FROM jobs j
-            JOIN batches b ON b.id=j.batch_id
-            WHERE j.status IN ('completed','completed_with_errors')""").fetchall()
+    """Scan only typed archive folders, including runs removed after a crash."""
+    root=managed_prefix(Category.ZIP_RESULTS)
     removed=0
-    for row in rows:
-        try:
-            run=run_dir(row["id"],identity=(row["batch_id"],row["owner_id"]))
-            folder=owned_directory(run/".archives",archives.output_root())
-            removed+=sweep_folder(folder)
-        except (OSError,ValueError):
-            continue
-    if not reference_archives.EXPORTS.is_symlink():
-        removed+=sweep_folder(reference_archives.EXPORTS,reference=True)
+    if root.is_dir() and not root.is_symlink():
+        for folder in root.iterdir():
+            try:
+                if folder!=managed_prefix(Category.ZIP_RESULTS,run_id=run_key(folder.name)):continue
+                if folder.is_symlink() or not folder.is_dir():continue
+                removed+=sweep_folder(folder)
+            except (OSError,ValueError):continue
+    removed+=sweep_folder(managed_prefix(Category.ZIP_REFERENCES),reference=True)
     return removed

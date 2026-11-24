@@ -108,10 +108,10 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
             assert partial.content==reply.content[5:21]
             from server.services import archive_cache
             import os,time
-            for file in (model.parent/".archives").glob("*.zip"):
+            for file in (archives.archive_folder(run)).glob("*.zip"):
                 os.utime(file,(time.time()-3700,)*2)
-            assert archive_cache.sweep_folder(model.parent/".archives")>=2
-            assert not list((model.parent/".archives").glob("*.zip"))
+            assert archive_cache.sweep_folder(archives.archive_folder(run))>=2
+            assert not list((archives.archive_folder(run)).glob("*.zip"))
             rebuilt=client.get("/api/download/"+run)
             assert rebuilt.status_code==200
             assert rebuilt.content==reply.content
@@ -133,7 +133,7 @@ def test_zip_failed_integrity_check_is_never_published(tmp_path,monkeypatch):
     monkeypatch.setattr(zipfile.ZipFile,"testzip",lambda _self:"SAM 0001/one.jpg")
     with pytest.raises(OSError,match="проверки ZIP"):
         archives.prepare(run,None,[(source,"SAM 0001/one.jpg")])
-    archive_dir=source.parents[2]/".archives"
+    archive_dir=archives.archive_folder(run)
     assert not list(archive_dir.glob("*.zip"))
     assert not list(archive_dir.glob("*.tmp"))
 

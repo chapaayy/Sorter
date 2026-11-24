@@ -45,6 +45,9 @@ def _kind(parts: tuple[str,...]) -> str:
     if parts[:2]==("shared","references") and len(parts)>2:
         return {"objects":"reference_objects","gallery":"reference_gallery","thumbnails":"reference_thumbnails","embeddings":"reference_cache"}.get(parts[2],"reference_other")
     if section=="temporary":
+        if parts[:3]==("temporary","archives","results"):return "results_zip" if parts[-1].endswith(".zip") else "results_temporary"
+        if parts[:3]==("temporary","archives","references"):return "references_zip" if parts[-1].endswith(".zip") else "reference_other"
+        if len(parts)>1 and parts[1] in ("scratch","model-downloads"):return "results_temporary"
         if parts[:3]==("temporary","uploads","references"):return "reference_uploads"
         if parts[1:3]==("uploads","fo"):return "incoming"
         if len(parts)>1 and parts[1] in ("processing","transcoding","video-frames"):return "results_temporary"
@@ -103,6 +106,7 @@ def _scan(data_dir:Path,models_dir:Path,batch_names:dict,run_to_batch:dict,
     def owner(parts):
         if len(parts)<2:return None
         if parts[0]=="users" and len(parts)>4 and parts[2]=="batches":return parts[3] if parts[3] in batch_names else None
+        if parts[:3]==("temporary","archives","results") and len(parts)>3:return run_to_batch.get(parts[3])
         if parts[:3]==("temporary","uploads","fo") and len(parts)>3:return parts[3] if parts[3] in batch_names else None
         if parts[0]=="temporary" and len(parts)>2 and parts[1] in ("processing","video-frames"):return run_to_batch.get(parts[2])
         if parts[0]=="uploads":return parts[1] if parts[1] in batch_names else None

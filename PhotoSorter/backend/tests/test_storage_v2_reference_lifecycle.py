@@ -80,7 +80,6 @@ def test_reference_lifecycle_shared_bytes_pins_and_cache_reuse(system,monkeypatc
         assert thumbnails.complete(task)=="ready"
     preview=thumbnail_cache.location(digest)
     with Image.open(preview) as img:assert img.format=="WEBP"
-    monkeypatch.setattr(reference_archives,"EXPORTS",system/"reference_exports")
     with ReadPin():
         plan=reference_archives.current_plan()
         archive=reference_archives.prepare(plan)

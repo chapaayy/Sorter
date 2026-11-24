@@ -32,6 +32,7 @@ def remove_batch_files(batch_id,run_ids,upload_ids,data_dir,runs_dir,report):
     # Run trees (including the ZIP), temporary parts and individual originals.
     trees=[owned_directory(run_dir(run_id),config.APP_STORAGE_ROOT) for run_id in run_ids]
     trees.extend(owned_directory(runs_dir/run_key(run_id),runs_dir) for run_id in run_ids)
+    trees.extend(owned_directory(managed_prefix(Category.ZIP_RESULTS,run_id=r),config.APP_STORAGE_ROOT) for r in run_ids)
     trees=[path for path in trees if path.exists()]
     incoming=managed_prefix(Category.FO_UPLOAD_PART,batch_uuid=batch_id)
     parts=[owned_file(part_path(batch_id,upload_id),config.APP_STORAGE_ROOT) for upload_id in upload_ids]

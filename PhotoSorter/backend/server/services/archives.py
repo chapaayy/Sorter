@@ -14,13 +14,16 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from fastapi import HTTPException
 from . import archive_cache
+from app.storage.categories import Category
+from app.storage.paths import managed_prefix
+from app.storage.filesystem import directory_fd
 from ..storage import paths as storage_paths
 from ..storage.paths import owned_file, owned_directory
 
 def existing(run_id:str,sam:str|None,selected:list[tuple[Path,str]])->Path|None:
     """Only return validated complete ZIPs; never create one on download."""
     target=_cache_path(run_id,sam,selected)
-    if target.is_file() and zipfile.is_zipfile(target):
+    if archive_cache.fresh(target) and zipfile.is_zipfile(target):
         return owned_file(target,archive_folder(run_id))
     return None
 
@@ -30,8 +33,8 @@ def output_root()->Path:
     return APP_STORAGE_ROOT
 
 def archive_folder(run_id):
-    run=storage_paths.run_dir(run_id)
-    return owned_directory(run/".archives",output_root())
+    folder=managed_prefix(Category.ZIP_RESULTS,run_id=run_id)
+    return owned_directory(folder,output_root())
 
 def published(run_id:str,filename:str)->Path|None:
     """Look up a saved archive by its validated run-local cache filename."""
@@ -39,7 +42,7 @@ def published(run_id:str,filename:str)->Path|None:
         return None
     folder=archive_folder(run_id)
     target=owned_file(folder/filename,folder)
-    return target if target.is_file() and zipfile.is_zipfile(target) else None
+    return target if archive_cache.fresh(target) and zipfile.is_zipfile(target) else None
 
 def archive_member(sam:str,filename:str)->str:
     if (not sam or sam in (".","..") or
@@ -63,7 +66,7 @@ def _cache_path(run_id:str, sam:str|None, selected:list[tuple[Path,str]])->Path:
     token=hashlib.sha256((sam or "all").encode()).hexdigest()[:12]
     folder=archive_folder(run_id)
     if folder.is_symlink():raise HTTPException(409,"Недопустимый каталог архивов")
-    folder.mkdir(parents=True,exist_ok=True)
+    with directory_fd(output_root(),folder.relative_to(output_root()),create=True):pass
     return folder/(token+"-"+digest.hexdigest()[:20]+".zip")
 
 def prepare(run_id:str,sam:str|None,selected:list[tuple[Path,str]],*,progress=None,should_stop=None)->Path:
@@ -77,10 +80,10 @@ def prepare(run_id:str,sam:str|None,selected:list[tuple[Path,str]],*,progress=No
         try:
             if target.exists():
                 owned_file(target,archive_folder(run_id))
-                if zipfile.is_zipfile(target):
+                if archive_cache.fresh(target) and zipfile.is_zipfile(target):
                     if progress:progress(total,total)
                     return target
-                target.unlink()
+                # Keep old inode until the verified replacement is ready.
             with archive_cache.build_space(output_root(),total+1024*1024+len(selected)*2048):
                 return _build(target,selected,total,progress,should_stop,root)
         finally:
@@ -114,6 +117,7 @@ def _build(target,selected,total,progress,should_stop,root):
         os.utime(tmp,None)
         os.chmod(tmp,0o444)
         os.replace(tmp,target)
+        with directory_fd(output_root(),target.parent.relative_to(output_root())) as parent:os.fsync(parent)
         return target
     finally:
         Path(tmp).unlink(missing_ok=True)

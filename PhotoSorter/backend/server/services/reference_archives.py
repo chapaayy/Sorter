@@ -18,7 +18,10 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from app.config import DATA_DIR
+from app import config
+from app.storage.categories import Category
+from app.storage.paths import managed_path,managed_prefix
+from app.storage.filesystem import directory_fd
 from ..database import connect
 from ..db.repositories import reference_versions
 from ..storage import reference_objects
@@ -27,7 +30,8 @@ from . import archives, archive_cache
 from .archive_layout import _unique, portable_name
 from .construction_catalog import construction_title
 
-EXPORTS = DATA_DIR / "reference_exports"
+def export_folder():
+    return managed_prefix(Category.ZIP_REFERENCES)
 
 
 @dataclass(frozen=True)
@@ -94,11 +98,12 @@ def current_plan() -> ReferenceExport:
 
 def prepare(plan: ReferenceExport) -> Path:
     """Build once under a file lock, then publish only a complete, validated ZIP."""
-    if EXPORTS.is_symlink():
+    folder=export_folder()
+    if folder.is_symlink():
         raise HTTPException(409, "Небезопасный каталог ZIP образцов")
-    EXPORTS.mkdir(parents=True, exist_ok=True)
-    directory = owned_directory(EXPORTS, EXPORTS.parent)
-    target = directory / (plan.key + ".zip")
+    with directory_fd(config.APP_STORAGE_ROOT,folder.relative_to(config.APP_STORAGE_ROOT),create=True):pass
+    directory = owned_directory(folder, config.APP_STORAGE_ROOT)
+    target = managed_path(Category.ZIP_REFERENCES,cache_key=plan.key)
     lock = directory / (plan.key + ".lock")
     if lock.is_symlink() or target.is_symlink():
         raise HTTPException(409, "Небезопасный путь ZIP образцов")
@@ -107,11 +112,11 @@ def prepare(plan: ReferenceExport) -> Path:
         try:
             if target.exists():
                 owned_file(target, directory)
-                if zipfile.is_zipfile(target):
+                if archive_cache.fresh(target) and zipfile.is_zipfile(target):
                     return target
-                target.unlink()
+                # Preserve the previous inode until publication succeeds.
             # ZIP_STORED needs almost as much free space as the source images.
-            with archive_cache.build_space(EXPORTS.parent,sum(size for _, _, size in plan.files)+1024*1024+len(plan.files)*2048):
+            with archive_cache.build_space(config.APP_STORAGE_ROOT,sum(size for _, _, size in plan.files)+1024*1024+len(plan.files)*2048):
                 return _build(plan,target,directory)
         except OSError as exc:
             if exc.errno == errno.ENOSPC:
@@ -138,6 +143,7 @@ def _build(plan,target,directory):
         os.utime(temporary, None)
         os.chmod(temporary, 0o444)
         os.replace(temporary, target)
+        with directory_fd(config.APP_STORAGE_ROOT,directory.relative_to(config.APP_STORAGE_ROOT)) as parent:os.fsync(parent)
         return target
     finally:
         Path(temporary).unlink(missing_ok=True)

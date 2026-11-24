@@ -171,14 +171,16 @@ def test_cleanup_only_owned_paths_multiple_runs_and_idempotent(sandbox):
         run_folder=sandbox/"runs"/run
         run_folder.mkdir()
         (run_folder/"run.json").write_text("{}",encoding="utf8")
-        zip_dir=paths.run_dir(run)/".archives"
-        zip_dir.mkdir()
+        from server.services.archives import archive_folder
+        zip_dir=archive_folder(run)
+        zip_dir.mkdir(parents=True)
         (zip_dir/"ready.zip").write_bytes(b"completed ZIP")
     assert cleanup.request(own)["state"]=="deleting"
     assert cleanup.cleanup_one(own)=="completed"
     assert not paths.batch_dir(own).exists()
     assert not (paths.batch_root(own)/"results").exists()
     assert all(not (sandbox/"runs"/run).exists() for run in runs)
+    assert all(not archive_folder(run).exists() for run in runs)
     assert paths.batch_dir(other).exists()
     assert protected.read_bytes()==b"permanent-reference"
     assert cleanup.request(own)["state"]=="deleted"

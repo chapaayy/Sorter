@@ -18,7 +18,6 @@ from .test_unified_queue_stage3 import system, add_published_reference
 
 def test_all_references_zip_preserves_original_bytes_and_names(system, tmp_path, monkeypatch):
     key, original = add_published_reference(system, address="Гагарина 64")
-    monkeypatch.setattr(reference_archives, "EXPORTS", tmp_path / "reference_exports")
     plan = reference_archives.current_plan()
     assert plan.version == 2
     archive = reference_archives.prepare(plan)
@@ -39,7 +38,6 @@ def test_all_references_zip_preserves_original_bytes_and_names(system, tmp_path,
 
 def test_archive_excludes_removed_reference_from_current_version(system, tmp_path, monkeypatch):
     key, original = add_published_reference(system)
-    monkeypatch.setattr(reference_archives, "EXPORTS", tmp_path / "reference_exports")
     old = reference_archives.prepare(reference_archives.current_plan())
     references.delete_photo(str(key))
     assert original.is_file()  # Historical immutable source survives.

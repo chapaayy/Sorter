@@ -16,7 +16,7 @@ router=APIRouter(prefix="/api/references",tags=["references"])
 
 @router.get("/export")
 def export_all_references():
-    pin=archive_cache.pin(reference_archives.EXPORTS)
+    pin=archive_cache.pin(reference_archives.export_folder())
     try:
         with ReadPin():
             plan=reference_archives.current_plan()

@@ -71,6 +71,9 @@ def _owner(parts: tuple[str, ...], names: dict, jobs: dict):
     if section=="users" and len(parts)>4 and parts[2]=="batches":
         batch_id=parts[3]
         return ("batch",batch_id,names.get(batch_id))
+    if parts[:3]==("temporary","archives","results") and len(parts)>3:
+        batch_id=jobs.get(parts[3])
+        return ("batch",batch_id,names.get(batch_id)) if batch_id else ("run",parts[3],None)
     if parts[:3]==("temporary","uploads","fo") and len(parts)>3:
         batch_id=parts[3]
         return ("batch",batch_id,names.get(batch_id))
