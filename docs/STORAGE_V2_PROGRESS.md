@@ -7,8 +7,8 @@ Branch: feature/storage-architecture-v2; base: c6d77ebb1c9c80c732df209a17a993dd3
 4. **COMPLETED — 2026-11-24** — implementation SHA 03bd584cd239bd1f20abbb6b386f90c2d9deb60b; CI 45462424379 attempt 2: 7/7 successful. Owner accepted stage 4; closing CI 45463543056 successful.
 5. **COMPLETED — 2026-11-24** — implementation SHA cb0c3bdd743914d71170b65157e7e1761a488779; CI 45467591019: 7/7 successful, including actual MegaLoc offline acceptance. Stage 6 not started.
 6. **COMPLETED — 2026-11-25** — 97dc4de, CI 45476432794 7/7; systemd installation deferred to stage 10.
-7. Accounting and reconciliation — in progress.
-8. Admin — not started.
+7. **ACCEPTED — 2026-11-25** — implementation 82acf81, CI 45482207462 7/7; closing commit 14d9f02 CI 45483614880 7/7.
+8. **COMPLETED — 2026-11-25** — implementation 048ed3440856af711cd69a3204c9994b6a90469b; CI 45486293741: 7/7 successful.
 9. Disabled-by-default quotas — not started.
 10. Final install and PR (no merge) — not started.
 ## Baseline
@@ -163,3 +163,11 @@ Stage 7 checkpoint 4: protected-host measurement, journal budget usage from same
 
 ### Stage 8 — implementation checkpoint (open)
 Owner accepted stage 7. Closing commit `14d9f02`: CI [45483614880](https://github.com/chapaayy/Sorter/actions/runs/45483614880), all seven jobs successful. Stage 8 implementation commits: `8c1a513` owner projections and durable reconciliation/maintenance requests, `4a15e1f` unified storage UI, `ee9651f` real DB/API and browser tests, `1db0f96` restricted host maintenance RPC. Host cache removal stops only MAP app services, verifies idle/independence and restores them; PostgreSQL closed journal pruning follows existing budget. UI exposes explicit previews and confirmation. No new quotas or migration of old installations; no deployment. Shared Docker metrics and historical subsets are not added to physical totals. Final exact-revision CI and acceptance still required; stage 9 not started.
+
+
+## Stage 8 closure — 2026-11-25
+- **Stage 8 COMPLETE (implementation and CI acceptance).** Exact final implementation SHA [048ed3440856af711cd69a3204c9994b6a90469b](https://github.com/chapaayy/Sorter/commit/048ed3440856af711cd69a3204c9994b6a90469b), [CI 45486293741](https://github.com/chapaayy/Sorter/actions/runs/45486293741), completed/success, all seven jobs. Backend 371 passed, 28 subtests passed, 1 warning; frontend and restore passed; Chromium desktop 66, WebKit desktop 66, WebKit mobile 63 passed. Earlier UI transition failures caused by obsolete selectors were addressed by updating navigation coverage, not disabling tests. Intermediate 1db0f96 CI 45485714733 also passed 7/7.
+- [Docker runtime 138772460323](https://github.com/chapaayy/Sorter/actions/runs/45486293741/job/138772460323): STAGE8_REAL_HOST_STORAGE_MAINTENANCE_OK, REAL_HOST_STORAGE_ACCOUNTING_OK, REAL_CADDY_POSTGRES_ROTATION_AND_REDACTION_OK, REAL_TWO_COMMIT_UPDATER_PRESERVATION_OK, REAL_SNAPSHOT_RESTORE_POSTGRES_CADDY_TLS_OK, STAGE6_REAL_HOST_HARNESS_OK, REAL_NETWORK_NONE_INFERENCE_OK and post-update actual offline MegaLoc/cached embeddings. Real root daemon exercised in disposable CI; no real VPS changes or local Docker execution claimed.
+- Acceptance: one storage center with overview, account/FO drilldown, temporary operations and lease/reservation/expiry evidence, diagnostics, safe maintenance. Reads registry plus stage 7 host sample; no request-time disk enumeration. Physical inode attribution, logical totals, historical subset, sampled infrastructure and engine boundaries are explicit. Owner-only and CSRF checks, pagination, missing/unknown preservation, stale/empty/error states and browser confirmation covered. Manual cleanup uses existing rules; host technical cache only offline after verification and idle/exclusive guards, services restored with fresh workers; closed PostgreSQL logs pruned only over budget. Preview is an estimate, not guaranteed reclaimable space; Docker shared layer sizes are not added to MAP totals. Actual systemd service installation on clean Ubuntu remains stage 10.
+- Implementation commits: 8c1a513, 4a15e1f, ee9651f, 1db0f96, 937a539, 048ed34. Documentation-only closure; its subsequent workflow is separate from verified implementation CI. Main remains c6d77ebb1c9c80c732df209a17a993dd38ec381f. No merge, deployment, old-data migration or quotas.
+- **Stage 9 NOT STARTED.** Await explicit owner authorization.
