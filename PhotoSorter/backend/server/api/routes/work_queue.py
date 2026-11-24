@@ -118,6 +118,8 @@ def _action(job_id,idempotency_key,action):
             db.execute("UPDATE work_queue SET state='stopped',finished_at=now() WHERE reference_job_id=%s",(job_id,))
             db.execute("UPDATE reference_import_sessions SET preparation_state='stopped' WHERE id=%s",(prep["session_id"],))
             state="stopped"
+            from ...services.reference_gc import mark_candidates
+            mark_candidates(db)
         db.execute("""
             INSERT INTO reference_preparation_actions(job_id,idempotency_key,action)
             VALUES (%s,%s,%s)

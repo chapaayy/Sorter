@@ -79,12 +79,14 @@ class ReferenceCachedMegaLoc:
                 if error is not None:continue
                 digest=missing[path]
                 target=location(digest,self.fingerprint)
+                # Persist intent before atomic publication so a crash never creates
+                # an untracked canonical cache object. A missing file is a cache miss.
+                with connect() as db:
+                    db.execute("""INSERT INTO reference_cache(source_hash,model_signature,cache_path,unowned_since)
+                        VALUES (%s,%s,%s,NULL) ON CONFLICT(source_hash,model_signature)
+                        DO UPDATE SET cache_path=excluded.cache_path,unowned_since=NULL""",(digest,self.fingerprint,str(target)))
                 with atomic_write(config.APP_STORAGE_ROOT,target.relative_to(config.APP_STORAGE_ROOT)) as stream:
                     np.save(stream,vector,allow_pickle=False)
-                with connect() as db:
-                    db.execute("""INSERT INTO reference_cache(source_hash,model_signature,cache_path)
-                        VALUES (%s,%s,%s) ON CONFLICT(source_hash,model_signature)
-                        DO UPDATE SET cache_path=excluded.cache_path""",(digest,self.fingerprint,str(target)))
         for path in paths:
             vector,error=found.get(path,(None,RuntimeError('Missing feature')))
             yield path,vector,error

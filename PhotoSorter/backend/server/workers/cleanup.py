@@ -7,7 +7,7 @@ import time
 from ..database import wait_and_initialize
 from ..services import heartbeat
 from ..services.update_gate import activity
-from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing,archive_cache
+from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing,archive_cache,reference_gc
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
 STOPPED=threading.Event()
@@ -44,6 +44,9 @@ def run_cycle():
         NEXT_GC=time.monotonic()+600
         abandoned=temp_cleanup.reclaim_abandoned(limit=50)+temp_cleanup.reclaim_finalized_parts(limit=50)
         if abandoned:logging.info("Reclaimed %s abandoned upload parts",abandoned)
+        refs=reference_gc.collect(limit=50)
+        if any(refs[k] for k in ('retired_versions','objects','embeddings','parts','cancelled_imports')):
+            logging.info('Reference lifecycle cleanup: %s',refs)
         stale=thumbnail_gc.collect(limit=100)
         if stale:logging.info("Cleared %s unreferenced thumbnails",stale)
 

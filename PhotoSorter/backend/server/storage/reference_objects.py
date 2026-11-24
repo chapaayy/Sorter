@@ -17,6 +17,7 @@ from app.storage.categories import Category
 from app.storage.paths import managed_path,managed_prefix,digest_key
 from app.storage.filesystem import parent_fd,safe_read,safe_unlink
 from .paths import owned_file
+from ..database import connect
 import stat
 from .thumbnail_cache import PIXEL_LIMIT
 
@@ -88,17 +89,29 @@ def append(session_id,upload_id,expected,size,data):
 
 def verify_picture(path):
     try:
-        with Image.open(path) as picture:
+        with safe_read(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT)) as stream, Image.open(stream) as picture:
             if picture.width*picture.height>PIXEL_LIMIT:
                 raise HTTPException(422,"Слишком высокое разрешение")
             picture.verify()
     except (OSError,UnidentifiedImageError,ValueError) as exc:
         raise HTTPException(422,"Файл не является корректным изображением") from exc
 
+def register(db,digest,size,*,acquired=True):
+    """Persist the canonical identity, including pre-publication crash intent."""
+    digest=digest_key(digest)
+    db.execute("""INSERT INTO reference_physical_objects(source_hash,declared_size)
+        VALUES (%s,%s) ON CONFLICT(source_hash) DO NOTHING""",(digest,size))
+    row=db.execute("SELECT declared_size FROM reference_physical_objects WHERE source_hash=%s",(digest,)).fetchone()
+    if row["declared_size"]!=size:raise ValueError("Reference digest size conflict")
+    if acquired:
+        db.execute("UPDATE reference_physical_objects SET unowned_since=NULL WHERE source_hash=%s",(digest,))
+
 def publish_staged_file(session_id,upload_id,filename,size,digest):
     """Caller holds FIFO publication lock; keep part until SQL commits."""
     source=verify(partial(session_id,upload_id),session_root(session_id),size,digest=digest)
     target=object_path(digest)
+    # A durable intent survives rollback of the outer upload receipt.
+    with connect() as intent:register(intent,digest,size,acquired=False)
     root=config.APP_STORAGE_ROOT
     with parent_fd(root,target.relative_to(root),create=True) as (dst,name):
         try:

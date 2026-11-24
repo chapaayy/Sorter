@@ -37,6 +37,7 @@ def _verified_duplicate(db,session_id,entry,digest,upload_id):
 
 def _locked_pending(db,session_id,upload_id):
     session,entry=reference_imports._file_state(db,session_id,upload_id,lock=True)
+    session=repository.session(db,session_id)
     if session["upload_state"]!="uploading":
         raise HTTPException(409,"Сессия загрузки уже закрыта")
     if entry["state"]!="pending":
@@ -89,6 +90,7 @@ def finish(session_id,upload_id):
         else:
             target=storage.publish_staged_file(session_id,upload_id,entry["filename"],entry["declared_size"],digest)
             repository.finish_file(db,session_id,upload_id,digest,target)
+            storage.register(db,digest,entry["declared_size"])
         # This takes session FOR UPDATE only after per-file processing.
         reference_imports.reconcile(db,session_id)
     storage.remove_partial_after_commit(session_id,upload_id)

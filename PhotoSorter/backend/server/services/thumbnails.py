@@ -23,6 +23,9 @@ def enqueue(db,upload_id,checksum):
     """Call inside the upload finalization transaction; never decode in HTTP."""
     db.execute("""INSERT INTO thumbnail_tasks(upload_id,checksum)
         VALUES (%s,%s) ON CONFLICT(upload_id) DO NOTHING""",(upload_id,checksum))
+    db.execute("""DELETE FROM thumbnail_gc_candidates c USING uploads u LEFT JOIN batches b ON b.id=u.batch_id
+        WHERE u.id=%s AND c.checksum=%s AND c.version=%s
+          AND c.scope_key=COALESCE(b.owner_id::text,'shared')""",(upload_id,checksum,cache.VERSION))
 
 def claim():
     with connect() as db:
@@ -166,8 +169,18 @@ def gc_unowned(limit=100,grace_seconds=86400):
                 if time.time()-path.stat().st_mtime<grace_seconds:continue
                 with connect() as db:
                     if not try_collect(db):return removed
-                    if _has_owner(db,path.stem,owner):continue
+                    scope="shared" if owner is None else str(owner)
+                    params=(scope,path.stem,cache.VERSION)
+                    if _has_owner(db,path.stem,owner):
+                        db.execute("DELETE FROM thumbnail_gc_candidates WHERE scope_key=%s AND checksum=%s AND version=%s",params)
+                        continue
+                    db.execute("""INSERT INTO thumbnail_gc_candidates(scope_key,checksum,version)
+                        VALUES (%s,%s,%s) ON CONFLICT DO NOTHING""",params)
+                    due=db.execute("""SELECT 1 FROM thumbnail_gc_candidates WHERE scope_key=%s AND checksum=%s AND version=%s
+                        AND unowned_since<=now()-(%s*interval '1 second')""",(*params,grace_seconds)).fetchone()
+                    if not due:continue
                     safe_unlink(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
+                    db.execute("DELETE FROM thumbnail_gc_candidates WHERE scope_key=%s AND checksum=%s AND version=%s",params)
                     removed+=1
             except (OSError,ValueError):continue
     return removed

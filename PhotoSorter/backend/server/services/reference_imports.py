@@ -227,11 +227,15 @@ def status(session_id):
             saved_offset=storage.offset(session_id,entry["upload_id"],size)
             if saved_offset==0:missing+=1
         elif state=="finalized":
-            try:
-                storage.verify_object(entry["stored_path"],size,digest=entry["checksum"])
+            if session["preparation_state"] in ("completed","stopped") or session["upload_state"]=="cancelled":
+                # Historical transfer receipts are not physical owners.
                 finalized+=1
-            except (ValueError,OSError,TypeError):
-                state="missing_saved"
+            else:
+                try:
+                    storage.verify_object(entry["stored_path"],size,digest=entry["checksum"])
+                    finalized+=1
+                except (ValueError,OSError,TypeError):
+                    state="missing_saved"
         else:
             duplicates+=1
         items.append({"upload_id":str(entry["upload_id"]),
