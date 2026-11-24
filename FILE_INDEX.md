@@ -32,7 +32,7 @@
 | `backend/server/db/migrations/0028_owner_session_rotation.sql` | Соль и маркер смены пароля для сохранения сессий при обычном рестарте |
 | `backend/server/database.py` | PostgreSQL connect, initial schema and migrations |
 | `backend/server/uploads.py` | Докачка, проверка принадлежности манифесту, финализация с сохранением `.part` до commit и выборочная отмена |
-| `backend/server/jobs.py` | Единое транзакционное создание заданий, API очереди и остановки, проверка состояния ZIP и ZIP-only retry |
+| `backend/server/jobs.py` | Единое транзакционное создание заданий, API очереди и остановки, статус ZIP по запросу; legacy retry не ставит задачу |
 | `backend/server/worker.py` | Однопоточный lifecycle MegaLoc Worker и heartbeat |
 | `backend/server/workers/warm_megaloc.py` | Один экземпляр модели в RAM лидера FIFO, проверка версии и обновление числа CPU-потоков |
 | `backend/server/reference_cache.py` | Индекс и доступ к embeddings образцов |
@@ -53,7 +53,7 @@
 | `backend/server/api/file_response.py` | Потоковая отдача файлов с Range и гарантированным освобождением lease при завершении запроса |
 | `backend/server/api/routes/originals.py` | Скачивание оригиналов и inline-просмотр ФО через operation lease |
 | `backend/server/api/routes/thumbnails.py` | WebP превью и queue state |
-| `backend/server/api/routes/downloads.py` | Streaming ZIP, подтверждения, пути внутри ZIP |
+| `backend/server/api/routes/downloads.py` | ZIP по запросу, Range/206, leases и безопасные имена |
 | `backend/server/api/routes/logs.py` | Cursor/log tail, скачивание |
 | `backend/server/api/routes/storage.py` | Статистика физического места |
 | `backend/server/api/routes/system.py` | Worker heartbeat, system health и служебная очистка |
@@ -69,11 +69,11 @@
 | `backend/server/services/auto_processing.py` | Защищённая отмена, общие настройки, серверная постановка opt-in партий через общую очередь (idempotent DB lock) |
 | `backend/server/services/references.py` | Безопасное редактирование и удаление конструкций, защита исторических manifests |
 | `backend/server/services/construction_catalog.py` | Серверная проверка массового импорта, метаданные и адреса конструкций |
-| `backend/server/services/archive_pipeline.py` | Обязательный финальный ZIP после результатов MegaLoc; обновляет прогресс этапа |
+| `backend/server/services/archive_pipeline.py` | Экспортный план и финализация on_demand без ZIP |
 | `backend/server/services/archive_layout.py` | Названия ФО, конструкций и оригиналов в ZIP; безопасные пути и разрешение совпадений |
 | `backend/server/services/archives.py` | Атомарный ZIP_STORED, проверка CRC перед публикацией, повторное использование готового архива |
-| `backend/server/services/archive_retries.py` | Сохранённая в PostgreSQL очередь ZIP-only восстановления и обнаружение пропавшего архива |
-| `backend/server/services/retention.py` | Срок хранения от успешного ZIP, глобальная пауза при выключении и безопасный повторный запуск политики |
+| `backend/server/services/archive_retries.py` | Статус on_demand; retry отклоняется без очереди |
+| `backend/server/services/retention.py` | Срок хранения от завершения результата, глобальная пауза при выключении и безопасный повторный запуск политики |
 | `backend/server/services/cleanup.py` | Удаление только owned files через доверенные UUID |
 | `backend/server/storage/batch_cleanup.py` | Удаление файлов партии по фактическим операциям, без обхода символических ссылок |
 | `backend/server/db/migrations/0026_cleanup_progress.sql` | Аддитивное поле прогресса фонового удаления |
@@ -95,7 +95,7 @@
 | `backend/server/storage/hardlinks.py` | Hard Link с безопасным fallback |
 | `backend/server/storage/thumbnail_cache.py` | Дисковый WebP cache |
 | `backend/server/workers/thumbnail.py` | Цикл генерации WebP |
-| `backend/server/workers/cleanup.py` | Самостоятельный цикл удаления партий плюс плановое обслуживание, retention и ZIP-only повторы |
+| `backend/server/workers/cleanup.py` | Самостоятельный цикл удаления партий плюс плановое обслуживание, retention и TTL кэша ZIP |
 
 ## MegaLoc и фотологика
 
@@ -275,12 +275,12 @@ SQL-изменения до `0016_library_notice_delivery.sql` сохраняю�
 
 | Модуль | Ответственность |
 |---|---|
-| `backend/server/services/archive_pipeline.py` | Полный ZIP как последний этап MegaLoc, проценты |
-| `backend/server/services/archive_retries.py` | Долговременное повторение ZIP без MegaLoc |
+| `backend/server/services/archive_pipeline.py` | Финализация результата on_demand и экспортный план |
+| `backend/server/services/archive_retries.py` | Статус и отказ legacy retry без MegaLoc |
 | `backend/server/services/retention.py` | Настраиваемые сроки хранения, безопасные дедлайны |
 | `backend/server/db/migrations/0019_retention_preferences.sql` | Глобальная политика удаления |
 | `backend/server/db/migrations/0020_workload_threads.sql` | Раздельные FO/reference CPU потоки |
-| `backend/server/db/migrations/0021_archive_retry.sql` | PostgreSQL очередь повтора ZIP |
+| `backend/server/db/migrations/0021_archive_retry.sql` | Историческая таблица retry, не используется для постановки ZIP jobs |
 | `frontend/src/features/settings/PerformanceSettings.vue` | Режимы и CPU по задачам |
 | `frontend/src/styles/reference-layout.css` | Исправление вертикальной компоновки галереи образцов |
 
