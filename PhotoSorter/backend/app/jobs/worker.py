@@ -124,8 +124,6 @@ def _process(job,media):
     except Exception as exc:
         info['models'][name]={'status':'error','error':f'{type(exc).__name__}: {exc}'}
         job.log('ERROR',f'MegaLoc не завершена: {type(exc).__name__}: {exc}',name)
-        with (job.path/'errors.txt').open('a',encoding='utf8') as file:
-            file.write(f'\n=== {name} ===\n{traceback.format_exc()}\n')
     finally:
         if engine is not None and warm is None:
             try:engine.unload()

@@ -4,12 +4,15 @@ import base64,json,os,re,threading
 from collections import deque
 from datetime import datetime,timezone
 from pathlib import Path
-from ..config import RUNS_DIR
+from ..config import APP_STORAGE_ROOT
+from ..storage.categories import LOG_BUDGETS_MIB,RUN_LOG_BUDGET_MIB
+from .service import redact
+RUNS_DIR=Path(os.environ.get('MAP_LOG_ROOT',str(APP_STORAGE_ROOT.parent/'logs')))/'processing'
 
 RUN_RE=re.compile(r"\d{8}T\d{6}-[a-f0-9]{12}\Z")
-SEGMENT_BYTES=4*1024*1024
+SEGMENT_BYTES=RUN_LOG_BUDGET_MIB*1024*1024//5
 SEGMENTS=5  # 4 old + active, up to 20 MiB/run
-TOTAL_BYTES=512*1024*1024
+TOTAL_BYTES=LOG_BUDGETS_MIB['processing']*1024*1024
 MAX_MESSAGE=4096
 _lock=threading.Lock()
 _emits=0
@@ -36,8 +39,8 @@ def _budget():
     """Limit all application run event bytes, never user photos or references."""
     files=[f for f in RUNS_DIR.glob("*/events.jsonl*")
            if f.is_file() and not f.is_symlink() and
-           re.fullmatch(r"events\.jsonl(?:\.[1-4])?",f.name)]
-    usage=sum(f.stat().st_size for f in files)
+           re.fullmatch(r"events\.jsonl\.[1-4]",f.name)]
+    usage=sum(f.stat().st_size for f in RUNS_DIR.glob("*/events.jsonl*") if f.is_file() and not f.is_symlink())
     if usage<=TOTAL_BYTES:return
     for item in sorted(files,key=lambda f:f.stat().st_mtime_ns):
         if usage<=TOTAL_BYTES:break
@@ -50,7 +53,7 @@ def emit(run_id,level,message,model=None,source=None):
     event={"at":datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
         "level":str(level).upper(),"model":model,
         "source":source or ("MegaLoc" if model else "API"),
-        "message":str(message)[:MAX_MESSAGE]}
+        "message":redact(message)[:MAX_MESSAGE]}
     path=_runpath(run_id)/"events.jsonl"
     line=json.dumps(event,ensure_ascii=False,separators=(",",":"))+"\n"
     payload=line.encode("utf-8")

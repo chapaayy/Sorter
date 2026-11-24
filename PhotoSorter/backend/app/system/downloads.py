@@ -59,6 +59,11 @@ class Downloads:
     def status(self):
         with self.lock:return {k:dict(v) for k,v in self.states.items()}
     def _set(self,status,message,**progress):
+        from app.logging.service import log,redact
+        message=redact(message)
+        if status!='downloading' or progress.get('stage')!='weights':
+            try:log('models',status+': '+message)
+            except (OSError,ValueError):pass
         with self.lock:self.states["megaloc"]={"status":status,"message":str(message)[-1200:],**progress}
     def start(self,name):
         if name!="megaloc":raise ValueError("Доступна только MegaLoc")

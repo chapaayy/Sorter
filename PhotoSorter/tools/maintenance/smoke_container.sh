@@ -25,6 +25,7 @@ echo "[INFO] Isolated Docker Compose build for disposable CI containers"
 cleanup() {
   docker compose ps || true
   docker compose logs --tail=80 api worker thumbnail cleanup postgres caddy || true
+  sudo tail -n 20 "$MAP_STORAGE_ROOT/logs/api/service.jsonl" || true
   docker compose down --remove-orphans || true
 }
 trap cleanup EXIT
@@ -109,6 +110,9 @@ id="$(printf '%s' "$created" | python3 -c 'import json,sys;print(json.load(sys.s
 curl -kfsS --max-time 8 -b "$cookie_file" "https://localhost/api/batches/$id" >/dev/null
 curl -kfsS --max-time 8 -b "$cookie_file" -X DELETE \
   -H 'Origin: https://localhost' "https://localhost/api/batches/$id" >/dev/null
+sudo test -s "$MAP_STORAGE_ROOT/logs/api/service.jsonl"
+sudo test -s "$MAP_STORAGE_ROOT/logs/caddy/access/access.jsonl"
+sudo test -s "$MAP_STORAGE_ROOT/logs/caddy/runtime/caddy.jsonl"
 test -z "$(docker volume ls -q --filter label=com.docker.compose.project=outdoor-sorter)"
 sudo test -f "$MAP_STORAGE_ROOT/infrastructure/postgres/data/PG_VERSION"
 sudo test -d "$MAP_STORAGE_ROOT/infrastructure/caddy/data/caddy"

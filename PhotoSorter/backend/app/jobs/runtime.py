@@ -53,7 +53,7 @@ class Job:
         except Exception as exc:
             self.info['status']='failed';self.info['error']=f'{type(exc).__name__}: {exc}'
             self.log('ERROR',f'Ошибка запуска: {self.info["error"]}')
-            (self.path/'errors.txt').write_text(traceback.format_exc(),encoding='utf-8')
+            # Error already recorded in the bounded processing journal.
         finally:
             if self.info['status'] in ('completed','completed_with_errors'):
                 progress = self.info.get('progress',{})
