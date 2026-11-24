@@ -27,7 +27,7 @@ def test_parallel_resumable_uploads_hardlinks_owners_and_missing(system):
     second=uuid.uuid4()
     with database.connect() as db:
         owner=db.execute("SELECT owner_id FROM batches WHERE id=%s",(first,)).fetchone()["owner_id"]
-        other=db.execute("INSERT INTO users(username,role) VALUES (%s,'viewer') RETURNING id",("accounting-"+uuid.uuid4().hex,)).fetchone()["id"]
+        other=db.execute("INSERT INTO users(username,access_role) VALUES (%s,'viewer') RETURNING id",("accounting-"+uuid.uuid4().hex,)).fetchone()["id"]
         db.execute("INSERT INTO batches(id,display_name,owner_id) VALUES (%s,'Second owner',%s)",(second,other))
     items=[(first,File(uuid.uuid4(),f"one/{i}.jpg",len(raw))) for i in range(2)]+[(second,File(uuid.uuid4(),"two/3.jpg",len(raw)))]
     for batch in (first,second):
@@ -126,7 +126,7 @@ with reservation('archive',1048576),temporary_operation(config.APP_STORAGE_ROOT,
 
 def test_bounded_reconciliation_sparse_and_links_no_polling_walk(system,monkeypatch):
     root=config.APP_STORAGE_ROOT
-    folder=managed_prefix(Category.TECHNICAL_CACHE)/"accounting-fixture"
+    folder=managed_prefix(Category.TECHNICAL_CACHE,provider="torch")/"accounting-fixture"
     folder.mkdir(parents=True)
     base=folder/"sparse"
     with base.open("wb") as stream:

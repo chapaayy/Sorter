@@ -61,8 +61,13 @@ def history(db):
        coalesce(sum(physical_bytes) FILTER(WHERE category='reference_object'),0)::bigint AS object_bytes,
        count(*) FILTER(WHERE category='reference_embedding') AS embeddings,
        coalesce(sum(physical_bytes) FILTER(WHERE category='reference_embedding'),0)::bigint AS embedding_bytes
-      FROM evidence""").fetchone()
-    row.update(missing=0,partial=True)
+      ,(SELECT count(*) FROM history h WHERE NOT EXISTS
+          (SELECT 1 FROM storage_files f WHERE f.category='reference_object'
+           AND split_part(f.path,'/',array_length(string_to_array(f.path,'/'),1))=h.source_hash))
+       +(SELECT count(*) FROM reference_cache c JOIN history h ON h.source_hash=c.source_hash
+          WHERE NOT EXISTS (SELECT 1 FROM storage_files f WHERE f.path='app/'||substr(c.cache_path,%s))) AS missing
+      FROM evidence""",(len(str(config.APP_STORAGE_ROOT))+2,)).fetchone()
+    row["partial"]=bool(row["missing"])
     return row
 
 def breakdown():

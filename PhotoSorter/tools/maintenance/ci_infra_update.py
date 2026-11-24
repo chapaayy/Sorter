@@ -199,6 +199,13 @@ def main():
     assert not marker.exists()
     assert builder not in run("docker","buildx","ls","--format","{{.Name}}").splitlines()
     assert "buildx_buildkit_"+builder+"0_state" not in run("docker","volume","ls","--format","{{.Name}}").splitlines()
+    sample=json.loads((storage/"system/updater/control/storage-host.json").read_text())
+    assert sample["categories"]["postgres_data"]["allocated_bytes"]>0
+    assert sample["categories"]["caddy_state"]["allocated_bytes"]>0
+    assert sample["postgres_wal_subset_bytes"]>0
+    assert sample["docker"]["available"],sample
+    assert sample["filesystems"]
+    print("REAL_HOST_STORAGE_ACCOUNTING_OK",flush=True)
     print("REAL_ABANDONED_BUILDKIT_RECOVERY_OK",flush=True)
     with tempfile.TemporaryDirectory(prefix="map-ci-update-") as folder:
         temp=Path(folder);project=temp/"project";remote=temp/"origin.git"
