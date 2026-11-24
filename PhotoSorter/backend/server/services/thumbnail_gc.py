@@ -1,5 +1,5 @@
-"""Owner-checked preview cache cleanup and stale staging fragments."""
-from .thumbnails import gc_unowned,gc_incomplete
+"""Owner-checked preview cache cleanup; scratch recovery is centralized."""
+from .thumbnails import gc_unowned
 
 def collect(limit=20):
-    return gc_unowned(limit=limit)+gc_incomplete(limit=limit)
+    return gc_unowned(limit=limit)

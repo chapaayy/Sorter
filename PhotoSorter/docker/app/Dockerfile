@@ -11,9 +11,10 @@ RUN npm run build
 FROM python:3.11-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     PHOTOSORTER_FORCE_CPU=1 PHOTOSORTER_CPU_THREADS=8 PHOTOSORTER_BATCH_SIZE=4 PHOTOSORTER_PREFETCH_WORKERS=2 \
-    HOME=/storage/app/cache XDG_CACHE_HOME=/storage/app/cache/xdg \
+    HOME=/storage/app/cache/xdg XDG_CACHE_HOME=/storage/app/cache/xdg \
     HF_HOME=/storage/app/cache/huggingface HF_HUB_CACHE=/storage/app/cache/huggingface/hub \
-    HF_XET_CACHE=/storage/app/cache/huggingface/xet TORCH_HOME=/storage/app/cache/torch
+    HF_XET_CACHE=/storage/app/cache/huggingface/xet TORCH_HOME=/storage/app/cache/torch \
+    HF_HUB_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1
 WORKDIR /workspace/PhotoSorter
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 ca-certificates file ffmpeg && rm -rf /var/lib/apt/lists/*
 # Verified CPU-only wheels; no CUDA runtime or GPU image layers.

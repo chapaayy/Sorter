@@ -232,18 +232,21 @@ def test_expired_final_attempt_becomes_failed(thumbs):
     cleanup.cleanup_one(own)
 
 def test_stale_temp_webp_cleanup_never_removes_real_preview(thumbs):
-    import time
+    import time,uuid
+    from app import config
     from app.storage.paths import managed_prefix
     from app.storage.categories import Category
+    from app.storage.temporary import collect_abandoned
     root=managed_prefix(Category.REFERENCE_THUMBNAIL,version=1)/"aa"
     root.mkdir(parents=True)
-    temp=root/("atomic-"+"a"*32+".tmp")
-    temp.write_bytes(b"temporary")
-    os.utime(temp,(time.time()-90000,time.time()-90000))
+    stage=managed_prefix(Category.SCRATCH,service="thumbnail",operation_id=uuid.uuid4())
+    stage.mkdir(parents=True)
+    (stage/"fragment").write_bytes(b"temporary")
+    os.utime(stage,(time.time()-3700,time.time()-3700))
     live=root/("a"*64+".webp")
     live.write_bytes(b"live")
-    assert thumbnails.gc_incomplete(limit=10,grace_seconds=86400)==1
-    assert not temp.exists()
+    assert collect_abandoned(config.APP_STORAGE_ROOT)==1
+    assert not stage.exists()
     assert live.exists()
 
 

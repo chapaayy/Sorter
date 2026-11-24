@@ -187,21 +187,3 @@ def gc_unowned(limit=100,grace_seconds=86400):
             except (OSError,ValueError):continue
     return removed
 
-def gc_incomplete(limit=50,grace_seconds=86400):
-    """Only the atomic_write fragments in known preview namespaces."""
-    import time,re
-    removed=0
-    for owner,root in cache.roots():
-        for path in root.glob("*/atomic-*.tmp"):
-            if removed>=limit:return removed
-            try:
-                if not re.fullmatch(r"atomic-[a-f0-9]{32}\.tmp",path.name):continue
-                if not re.fullmatch(r"[a-f0-9]{2}",path.parent.name):continue
-                cache.safe_location(path)
-                if time.time()-path.stat().st_mtime<grace_seconds:continue
-                with connect() as db:
-                    if not try_collect(db):return removed
-                    safe_unlink(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
-                    removed+=1
-            except (OSError,ValueError):continue
-    return removed

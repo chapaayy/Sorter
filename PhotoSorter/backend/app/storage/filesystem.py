@@ -7,7 +7,6 @@ opened for in-place modification.
 import os
 import stat
 import shutil
-import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from .paths import relative_key
@@ -106,24 +105,25 @@ def file_stat(root, key):
 
 @contextmanager
 def atomic_write(root, key):
-    """Publish on successful exit; preserve existing inode on failed writes."""
-    with parent_fd(root, key, create=True) as (fd, name):
-        fragment = "atomic-" + uuid.uuid4().hex + ".tmp"
-        handle = os.open(fragment, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-                         0o600, dir_fd=fd)
-        try:
-            with os.fdopen(handle, "wb") as stream:
+    """Stage in leased scratch, then atomically replace on the same mount.
+
+    No adjacent fragments survive a crashed writer. The scratch sweeper owns
+    recovery, including metadata, embeddings and thumbnails.
+    """
+    from .temporary import temporary_operation
+    root=Path(root)
+    key=relative_key(str(key))
+    service=os.environ.get("MAP_SERVICE","worker")
+    with temporary_operation(root,service) as stage:
+        staged=stage.relative_to(root)/"fragment"
+        with parent_fd(root,staged) as (fd,name):
+            handle=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,
+                           0o600,dir_fd=fd)
+            with os.fdopen(handle,"wb") as stream:
                 yield stream
                 stream.flush()
                 os.fsync(stream.fileno())
-            _regular_target(fd, name, missing_ok=True)
-            os.replace(fragment, name, src_dir_fd=fd, dst_dir_fd=fd)
-            os.fsync(fd)
-        finally:
-            try:
-                os.unlink(fragment, dir_fd=fd)
-            except FileNotFoundError:
-                pass
+        atomic_publish(root,staged,key)
 
 
 def safe_remove_tree(root,key,*,missing_ok=False):
