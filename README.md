@@ -17,7 +17,7 @@ sudo bash -c 'set -e; apt-get update; apt-get install -y git ca-certificates; gi
 Единый управляемый корень `/opt/Sorter/storage` (по умолчанию). Оригиналы, подготовленные медиа, результаты, общие образцы, миниатюры, эмбеддинги, модель, временные операции, PostgreSQL и сертификаты Caddy разделены по назначению. PostgreSQL хранит очередь FIFO, права, связи объектов, реестр места и квоты. ZIP создаётся по запросу, по умолчанию живёт час. Hardlinks учитываются по физическому объекту. Личные квоты и ограничение временного пула по умолчанию выключены; физическая защита диска включена всегда.
 
 - [Контракт путей и правила каждой категории](docs/STORAGE_V2_FINAL_CATALOG.md)
-- [Архитектура Storage V2](docs/STORAGE_ARCHITECTURE_V2.md)
+- [Архитектура Storage V2](docs/STORAGE_ARCHITECTURE_V2.md), [карта проекта](PROJECT_MAP.md), [индекс файлов](FILE_INDEX.md)
 - [Резервное копирование и восстановление](docs/BACKUP_RESTORE.md)
 - [Эксплуатация](docs/OPERATIONS.md)
 - [Жизненный цикл](docs/DATA_LIFECYCLE.md)

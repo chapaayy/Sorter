@@ -9,3 +9,7 @@
 Скачивание: ZIP строится по запросу, повторно используется пока действителен, range поддерживается, удаляется cleanup после TTL при отсутствии активных читателей. Удаление партии выполняется через API/UI, не через rm. Общие объекты удаляются лишь после исчезновения зависимостей и grace. Модель и технический кэш имеют разные политики.
 
 Проблемы обновления: проверь журнал updater, состояние active ops, свободное место, образ-кандидат и backup. Не перезапускай установщик поверх незавершённого обновления. При ошибке сохрани данные и диагностический вывод. Не применяй общий Docker prune, не меняй закреплённый storage root.
+
+## Проверка фактического здоровья
+
+На штатном хосте `sudo systemctl is-active docker.service`, `sudo systemctl is-active map-updater.service`, `sudo systemctl is-active map-log-maintenance.timer` проверяются по отдельности. `docker compose ... ps` показывает контейнеры, но не все имеют Docker Healthcheck. PostgreSQL и API обязаны быть native healthy; Caddy проверяется HTTPS `/api/health` с корректным SNI/Host; состояние MegaLoc/thumbnail/cleanup — в authenticated `/api/system/status` (`services.*.alive`, `last_seen`). Heartbeat 10 секунд, alive до 35 секунд. После reboot нужны новые экземпляры heartbeat и его обновление, а не старые строки базы. Не использовать CI VM harness на рабочем VPS.

@@ -1,327 +1,140 @@
-> **Историческая документация прежних этапов.** Описания старых каталогов, миграции и команды установки ниже не применяются к Storage V2. Актуальные инструкции: [README](README.md), [контракт и жизненный цикл](docs/STORAGE_V2_FINAL_CATALOG.md), [архитектура V2](docs/STORAGE_ARCHITECTURE_V2.md).
+# FILE_INDEX — Storage V2
 
-# FILE_INDEX.md — актуальные файлы PhotoSorter (ветка main)
+Current source index for `feature/storage-architecture-v2`. Entries are actual source paths; grouped by responsibility, not a claim that every optional tool runs continuously. Historical migrations and test names remain because they preserve schema history and regressions. [Project map](PROJECT_MAP.md) explains flows; [final report](docs/STORAGE_V2_FINAL_REPORT.md) is the readiness gate.
 
-Индекс только существующих и используемых модулей. Не включает пустые `__init__.py`, `.gitkeep`, запакованные зависимости и собранный Vue `dist/`. Каждая правка структуры должна обновлять этот файл.
+## Deployment and contract
 
-## Корень и инфраструктура
-
-| Файл / каталог | Назначение |
+| Path | Purpose |
 |---|---|
-| `README.md` | Главная инструкция бета-версии, запуск, каталоги данных |
-| `AGENTS.md` | Правила разработки, безопасность, запрет изменения MegaLoc |
-| `PROJECT_MAP.md` | Архитектура, потоки данных, зависимости слоёв |
-| `FILE_INDEX.md` | Индекс обязанностей файлов |
-| `PhotoSorter/tools/maintenance/setup_tcp_bbr.sh` | Настройка TCP BBR на Linux-хосте, read-only проверка и управляемый откат, без изменения Compose |
-| `install.sh` | Установка/обновление, preflight, сохранение действующих паролей и mounts |
-| `PhotoSorter/tools/maintenance/install_prerequisites.sh` | Установка недостающих Docker Engine, Compose v2 и Python 3 на Ubuntu/Debian через apt |
-| `PhotoSorter/tools/maintenance/test_install_prerequisites.sh` | Тесты установщика с подменёнными системными командами, без изменения хоста |
-| `compose.yaml` | Caddy, PostgreSQL, API, MegaLoc Worker, WebP и cleanup |
-| `.env.example` | Шаблон DOMAIN, не содержит реальные секреты |
-| `.dockerignore`, `.gitignore` | Исключение секретов, ФО, моделей, caches, build artifacts |
-| `.github/workflows/ci.yml` | **Единственный** актуальный CI (backend, restore, frontend, browser, full Docker runtime) |
-| `PhotoSorter/docker/app/Dockerfile` | Node 24 Vue build stage + Python/CPU PyTorch runtime |
-| `PhotoSorter/backend/server/services/upload_validation.py` | Проверка безопасного имени и определение формата фото или видео по содержимому ФО |
-| `PhotoSorter/backend/server/db/migrations/0025_fo_original_media.sql` | MIME оригиналов ФО, не участвующих в MegaLoc |
-| `PhotoSorter/docker/caddy/Caddyfile` | HTTPS reverse proxy, лимиты запросов и security headers |
+| `install.sh`, `.env.example` | Interactive clean install / deploy / read-only check |
+| `compose.yaml`, `PhotoSorter/docker/` | Six services, protected bind mounts, one CPU app image and Caddy |
+| `docs/storage-layout-v2.json` | Authoritative layout, categories, bootstrap and retention constants |
+| `README.md`, `AGENTS.md`, `PROJECT_MAP.md` | Installation, rules, map |
+| `.gitignore`, `.dockerignore` | Data/secrets excluded |
+| `.github/workflows/ci.yml` | Backend, frontend, browser, restore, Docker Runtime |
+| `.github/workflows/release-acceptance.yml` | Actual fresh Ubuntu/systemd, large real-model workload |
+| `docs/STORAGE_V2_FINAL_CATALOG.md`, `STORAGE_V2_PROGRESS.md`, `STORAGE_V2_FINAL_REPORT.md` | Category catalogue, evidence and acceptance status |
 
-## Backend / API
+## Backend and host module index
 
-| Файл / каталог | Назначение |
-|---|---|
-| `backend/server/main.py` | FastAPI assembly, auth middleware, lifespan, health |
-| `backend/server/auth.py` | Пароль владельца из .env, сессии с хешированными токенами, проверка Origin |
-| `backend/server/db/migrations/0028_owner_session_rotation.sql` | Соль и маркер смены пароля для сохранения сессий при обычном рестарте |
-| `backend/server/database.py` | PostgreSQL connect, initial schema and migrations |
-| `backend/server/uploads.py` | Докачка, проверка принадлежности манифесту, финализация с сохранением `.part` до commit и выборочная отмена |
-| `backend/server/jobs.py` | Единое транзакционное создание заданий, API очереди и остановки, статус ZIP по запросу; legacy retry не ставит задачу |
-| `backend/server/worker.py` | Однопоточный lifecycle MegaLoc Worker и heartbeat |
-| `backend/server/workers/warm_megaloc.py` | Один экземпляр модели в RAM лидера FIFO, проверка версии и обновление числа CPU-потоков |
-| `backend/server/reference_cache.py` | Индекс и доступ к embeddings образцов |
-| `backend/server/api/routes/site.py` | **Один** Vue сайт на `/`, `/assets/*` и history fallback |
-| `backend/server/api/routes/auth.py` | Login/logout/current user endpoints |
-| `backend/server/api/routes/access_requests.py` | Публичная отправка и маршруты модерации |
-| `backend/server/{services,db/repositories}/access_requests.py` | Правила одобрения и SQL для заявок, аккаунтов и разрешений |
-| `backend/server/security/access_policy.py` | Политика доступа владельца и зрителя к конкретным результатам |
-| `backend/server/db/migrations/0024_access_requests.sql` | Роли, заявки и привязка доступа к запускам |
-| `frontend/src/features/auth/` | Общая форма входа, регистрации и их стили |
-| `frontend/src/features/admin/users/` | Аккаунты, очередь заявок и выбор доступных результатов |
-| `backend/server/api/routes/admin_users.py`, `backend/server/services/admin_users.py` | Прямое создание зрителей, список аккаунтов и редактирование доступов |
-| `backend/server/api/routes/batches.py` | Партии, серверный манифест, отмена ожидаемой автообработки, незавершённые загрузки и безопасное удаление |
-| `backend/server/api/routes/references.py` | Галерея, проверка пакета, адрес конструкции и удаление образцов |
-| `backend/server/api/routes/models.py` | Модели, скачивание и состояние |
-| `backend/server/api/routes/results.py` | История прогонов и результаты |
-| `backend/server/api/routes/images.py` | Изображения результатов |
-| `backend/server/api/file_response.py` | Потоковая отдача файлов с Range и гарантированным освобождением lease при завершении запроса |
-| `backend/server/api/routes/originals.py` | Скачивание оригиналов и inline-просмотр ФО через operation lease |
-| `backend/server/api/routes/thumbnails.py` | WebP превью и queue state |
-| `backend/server/api/routes/downloads.py` | ZIP по запросу, Range/206, leases и безопасные имена |
-| `backend/server/api/routes/logs.py` | Cursor/log tail, скачивание |
-| `backend/server/api/routes/storage.py` | Статистика физического места |
-| `backend/server/api/routes/system.py` | Worker heartbeat, system health и служебная очистка |
-| `backend/server/api/routes/processing_settings.py` | Общие PostgreSQL-настройки автообработки и порога: GET/PATCH |
+### Backend entrypoints
 
-## Backend / services, storage, DB
+`PhotoSorter/backend/server/` — FastAPI, auth, DB, upload, job and worker entrypoints.
 
-| Файл / каталог | Назначение |
-|---|---|
-| `backend/server/services/batches.py` | CRUD партий, счётчики, последний запуск MegaLoc/прошлый результат для списка ФО, pending uploads |
-| `backend/server/services/upload_manifest.py` | Неизменяемый состав новой партии, индивидуальная настройка auto-MegaLoc, проверка оригиналов и завершение `waiting/complete` |
-| `backend/server/services/batch_runs.py` | Безопасные сводки запусков, реальные счётчики MegaLoc для компактных карточек и история без путей ФС |
-| `backend/server/services/auto_processing.py` | Защищённая отмена, общие настройки, серверная постановка opt-in партий через общую очередь (idempotent DB lock) |
-| `backend/server/services/references.py` | Безопасное редактирование и удаление конструкций, защита исторических manifests |
-| `backend/server/services/construction_catalog.py` | Серверная проверка массового импорта, метаданные и адреса конструкций |
-| `backend/server/services/archive_pipeline.py` | Экспортный план и финализация on_demand без ZIP |
-| `backend/server/services/archive_layout.py` | Названия ФО, конструкций и оригиналов в ZIP; безопасные пути и разрешение совпадений |
-| `backend/server/services/archives.py` | Атомарный ZIP_STORED, проверка CRC перед публикацией, повторное использование готового архива |
-| `backend/server/services/archive_retries.py` | Статус on_demand; retry отклоняется без очереди |
-| `backend/server/services/retention.py` | Срок хранения от завершения результата, глобальная пауза при выключении и безопасный повторный запуск политики |
-| `backend/server/services/cleanup.py` | Удаление только owned files через доверенные UUID |
-| `backend/server/storage/batch_cleanup.py` | Удаление файлов партии по фактическим операциям, без обхода символических ссылок |
-| `backend/server/db/migrations/0026_cleanup_progress.sql` | Аддитивное поле прогресса фонового удаления |
-| `backend/server/db/migrations/0027_batch_creation_names.sql` | UUID попытки создания ФО и индекс видимых имён для выдачи суффиксов |
-| `backend/server/services/temp_cleanup.py` | Устаревшие незавершённые передачи |
-| `backend/server/services/thumbnails.py` | WebP queue и кеширование превью |
-| `backend/server/services/thumbnail_gc.py` | Сборка вызовов очистки WebP cache |
-| `backend/server/services/result_pages.py` | Галереи/пагинация снимков результата |
-| `backend/server/services/storage_usage.py` | Диск, категории, учёт inode/Hard Link |
-| `backend/server/services/disk_guard.py` | Дисковый reserve и HTTP 507 для новых uploads |
-| `backend/server/services/operations.py` | Долгоживущие операции/leases |
-| `backend/server/services/heartbeat.py` | Пульс процессов worker/thumbnail/cleanup |
-| `backend/server/security/login_throttle.py` | Ограничение неверных логинов |
-| `backend/server/db/migration_runner.py` | Пошаговая миграция PostgreSQL |
-| `backend/server/db/migrations/0001…0010*.sql` | **Аддитивная история схемы БД**, включая манифест ФО и настройки opt-in автообработки |
-| `backend/server/db/repositories/batches.py` | SQL для партий, совместимые с манифестом правила `upload_state` |
-| `backend/server/db/repositories/pagination.py` | Cursor pagination для галерей |
-| `backend/server/storage/paths.py` | Проверенные доверенные пути |
-| `backend/server/storage/hardlinks.py` | Hard Link с безопасным fallback |
-| `backend/server/storage/thumbnail_cache.py` | Дисковый WebP cache |
-| `backend/server/workers/thumbnail.py` | Цикл генерации WebP |
-| `backend/server/workers/cleanup.py` | Самостоятельный цикл удаления партий плюс плановое обслуживание, retention и TTL кэша ZIP |
+`auth.py`, `database.py`, `jobs.py`, `main.py`, `reference_cache.py`, `uploads.py`, `worker.py`.
 
-## MegaLoc и фотологика
+### HTTP routes
 
-| Файл / каталог | Назначение |
-|---|---|
-| `backend/app/recognition/pipeline.py` | Порядок ФО → группировка → назначение SAM |
-| `backend/app/recognition/engines/base.py` | Интерфейс inference |
-| `backend/app/recognition/engines/megaloc/extractor.py` | Получение признаков MegaLoc |
-| `backend/app/recognition/engines/megaloc/loader.py` | Загрузка модели/весов |
-| `backend/app/recognition/grouping/finder.py` | Группы ФО |
-| `backend/app/recognition/matching/resolver.py` | Подбор SAM |
-| `backend/app/recognition/math.py`, `errors.py` | Численные операции/ошибки |
-| `backend/app/jobs/{worker,runtime,progress,overall_progress}.py` | Стадии исполнения, прогресс |
-| `backend/app/results/{copier,exporter,repository}.py` | Manifest, публикация файлов и результат |
-| `backend/app/logging/events.py` | JSONL события, ротация |
-| `backend/app/photos/{labels,reader,scanner}.py` | Сканирование/старые метки/чтение изображений |
-| `backend/app/photos/construction.py` | Строгий формат `CITY NUMBER — ADDRESS`, коды городов |
-| `backend/app/system/{downloads,model_store,performance}.py` | Загрузка/проверка моделей, ресурсные функции |
-| `backend/app/config.py` | Пути и гарантированная структура каталогов |
+`PhotoSorter/backend/server/api/routes/` — HTTP contracts.
 
-## Единственный фронтенд Vue 3
+`access_requests.py`, `admin_users.py`, `auth.py`, `batches.py`, `downloads.py`, `images.py`, `library_notices.py`, `logs.py`, `models.py`, `originals.py`, `processing_settings.py`, `reference_imports.py`, `references.py`, `regions.py`, `results.py`, `site.py`, `storage.py`, `system.py`, `thumbnails.py`, `updater.py`, `work_queue.py`.
 
-| Файл / каталог | Назначение |
-|---|---|
-| `frontend/package.json`, `package-lock.json` | Бета-версия, зафиксированные зависимости, scripts |
-| `frontend/index.html`, `vite.config.ts`, `tsconfig.json` | Bootstrap HTML, Vite base `/`, TS проверки |
-| `frontend/src/main.ts` | Подключение Vue, Pinia, Router, CSS |
-| `frontend/src/app/App.vue`, `router.ts` | Session gate и чистые маршруты |
-| `frontend/src/api/{client,batches,references,runs,results,logs,system}.ts` | Типизированный слой HTTP |
-| `frontend/src/types/api.ts` | Контракты JSON |
-| `frontend/src/stores/{session,theme,notice}.ts` | Вход, тема, уведомления |
-| `frontend/src/composables/{useCursor,usePolling}.ts` | Cursor/polling, предотвращение дублирующихся запросов |
-| `frontend/src/utils/referenceTransfer.ts` | Передача и докачка новых образцов после предпросмотра |
-| `frontend/src/components/layout/Shell.vue` | Шесть вкладок; сворачиваемая desktop-панель и mobile drawer |
-| `frontend/src/components/ui/` | Buttons, confirmation, empty state, toast, карточки |
-| `frontend/src/components/gallery/` | Lazy/virtual thumbnails и ImageViewer |
-| `frontend/src/components/split/GroupPicker.vue` | Двухпанельный выбор: однострочные подписи, счётчики, tooltip, мобильная версия; ручная ширина с сохранением только для результатов |
-| `frontend/src/features/auth/LoginView.vue` | Логин |
-| `frontend/src/features/fo/` | Список и галерея ФО, загрузка, восстановление и встроенные состояния MegaLoc |
-| `frontend/src/features/fo/FoBatchCard.vue` | Компактная карточка партии, текущий прогресс передачи, ссылки и доступные действия MegaLoc |
-| `frontend/src/features/fo/BatchProcessingStatus.vue` | Общий блок статуса/реального прогресса MegaLoc в списке и галерее |
-| `frontend/src/features/fo/BatchRunHistory.vue` | Постраничная история всех запусков партии, включая предыдущие результаты |
-| `frontend/src/utils/batchProcessing.ts` | Правила UI-состояний MegaLoc, отдельные от состояния миниатюр |
-| `frontend/src/features/fo/PendingUploads.vue` | Докачка по выбранному оригиналу, автозавершение полностью принятых файлов, подтверждаемая отмена |
-| `frontend/src/features/references/ReferenceLibrary.vue` | Библиотека с городом, номером, адресом и просмотром фото |
-| `frontend/src/features/references/ReferenceUploader.vue` | Переключение двух способов импорта |
-| `frontend/src/features/references/ReferenceDirectoryImporter.vue` | Строгий массовый импорт, предпросмотр, ошибки и видимый список системных файлов, исключённых из передачи |
-| `frontend/src/features/references/ReferenceImportReview.vue` | Списки новых фото и дублей, подтверждение или отмена перед передачей |
-| `frontend/src/composables/useReferencePreflight.ts` | Проверка SHA-256 и дублей до добавления образцов в очередь передачи |
-| `frontend/src/features/references/ReferencePhotoUploader.vue` | Добавление фотографий в выбранную конструкцию |
-| `frontend/src/features/results/` | Результаты, ZIP, сохранение/retention |
-| `frontend/src/features/logs/LogsView.vue` | Лог обработки, tail |
-| `frontend/src/features/settings/SettingsView.vue` | Диск, состояние сервисов, тема, cleanup |
-| `frontend/src/styles/` | CSS tokens, единственный общий UI-слой; адаптивные стили списка и свёрнутого меню |
-| `frontend/src/utils/{upload,format}.ts` | Idempotent resume, блоки 16 МиБ, безопасная проверка файла, форматы |
-| `frontend/src/utils/uploadRetry.ts` | Отменяемые повторные запросы/backoff при переключении VPN или потере сети |
-| `frontend/src/utils/referenceSelection.ts` | Клиентская проверка имени папки, полный учёт фото/ошибок/явно пропущенных системных файлов ОС |
-| `frontend/src/utils/referenceDuplicates.ts` | SHA-256 сверка с готовыми образцами перед сетевой загрузкой |
-| `frontend/src/utils/uploadQueue.ts` | Ограничение и отчёт ошибок параллельных передач |
-| `frontend/src/stores/uploadSettings.ts` | Настройка числа одновременных загрузок |
-| `frontend/src/stores/sidebar.ts` | Сохранение состояния свёрнутого desktop-меню в localStorage |
-| `frontend/src/utils/batches.ts` | Общие проверки готовности ФО к обработке и безопасного возобновления загрузки |
+### Domain services
 
-## Проверки и обслуживание
+`PhotoSorter/backend/server/services/` — Business/lifecycle operations.
 
-| Файл | Назначение |
-|---|---|
-| `backend/tests/` | Backend regression: SQL, MegaLoc math, безопасность, upload, ZIP, retention и HTTP |
-| `backend/tests/test_batch_listing_regressions.py` | Счётчики нулевых запусков, список ФО после удаления, PostgreSQL |
-| `backend/tests/test_construction_import.py` | Новый формат конструкций, повторные импорты, SHA-256, адреса |
-| `backend/tests/test_pending_upload_recovery.py` | Изолированные проверки автозавершения `.part`, idempotent init и отмены без потери готовых фото |
-| `backend/tests/test_processing_dashboard.py` | Новый фильтр запусков, статус PostgreSQL, пагинация, совместимость прежнего API |
-| `backend/tests/test_batch_run_summaries.py` | Действительный latest run, позиция очереди, прогресс, прежний результат и безопасная история |
-| `backend/tests/test_auto_processing.py` | Новая opt-in очередь, отмена до enqueue, ручной запуск, queue full, terminal job, конкурентная отправка, старые партии |
-| `backend/tests/test_archive_recovery.py` | Восстановление пропавшего ZIP без MegaLoc, запрет публикации архива с ошибкой CRC |
-| `backend/tests/test_retention_toggle.py` | Приостановка автоудаления и безопасный новый срок после повторного включения |
-| `backend/tests/test_batch_card_metadata.py` | Реальные группы/неопределённые ФО в карточках без утечки приватных путей |
-| `frontend/tests/` | Vitest |
-| `frontend/e2e/navigation.spec.ts`, `playwright.config.ts` | Chromium/WebKit на десктопе и mobile |
-| `PhotoSorter/tools/benchmark_api.py` | API latency |
-| `PhotoSorter/tools/maintenance/snapshot.py` | Согласованный backup, verify, disposable restore-test |
-| `PhotoSorter/tools/maintenance/ci_restore_drill.py` | CI dump→restore на изолированной PostgreSQL |
-| `PhotoSorter/tools/maintenance/compare_baseline.py` | Две реальных MegaLoc manifest/ZIP для сравнения |
-| `PhotoSorter/tools/maintenance/staging_probe.py` | Read-only health, latency, resources |
-| `PhotoSorter/tools/maintenance/smoke_container.sh` | Только одноразовый CI Docker runtime |
-| `docs/STAGE4_ACCEPTANCE.md` | Итоговая проверка: автоматизированные сценарии и отдельно обязательные ручные тесты VPN/Worker/VPS |
-| `docs/` | Актуальные API, архитектура, backup, deployment, operations, security, acceptance и rollback |
+`access_requests.py`, `admin_users.py`, `archive_cache.py`, `archive_layout.py`, `archive_pipeline.py`, `archives.py`, `auto_processing.py`, `batch_runs.py`, `batches.py`, `cleanup.py`, `compute_settings.py`, `construction_catalog.py`, `construction_relabel.py`, `disk_guard.py`, `heartbeat.py`, `library_notices.py`, `media_preparation.py`, `operations.py`, `reference_archives.py`, `reference_gallery.py`, `reference_gc.py`, `reference_imports.py`, `reference_publication.py`, `reference_sides.py`, `reference_uploads.py`, `references.py`, `regions.py`, `result_pages.py`, `retention.py`, `storage_admin.py`, `storage_breakdown.py`, `storage_inventory.py`, `storage_maintenance.py`, `storage_usage.py`, `temp_cleanup.py`, `thumbnail_gc.py`, `thumbnails.py`, `update_gate.py`, `upload_manifest.py`, `upload_validation.py`, `worker_cpu_affinity.py`.
 
-См. [Инструкция импорта образцов](docs/REFERENCE_IMPORT.md).
+### File ownership and registry
 
-**Что не входит в актуальный код:** `frontend/static`, маршрут `/v3`, отдельные старые stage CI и второй JS/HTML-фронтенд. Исторические имена `test_stage*.py` остаются регрессионными тестами, а рабочие инструменты находятся в `tools/maintenance/` — параллельных версий приложения нет.
+`PhotoSorter/backend/server/storage/` — Typed paths, ownership, inode accounting, reservations, cleanup.
 
-### UI: единый монохромный слой (dark/light)
-- `PhotoSorter/frontend/src/components/ui/UiSelect.vue` — единый доступный раскрывающийся список с маленьким CSS-chevron и нативного меню.
-- `PhotoSorter/frontend/src/components/ui/UiIcon.vue` — SVG-навигация без внешнего icon runtime.
-- `PhotoSorter/frontend/src/styles/tokens.css` — цветовые токены тёмной/светлой темы.
-- `PhotoSorter/frontend/src/styles/components.css` — единое актуальное оформление и адаптивная компоновка без каскадных тем-надстроек.
-- `PhotoSorter/frontend/src/styles/select.css` — стили кастомного выпадающего меню.
-- `PhotoSorter/frontend/e2e/navigation.spec.ts` — браузерная проверка выбора партии, Esc и существующей навигации.
+`accounting.py`, `admission.py`, `batch_cleanup.py`, `bounded.py`, `hardlinks.py`, `ownership.py`, `paths.py`, `reconciliation.py`, `reference_lifecycle.py`, `reference_objects.py`, `registry.py`, `reporting.py`, `reservations.py`, `result_audit.py`, `thumbnail_cache.py`.
 
+### DB repositories
 
-## Единственный reference/FIFO pipeline
+`PhotoSorter/backend/server/db/repositories/` — Transaction SQL.
 
-| Файл | Ответственность |
-|---|---|
-| `PhotoSorter/backend/server/db/repositories/work_queue.py` | FIFO `seq`, claim, остановка/сбой/возобновление |
-| `PhotoSorter/backend/server/db/repositories/job_status.py` | Только публичные статусы и позиции ФО |
-| `PhotoSorter/backend/server/db/repositories/reference_imports.py` | SQL сессии, файлы, prep job |
-| `PhotoSorter/backend/server/db/repositories/reference_versions.py` | Чтение опубликованного снимка |
-| `PhotoSorter/backend/server/services/reference_imports.py` | Полный манифест, финализация сессии |
-| `PhotoSorter/backend/server/services/reference_uploads.py` | SHA-256, чанки, дедупликация |
-| `PhotoSorter/backend/server/services/reference_publication.py` | V1/новые неизменяемые версии, атомарная публикация |
-| `PhotoSorter/backend/server/services/reference_gallery.py` | Галерея как производное от готовых файлов |
-| `PhotoSorter/backend/server/services/references.py` | Удаление из опубликованной версии и кэш-статус |
-| `PhotoSorter/backend/server/services/upload_validation.py` | Общая валидация имени и размера фото |
-| `PhotoSorter/backend/server/workers/reference_prepare.py` | CPU-подготовка MegaLoc, публикация и прогресс |
-| `PhotoSorter/backend/server/storage/reference_objects.py` | Изолированное файловое staging-хранилище |
-| `PhotoSorter/backend/server/api/routes/reference_imports.py` | API сессий, файлов, статуса и возобновления |
-| `PhotoSorter/backend/server/api/routes/references.py` | Каталог/галерея/удаление |
-| `PhotoSorter/frontend/src/utils/referenceTransfer.ts` | Единственный resumable загрузчик образцов |
-| `PhotoSorter/frontend/src/types/referenceTransfer.ts` | Тип выбранного образца |
-| `PhotoSorter/frontend/src/features/queue/*` | Общая очередь |
-| `PhotoSorter/frontend/src/features/references/*` | Загрузка, статус подготовки, библиотека |
-| `PhotoSorter/frontend/src/features/fo/ReferenceUpdateNotice.vue` | Однократное предупреждение |
+`access_requests.py`, `batches.py`, `job_status.py`, `pagination.py`, `reference_imports.py`, `reference_versions.py`, `work_queue.py`.
 
-SQL-изменения до `0016_library_notice_delivery.sql` сохраняются
-как последовательные миграции **схемы**, но не содержат альтернативных
-обработчиков/версий приложения. Более подробная текущая схема в
-`docs/REFERENCE_PIPELINE.md`.
+### Worker roles
 
+`PhotoSorter/backend/server/workers/` — Background processes.
 
-## Компоненты единого компактного списка
+`cleanup.py`, `media_prepare.py`, `reference_prepare.py`, `thumbnail.py`, `warm_megaloc.py`.
 
-| Файл | Задача |
-|---|---|
-| `PhotoSorter/frontend/src/components/ui/CompactTaskCard.vue` | Одна горизонтальная карточка ФО/очереди/результатов: фото, статус, прогресс, время, действия |
-| `PhotoSorter/frontend/src/composables/useSmoothProgress.ts` | Синхронная анимация полосы и числа между измерениями активной задачи |
-| `PhotoSorter/frontend/src/styles/task-cards.css` | Адаптивные светлые/тёмные стили карточек, нейтральные цвета обеих тем |
-| `PhotoSorter/frontend/src/utils/queueEstimates.ts` | ETA FIFO из реальных измерений: отдельные скорости ФО и подготовки образцов |
-| `PhotoSorter/frontend/tests/queueEstimates.test.ts` | Очерёдность, отсутствие неподтверждённых ETA, фактическая длительность |
+### Media
 
+`PhotoSorter/backend/server/media/` — Inspection, normalization, preview and video.
 
-## Модульное обновление интерфейса
+`estimate.py`, `formats.py`, `preview.py`, `sorting.py`, `video.py`.
 
-| Путь | Задача |
-|---|---|
-| `PhotoSorter/frontend/src/components/upload/UploadCenter.vue` | Открытие форм и индикатор текущей передачи |
-| `PhotoSorter/frontend/src/components/upload/UploadQueueDialog.vue` | Список передач ФО и образцов, прогресс, пауза, продолжение и отмена |
-| `PhotoSorter/frontend/src/components/upload/UploadDialog.vue` | Общий каркас окон выбора файлов и очереди передач |
-| `PhotoSorter/frontend/src/components/upload/FoUploadDialog.vue` | Окно выбора папки ФО, уведомление об изменениях образцов |
-| `PhotoSorter/frontend/src/components/upload/ReferenceUploadDialog.vue` | Окно создания конструкции с импортом папки и добавление фото в выбранную конструкцию |
-| `PhotoSorter/frontend/src/stores/uploadCenter.ts` | Очередь передачи ФО и образцов в пределах вкладки, управление одной активной передачей |
-| `PhotoSorter/frontend/src/utils/foTransfer.ts` | Отдельный импорт папки ФО, явная докачка партии по ID и докачка оригинала |
-| `PhotoSorter/frontend/src/styles/upload-dialog.css` | Модалка и фоновый индикатор |
-| `PhotoSorter/frontend/src/styles/reference-layout.css` | Два независимых scroll-контейнера образцов |
-| `PhotoSorter/frontend/src/components/ui/EmptyState.vue` | Единая надпись для пустых списков, очереди, истории и галерей |
-| `PhotoSorter/frontend/src/styles/settings-layout.css` | Вертикальные секции настроек и карточки тем |
-| `PhotoSorter/frontend/src/features/settings/ThemePreview.vue` | Мини-интерфейс MAP в светлой, тёмной и системной палитрах |
-| `PhotoSorter/frontend/src/components/ui/LoadingSkeleton.vue` | Заглушки строк задач, галерей, двухпанельных видов и журналов |
-| `PhotoSorter/frontend/src/components/gallery/DeferredImage.vue` | Скелетон только на месте загружаемого изображения, отдельное состояние ошибки |
-| `PhotoSorter/frontend/src/features/queue/RunDetail.vue` | Подробности запуска, бывший Processing/RunDetail |
-| `PhotoSorter/frontend/src/features/queue/RunProgress.vue` | Статистика прогресса отдельной ФО |
-| `PhotoSorter/frontend/src/features/settings/AppearanceSettings.vue` | Тема |
-| `PhotoSorter/frontend/src/features/settings/AboutSettings.vue` | Название MAP, расшифровка и назначение сервиса |
-| `PhotoSorter/frontend/src/features/settings/UploadSettings.vue` | Параллельность загрузки |
-| `PhotoSorter/frontend/src/features/settings/MegaLocSettings.vue` | CPU и автозапуск, установка модели |
-| `PhotoSorter/frontend/src/features/settings/StorageSettings.vue` | Использование места, сроки и очистка |
-| `PhotoSorter/frontend/src/features/settings/SystemSettings.vue` | API, worker, логи |
-| `PhotoSorter/backend/server/services/archives.py` | Атомарный переиспользуемый ZIP |
-| `PhotoSorter/backend/server/services/compute_settings.py` | CPU настройка из БД, перед следующим заданием |
-| `PhotoSorter/backend/server/db/migrations/0018_cpu_threads.sql` | Параметр CPU |
+### Security
 
-Удалены старые `ProcessingView/Overview/History`, старый
-`processingDashboard.ts` и панель `ReferencePreparationStatus.vue`.
+`PhotoSorter/backend/server/security/` — Access policy.
 
-## Новые модули
+`access_policy.py`, `login_throttle.py`.
 
-| Модуль | Ответственность |
-|---|---|
-| `backend/server/services/archive_pipeline.py` | Финализация результата on_demand и экспортный план |
-| `backend/server/services/archive_retries.py` | Статус и отказ legacy retry без MegaLoc |
-| `backend/server/services/retention.py` | Настраиваемые сроки хранения, безопасные дедлайны |
-| `backend/server/db/migrations/0019_retention_preferences.sql` | Глобальная политика удаления |
-| `backend/server/db/migrations/0020_workload_threads.sql` | Раздельные FO/reference CPU потоки |
-| `backend/server/db/migrations/0021_archive_retry.sql` | Историческая таблица retry, не используется для постановки ZIP jobs |
-| `frontend/src/features/settings/PerformanceSettings.vue` | Режимы и CPU по задачам |
-| `frontend/src/styles/reference-layout.css` | Исправление вертикальной компоновки галереи образцов |
+### Storage policy and safe FS
 
-## Доработки производительности, Образцов и статусов (2026-11-08)
+`PhotoSorter/backend/app/storage/` — Contract, config, path/key validation, native scratch.
 
-| Файл | Назначение |
-|---|---|
-| `PhotoSorter/backend/server/services/worker_cpu_affinity.py` | Affinity всех существующих потоков worker при переходе к следующей задаче FIFO |
-| `PhotoSorter/backend/server/services/compute_settings.py` | Единый CPU-бюджет MegaLoc и серверное число доступных CPU |
-| `PhotoSorter/frontend/src/features/settings/PerformanceSettings.vue` | Два связанных ползунка CPU и автоматические фоновые приоритеты |
-| `PhotoSorter/frontend/src/features/references/CreateConstructionDialog.vue` | Единый диалог стандартной, индивидуальной конструкции и импорта папки |
-| `PhotoSorter/backend/server/db/migrations/0022_custom_constructions.sql` | Новая метадата для пустых и индивидуальных конструкций |
-| `PhotoSorter/backend/server/services/construction_catalog.py` | Безопасная регистрация конструкций в каталоге |
-| `PhotoSorter/frontend/src/stores/deletion.ts` | Немедленный общий статус удаления партии |
-| `PhotoSorter/frontend/src/utils/deletionProgress.ts` | Фазы и проценты удаления по серверному снимку, отдельно от MegaLoc |
-| `PhotoSorter/frontend/src/components/ui/CompactTaskCard.vue` | Общий компонент статусных карточек, красная заливка удаления |
-| `PhotoSorter/frontend/src/styles/task-cards.css` | Палитра обводок и красная заливка удаления |
+`categories.py`, `changes.py`, `config.py`, `entrypoint.py`, `filesystem.py`, `paths.py`, `temporary.py`.
 
-### Смешанные ФО
+### Run lifecycle
 
-| Путь | Назначение |
-|---|---|
-| `PhotoSorter/backend/server/db/migrations/0029_batch_media.sql` | Профили партии, нормализованные файлы, прогресс в общей FIFO |
-| `PhotoSorter/backend/server/media/formats.py` | Проверка контейнера и дорожек, нормализация фото |
-| `PhotoSorter/backend/server/media/preview.py` | Разрешённые MIME исходных ФО для inline-просмотра |
-| `PhotoSorter/backend/server/media/estimate.py` | Вес файлов и ETA перекодирования всей партии |
-| `PhotoSorter/backend/server/media/video.py` | Перепаковка, кодирование и выбор временных кадров |
-| `PhotoSorter/backend/server/media/sorting.py` | Изоляция кадров от групп фото и одно назначение на видео |
-| `PhotoSorter/backend/server/services/media_preparation.py` | Постановка и повтор перекодирования |
-| `PhotoSorter/backend/server/workers/media_prepare.py` | Выполнение под существующей блокировкой FIFO |
-| `PhotoSorter/frontend/src/features/admin/AdminView.vue` | Отдельная вкладка для управления пользователями |
+`PhotoSorter/backend/app/jobs/` — Runtime and progress.
 
-- `PhotoSorter/backend/server/services/reference_archives.py` — безопасная выгрузка опубликованных образцов по папкам конструкций в атомарный кэшируемый ZIP; API `/api/references/export`.
+`overall_progress.py`, `progress.py`, `runtime.py`, `worker.py`.
 
-- `PhotoSorter/backend/server/services/construction_relabel.py` — безопасное атомарное переименование и смена типа/номера/кода с новой версией образцов; без перемещения фотографий.
-- `PhotoSorter/frontend/src/features/references/EditConstructionDialog.vue` — единая форма изменения данных обычных и индивидуальных конструкций.
+### Recognition
 
+`PhotoSorter/backend/app/recognition/` — Frozen MegaLoc math.
 
-- `PhotoSorter/backend/app/results/match_filter.py` — необязательный постфильтр результата MegaLoc по индивидуальному сходству ФО с выбранной конструкцией, без изменения группировки.
-- `PhotoSorter/backend/server/db/migrations/0031_reference_match_cutoff.sql` — настройка `processing_settings.min_match_score` с нулевым default.
-- `PhotoSorter/backend/tests/test_reference_match_cutoff.py` — граничные значения, фильтрация внутри группы, видео, settings, закрепление порога в задачах.
+`engines/base.py`, `engines/megaloc/extractor.py`, `engines/megaloc/loader.py`, `errors.py`, `grouping/finder.py`, `matching/resolver.py`, `math.py`, `pipeline.py`.
 
+### Result export
+
+`PhotoSorter/backend/app/results/` — Immutable media and metadata.
+
+`copier.py`, `exporter.py`, `match_filter.py`, `repository.py`, `sides.py`.
+
+### Model assets
+
+`PhotoSorter/backend/app/system/` — Model bundle, download, offline cache.
+
+`downloads.py`, `model_store.py`, `performance.py`, `technical_cache.py`.
+
+### App logging
+
+`PhotoSorter/backend/app/logging/` — Bounded journals.
+
+`events.py`, `service.py`.
+
+### Photo utilities
+
+`PhotoSorter/backend/app/photos/` — Input, construction labels.
+
+`construction.py`, `labels.py`, `reader.py`, `scanner.py`.
+
+### Host maintenance
+
+`PhotoSorter/tools/maintenance/` — Install, updater, host metrics, CI, snapshot and restore.
+
+`audit_containerd.py`, `audit_host.py`, `audit_live.py`, `audit_write_sites.py`, `bootstrap_storage.py`, `ci_fresh_ubuntu.sh`, `ci_infra_update.py`, `ci_megaloc_offline.py`, `ci_release_load.py`, `ci_restore_drill.py`, `ci_vm_health.py`, `compare_baseline.py`, `host_accounting.py`, `host_logs.py`, `install_map_updater.sh`, `install_prerequisites.sh`, `map_build.py`, `map_updater.py`, `setup_tcp_bbr.sh`, `smoke_container.sh`, `snapshot.py`, `staging_probe.py`, `test_install_prerequisites.sh`.
+
+### Web API
+
+`PhotoSorter/frontend/src/api/` — Typed HTTP clients.
+
+`accessRequests.ts`, `adminUsers.ts`, `batches.ts`, `client.ts`, `libraryNotices.ts`, `logs.ts`, `referenceImports.ts`, `references.ts`, `regions.ts`, `results.ts`, `runs.ts`, `system.ts`, `workQueue.ts`.
+
+### Web app
+
+`PhotoSorter/frontend/src/app/` — Router and app shell.
+
+`App.vue`, `router.ts`.
+
+## Frontend
+
+`PhotoSorter/frontend/src/features/` contains `admin/`, `auth/`, `fo/`, `logs/`, `queue/`, `references/`, `results/`, `settings/`. Shared UI belongs to `components/`; `composables/`, `stores/`, `utils/`, `types/` and `styles/` keep cross-feature behavior out of page components. Production uses only compiled Vite dist served by FastAPI; no Node runtime.
+
+## PostgreSQL and tests
+
+45 versioned SQL migrations: `0001_batch_lifecycle.sql` through `0046_storage_admission.sql`. Migrations 0037–0046 implement V2 ownership, storage, registry and quota changes; 0040 removes obsolete archive retries. Never delete migration history or rewrite applied migrations. `server/db/migration_runner.py` applies them in order.
+
+66 backend test modules in `PhotoSorter/backend/tests/`; historical stage names are regression coverage, not alternate production versions. Frontend Vitest and Playwright check current UI. `ci_fresh_ubuntu.sh`, `ci_vm_health.py`, `ci_release_load.py` are disposable CI-only acceptance harnesses, never installation commands on production.
+
+## Operations
+
+[Deployment](docs/DEPLOYMENT.md), [backup/restore](docs/BACKUP_RESTORE.md), [rollback](docs/ROLLBACK.md), [operations](docs/OPERATIONS.md), [data lifecycle](docs/DATA_LIFECYCLE.md), [reference pipeline](docs/REFERENCE_PIPELINE.md), [contract](docs/STORAGE_ARCHITECTURE_V2.md).

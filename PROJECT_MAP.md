@@ -1,244 +1,87 @@
-> **Историческая документация прежних этапов.** Описания старых каталогов, миграции и команды установки ниже не применяются к Storage V2. Актуальные инструкции: [README](README.md), [контракт и жизненный цикл](docs/STORAGE_V2_FINAL_CATALOG.md), [архитектура V2](docs/STORAGE_ARCHITECTURE_V2.md).
+# MAP — актуальная карта проекта Storage V2
 
-# PROJECT_MAP.md — текущая архитектура PhotoSorter
+Ветка `feature/storage-architecture-v2`. Только чистая установка; статус готовности — [финальный отчёт](docs/STORAGE_V2_FINAL_REPORT.md). История прежней архитектуры остаётся в Git, не используется как инструкция.
 
 ```text
-Браузер: один Vue 3 SPA (/)
-  ├─ /fo              Фотоотчёты, загрузка партий, просмотр
-  ├─ /references      Библиотека конструкций: массовый импорт и добавление фото
-  ├─ /queue           Единая FIFO: ФО и подготовка эталонов
-  ├─ /results         Галереи результатов, готовые ZIP
-  ├─ /logs            Логи и фильтры
-  ├─ /settings        Темы, диск, жизненный цикл, состояние служб
-  └─ /login, /register   Авторизация и заявка на доступ
-         │ HTTPS, same-origin /api/*
-         ▼
-Caddy (:80/:443) ──────► FastAPI (api:8000, один процесс)
-                              │ server/main.py
-                              ├─ server/api/routes/site.py  => Vue dist на / и /assets/*
-                              ├─ server/api/routes/auth.py  => server/auth.py
-                              ├─ server/api/routes/batches.py, uploads.py
-                              │           │
-                              │           └─ services/batches.py, operations.py
-                              ├─ server/api/routes/references.py
-                              │           ├─ services/references.py
-                              │           └─ services/construction_catalog.py
-                              ├─ jobs.py + api/routes/results.py
-                              │           └─ db/repositories/queue.py
-                              ├─ api/routes/images.py, originals.py, thumbnails.py
-                              ├─ api/routes/downloads.py  => verified ZIP stream
-                              ├─ api/routes/logs.py, models.py, storage.py, system.py
-                              └─ db/migration_runner.py ───► PostgreSQL 17
-                                                            users/sessions/batches/uploads/reference_constructions/
-                                                            jobs/thumbnails/cleanup/service heartbeat
-
-Параллельные процессы в том же Docker Compose:
-  worker        ──► app/jobs/worker.py ──► app/recognition/ (MegaLoc, не менять)
-                    │                       ├─ grouping (ФО)
-                    │                       └─ matching (SAM)
-                    └─ app/results/*        ──► safe hardlinks/ZIP manifests
-  thumbnail     ──► services/thumbnails.py  ──► WebP cache
-  cleanup       ──► services/cleanup.py, retention.py, temp_cleanup.py
-                    └─ services/auto_processing.py → существующая jobs.py/queue.py
-                    (проверка opt-in партий каждые ~30 сек, только owned files, без shared SAM/Models)
-
-Постоянное состояние:
-  Models/models/             веса MegaLoc
-  Models/cache/              HuggingFace/torch caches
-  PhotoSorter/data/          оригиналы, SAM, результаты, previews
-  outdoor-sorter_postgres_data   PostgreSQL
-  outdoor-sorter_caddy_data, caddy_config  TLS
+Browser: Vue 3 / TypeScript / Pinia / Vue Router
+  /fo, /fo/:batchId       uploads, resume, gallery, processing
+  /references            shared library / regions / sides
+  /queue                 unified FIFO and history
+  /results, /results/:id immutable results and ZIP
+  /admin                 owner: users, models, performance, storage, updater
+  /settings, /logs, /login, /register
+     │ HTTPS same origin
+     ▼
+Caddy :80/:443 ───► FastAPI api:8000 ───► PostgreSQL 17
+                       │ auth, services, storage registry │
+                       ├─ managed /storage/app (common mount)
+                       └─ restricted Unix RPC ─► map-updater.service (host)
+PostgreSQL work_queue ──► worker (FIFO leader)
+                          ├─ media normalization
+                          ├─ reference preparation and publication
+                          └─ real CPU MegaLoc / grouping / matching / result export
+PostgreSQL thumbnail_tasks ──► thumbnail worker ─► scoped WebP cache
+PostgreSQL cleanup tasks ──► cleanup worker
+                            ├─ batch / run deletion, retention
+                            ├─ temporary and reference GC
+                            └─ bounded registry reconciliation
+Host systemd timer ──► bounded PostgreSQL log maintenance
+Host updater ──► protected backups / isolated BuildKit / approved branch
 ```
 
-## Распределение ответственности
+## Responsibilities
 
-| Слой | Место | Назначение |
+| Area | Source root | Responsibility |
 |---|---|---|
-| Vue app | `PhotoSorter/frontend/src/app/` | Auth gate, Vue history router, единый layout |
-| Vue API | `PhotoSorter/frontend/src/api/` | Типизированные запросы по `/api` |
-| Vue features | `PhotoSorter/frontend/src/features/` | Разделы и подстраницы без дублирования общего UI |
-| Vue components | `PhotoSorter/frontend/src/components/` | Общие кнопки, modal, gallery, grid, свёрнутая desktop-панель и общий список GroupPicker |
-| Vue stores | `PhotoSorter/frontend/src/stores/` | Сессия, theme, уведомления, локальное состояние бокового меню |
-| Backend API | `PhotoSorter/backend/server/api/routes/` | HTTP контракты, проверка доступа |
-| Backend services | `PhotoSorter/backend/server/services/` | Работа с состоянием, безопасное удаление, архивы, очередь |
-| PostgreSQL | `PhotoSorter/backend/server/db/` | Аддитивные миграции и read/write репозитории |
-| Storage | `PhotoSorter/backend/server/storage/` | Безопасные пути и Hard Links |
-| Inference | `PhotoSorter/backend/app/recognition/` | **Замороженные** математические алгоритмы MegaLoc |
-| Jobs | `PhotoSorter/backend/app/jobs/` | Стадии исполнения, прогресс и export |
-| Docker | `compose.yaml`, `PhotoSorter/docker/` | Caddy + API + 3 worker services + PostgreSQL |
-| Support | `PhotoSorter/tools/` | Benchmark, snapshot, verify, restore-test и CI smoke |
-| CI | `.github/workflows/ci.yml` | Один pipeline для `main` |
+| Web UI | `PhotoSorter/frontend/src/` | One SPA; typed APIs, reusable components, feature screens |
+| HTTP | `PhotoSorter/backend/server/api/routes/` | Authenticated contracts, downloads, result pages, owner-only actions |
+| Domain | `server/services/`, `server/uploads.py`, `server/jobs.py` | Upload receipts, FIFO use cases, reference versions, lifecycle |
+| DB | `server/db/`, `server/database.py` | Versioned schema, repository SQL, transaction coordination |
+| Storage | `app/storage/`, `server/storage/` | Single typed path contract, file safety, physical registry, reservations and ownership |
+| Inference | `app/recognition/`, `app/jobs/`, `app/results/` | Frozen MegaLoc math, job execution, immutable output |
+| Model | `app/system/`, `server/reference_cache.py` | Verified offline model bundle, separate persistent reference features |
+| Infrastructure | `install.sh`, `compose.yaml`, `PhotoSorter/docker/` | Clean install, one app image, isolated protected mounts |
+| Host tools | `PhotoSorter/tools/maintenance/` | Root updater, maintenance, diagnostics, staging backup/restore and acceptance |
+| CI | `.github/workflows/ci.yml`, `release-acceptance.yml` | Ordinary regression plus real VM and workload gates |
 
-## Основные сценарии
+Paths in backend rows are relative to `PhotoSorter/backend/`. See [file index](FILE_INDEX.md).
 
-**Заявки на доступ:** `features/auth` → `api/routes/access_requests.py` → `services/access_requests.py` → репозиторий заявок и миграция 0024. Владелец выбирает готовые запуски в `features/admin/users`; одобрение создаёт аккаунт и разрешения в одной транзакции. Прямое создание и управление доступом из списка аккаунтов идут через `api/routes/admin_users.py` → `services/admin_users.py`, с теми же таблицами пользователей и разрешений. `security/access_policy.py` ограничивает каталог, фото и ZIP конкретными разрешёнными запусками.
-
-**Образцы:** Vue `ReferenceDirectoryImporter` → проверка папок → `POST /api/references/import/preview` для сверки города, номера и адреса. Затем оба сценария, импорт папки и добавление фото через `ReferencePhotoUploader`, сравнивают SHA-256 c опубликованной библиотекой через `POST /api/reference-imports/compare`. `ReferenceImportReview` показывает новые фото и дубли. После подтверждения новые файлы передаются через `referenceTransfer.ts` и `/api/reference-imports`, сервер проверяет их и создаёт задачу только при наличии новых образцов. Адрес хранится отдельно в `reference_constructions`. [Инструкция](docs/REFERENCE_IMPORT.md).
-
-**Upload / восстановление:** Vue `UploadPanel` → `/api/batches` → регистрация точного набора ожидаемых файлов через `PUT /api/batches/{id}/upload-manifest` (новые партии) → `/api/uploads` (16 МиБ PATCH, идемпотентное POST создание через `client_upload_id` из манифеста) → повторяем сетевые ошибки с backoff и возможностью «Пауза», считываем фактическое смещение, докачиваем только отсутствующие байты → `finish` с проверкой Pillow/SHA-256 → постоянный оригинал в `data/uploads/`, запись PostgreSQL, thumbnail queue. Состояние `waiting/complete` хранится в batches; ожидаемые UUID/пути/размеры — `batch_upload_manifest_files`. После каждой финализации сервер сверяет ВСЕ ожидаемые файлы, при полном наборе подтверждает завершение транзакционно. Старые партии без манифеста идут по прежнему пути. Обработка запрещена до `complete`, а автоматическая постановка в очередь включается лишь для новых партий с opt-in (этап 2). При потере соединения или перезагрузке вкладки `PendingUploads` читает `GET /api/batches/{id}/pending`, автоматически завершает полностью переданные файлы; для неполного пользователь заново выбирает оригинал и его SHA-256 всей уже переданной части сверяется перед дозагрузкой. Отмена доступна только для незавершённой передачи. Готовность партии и причины блокировки отображаются в разделе «ФО»; панель «Обработка» предназначена для мониторинга MegaLoc.
-
-
-**Интерфейс ФО и история MegaLoc (этап 3):** `services/batch_runs.py` собирает из `jobs` последний запуск (актуальный статус из столбца `status`, прогресс из JSON snapshot) и последний опубликованный успешный/частично успешный результат; новые `latest_run`, `last_result_run_id` доступны в `/batches` и `/batches/{id}` без файловых путей. `GET /batches/{id}/runs` возвращает историю по этой партии (пагинация), включая старые успехи. Vue `FoBatchCard` и `FoGallery` используют один чистый helper `utils/batchProcessing.ts` и `BatchProcessingStatus.vue` для статусов, достоверных счётчиков/процентов, номера очереди, переходов к результатам и кнопок. «Остановить» для queued и running — существующий `/runs/{id}/stop` с подтверждением. Состояния миниатюр и MegaLoc не смешиваются; сохранённые предыдущие результаты остаются доступны в отдельной истории.
-
-**Автоматическая обработка (этап 2):** `processing_settings` хранит настройку «обрабатывать новые партии» (default OFF) и порог. `UploadPanel` передаёт индивидуальный opt-in и порог при регистрации нового манифеста; `batches.auto_process_state` хранит `waiting/queued/cancelled/manual`, а `auto_process_run_id` — созданный job. Служба `cleanup` независимо от браузера сканирует только `waiting + manifest complete`, повторно проверяет файлы на диске и под глобальной advisory-блокировкой `723409133` и FOR UPDATE создаёт задачу через единую функцию `jobs._enqueue_locked` — тот же путь, что ручной `/api/runs`. Создание job и фиксация `queued`/ID — одна транзакция. Очередь полна/нет SAM → сохранённое ожидание без повторного создания job; ошибка выполненного job автоматически не перезапускается. Только новый manifest opt-in: никакого автоматического обхода старых партий/результатов. `POST /batches/{id}/auto-processing/cancel` отменяет лишь ожидание до enqueue.
-
-**Имена и идентичность ФО:** `UploadPanel` предлагает изменить имя до передачи, не изменяя относительные пути оригиналов. `POST /api/batches` выделяет новое имя с суффиксом под транзакционной блокировкой PostgreSQL. UUID `creation_request_id` отличает повтор одного запроса от отдельного импорта одинаковой папки. Докачка папки после закрытия вкладки запускается из карточки партии, фиксирует её ID и сверяет выбранные файлы с существующим манифестом.
-
-**Распознавание:** `/api/runs` → PostgreSQL FIFO и single-leader → MegaLoc **сначала группирует ФО**, затем независимо сравнивает группы с SAM → manifest, Hard Links или безопасные копии → `data/outputs/<run>/` → галерея результатов.
-
-**ZIP/retention:** MegaLoc → результаты и манифест → завершено. ZIP ФО/конструкции/образцов собирается по запросу, атомарно, с CRC и Range/206; TTL 3600 секунд, проверка cleanup примерно каждые 30 секунд, активный lease защищает архив. Retention партии независим (2 месяца по умолчанию, от минуты). Shared SAM/Models не удаляются вместе с партией.
-
-**Прогресс удаления партии:** отдельный цикл в существующем воркере cleanup проверяет `cleanup_tasks` раз в секунду, независимо от обслуживания кэша ZIP. `services/cleanup.py` → `storage/batch_cleanup.py` → сохранённый снимок `cleanup_tasks.progress` → API партий и очереди → общая карточка. В «Фотографиях» только удаляемые партии дополнительно опрашиваются каждые 250 мс. Ожидание блокировки показывается отдельно от фактических счётчиков. После быстрого удаления партия пропадает с уведомлением, без имитации процентов.
-
-**Бэкап:** отдельно сохраняются PostgreSQL, `PhotoSorter/data`, `Models`, env secrets и TLS Docker volumes. `snapshot.py` не сохраняет TLS volume, поэтому оператор архивирует его отдельно. Тест восстановления допустим только на изолированной пустой БД.
-
-## Инварианты
-
-- Веб-интерфейс **ровно один**: Vue SPA по `/`; старых `/v3/` и `/static/*` нет.
-- Боковая навигация desktop сохраняет предпочтение `ps.sidebar.collapsed` локально; мобильный drawer работает независимо. Общий `GroupPicker` показывает одну строку на элемент, обрезает только не помещающийся текст и сохраняет полное название в подсказке. В «Образцах» ширина desktop-списка автоматически равна прежнему максимуму с учётом места для галереи. Ручное изменение ширины с сохранением в `ps.group-picker.width` остаётся у галерей результатов.
-- `PhotoSorter/frontend/dist/` собирается в Docker на Node 24, runtime использует Python/FastAPI, без сервера Node.
-- Под `Models/` только веса/загрузчики, под `PhotoSorter/data/` пользовательские оригиналы и результаты; исходники из Git не пересоздают эти каталоги произвольно.
-- Математику MegaLoc, бизнес-правила сохранения ZIP и защиту API не менять ради косметического рефакторинга.
-- Глобальные настройки auto-MegaLoc в PostgreSQL, по умолчанию OFF. У каждой новой партии собственное решение и порог, зафиксированные в БД; терминальные и исторические задания автоматически не создаются снова.
-- Для манифестных партий `pending=0` недостаточно: `complete` устанавливается только после финализации каждого зарегистрированного UUID и проверки наличия оригинала. Манифест неизменяем; потерянный ответ не создаёт новую запись. Файлы исходной папки повторно выбирает пользователь после закрытия браузера.
-- Незавершённые `.part` остаются в БД до финализации или явной отмены (либо старой TTL-очистки). Ни авто-восстановление, ни отмена конкретной передачи не затрагивают  ранее финализированные ФО. Сохранение полномочий на выбранные локальные файлы после перезагрузки вкладки невозможно без нового выбора пользователя.
-
-См. [Инструкция импорта образцов](docs/REFERENCE_IMPORT.md), [FILE_INDEX](FILE_INDEX.md), [AGENTS](AGENTS.md), [API](docs/API.md), [BACKUP_RESTORE](docs/BACKUP_RESTORE.md).
-
-
-## Единая рабочая цепочка
+## Managed data tree
 
 ```text
-Vue /fo → manifest ФО → /api/uploads → uploads + batches
-                                     └── auto_processing → jobs + work_queue(seq)
-Vue /references → manifest образцов → /api/reference-imports
-                                     ├── reference_import_sessions/files
-                                     └── reference_staging/ → reference_preparation_jobs
-                                                           └── work_queue(seq)
-                         │
-                         ▼
-                    server/worker.py
-                         ├─ fo_processing → frozen reference_version_members
-                         │                  → app/jobs/worker.py → MegaLoc → outputs
-                         └─ reference_preparation → workers/reference_prepare.py
-                              ├─ reference_cache.py (SHA-256 + model signature)
-                              ├─ services/reference_gallery.py (UI projection)
-                              └─ services/reference_publication.py
-                                    └─ one atomic current_version_id
+storage/
+  app/
+    users/{user_id}/
+      batches/{batch_uuid}/{originals,normalized,results/{run_id}/{media,metadata}}/
+      thumbnails/v{version}/{prefix}/
+    shared/references/{objects,embeddings,thumbnails}/
+    temporary/{uploads,transcoding,video-frames,processing,archives,scratch,model-downloads}/
+    models/megaloc/{weights,source,metadata}/
+    cache/{huggingface,torch,xdg}/
+    state/runs/                reserved, no active run JSON writer
+  infrastructure/
+    postgres/data/
+    caddy/{data,config}/
+  logs/{api,worker,thumbnail,cleanup,processing,models,postgres,caddy,updater,audit}/
+  system/{audits,backups/updater,updater,state}/
 ```
 
-`services/reference_imports.py` и `services/reference_uploads.py` отвечают
-за manifest/докачку/дедупликацию, не за inference. `db/repositories/work_queue.py`
-единственный диспетчер CPU; `db/repositories/job_status.py` лишь формирует
-публичное состояние ФО. `services/references.py` предоставляет управление
-опубликованными объектами с созданием новой версии.
+The gallery is a DB projection; no second physical reference gallery. FO embedding vectors are currently in RAM. See the [machine contract](docs/storage-layout-v2.json) and [51-category catalogue](docs/STORAGE_V2_FINAL_CATALOG.md), including external engine/OS/configuration boundaries.
 
-`library_notice_cursors` + `reference_library_events` управляют
-однократными уведомлениями о смене опубликованной версии.
+## Data flow and invariants
 
-Подробнее `docs/REFERENCE_PIPELINE.md`.
+**FO:** owner registers batch and exact UUID manifest; the upload receipt reserves space. PATCH writes managed part files, validates offset, content, size and checksum. Finalization publishes immutable original; normalized media is a persistent derivative, not temporary. FIFO sorts once; hardlinks/copies and JSONL metadata are published atomically. SQL owns job state and versions. Results never require a prebuilt ZIP.
 
+**References:** preview compares SHA-256 within construction. One import session, typed part paths, shared content-addressed objects, immutable library version publication. At FIFO claim, FO pins the current version and model signature. Shared object and embedding dependency checks protect all retained versions/jobs. Addresses and side labels are metadata. Separate export/import of portable side metadata from main is not part of this release.
 
-## Компактные карточки в трёх разделах
+**ZIP:** authorized HTTP request builds and validates a temporary ZIP for full run, construction or references. Range uses the same immutable published file, guarded by leases. TTL 3600 seconds from publication, not last access; cleanup never touches active readers or protected objects. Report date and side belong to archive presentation, not filesystem ownership keys.
 
-`FoList.vue` → `FoBatchCard.vue` → `CompactTaskCard.vue`
+**Storage:** one PostgreSQL registry tracks path, owner, logical length, allocated blocks, inode identity and charge. Durable receipts and transient leases reserve future bytes. Reconciliation observes and reports unknown/missing/orphaned data; it is not a deletion engine. Root host sample accounts separately for protected infrastructure and logs; Docker/OS shared bytes are not claimed as MAP physical bytes.
 
-`QueueView.vue` → `QueueTaskRow.vue` → `CompactTaskCard.vue`
+**Permissions:** owner manages all current working data; viewer accesses only explicitly granted published runs. No browser-controlled filesystem paths, Docker socket, PGDATA or TLS keys mounted into the application. Updater checks the pinned feature branch and runs only fixed commands through Unix RPC.
 
-`ResultsList.vue` → `CompactTaskCard.vue`
+## Health and deployment
 
-Только один модуль `utils/queueEstimates.ts` рассчитывает примерные сроки
-для всей очереди; CSS живёт отдельно в `styles/task-cards.css`.
-Общие CSS-токены обеих тем не меняются; иконки, загрузки и действия остаются
-реальными. Backend дополняет публичный API готовой миниатюрой, реальным
-прогрессом FO и счётчиками фотографий, без N запросов на карточку.
-Полоса и число активной обработки анимируются вместе через
-`useSmoothProgress.ts` только до последнего значения от сервера.
-Клиент опрашивает задачи примерно раз в секунду при активной работе,
-без ускоренного запроса истории. Первый элемент свободной FIFO отображается
-как запуск, а позиции ФО считаются по общей очереди, включая подготовку образцов.
-Общий прогресс ФО не оценивает чтение кэша Образцов по скорости
-вычисления признаков ФО. Время этого этапа берётся из фактических замеров,
-а попадания и промахи кэша видны в журнале запуска.
+PostgreSQL and API have Docker-native healthchecks. Caddy needs an actual HTTPS request; worker, thumbnail and cleanup need fresh DB heartbeats. `docker compose ps` alone does not prove functional health. Systemd starts Docker, updater and log timer; Docker restart policies recover containers. VM acceptance verifies changed boot ID, per-service health, new advancing heartbeat instances and data hashes after reboot and update.
 
-
-## Актуальный интерфейс
-
-`SettingsView.vue` показывает все секции в одной колонке. `ThemePreview.vue`
-использует настоящие токены палитр MAP, а выбор темы применяется через
-`stores/theme.ts`. `LoadingSkeleton.vue` показывает форму контента, пока
-нет первого ответа API. `DeferredImage.vue` независимо показывает загрузку
-изображения, не скрывая уже полученные данные карточки.
-
-`UploadCenter.vue` отделяет формы выбора от `UploadQueueDialog.vue`.
-`stores/uploadCenter.ts` держит один активный перенос и очередь в памяти
-вкладки. Сами передачи выполняются `foTransfer.ts` и `referenceTransfer.ts`,
-используя прежние API докачки. `FoList` привязывает строки передачи к
-`FoBatchCard` по серверному ID партии и использует тот же прогресс, что и плашка.
-Очередь передачи не является частью
-`work_queue` MegaLoc.
-
-```text
-Shell
-├─ UploadCenter (формы ФО / образцов и отдельная очередь передачи)
-├─ Фотографии -> FoList / FoGallery (маршруты /fo)
-├─ Образцы -> ReferenceLibrary (два независимых scroll container)
-├─ Очередь -> QueueView / RunDetail / RunProgress
-├─ Результаты -> ResultsList / ResultDetail
-├─ Логи -> LogsView
-└─ Настройки -> SettingsView
-   ├─ AppearanceSettings
-   ├─ UploadSettings
-   ├─ MegaLocSettings
-   ├─ PerformanceSettings
-   ├─ StorageSettings
-   └─ SystemSettings
-```
-
-`features/processing` удалена как ненужная альтернативная UI-ветка.
-`src/utils/processingDashboard.ts` удалён. Все подробности доступны
-в `/queue/runs/:runId`. Вкладка «Очередь» показывает только активное
-или историю по кнопке; слова FIFO оставлены только внутри кода.
-
-Скачивание: `server/api/routes/downloads.py` ->
-`server/services/archives.py` -> `FileResponse`. ZIP находится внутри
-каталога данного запуска, создаётся только по запросу и удаляется после TTL при отсутствии активного lease либо при очистке партии.
-
-## Последний этап и новые настройки
-
-`server/worker.py` → `app/jobs/runtime.py` → MegaLoc + export → `services/archive_pipeline.py` (`on_demand`) → `jobs.status=completed` + `retention.schedule`. Скачивание отдельно: `routes/downloads.py` → `archive_pipeline.named_plan` → `archives.py` → `FileResponse`; `archive_cache` обслуживает TTL, без ZIP-only jobs.
-
-`archive_layout.py` формирует видимые имена по метаданным ФО, каталогу конструкций, дате и стороне, независимо от внутренних имён файлов. Ключ кэша зависит от экспортного плана; повторный запрос после TTL пересобирает ZIP без MegaLoc.
-
-`frontend/features/settings/PerformanceSettings.vue` хранит режим auto/manual и отдельные потоки ФО/образцов (применяются к следующим заданиям); лимиты Docker для миниатюр/cleanup пока только отображаются из Compose, не изменяются через API. `StorageSettings.vue` управляет автоудалением новых запусков. Отключение настройки блокирует даже ранее назначенное автоматическое удаление; при включении просроченные партии получают новый полный срок, а не удаляются все сразу. Ручное удаление партии независимо от настройки.
-
-`GET /api/runs/{id}/archive/status` сообщает состояние `on_demand` для готового результата. `POST /api/runs/{id}/archive/retry` не запускает задачу и возвращает конфликт; актуальный путь — обычное скачивание. Перед публикацией ZIP проверяется CRC. Ошибка скачивания не меняет статус результата.
-
-
-## Зависимости чистого VPS
-
-`install.sh --deploy` проверяет домен, затем при отсутствии зависимостей вызывает `PhotoSorter/tools/maintenance/install_prerequisites.sh`. На Ubuntu/Debian модуль использует официальный apt-репозиторий Docker и ставит недостающие пакеты до создания секретов и контейнеров. Рабочая установка Docker остаётся без изменений. `--check` пакеты не устанавливает.
-
-## TCP BBR на Linux-хосте
-
-Установщик `install.sh --deploy` вызывает `PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --apply` после preflight и до Docker Compose. Отдельный модуль включает BBR только при наличии поддержки ядра, сохраняет собственные drop-in в `/etc/sysctl.d` и `/etc/modules-load.d`, не меняет qdisc и контейнерные настройки прочих сервисов. В `compose.yaml` алгоритм явно устанавливается для отдельного сетевого пространства Caddy через `PHOTOSORTER_CADDY_TCP_CC`, который `install.sh` берёт из текущего алгоритма хоста после попытки включить BBR. `--check` ничего не изменяет; `--disable` удаляет только файлы PhotoSorter и возвращает `cubic`. `PHOTOSORTER_ENABLE_BBR=0` пропускает будущие попытки настройки, но не отменяет ранее установленный BBR.
-
-## Производительность, каталог конструкций и статусы (2026-11-08)
-
-`api/routes/processing_settings.py` → `services/compute_settings.py` → PostgreSQL `processing_settings` → единый `server/worker.py` → `services/worker_cpu_affinity.py` + `app/system/performance.py`. Настройка действует **со следующего задания** FIFO; оба вида обработки используют один budget. Контейнер Worker ограничен доступным cpuset на этапе установки. Другие контейнеры не помещаются в жёсткий системный cpuset. Thumbnail/cleanup имеют относительные CPU shares, без жёсткой квоты.
-
-`ReferenceLibrary.vue` → `CreateConstructionDialog.vue` → `api/routes/references.py` → `services/construction_catalog.py` → `reference_constructions`. Пустой каталог независим от текущей версии признаков. Фото в индивидуальные конструкции по-прежнему идут через `referenceTransfer.ts` → `reference_imports` → единую очередь подготовки → `reference_publication`, а массовый импорт сохраняет старую строгую валидацию.
-
-`stores/deletion.ts` + серверный `batches.delete_state` → `FoBatchCard.vue`, `QueueTaskRow.vue`, `ResultsList.vue` → единый `CompactTaskCard.vue` со статусным outline. Для `deleting` фон красный; для `delete_failed` только красная обводка. ZIP не выделен отдельным статусом.
-
-### Смешанные ФО
-
-Импорт сохраняет профиль JPG/PNG и MP4/WebM в неизменяемом манифесте. Проверка в `server/media/formats.py` отмечает оригиналы, нуждающиеся в нормализации. `services/media_preparation.py` ставит отдельный `media_preparation` в общую FIFO только после последнего файла. `workers/media_prepare.py` атомарно публикует копии, не запуская MegaLoc и не изменяя оригиналы. `media/sorting.py` передаёт видео в MegaLoc временными кадрами, держит их вне фотогрупп и сворачивает до одного результата на исходное видео. Выбранные форматы и имена использует текущий ZIP; галерея ФО открывает готовую копию или, пока она формируется, выдаёт разрешённый оригинал inline с Range. Для неподдерживаемого браузером исходника показывает готовую миниатюру или обложку, не запускает скачивание.
-
-**Выгрузка всех образцов:** `ReferenceLibrary.vue` → `GET /api/references/export` (owner only) → `services/reference_archives.py` → текущий `reference_library_state.current_version_id` и immutable `reference_version_members` → проверенные staging-файлы → ZIP_STORED + атомарный дисковый кэш `data/reference_exports/` → FileResponse (Range). Никакого чтения незавершённого импорта или загрузки ZIP в RAM браузера.
-
-**Редактирование конструкций:** `EditConstructionDialog.vue` → `PATCH /api/references/constructions/{sam}` → `services/construction_relabel.py` → catalog + gallery labels + новая immutable библиотечная версия для изменённого ключа; исторические ФО и исходные hardlinks остаются прежними. Редактирование адреса без изменения ключа обновляет только каталог. `services/reference_imports.py` синхронизирует регистрацию манифеста с глобальной блокировкой. `originals.py` проверяет принадлежность UUID-файла общему доверенному дереву галереи, что позволяет сохранять неизменные физические пути после переименования.
-
-
-**Порог сходства с образцами:** настройка `MegaLocSettings.vue` → `/api/processing-settings` → `processing_settings.min_match_score` → `jobs._enqueue_locked` (фиксируется в `jobs.snapshot`) → `app/jobs/worker.py` после `match_grouped_megaloc` и `media.collapse` → `app/results/match_filter.py` → прежний `save_model` / `_Неопределено` / ZIP. Сходство для ФО с SAM выбранной группой — независимое диагностическое поле `assigned_sam_score` из прежней score-матрицы; математика MegaLoc и группировка ФО не затронуты. `0.000` означает отсутствие фильтра.
-
+See [installation](docs/DEPLOYMENT.md), [lifecycle](docs/DATA_LIFECYCLE.md), [backup/restore](docs/BACKUP_RESTORE.md), [operations](docs/OPERATIONS.md), [architecture](docs/STORAGE_ARCHITECTURE_V2.md) and [progress](docs/STORAGE_V2_PROGRESS.md).

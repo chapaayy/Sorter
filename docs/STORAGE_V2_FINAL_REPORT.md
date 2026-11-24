@@ -12,7 +12,7 @@
 | Критерий | Статус |
 |---|---|
 | Единый контракт, отсутствие старых mounts | Реализовано и проверялось этапами 2–9; финальная сверка и регрессия отдельно |
-| Чистая Ubuntu, автоматическая установка Docker и systemd, перезагрузка, обновление API | STAGE10_SYSTEMD_INSTALL_OK подтверждён; проверка reboot/update исправлена и повторно запущена |
+| Чистая Ubuntu, автоматическая установка Docker и systemd, перезагрузка, обновление API | Установка, верификация модели, repeat deploy и реальный boot ID change подтверждены; post-reboot функциональное здоровье и API update ещё не подтверждены |
 | Основной функционал, права, квоты, восстановление | 42e678b и e8675d2: обычный CI 7/7, реальные restore/update/offline MegaLoc; комплексная нагрузка ещё не подтверждена |
 | 1100 различных реальных фото, 3 тестовых видео, повторная сортировка, 3 цикла | Сценарий создан; не подтверждён |
 | Фактические CPU/RAM, disk peak, скорость сверки и Chromium, ZIP TTL 1h | Нет измеренного отчёта, критерий открыт |
@@ -35,3 +35,11 @@ COCO — реальные публичные фотографии общего �
 - [Нагрузка 1100 фото](https://github.com/chapaayy/Sorter/actions/runs/45499161841/job/138817659578) продолжается на 42e678b. Не отменена и не запущена повторно при идентичном runtime/load коде; scope job подтвердил diff только VM harness. GitHub не выдал журнал незавершённой задачи и артефакт метрик. Время сортировки, RAM, CPU, объём диска, три цикла, часовой TTL и итоговое освобождение резервов пока не доказаны.
 - Остаток архитектурной зачистки: внутренние DATA_DIR/RUNS_DIR алиасы внутри storage/app/state (не прежние пути), исторические fixtures и unused imports. Не меняли runtime во время реальной нагрузки.
 - PR #22 открыт и не объединён. Main изменился независимо на d6ca808 (экспорт метаданных сторон); исполнитель main не менял, не откатывал, не переносил изменение. Требуется отдельное рассмотрение при будущем слиянии. Действующий VPS не затронут.
+
+
+## Фактическая перезагрузка и исправление health-проверки
+- [VM 138825834636](https://github.com/chapaayy/Sorter/actions/runs/45501539126/job/138825834636): STAGE10_PRISTINE_UBUNTU_OK, STAGE10_SYSTEMD_INSTALL_OK, STAGE10_MODEL_VERIFIED_OK, STAGE10_REPEAT_INSTALL_OK, STAGE10_BOOT_ID_CHANGED. Ubuntu 24.04.5 LTS, Docker 29.10.1, Compose 5.8.0. Boot ID: 532168a8-92ba-4efd-bfa0-e8e212740877 → 90bf5dd2-cf7a-4813-ac87-ebda5badd1cc. Serial console confirms six container scopes, Docker and map-updater.service started automatically. The old probe aborted on missing .State.Health before post-reboot hashes/API update; only PostgreSQL/API have native Healthcheck in compose, other services use HTTPS and heartbeat. Missing health is not proof of healthy or unhealthy service.
+- `2d2bbc4` introduces service-specific read-only probe, baseline/reboot/update snapshots, each unit separately, native Health required for postgres/api, real HTTPS, SQL and authenticated status, new and advancing worker identities, same container IDs on reboot. [New VM retest](https://github.com/chapaayy/Sorter/actions/runs/45505109384) is active; no final marker yet. App/runtime/load code identical to 42e678b, original load was not cancelled or duplicated.
+- 24b4628 ordinary CI 7/7 (45502987965, 45502997206); 2d2bbc4 ordinary CI 6/7 at checkpoint, Docker pending. Load job 138817659578 still running. No measured report yet; all metrics, 3 cycles, hour TTL, accumulation and release gates remain open.
+- Main d6ca808 is owner-authorized independent side metadata export. No revert/merge/port; portable metadata import is separate future task. PR #22 stays draft/open. No existing VPS touched.
+- Current documentation rewritten to describe only Storage V2 active paths, branch and policies rather than historical maps. Final source cleanup and measured load acceptance remain open; historical migration files and current API projections must not be deleted merely because their names are old.
