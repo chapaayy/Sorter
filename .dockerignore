@@ -17,3 +17,8 @@ PhotoSorter/docs/
 PhotoSorter/frontend/dist/
 PhotoSorter/frontend/playwright-report/
 PhotoSorter/frontend/test-results/
+
+/storage/
+*.tar
+*.tar.gz
+*.dump

@@ -18,8 +18,9 @@ PY
 )"
 export PHOTOSORTER_CPU_THREADS="1"
 export PHOTOSORTER_WORKER_CPUS="1"
-mkdir -p Models/models/megaloc Models/cache/{torch,xdg,downloads,huggingface} PhotoSorter/data/{references,uploads,runs,cache,outputs}
-sudo chown -R 10001:10001 Models PhotoSorter/data
+export MAP_STORAGE_ROOT="$PWD/storage"
+sudo python3 PhotoSorter/tools/maintenance/bootstrap_storage.py "$MAP_STORAGE_ROOT"
+sudo python3 PhotoSorter/tools/maintenance/bootstrap_storage.py "$MAP_STORAGE_ROOT"
 echo "[INFO] Isolated Docker Compose build for disposable CI containers"
 cleanup() {
   docker compose ps || true
@@ -35,6 +36,29 @@ sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0700 /var/lib/map-updater/private
 python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)"
 test -z "$(find /var/lib/map-updater/private/builders -type f -print -quit)"
 docker compose up -d --no-build
+# Real app UID, same mount hardlink and rename, private host paths not mounted.
+docker compose exec -T api python - <<'PY'
+import os
+from pathlib import Path
+from app.config import APP_STORAGE_ROOT
+from app.storage.filesystem import atomic_write, file_stat
+from app.storage.temporary import temporary_operation
+assert os.getuid() == 10001
+assert APP_STORAGE_ROOT == Path("/storage/app")
+assert not Path("/storage/system").exists()
+with temporary_operation(APP_STORAGE_ROOT, "api") as scratch:
+    key = scratch.relative_to(APP_STORAGE_ROOT) / "a"
+    with atomic_write(APP_STORAGE_ROOT, key) as f:
+        f.write(b"synthetic")
+    target = APP_STORAGE_ROOT / "users" / "ci-link"
+    try:
+        os.link(APP_STORAGE_ROOT / key, target)
+        assert target.stat().st_ino == file_stat(APP_STORAGE_ROOT, key)["inode"]
+        os.replace(target, scratch / "b")
+        assert (scratch / "b").read_bytes() == b"synthetic"
+    finally:
+        target.unlink(missing_ok=True)
+PY
 
 healthy=0
 for i in $(seq 1 90); do

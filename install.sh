@@ -15,6 +15,7 @@ if [[ ! -f .env ]]; then
   cp .env.example .env
 fi
 unset ADMIN_PASSWORD
+unset MAP_STORAGE_ROOT
 set -a
 # shellcheck disable=SC1091
 if ! source .env 2>/dev/null; then
@@ -96,6 +97,10 @@ fi
 if [[ -z "${PHOTOSORTER_CPU_THREADS:-}" ]]; then
   export PHOTOSORTER_CPU_THREADS="${PHOTOSORTER_WORKER_CPUS}"
 fi
+export MAP_STORAGE_ROOT="${MAP_STORAGE_ROOT:-$PWD/storage}"
+if [[ "$MAP_STORAGE_ROOT" != /* || "$MAP_STORAGE_ROOT" == / || "$MAP_STORAGE_ROOT" == *[!a-zA-Z0-9_./-]* ]]; then
+  echo '[ERROR] MAP_STORAGE_ROOT must be a safe absolute directory path.' >&2; exit 1
+fi
 COMPOSE=(docker compose --env-file .env --env-file .env.generated)
 "${COMPOSE[@]}" config --quiet
 # The default Stage2 worker cpuset assumes >=7 CPUs. Fail before Docker changes.
@@ -142,17 +147,11 @@ case "$ACTIVE_TCP_CC" in
   *) echo '[WARN] Could not determine host TCP algorithm; Caddy uses default CUBIC.' >&2 ;;
 esac
 
-mkdir -p Models/models/megaloc Models/cache/huggingface/{hub,xet} Models/cache/{torch,xdg,downloads} PhotoSorter/data/{references,uploads,runs,cache,outputs}
-if [[ "$EXISTING_POSTGRES" -eq 0 ]]; then
-  # Ownership initialization is safe only on a fresh empty project.
-  if [[ "$(id -u)" == '0' ]]; then
-    chown -R 10001:10001 Models PhotoSorter/data
-  else
-    docker run --rm -v "$(pwd)/Models:/models" -v "$(pwd)/PhotoSorter/data:/data" alpine:3.21 sh -c 'chown -R 10001:10001 /models /data'
-  fi
-else
-  echo '[INFO] Skipped recursive chown of existing model/photo storage.'
+# A fresh v2 application root; no legacy media bind or recursive chown.
+if [[ "$(id -u)" != 0 ]]; then
+  echo '[ERROR] Run the installer as root to initialize protected storage.' >&2; exit 1
 fi
+python3 PhotoSorter/tools/maintenance/bootstrap_storage.py "$MAP_STORAGE_ROOT"
 # Host updater and disposable builder on production Ubuntu. CI uses Compose.
 if [[ "$(id -u)" == 0 && "${CI:-}" != true && "${GITHUB_ACTIONS:-}" != true ]] &&
    [[ -d /run/systemd/system ]] && command -v systemctl >/dev/null; then
@@ -172,52 +171,8 @@ if [[ "$(id -u)" == 0 && "${CI:-}" != true && "${GITHUB_ACTIONS:-}" != true ]] &
 else
   "${COMPOSE[@]}" up -d --build
 fi
-# Optional root-owned, read-only file-event observer. It creates only its own
-# append-only audit logs, not user data or cleanup. No new Python packages.
-if [[ "$(id -u)" == 0 && "${CI:-}" != "true" && "${GITHUB_ACTIONS:-}" != "true" ]] &&
-   command -v systemctl >/dev/null 2>&1 &&
-   [[ -d /run/systemd/system ]] && [[ -w /etc/systemd/system ]]; then
-  AUDIT_UNIT=/etc/systemd/system/map-file-audit.service
-  cat > "$AUDIT_UNIT" <<EOF
-[Unit]
-Description=MAP read-only continuous filesystem event audit
-After=docker.service
-Wants=docker.service
-
-[Service]
-Type=simple
-User=root
-Group=root
-UMask=0027
-WorkingDirectory=$PWD
-ExecStart=/usr/bin/python3 $PWD/PhotoSorter/tools/maintenance/audit_live.py --project-root $PWD
-Restart=on-failure
-RestartSec=5
-NoNewPrivileges=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  if systemctl daemon-reload && systemctl enable map-file-audit.service &&
-     systemctl restart map-file-audit.service; then
-    echo '[OK] Continuous read-only MAP filesystem event audit is running.'
-  else
-    echo '[WARN] Could not start MAP filesystem observer; host snapshot audit still works.' >&2
-  fi
-else
-  echo '[INFO] Continuous host audit requires root + systemd on the VPS.'
-fi
-# Read-only host filesystem census after deployment. Root is needed for Docker
-# volumes, container overlay layers and /proc. This never deletes user files,
-# sets quotas or changes the behaviour of the workers.
-if [[ "$(id -u)" == 0 && "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
-  echo '[INFO] Auditing MAP storage, Docker volumes, images, logs and host runtime files.'
-  if ! python3 PhotoSorter/tools/maintenance/audit_host.py --project-root "$PWD"; then
-    echo '[WARN] Host audit reported coverage gaps; view Administration > Host audit.' >&2
-  fi
-else
-  echo '[INFO] Host audit needs root: sudo python3 PhotoSorter/tools/maintenance/audit_host.py --project-root "'"$PWD"'"'
-fi
+# The historical observer writes to the legacy layout. Do not launch it in v2.
+# Bounded host diagnostics are restored in stage 6.
 # Clean up the previous installer’s copy after Compose accepts the deployment.
 if grep -Eq '^ADMIN_PASSWORD=' .env.generated; then
   sed -i '/^ADMIN_PASSWORD=/d' .env.generated

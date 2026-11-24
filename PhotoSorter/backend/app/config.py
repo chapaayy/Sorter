@@ -1,14 +1,16 @@
-"""Portable paths: weights are independent from the application."""
+"""Application configuration facade; all data under the single app root."""
 from pathlib import Path
+from .storage.config import StorageConfig
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 ROOT_DIR = PROJECT_DIR.parent
-MODELS_DIR = ROOT_DIR / 'Models'
-WEIGHTS_DIR = MODELS_DIR / 'models'
-MODEL_CACHE_DIR = MODELS_DIR / 'cache'
-DATA_DIR = PROJECT_DIR / 'data'
-RUNS_DIR = DATA_DIR / 'runs'
+STORAGE = StorageConfig.from_environment()
+APP_STORAGE_ROOT = STORAGE.app_root
+MODELS_DIR = STORAGE.models
+WEIGHTS_DIR = MODELS_DIR
+MODEL_CACHE_DIR = STORAGE.model_cache
+DATA_DIR = STORAGE.data
+RUNS_DIR = DATA_DIR / "runs"
 
-def ensure_dirs() -> None:
-    for folder in (MODELS_DIR, WEIGHTS_DIR, WEIGHTS_DIR / 'megaloc', MODEL_CACHE_DIR, DATA_DIR, RUNS_DIR):
-        folder.mkdir(parents=True, exist_ok=True)
+def ensure_dirs():
+    STORAGE.ensure_dirs()

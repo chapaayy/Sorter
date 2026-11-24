@@ -22,3 +22,6 @@ Stage 1 requires source-site reconciliation and baseline CI. Stages 2–10 imple
 
 ## External boundaries
 Deployment credentials remain root-only outside managed media storage. Host package/service/sysctl configuration, explicitly directed external backups/diagnostics, CI fixtures and browser storage are separate categories; never include them in personal charge or MAP GC. `@` paths in the contract are descriptive external namespaces, never path-builder inputs. Native dependency and consumer evidence: [STORAGE_V2_DEPENDENCIES.md](STORAGE_V2_DEPENDENCIES.md).
+
+## Stage 2 root activation (in progress)
+The app uses one mount /storage/app; host default is project/storage. MAP_STORAGE_ROOT is the installer/Compose host path; MAP_APP_STORAGE_ROOT is the in-process absolute root override (also for isolated tests). The existing app/config facade routes legacy producer shapes into app/state, app/models and app/cache pending category-specific stages 3–6; no production fallback to PhotoSorter/data or Models. Bootstrap creates target directories and a root-owned layout-version marker. Host-private infrastructure/log placeholders remain unmounted pending stage 6. Do not deploy the intermediate branch as the final V2 release.

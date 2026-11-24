@@ -2,6 +2,7 @@ name: outdoor-sorter
 x-app-env: &app_env
   DATABASE_URL: postgresql://sorter:${POSTGRES_PASSWORD:?Run install.sh first}@postgres:5432/sorter
   DOMAIN: ${DOMAIN:?Set DOMAIN}
+  MAP_APP_STORAGE_ROOT: /storage/app
   PHOTOSORTER_FORCE_CPU: "1"
   # Stage 3 is opt-in until real VPS restore/acceptance is approved.
   PHOTOSORTER_UNIFIED_QUEUE: "${PHOTOSORTER_UNIFIED_QUEUE:-0}"
@@ -13,8 +14,7 @@ x-app-env: &app_env
   PHOTOSORTER_PREFETCH_WORKERS: "2"
 
 x-app-data: &app_data
-  - ./PhotoSorter/data:/workspace/PhotoSorter/data
-  - ./Models:/workspace/Models
+  - ${MAP_STORAGE_ROOT:-./storage}/app:/storage/app
   - /var/lib/map-updater/control:/run/map-updater:ro
 
 services:
@@ -56,8 +56,7 @@ services:
       <<: *app_env
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
     volumes:
-      - ./PhotoSorter/data:/workspace/PhotoSorter/data
-      - ./Models:/workspace/Models
+      - ${MAP_STORAGE_ROOT:-./storage}/app:/storage/app
       - /var/lib/map-updater/control:/run/map-updater:ro
       - /var/lib/map-updater/rpc:/run/map-updater-rpc:ro
     depends_on:
