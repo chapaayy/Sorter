@@ -15,12 +15,15 @@ from .services import upload_manifest
 from .db.repositories import batches as batch_repository
 from .services import thumbnails
 from .services.disk_guard import check_admission
-from app.config import DATA_DIR
+from .storage.paths import original_path,part_path,owned_file
+from app.storage.filesystem import parent_fd,safe_read,safe_unlink
+from app.storage.paths import app_key
+from app.storage.categories import Category
+from app import config
+import stat
 from .services.upload_validation import safe_name,MAX_FILE_BYTES,MAX_FO_BYTES,fo_media_type,original_storage_name
 
 router=APIRouter(prefix='/api',tags=['uploads'])
-UPLOADS_DIR=DATA_DIR/'uploads'
-PART_DIR=DATA_DIR/'incoming'
 CHUNK_LIMIT=16*1024*1024
 _LOCKS:dict[str,asyncio.Lock]={}
 _INIT_LOCKS:dict[str,threading.Lock]={}
@@ -75,8 +78,7 @@ def _create_upload(payload:BeginUpload,file_id:uuid.UUID):
                 (file_id,batch_id,filename,payload.size,payload.sha256))
             db.execute("UPDATE batches SET upload_state='open' WHERE id=%s",(batch_id,))
         recorded=True
-        PART_DIR.mkdir(parents=True,exist_ok=True)
-        (PART_DIR/f'{file_id}.part').touch(exist_ok=False)
+        _create_part(batch_id,file_id)
         return {'id':str(file_id),'offset':0,'size':payload.size}
     except Exception:
         if recorded:
@@ -87,6 +89,16 @@ def _create_upload(payload:BeginUpload,file_id:uuid.UUID):
     finally:
         operations.finish(token)
 
+
+def _create_part(batch_id,upload_id):
+    key=app_key(Category.FO_UPLOAD_PART,batch_uuid=batch_id,upload_uuid=upload_id).relative
+    with parent_fd(config.APP_STORAGE_ROOT,key,create=True) as (fd,name):
+        handle=os.open(name,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600,dir_fd=fd)
+        os.close(handle)
+
+def _remove_part(batch_id,upload_id):
+    path=part_path(batch_id,upload_id)
+    safe_unlink(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
 
 def re_full_sha(digest):
     import re
@@ -100,10 +112,10 @@ def create_upload(payload:BeginUpload):
     if payload.client_upload_id is None:
         return _create_upload(payload,uuid.uuid4())
     row=_prepare_direct_upload(str(payload.client_upload_id),payload)
-    part=PART_DIR/f"{row['id']}.part"
+    part=part_path(row['batch_id'],row['id'])
     if not row['finalized'] and not part.exists() and row['received']==0:
-        PART_DIR.mkdir(parents=True,exist_ok=True)
-        part.touch(exist_ok=True)
+        try:_create_part(row['batch_id'],row['id'])
+        except FileExistsError:pass
     offset=part.stat().st_size if part.is_file() else row['received']
     return {'id':str(row['id']),'offset':offset,'size':row['declared_size'],
             'finalized':row['finalized']}
@@ -121,7 +133,7 @@ def get_upload(upload_id):
 @router.get('/uploads/{upload_id}')
 def upload_status(upload_id:str):
     row=get_upload(upload_id)
-    part=PART_DIR/f'{row["id"]}.part'
+    part=part_path(row['batch_id'],row['id'])
     offset=part.stat().st_size if part.is_file() else row['received']
     return {'id':str(row['id']),'offset':offset,'size':row['declared_size'],
             'finalized':row['finalized']}
@@ -129,7 +141,8 @@ def upload_status(upload_id:str):
 
 def _append_chunk(path: Path, expected: int, data: bytes, declared_size: int) -> int:
     """Check file offset and write in a worker thread, never on the ASGI event loop."""
-    with path.open('r+b') as output:
+    with parent_fd(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT)) as (fd,name), os.fdopen(os.open(name,os.O_RDWR|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=fd),'r+b') as output:
+        if not stat.S_ISREG(os.fstat(output.fileno()).st_mode):raise ValueError('Invalid upload part')
         actual = output.seek(0, os.SEEK_END)
         if actual != expected:
             raise HTTPException(409, {'expected_offset': actual})
@@ -180,7 +193,7 @@ async def upload_chunk(upload_id: str, request: Request):
         try:
             if row['finalized']:
                 raise HTTPException(409, 'Файл уже загружен')
-            path = PART_DIR / f'{row["id"]}.part'
+            path = part_path(row['batch_id'],row['id'])
             if not await asyncio.to_thread(path.is_file):
                 raise HTTPException(409, 'Временный файл отсутствует')
             confirmed = await asyncio.to_thread(
@@ -197,14 +210,15 @@ def _finalize_sync(upload_id:str):
     if row['kind']!='fo':
         raise HTTPException(409,'Используйте новую загрузку образцов')
     if row['finalized']:
+        _remove_part(row['batch_id'],row['id'])
         return {'path':row['target_path'],'already_finalized':True}
-    part=PART_DIR/f'{row["id"]}.part'
+    part=part_path(row['batch_id'],row['id'])
     if not part.is_file() or part.stat().st_size!=row['declared_size']:
         current=get_upload(upload_id)
         if current['finalized']:
             return {'path':current['target_path'],'already_finalized':True}
         raise HTTPException(409,'Файл загружен не полностью')
-    with part.open('rb') as stream:
+    with safe_read(config.APP_STORAGE_ROOT,part.relative_to(config.APP_STORAGE_ROOT)) as stream:
         digest=hashlib.file_digest(stream,'sha256').hexdigest()
     if row['checksum'] and digest!=row['checksum']:
         raise HTTPException(422,'SHA-256 не совпадает')
@@ -222,7 +236,7 @@ def _finalize_sync(upload_id:str):
             action='prepare'
     with connect() as db:
         db.execute('SELECT pg_advisory_xact_lock(723409133)')
-        batch=db.execute("""SELECT delete_state FROM batches
+        batch=db.execute("""SELECT delete_state,owner_id FROM batches
             WHERE id=%s FOR UPDATE""",(row['batch_id'],)).fetchone()
         if not batch or batch['delete_state']!='active':
             raise HTTPException(409,'Партия удаляется или удалена')
@@ -233,21 +247,22 @@ def _finalize_sync(upload_id:str):
             WHERE id=%s FOR UPDATE""",(row['id'],)).fetchone()
         if current['finalized']:
             return {'path':current['target_path'],'already_finalized':True}
-        base=UPLOADS_DIR/str(row['batch_id'])
-        base.mkdir(parents=True,exist_ok=True)
-        storage_name=original_storage_name(digest,row['filename'],media_type)
-        if action is not None:
-            # Stable per-upload identity even with identical bytes in subfolders.
-            storage_name=str(row['id'])+'_'+storage_name
-        target=base/storage_name
-        if target.exists():
-            with target.open('rb') as stream:
-                old=hashlib.file_digest(stream,'sha256').hexdigest()
-            if old!=digest:raise HTTPException(409,'Конфликт имён ФО')
-        else:
-            # Keep source .part intact until SQL commit, allowing safe retry.
-            os.link(part,target)
-        target.chmod(0o444)
+        # Original name is metadata; stable UUID is the physical identity.
+        ext=Path(row['filename']).suffix.lower().lstrip('.') if media_type is None else 'media'
+        target=original_path(row['batch_id'],row['id'],ext,batch['owner_id'])
+        with parent_fd(config.APP_STORAGE_ROOT,target.relative_to(config.APP_STORAGE_ROOT),create=True) as (dst_fd,dst_name):
+            if target.exists():
+                with safe_read(config.APP_STORAGE_ROOT,target.relative_to(config.APP_STORAGE_ROOT)) as stream:
+                    old=hashlib.file_digest(stream,'sha256').hexdigest()
+                if old!=digest:raise HTTPException(409,'Конфликт имён ФО')
+            else:
+                # Keep part until DB commit for interrupted-commit retries.
+                with parent_fd(config.APP_STORAGE_ROOT,part.relative_to(config.APP_STORAGE_ROOT)) as (src_fd,src_name):
+                    os.link(src_name,dst_name,src_dir_fd=src_fd,dst_dir_fd=dst_fd,follow_symlinks=False)
+            with safe_read(config.APP_STORAGE_ROOT,target.relative_to(config.APP_STORAGE_ROOT)) as stream:
+                os.fchmod(stream.fileno(),0o444)
+                os.fsync(stream.fileno())
+            os.fsync(dst_fd)
         db.execute("""UPDATE uploads SET finalized=true,received=declared_size,
             checksum=%s,target_path=%s,original_media_type=%s,media_action=%s,
             media_duration=%s,media_error=%s WHERE id=%s""",
@@ -259,7 +274,7 @@ def _finalize_sync(upload_id:str):
             from .services.auto_processing import enqueue_on_manifest_completion
             enqueue_on_manifest_completion(db,row['batch_id'])
         batch_repository.refresh_upload_state(db,row['batch_id'])
-    part.unlink(missing_ok=True)
+    _remove_part(row['batch_id'],row['id'])
     return {'path':str(target),'sha256':digest,'already_finalized':False}
 
 
@@ -319,7 +334,7 @@ async def direct_upload(
         try:
             if row['finalized']:
                 return {'already_finalized':True,'path':row['target_path']}
-            path=PART_DIR/f"{row['id']}.part"
+            path=part_path(row['batch_id'],row['id'])
             length=await asyncio.to_thread(path.stat)
             if length.st_size:
                 raise HTTPException(409,'Продолжите загрузку через PATCH')
@@ -362,7 +377,7 @@ async def cancel_upload(upload_id:str):
                     target=db.execute("""SELECT id FROM uploads WHERE id=%s AND NOT finalized FOR UPDATE""",
                                       (row['id'],)).fetchone()
                     if not target:raise HTTPException(409,'Загрузка уже завершена')
-                    (PART_DIR/f"{row['id']}.part").unlink(missing_ok=True)
+                    _remove_part(row['batch_id'],row['id'])
                     db.execute("DELETE FROM uploads WHERE id=%s",(row['id'],))
                     if row['batch_id']:batch_repository.refresh_upload_state(db,row['batch_id'])
             await asyncio.to_thread(remove)

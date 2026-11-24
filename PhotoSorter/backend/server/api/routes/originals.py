@@ -8,7 +8,7 @@ from app.config import DATA_DIR
 from app.photos.reader import EXTS
 from ...database import connect
 from ...media.preview import INLINE_TYPES
-from ...storage.paths import owned_file
+from ...storage.paths import owned_file,batch_dir,batch_root
 from ...services import operations
 from ..file_response import LeasedFileResponse
 
@@ -25,7 +25,7 @@ def prepared(photo_id:uuid.UUID):
     if not row:raise HTTPException(404,"Файл не найден")
     token=operations.start(row['batch_id'],'original')
     try:
-        path=playable(row,DATA_DIR/'uploads'/str(row['batch_id']))
+        path=playable(row,batch_root(row['batch_id']))
         if not path.is_file():raise FileNotFoundError()
         video=(row['original_media_type'] or '').startswith('video/')
         mime=(
@@ -51,7 +51,7 @@ def preview(photo_id:uuid.UUID):
         raise HTTPException(404,"Файл недоступен для просмотра")
     token=operations.start(row["batch_id"],"original")
     try:
-        path=owned_file(Path(row["target_path"]),DATA_DIR/"uploads"/str(row["batch_id"]))
+        path=owned_file(Path(row["target_path"]),batch_dir(row["batch_id"]))
         if not path.is_file():raise FileNotFoundError()
         return LeasedFileResponse(path,lease=token,media_type=row["original_media_type"],
                             headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})

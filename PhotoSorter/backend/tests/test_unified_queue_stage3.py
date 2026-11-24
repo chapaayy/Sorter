@@ -30,6 +30,9 @@ def system(tmp_path,monkeypatch):
         admin.execute('CREATE SCHEMA "'+schema+'"')
     monkeypatch.setattr(database,"DB_URL",make_conninfo(url,options="-c search_path="+schema))
     root=tmp_path/"data"
+    from app import config
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",tmp_path/"storage/app")
+    config.APP_STORAGE_ROOT.mkdir(parents=True)
     refs=root/"references"
     refs.mkdir(parents=True)
     staging=root/"reference_staging"
@@ -238,12 +241,10 @@ def test_auto_fo_reserves_fifo_on_final_manifest_file(system,monkeypatch):
     files=[SimpleNamespace(upload_id=file_id,relative_path="photo.jpg",
                            filename="photo.jpg",size=len(raw))]
     upload_manifest.register(batch,files,auto_process=True,grouping_threshold=.5)
-    monkeypatch.setattr(uploads,"UPLOADS_DIR",system/"uploads")
-    monkeypatch.setattr(uploads,"PART_DIR",system/"incoming")
     uploads._create_upload(uploads.BeginUpload(
          kind="fo",batch_id=str(batch),filename="photo.jpg",
          size=len(raw),sha256=hashlib.sha256(raw).hexdigest()),file_id)
-    (system/"incoming"/(str(file_id)+".part")).write_bytes(raw)
+    uploads.part_path(batch,file_id).write_bytes(raw)
     uploads._finalize_sync(str(file_id))
     with database.connect() as db:
         queued=db.execute("""

@@ -66,9 +66,9 @@ def test_patch_resume_offset_checksum_and_cancel(thumbs):
     assert error.value.status_code==409
     draft=str(uuid.uuid4())
     uploads._create_upload(payload,uuid.UUID(draft))
-    (thumbs/"incoming"/f"{draft}.part").write_bytes(b"partial")
+    uploads.part_path(own,draft).write_bytes(b"partial")
     assert asyncio.run(uploads.cancel_upload(draft))["cancelled"]
-    assert not (thumbs/"incoming"/f"{draft}.part").exists()
+    assert not uploads.part_path(own,draft).exists()
     with pytest.raises(HTTPException) as error:uploads.get_upload(draft)
     assert error.value.status_code==404
     cleanup.request(own)
@@ -83,10 +83,11 @@ def test_image_checksum_validation_rejects_corruption(thumbs):
            batch_id=str(own),sha256="0"*64)
     uid=str(uuid.uuid4())
     uploads._create_upload(payload,uuid.UUID(uid))
-    (thumbs/"incoming"/f"{uid}.part").write_bytes(raw)
+    uploads.part_path(own,uid).write_bytes(raw)
     with pytest.raises(HTTPException) as exc:uploads._finalize_sync(uid)
     assert exc.value.status_code==422
-    assert not list((thumbs/"uploads"/str(own)).glob("*"))
+    from server.storage.paths import batch_dir
+    assert not list(batch_dir(own).glob("*"))
     cleanup.request(own)
     cleanup.cleanup_one(own)
 
@@ -97,7 +98,8 @@ def test_seekable_zip_lease_released_after_response_and_preserves_originals(thum
     monkeypatch.setattr(images,"DATA_DIR",thumbs)
     monkeypatch.setattr(originals,"DATA_DIR",thumbs)
     own=_batch(thumbs,with_photo=False)
-    originals_dir=thumbs/"uploads"/str(own)
+    from server.storage.paths import batch_dir
+    originals_dir=batch_dir(own)
     originals_dir.mkdir(parents=True)
     blob=os.urandom(512*1024)
     source=originals_dir/"report.jpg"
@@ -133,7 +135,7 @@ def test_seekable_zip_lease_released_after_response_and_preserves_originals(thum
                      (own,)).fetchone()["n"]
     assert n==0
     assert cleanup.cleanup_one(own)=="completed"
-    assert not (thumbs/"uploads"/str(own)).exists()
+    assert not batch_dir(own).exists()
 
 def test_original_viewer_streaming_lease(thumbs,monkeypatch):
     from server.api.routes import originals

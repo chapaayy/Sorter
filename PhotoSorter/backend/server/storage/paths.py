@@ -3,15 +3,44 @@ from pathlib import Path
 import re
 import stat
 from app.config import DATA_DIR, RUNS_DIR
-from app.storage.paths import uuid_key, run_key
+from app.storage.paths import uuid_key, run_key, managed_prefix, managed_path
+from app.storage.categories import Category
 
-UPLOADS = DATA_DIR / "uploads"
 OUTPUTS = DATA_DIR / "outputs"
-INCOMING = DATA_DIR / "incoming"
 RUN_PATTERN = re.compile(r"\d{8}T\d{6}-[a-f0-9]{12}\Z")
 
-def batch_dir(batch_id):
-    return UPLOADS / uuid_key(batch_id)
+def batch_owner(batch_id, db=None):
+    from ..database import connect
+    batch_id=uuid_key(batch_id)
+    if db is None:
+        with connect() as conn:
+            return batch_owner(batch_id,conn)
+    row=db.execute("SELECT owner_id FROM batches WHERE id=%s",(batch_id,)).fetchone()
+    if not row:
+        raise FileNotFoundError("Unknown batch")
+    return row["owner_id"]
+
+def batch_dir(batch_id, owner_id=None):
+    owner_id=batch_owner(batch_id) if owner_id is None else owner_id
+    return managed_prefix(Category.FO_ORIGINAL,user_id=owner_id,batch_uuid=batch_id)
+
+def batch_root(batch_id, owner_id=None):
+    return batch_dir(batch_id,owner_id).parent
+
+def original_path(batch_id, upload_id, ext, owner_id=None):
+    owner_id=batch_owner(batch_id) if owner_id is None else owner_id
+    return managed_path(Category.FO_ORIGINAL,user_id=owner_id,batch_uuid=batch_id,upload_uuid=upload_id,ext=ext)
+
+def normalized_path(batch_id, upload_id, ext, owner_id=None):
+    owner_id=batch_owner(batch_id) if owner_id is None else owner_id
+    return managed_path(Category.FO_NORMALIZED,user_id=owner_id,batch_uuid=batch_id,upload_uuid=upload_id,ext=ext)
+
+def normalized_dir(batch_id, owner_id=None):
+    owner_id=batch_owner(batch_id) if owner_id is None else owner_id
+    return managed_prefix(Category.FO_NORMALIZED,user_id=owner_id,batch_uuid=batch_id)
+
+def part_path(batch_id, upload_id):
+    return managed_path(Category.FO_UPLOAD_PART,batch_uuid=batch_id,upload_uuid=upload_id)
 
 def run_dir(run_id, root=None):
     return Path(OUTPUTS if root is None else root) / run_key(run_id)

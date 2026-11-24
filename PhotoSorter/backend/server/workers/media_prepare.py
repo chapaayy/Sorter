@@ -12,7 +12,9 @@ from ..media.formats import normalized_image,probe
 from ..media.estimate import Estimate,work
 from ..media.video import encode
 import subprocess
-from ..storage.paths import owned_file
+from ..storage.paths import owned_file,batch_dir,normalized_path,normalized_dir
+from app import config
+from app.storage.filesystem import atomic_publish
 from ..services import operations,disk_guard
 
 
@@ -38,16 +40,16 @@ def run(item, *, stopping, cpus=2):
     try:
         token = operations.start(batch_id, 'media_prepare')
         with connect() as db:
-            settings = db.execute("""SELECT media_image_format,media_video_format
+            settings = db.execute("""SELECT media_image_format,media_video_format,owner_id
                 FROM batches WHERE id=%s""",(batch_id,)).fetchone()
             rows = db.execute("""SELECT id,filename,target_path,original_media_type,declared_size
                 FROM uploads WHERE batch_id=%s AND kind='fo' AND finalized
                 AND media_action='prepare' AND media_output_path IS NULL AND media_error IS NULL
                 ORDER BY created_at,id""",(batch_id,)).fetchall()
-        root = DATA_DIR / 'uploads' / str(batch_id)
-        dest = root / '.normalized'
+        root = batch_dir(batch_id,settings['owner_id'])
+        dest = normalized_dir(batch_id,settings['owner_id'])
         if dest.is_symlink():raise ValueError('Недопустимый каталог подготовки')
-        dest.mkdir(exist_ok=True)
+        dest.mkdir(parents=True,exist_ok=True)
         plan=[]
         for row in rows:
             if stop():raise InterruptedError()
@@ -85,7 +87,7 @@ def run(item, *, stopping, cpus=2):
                         estimate.observe(index,fraction,now-started)
                     save_progress(index,fraction,row['filename'])
                     last_update=now
-            output = dest / f"{row['id']}.{ext}"
+            output = normalized_path(batch_id,row["id"],ext,settings["owner_id"])
             failure = None
             duration = None
             try:
@@ -101,7 +103,7 @@ def run(item, *, stopping, cpus=2):
                     if stop():raise InterruptedError()
                     with partial.open('rb') as file:os.fsync(file.fileno())
                     partial.chmod(0o444)
-                    os.replace(partial, output)
+                    atomic_publish(config.APP_STORAGE_ROOT,partial.relative_to(config.APP_STORAGE_ROOT),output.relative_to(config.APP_STORAGE_ROOT))
             except InterruptedError:
                 raise
             except Exception as exc:

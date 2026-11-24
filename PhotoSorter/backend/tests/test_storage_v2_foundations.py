@@ -160,3 +160,19 @@ def test_pipeline_stage_cleanup_and_retry(tmp_path,monkeypatch):
         with pipeline_directory(Category.TRANSCODE_TEMP,task_id=task):
             pass
     assert (outside/"keep").read_bytes()==b"keep"
+
+
+def test_owner_scoped_original_and_normalized_paths(tmp_path,monkeypatch):
+    from app import config
+    from server.storage.paths import original_path,normalized_path,part_path,batch_dir
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",tmp_path)
+    batch,upload=uuid.uuid4(),uuid.uuid4()
+    first=original_path(batch,upload,"jpg",1)
+    second=original_path(batch,upload,"jpg",2)
+    assert first!=second
+    assert first.parent==batch_dir(batch,1)
+    assert first==tmp_path/f"users/1/batches/{batch}/originals/{upload}.jpg"
+    assert normalized_path(batch,upload,"png",1)==tmp_path/f"users/1/batches/{batch}/normalized/{upload}.png"
+    assert part_path(batch,upload)==tmp_path/f"temporary/uploads/fo/{batch}/{upload}.part"
+    with pytest.raises(ValueError):
+        original_path(batch,upload,"../jpg",1)

@@ -31,7 +31,7 @@ def _send(root, batch, item, raw):
     uploads._create_upload(uploads.BeginUpload(
         kind="fo", batch_id=str(batch), filename=item.filename,
         size=len(raw), client_upload_id=item.upload_id), item.upload_id)
-    (root / "incoming" / f"{item.upload_id}.part").write_bytes(raw)
+    uploads.part_path(batch,item.upload_id).write_bytes(raw)
     return uploads._finalize_sync(str(item.upload_id))
 
 
@@ -116,7 +116,7 @@ def test_restart_reconciliation_after_all_saved_and_missing_source(thumbs):
         uploads._create_upload(uploads.BeginUpload(
             kind="fo", batch_id=str(batch), filename=item.filename,
             size=len(raw)), item.upload_id)
-        (thumbs / "incoming" / f"{item.upload_id}.part").write_bytes(raw)
+        uploads.part_path(batch,item.upload_id).write_bytes(raw)
         assert batches.pending_uploads(batch)["uploads"][0]["can_finalize"]
         _send_finish = uploads._finalize_sync(str(item.upload_id))
         assert _send_finish["already_finalized"] is False
@@ -151,7 +151,7 @@ def test_concurrent_finalization_only_completes_after_both(thumbs):
             uploads._create_upload(uploads.BeginUpload(
                 kind="fo", batch_id=str(batch), filename=item.filename,
                 size=len(raw)), item.upload_id)
-            (thumbs / "incoming" / f"{item.upload_id}.part").write_bytes(raw)
+            uploads.part_path(batch,item.upload_id).write_bytes(raw)
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(lambda i: uploads._finalize_sync(str(i.upload_id)), files))
         assert all(result["already_finalized"] is False for result in results)

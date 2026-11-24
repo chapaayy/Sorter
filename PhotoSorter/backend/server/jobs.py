@@ -10,6 +10,7 @@ from app.jobs.runtime import Job
 from .database import connect,save_snapshot
 from .db.repositories import job_status,work_queue
 from .services import regions
+from .storage.paths import batch_dir,batch_owner
 
 router=APIRouter(prefix="/api/runs",tags=["jobs"])
 TERMINAL=set(job_status.TERMINAL)
@@ -114,7 +115,7 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
         raise HTTPException(409,"Настройки обработки не инициализированы")
     now=datetime.now(timezone.utc)
     run_id=now.strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:12]
-    info={"id":run_id,"status":"queued","new_photos":str(DATA_DIR/"uploads"/str(data.batch_id)),
+    info={"id":run_id,"status":"queued","new_photos":str(batch_dir(data.batch_id,batch_owner(data.batch_id,db))),
           "output":str(DATA_DIR/"outputs"),"batch_id":str(data.batch_id),
           "selected_models":["megaloc"],"grouping_threshold":data.grouping_threshold,
           "selected_regions":selected_regions,

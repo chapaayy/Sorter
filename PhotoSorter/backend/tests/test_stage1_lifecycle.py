@@ -64,7 +64,6 @@ def sandbox(tmp_path,monkeypatch,db):
     config.APP_STORAGE_ROOT.mkdir(parents=True)
     for folder in ("uploads","outputs","incoming","references","runs"):
         (data/folder).mkdir(parents=True)
-    monkeypatch.setattr(paths,"UPLOADS",data/"uploads")
     monkeypatch.setattr(paths,"OUTPUTS",data/"outputs")
     monkeypatch.setattr(cleanup,"DATA_DIR",data)
     monkeypatch.setattr(cleanup,"RUNS_DIR",data/"runs")
@@ -505,6 +504,7 @@ def test_delete_refuses_symlink_escape_and_leaves_external_files(sandbox,tmp_pat
     external.mkdir()
     (external/"protected.jpg").write_bytes(b"never delete")
     batchfolder=paths.batch_dir(own)
+    batchfolder.parent.mkdir(parents=True)
     batchfolder.symlink_to(external,target_is_directory=True)
     cleanup.request(own)
     assert cleanup.cleanup_one(own)=="failed"
@@ -534,8 +534,6 @@ def test_upload_state_transitions_with_real_finalization(sandbox,monkeypatch):
     from server.db.repositories import batches as batch_repository
     from server.database import connect
     own=_batch(sandbox,with_photo=False)
-    monkeypatch.setattr(uploads,"UPLOADS_DIR",sandbox/"uploads")
-    monkeypatch.setattr(uploads,"PART_DIR",sandbox/"incoming")
     assert batches.get(own)["upload_state"]=="open"
     picture=io.BytesIO()
     Image.new("RGB",(20,20),"green").save(picture,format="JPEG")
@@ -545,7 +543,7 @@ def test_upload_state_transitions_with_real_finalization(sandbox,monkeypatch):
     file_id=uuid.uuid4()
     uploads._create_upload(payload,file_id)
     assert batches.get(own)["upload_state"]=="open"
-    (sandbox/"incoming"/f"{file_id}.part").write_bytes(raw)
+    paths.part_path(own,file_id).write_bytes(raw)
     result=uploads._finalize_sync(str(file_id))
     assert result["sha256"]==payload.sha256
     assert batches.get(own)["upload_state"]=="ready"

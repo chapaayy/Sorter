@@ -8,7 +8,9 @@ from fastapi import HTTPException
 from ..database import connect
 from ..db.repositories import batches as repository
 from . import batch_runs
-from ..storage.paths import batch_dir,owned_file
+from ..storage.paths import batch_dir,batch_root,part_path,owned_file
+from app import config
+from app.storage.filesystem import safe_unlink
 from ..storage.ownership import require_creator
 from app.config import DATA_DIR
 
@@ -149,10 +151,9 @@ def pending_uploads(batch_id):
         rows=db.execute("""SELECT id,filename,declared_size,received,updated_at
             FROM uploads WHERE batch_id=%s AND kind='fo' AND NOT finalized
             ORDER BY created_at,id""",(batch_id,)).fetchall()
-    base=DATA_DIR/"incoming"
     result=[]
     for row in rows:
-        part_key=f"{row['id']}.part"
+        part_key=part_path(batch_id,row["id"]).relative_to(config.APP_STORAGE_ROOT)
         exists=False
         actual=0
         prefix_bytes=0
@@ -160,7 +161,7 @@ def pending_uploads(batch_id):
         # A single fd binds the measured size and prefix bytes to the same
         # regular file, without following a replaced parent or leaf symlink.
         try:
-            with safe_read(base,part_key) as stream:
+            with safe_read(config.APP_STORAGE_ROOT,part_key) as stream:
                 exists=True
                 actual=os.fstat(stream.fileno()).st_size
                 prefix_bytes=actual if 0<actual<row["declared_size"] else 0
@@ -223,10 +224,10 @@ def remove_unprocessed_photo(batch_id,photo_id):
             if not repository.path_is_shared(db,item["target_path"],photo_id):
                 path.unlink(missing_ok=True)
         else:
-            path=owned_file(DATA_DIR/"incoming"/f"{photo_id}.part",DATA_DIR/"incoming")
-            path.unlink(missing_ok=True)
+            path=part_path(batch_id,photo_id)
+            safe_unlink(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
         if item.get("media_output_path"):
-            owned_file(item["media_output_path"],batch_dir(batch_id)).unlink(missing_ok=True)
+            owned_file(item["media_output_path"],batch_root(batch_id)).unlink(missing_ok=True)
         repository.delete_photo_row(db,photo_id)
         # Deleting a registered original invalidates proof of complete upload.
         db.execute("""UPDATE batches SET upload_manifest_state='waiting',

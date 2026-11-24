@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from ...database import connect
 from ...services import operations
 from ..file_response import LeasedFileResponse
-from ...storage.paths import owned_file
+from ...storage.paths import owned_file,batch_root
 from ...storage import thumbnail_cache as cache
 from app.config import DATA_DIR
 from app.photos.reader import EXTS
@@ -14,11 +14,23 @@ from .results import safe_manifest
 
 router=APIRouter(prefix="/api/images",tags=["images"])
 
-def file_allowed(file:Path):
-    roots=[(DATA_DIR/name).resolve() for name in ("references","uploads","outputs")]
-    resolved=file.resolve()
-    if not any(resolved.is_relative_to(root) for root in roots):
-        raise HTTPException(404,"Файл недоступен")
+def file_allowed(file:Path, run_id=None, kind=None):
+    if run_id is not None:
+        with connect() as db:
+            row=db.execute("SELECT batch_id FROM jobs WHERE id=%s",(run_id,)).fetchone()
+        if not row:raise HTTPException(404,"Запуск не найден")
+        roots=([batch_root(row["batch_id"])] if kind=="query" else
+               [DATA_DIR/"outputs"/run_id/"megaloc"] if kind=="copy" else
+               [DATA_DIR/"references",DATA_DIR/"reference_staging"])
+    else:
+        roots=[DATA_DIR/"references",DATA_DIR/"outputs"]
+    for root in roots:
+        try:
+            owned_file(file,root)
+            break
+        except (ValueError,OSError):
+            continue
+    else:raise HTTPException(404,"Файл недоступен")
     if not file.is_file() or file.suffix.lower() not in EXTS:
         raise HTTPException(404,"Файл не найден")
     return file
@@ -41,7 +53,7 @@ def image(run_id:str,index:int,kind:str="query",candidate:int=0,request:Request=
         if not 0<=candidate<len(top):raise HTTPException(404,"Образец не найден")
         filename=top[candidate]["reference"]
     else:raise HTTPException(422,"Неверный тип изображения")
-    file = file_allowed(Path(filename))
+    file = file_allowed(Path(filename),run_id,kind)
     if is_viewer(request) and not file.resolve().is_relative_to((DATA_DIR/"outputs").resolve()):
         raise HTTPException(404,"Готовый файл не найден")
     return FileResponse(file, headers={"Cache-Control":"private, no-store"})

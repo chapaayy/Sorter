@@ -16,8 +16,6 @@ def thumbs(sandbox,monkeypatch):
     from server.api.routes import thumbnails as endpoint
     monkeypatch.setattr(thumbnails,"DATA_DIR",sandbox)
     monkeypatch.setattr(cache,"ROOT",sandbox/"cache"/"thumbnails")
-    monkeypatch.setattr(uploads,"UPLOADS_DIR",sandbox/"uploads")
-    monkeypatch.setattr(uploads,"PART_DIR",sandbox/"incoming")
     return sandbox
 
 def _finalize_picture(root,batch_id,raw,filename="image.jpg"):
@@ -26,7 +24,7 @@ def _finalize_picture(root,batch_id,raw,filename="image.jpg"):
     info=uploads.BeginUpload(kind="fo",batch_id=str(batch_id),filename=filename,
               size=len(raw),sha256=hashlib.sha256(raw).hexdigest())
     uploads._create_upload(info,identifier)
-    (root/"incoming"/f"{identifier}.part").write_bytes(raw)
+    uploads.part_path(batch_id,identifier).write_bytes(raw)
     uploads._finalize_sync(str(identifier))
     return identifier
 

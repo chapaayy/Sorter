@@ -174,8 +174,14 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     assert state['media_preparation']['completed_count']==2
     assert state['auto_process_state']=='queued'
     assert (state['photos'],state['videos'])==(2,1)
+    from server.storage.paths import batch_dir,normalized_dir,part_path
     for upload,metadata in saved:
-        assert Path(metadata['path']).read_bytes()==source[upload.filename]
+        original=Path(metadata['path'])
+        assert original.parent==batch_dir(batch)
+        assert original.stem==str(upload.upload_id)
+        assert original.read_bytes()==source[upload.filename]
+        assert not part_path(batch,upload.upload_id).exists()
+    assert len(list(normalized_dir(batch).iterdir()))==2
     with database.connect() as conn:
         item=work_queue.claim_next(conn)
     assert item['kind']=='fo_processing' and item['info']['has_media_profile']
@@ -226,7 +232,8 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     assert result.status_code==206 and result.content==normalized.read_bytes()[:20]
     cleanup.request(batch)
     assert cleanup.cleanup_one(batch)=='completed'
-    assert not (thumbs/'uploads'/str(batch)/'.normalized').exists()
+    from server.storage.paths import batch_root
+    assert not batch_root(batch).exists()
 
 
 def test_frame_sampling_last_frame_and_alternative_video_format(tmp_path,clips):

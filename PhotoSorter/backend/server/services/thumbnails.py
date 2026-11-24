@@ -9,7 +9,7 @@ from PIL import Image,ImageOps,ImageCms,UnidentifiedImageError
 from ..database import connect
 from . import operations
 from ..storage import thumbnail_cache as cache
-from ..storage.paths import owned_file
+from ..storage.paths import owned_file,batch_dir
 from app.config import DATA_DIR
 
 MAX_ATTEMPTS=3
@@ -43,7 +43,7 @@ def claim():
         return row
 
 def _image_source(task):
-    root=(DATA_DIR/"uploads"/str(task["batch_id"])) if task["kind"]=="fo" else (
+    root=batch_dir(task["batch_id"]) if task["kind"]=="fo" else (
         DATA_DIR/"references"/str(task["sam"]))
     path=owned_file(Path(task["target_path"]),root)
     if not path.is_file():raise FileNotFoundError(path)

@@ -109,3 +109,33 @@ def app_key(category, **fields):
     validated = {field: _field(field, value) for field, value in fields.items()}
     _check_prefix(validated)
     return AppKey(category, relative_key(template[4:].rstrip("/").format(**validated)))
+
+
+def category_prefix(category, **fields):
+    """Validated directory prefix derived from the category template."""
+    category=Category(category)
+    template=CATEGORIES[category]["path"]
+    if not template.startswith("app/"):
+        raise ValueError("Not an app category")
+    used=set()
+    parts=[]
+    segments=template[4:].rstrip("/").split("/")
+    for index,piece in enumerate(segments):
+        names={name for _,name,_,_ in Formatter().parse(piece) if name}
+        if not names.issubset(fields):
+            break
+        if index==len(segments)-1 and not template.endswith("/"):
+            break
+        parts.append(piece.format(**{name:_field(name,fields[name]) for name in names}))
+        used.update(names)
+    if used!=set(fields) or not parts:
+        raise ValueError("Wrong prefix fields")
+    return relative_key("/".join(parts))
+
+def managed_path(category, **fields):
+    from app.config import APP_STORAGE_ROOT
+    return APP_STORAGE_ROOT / app_key(category,**fields).relative
+
+def managed_prefix(category, **fields):
+    from app.config import APP_STORAGE_ROOT
+    return APP_STORAGE_ROOT / category_prefix(category,**fields)

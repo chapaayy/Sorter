@@ -23,7 +23,7 @@ def test_complete_fo_parts_appear_as_pending_and_finalize_without_reupload(thumb
             uid=uuid.uuid4()
             uploads._create_upload(uploads.BeginUpload(
                 kind='fo',batch_id=str(batch),filename=f'IMG_{i}.JPG',size=len(raw)),uid)
-            (thumbs/'incoming'/f'{uid}.part').write_bytes(raw)
+            uploads.part_path(batch,uid).write_bytes(raw)
             ids.append((uid,raw))
 
         before=batches.get(batch)
@@ -50,7 +50,7 @@ def test_cancel_incomplete_session_keeps_all_finalized_photos(thumbs):
     try:
         uploads._create_upload(uploads.BeginUpload(
             kind='fo',batch_id=str(batch),filename='broken.jpg',size=len(raw)),uid)
-        (thumbs/'incoming'/f'{uid}.part').write_bytes(raw[:100])
+        uploads.part_path(batch,uid).write_bytes(raw[:100])
         assert batches.get(batch)['pending']==1
         pending=batches.pending_uploads(batch)['uploads'][0]
         assert pending['received']==100 and pending['prefix_bytes']==100
@@ -58,7 +58,7 @@ def test_cancel_incomplete_session_keeps_all_finalized_photos(thumbs):
         assert asyncio.run(uploads.cancel_upload(str(uid)))=={'cancelled':True}
         assert batches.get(batch)['photos']==1
         assert batches.get(batch)['pending']==0
-        assert not (thumbs/'incoming'/f'{uid}.part').exists()
+        assert not uploads.part_path(batch,uid).exists()
     finally:
         cleanup.request(batch);cleanup.cleanup_one(batch)
 
@@ -87,7 +87,7 @@ def test_missing_part_is_visible_but_cannot_be_auto_finalized(thumbs):
     try:
         uploads._create_upload(uploads.BeginUpload(
             kind='fo',batch_id=str(batch),filename='missing.jpg',size=500),uid)
-        (thumbs/'incoming'/f'{uid}.part').unlink()
+        uploads.part_path(batch,uid).unlink()
         pending=batches.pending_uploads(batch)['uploads']
         assert len(pending)==1 and not pending[0]['has_part']
         assert not pending[0]['can_finalize']

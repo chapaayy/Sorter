@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from ..storage.paths import batch_dir,owned_file
 
 from fastapi import HTTPException
 from . import batches as batch_service
@@ -15,6 +16,15 @@ from ..database import connect
 from psycopg.types.json import Jsonb
 from . import regions
 
+
+def _saved_file_valid(row, root):
+    if not row.get("target_path"):
+        return False
+    try:
+        target=owned_file(row["target_path"],root)
+        return target.is_file() and target.stat().st_size==row["declared_size"]
+    except (ValueError,OSError):
+        return False
 
 def _validated(files):
     # Import lazily: uploads.py calls this service when initiating/finalizing.
@@ -121,10 +131,9 @@ def reconcile_locked(db, batch_id):
             FROM batch_upload_manifest_files m JOIN uploads u ON u.id=m.upload_id
             WHERE m.batch_id=%s""", (batch_id,)).fetchall()
         complete = bool(rows)
+        root=batch_dir(batch_id)
         for row in rows:
-            target = Path(row["target_path"])
-            if (target.is_symlink() or not target.is_file() or
-                    target.stat().st_size != row["declared_size"]):
+            if not _saved_file_valid(row,root):
                 complete = False
                 break
     db.execute("""UPDATE batches SET upload_manifest_state=%s,
@@ -159,14 +168,11 @@ def status(batch_id):
             u.id AS saved_id,u.finalized,u.target_path,u.received
             FROM batch_upload_manifest_files m LEFT JOIN uploads u ON u.id=m.upload_id
             WHERE m.batch_id=%s ORDER BY m.relative_path""", (batch_id,)).fetchall()
+        root=batch_dir(batch_id)
         # A lost acknowledgement cannot strand a batch: complete is derived server-side.
         if (rows and all(row["finalized"] for row in rows) and
                 (batch["upload_manifest_state"] != "complete" or
-                 any(not row["target_path"] or
-                     not Path(row["target_path"]).is_file() or
-                     Path(row["target_path"]).is_symlink() or
-                     Path(row["target_path"]).stat().st_size != row["declared_size"]
-                     for row in rows))):
+                 any(not _saved_file_valid(row,root) for row in rows))):
             from ..db.repositories.work_queue import LOCK
             db.execute("SELECT pg_advisory_xact_lock(%s)",(LOCK,))
             db.execute("SELECT 1 FROM batches WHERE id=%s FOR UPDATE", (batch_id,))
@@ -184,10 +190,7 @@ def status(batch_id):
                 missing += 1
             elif not row["finalized"]:
                 state = "unfinished"
-            elif (not row["target_path"] or
-                    not Path(row["target_path"]).is_file() or
-                    Path(row["target_path"]).is_symlink() or
-                    Path(row["target_path"]).stat().st_size != row["declared_size"]):
+            elif not _saved_file_valid(row,root):
                 state = "missing_saved"
             else:
                 state = "finalized"

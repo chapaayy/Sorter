@@ -47,7 +47,7 @@ def test_large_image_pixel_bomb_is_rejected_before_publishing(thumbs,monkeypatch
     item=uuid.uuid4()
     uploads._create_upload(uploads.BeginUpload(kind="fo",filename="huge.jpg",size=len(raw),
         batch_id=str(own)),item)
-    (thumbs/"incoming"/f"{item}.part").write_bytes(raw)
+    uploads.part_path(own,item).write_bytes(raw)
     class Huge:
         width=upload_validation.PIXEL_LIMIT+1
         height=1
