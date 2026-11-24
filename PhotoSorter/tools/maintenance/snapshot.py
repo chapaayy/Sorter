@@ -19,9 +19,10 @@ import tempfile
 from pathlib import Path,PurePosixPath
 from urllib.parse import urlsplit,unquote
 
-INCLUDED_DIRS=("PhotoSorter/data","Models/models","Models/cache")
-INCLUDED_FILES=(".env",".env.generated","compose.yaml","PhotoSorter/docker/caddy/Caddyfile")
-SCHEMA_VERSION=1
+INCLUDED_DIRS=("storage/app",)
+MODEL_DIRS=("storage/app/models","storage/app/cache")
+INCLUDED_FILES=(".env",".env.generated","compose.yaml","PhotoSorter/docker/caddy/Caddyfile","storage/system/state/layout-version")
+SCHEMA_VERSION=2
 BLOCK=1024*1024
 
 def digest(path):
@@ -55,7 +56,7 @@ def pg_run(args,url,*,capture=False):
 
 def validate_rel(name):
     posix=PurePosixPath(name)
-    if not name or posix.is_absolute() or any(p in ("..",".") for p in posix.parts) or "\\" in name:
+    if not name or posix.is_absolute() or any(p in ("..",".","") for p in name.split("/")) or chr(0) in name or "\\" in name:
         raise ValueError("Unsafe backup member")
     if not (any(name==d or name.startswith(d+"/") for d in INCLUDED_DIRS)
             or name in INCLUDED_FILES):
@@ -63,53 +64,69 @@ def validate_rel(name):
     return posix
 
 def safe_model_symlink(name,target):
-    """Only relative, internal Models/cache or Models/models symlinks are preserved.
+    """Only relative symlinks inside storage/app/cache or storage/app/models are preserved.
 
     Hugging Face snapshot refs commonly link to ../../blobs/<sha> inside its cache.
     Block symlinks in user photographs/secret config and links out of Models.
     """
-    if (not name.startswith("Models/") or not target or
+    if (not any(name.startswith(prefix+"/") for prefix in MODEL_DIRS) or not target or
             posixpath.isabs(target) or chr(92) in target or chr(0) in target):
         raise ValueError("Unsafe model symlink")
     destination=posixpath.normpath(posixpath.join(posixpath.dirname(name),target))
-    if not any(destination.startswith(prefix+"/") for prefix in ("Models/cache","Models/models")):
+    if not any(destination.startswith(prefix+"/") for prefix in MODEL_DIRS):
         raise ValueError("Model symlink escapes model storage")
     return target
 
-def enumerate_files(root):
+def configured_storage_root(root):
+    config=root/".env.generated"
+    if config.is_symlink() or not config.is_file():
+        raise ValueError("Missing protected generated configuration")
+    pins=[line.split("=",1)[1] for line in config.read_text().splitlines() if line.startswith("MAP_STORAGE_ROOT=")]
+    if len(pins)!=1:
+        raise ValueError("Missing or duplicate V2 storage root pin")
+    storage=Path(pins[0])
+    if not storage.is_absolute() or storage.resolve()!=storage or storage==Path("/"):
+        raise ValueError("Unsafe storage root")
+    marker=storage/"system/state/layout-version"
+    if marker.resolve()!=marker or not marker.is_file() or marker.read_text().strip()!="2":
+        raise ValueError("Invalid storage layout marker")
+    return storage
+
+def enumerate_files(root,storage):
     files=[]
     for rel in INCLUDED_DIRS:
-        folder=root/rel
-        if folder.is_symlink() or not folder.is_dir():
+        folder=storage/rel.removeprefix("storage/")
+        if folder.is_symlink() or not folder.is_dir() or folder.resolve()!=folder:
             raise ValueError("Missing or symlinked backup directory: "+rel)
-        for p in sorted(folder.rglob("*")):
-            if p.is_symlink():
-                safe_model_symlink(p.relative_to(root).as_posix(),os.readlink(p))
-                if not p.resolve(strict=True).is_relative_to((root/"Models").resolve()):
-                    raise ValueError("Model symlink outside Models")
-                files.append(p)
-            elif p.is_file():
-                if not p.is_relative_to(folder):raise ValueError("Unsafe source")
-                files.append(p)
-            elif not p.is_dir():raise ValueError("Unsupported source object: "+str(p))
+        for path in sorted(folder.rglob("*")):
+            name=rel+"/"+path.relative_to(folder).as_posix()
+            if path.is_symlink():
+                safe_model_symlink(name,os.readlink(path))
+                if not any(path.resolve(strict=True).is_relative_to(storage/prefix.removeprefix("storage/")) for prefix in MODEL_DIRS):
+                    raise ValueError("Model symlink outside protected model/cache roots")
+                files.append((path,name))
+            elif path.is_file():
+                files.append((path,name))
+            elif not path.is_dir():
+                raise ValueError("Unsupported source object: "+str(path))
     for rel in INCLUDED_FILES:
-        file=root/rel
-        if file.is_symlink():raise ValueError("Symlink source blocked: "+rel)
-        if file.is_file():files.append(file)
-    if not (root/".env.generated").is_file():
-        raise ValueError("Missing .env.generated: cannot preserve admin/DB credentials")
+        file=storage/rel.removeprefix("storage/") if rel.startswith("storage/") else root/rel
+        if file.is_symlink() or file.resolve()!=file:
+            raise ValueError("Symlink source blocked: "+rel)
+        if file.is_file():
+            files.append((file,rel))
     return files
 
-def write_payload(root,tar_path):
+def write_payload(root,tar_path,storage):
     manifest=[]
     seen={}
     with tarfile.open(tar_path,"w",format=tarfile.PAX_FORMAT) as tar:
-        for path in enumerate_files(root):
-            relative=path.relative_to(root).as_posix()
+        for path,relative in enumerate_files(root,storage):
             validate_rel(relative)
             before=path.lstat()
             info=tar.gettarinfo(str(path),arcname=relative)
-            info.uid=10001;info.gid=10001;info.uname="";info.gname=""
+            info.uid=10001 if relative.startswith("storage/app/") else 0
+            info.gid=info.uid;info.uname="";info.gname=""
             info.mode=0o600 if relative.startswith(".env") else (before.st_mode&0o777)
             symlink_target=None
             if stat.S_ISLNK(before.st_mode):
@@ -151,17 +168,19 @@ def capture(root,destination,url,*,quiesced=False):
     root=Path(root).resolve()
     destination=Path(destination).absolute()
     if destination.exists():raise FileExistsError("Backup destination already exists")
-    if destination.is_relative_to(root):raise ValueError("Backup must be on independent storage outside project")
+    storage=configured_storage_root(root)
+    if destination.resolve().is_relative_to(root) or destination.resolve().is_relative_to(storage):raise ValueError("Backup must be on independent storage outside project")
     destination.parent.mkdir(parents=True,exist_ok=True)
     scratch=Path(tempfile.mkdtemp(prefix=".photosorter-backup-",dir=destination.parent))
     os.chmod(scratch,0o700)
     try:
-        files=write_payload(root,scratch/"files.tar")
+        files=write_payload(root,scratch/"files.tar",storage)
         pg_run(["pg_dump","--format=custom","--no-owner","--no-acl",
                 "--file",str(scratch/"database.dump")],url)
         manifest={"schema":SCHEMA_VERSION,
                   "db_name":pg_env(url)["PGDATABASE"],
                   "source_root":str(root),
+                  "source_storage_root":str(storage),
                   "files":files,
                   "db_sha256":digest(scratch/"database.dump"),
                   "tar_sha256":digest(scratch/"files.tar"),
@@ -186,6 +205,9 @@ def verify(archive):
         validate_rel(item["path"])
         if item["path"] in listed:raise ValueError("Duplicate backup member")
         listed[item["path"]]=item
+    for name in listed:
+        if any(parent.as_posix() in listed for parent in PurePosixPath(name).parents):
+            raise ValueError("Backup member has a non-directory ancestor")
     with tarfile.open(archive/"files.tar","r") as tar:
         entries=tar.getmembers()
         members={m.name:m for m in entries}
@@ -208,7 +230,7 @@ def verify(archive):
                 raise ValueError("Unexpected regular file instead of model symlink")
             if member.islnk():
                 link=item["hardlink_of"]
-                if not link or member.linkname!=link or link not in listed:
+                if not link or member.linkname!=link or link not in listed or not members[link].isfile():
                     raise ValueError("Unsafe hardlink in backup")
                 if item["sha256"]!=listed[link]["sha256"] or item["bytes"]!=listed[link]["bytes"]:
                     raise ValueError("Hardlink metadata mismatch")
@@ -235,6 +257,9 @@ def restore_test(archive,destination,url,*,confirmed=False):
     if destination.resolve()==Path(manifest["source_root"]).resolve() or destination.is_relative_to(
         Path(manifest["source_root"]).resolve()):
         raise ValueError("Never restore inside source tree")
+    source_storage=Path(manifest["source_storage_root"])
+    if destination.resolve().is_relative_to(source_storage):
+        raise ValueError("Never restore inside source storage")
     marker=destination.parent/".photosorter-staging-only"
     if not marker.is_file() or marker.read_text(encoding="utf8").strip()!="STAGING_ONLY":
         raise ValueError("Missing STAGING_ONLY marker in restore parent")
@@ -272,8 +297,8 @@ def restore_test(archive,destination,url,*,confirmed=False):
             if item.get("symlink_target") is not None:
                 target=os.readlink(path)
                 safe_model_symlink(item["path"],target)
-                if not path.resolve(strict=True).is_relative_to((destination/"Models").resolve()):
-                    raise ValueError("Model symlink escaped restored Models")
+                if not any(path.resolve(strict=True).is_relative_to(destination/prefix) for prefix in MODEL_DIRS):
+                    raise ValueError("Model symlink escaped restored model/cache roots")
                 actual=hashlib.sha256(target.encode("utf8")).hexdigest()
             else:
                 actual=digest(path)
