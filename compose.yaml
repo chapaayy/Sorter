@@ -12,6 +12,11 @@ x-app-env: &app_env
   PHOTOSORTER_BATCH_SIZE: "4"
   PHOTOSORTER_PREFETCH_WORKERS: "2"
 
+x-app-data: &app_data
+  - ./PhotoSorter/data:/workspace/PhotoSorter/data
+  - ./Models:/workspace/Models
+  - /var/lib/map-updater/control:/run/map-updater:ro
+
 services:
   caddy:
     image: caddy:2-alpine
@@ -40,6 +45,7 @@ services:
     networks: [public]
 
   api:
+    image: map-local/app:current
     logging: *bounded_logs
     build:
       context: .
@@ -49,9 +55,11 @@ services:
     environment:
       <<: *app_env
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
-    volumes: &app_data
+    volumes:
       - ./PhotoSorter/data:/workspace/PhotoSorter/data
       - ./Models:/workspace/Models
+      - /var/lib/map-updater/control:/run/map-updater:ro
+      - /var/lib/map-updater/rpc:/run/map-updater-rpc:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,6 +72,7 @@ services:
     networks: [public, private]
 
   worker:
+    image: map-local/app:current
     logging: *bounded_logs
     build:
       context: .
@@ -81,6 +90,7 @@ services:
     networks: [private]
 
   cleanup:
+    image: map-local/app:current
     logging: *bounded_logs
     build:
       context: .
@@ -98,6 +108,7 @@ services:
     networks: [private]
 
   thumbnail:
+    image: map-local/app:current
     logging: *bounded_logs
     build:
       context: .

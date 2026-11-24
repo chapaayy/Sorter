@@ -87,6 +87,7 @@ class LiveAudit:
             self.project / "PhotoSorter" / "data",
             self.project / "Models",
             Path("/tmp"), Path("/var/tmp"),
+            Path("/var/lib/map-updater"), Path("/usr/local/lib/map-updater"),
         ]
         self.skip_root = self.report.parent
         self.wd_paths = {}
@@ -111,7 +112,8 @@ class LiveAudit:
         self.stream = None
 
     def root_scope(self, root: Path):
-        return ("map" if within(root, self.project) else
+        return ("map_updater" if root in (Path("/var/lib/map-updater"), Path("/usr/local/lib/map-updater")) else
+                "map" if within(root, self.project) else
                 "container" if "containerd" in root.parts or "root" in root.parts else
                 "shared_unattributed")
 

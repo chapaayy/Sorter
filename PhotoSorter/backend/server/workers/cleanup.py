@@ -6,6 +6,7 @@ import threading
 import time
 from ..database import wait_and_initialize
 from ..services import heartbeat
+from ..services.update_gate import activity
 from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing,archive_retries
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
@@ -19,12 +20,14 @@ def stop(*_):
 def run_deletions(stopped):
     """Keep deletes responsive even while maintenance is rebuilding a ZIP."""
     while not stopped.is_set():
-        try:
-            for batch_id,result in cleanup.process_pending():
-                if result not in ("busy","waiting","skipped"):
-                    logging.info("Batch cleanup %s: %s",batch_id,result)
-        except Exception:
-            logging.exception("Batch cleanup failure")
+        with activity() as allowed:
+            if allowed:
+                try:
+                    for batch_id,result in cleanup.process_pending():
+                        if result not in ("busy","waiting","skipped"):
+                            logging.info("Batch cleanup %s: %s",batch_id,result)
+                except Exception:
+                    logging.exception("Batch cleanup failure")
         stopped.wait(DELETION_POLL_SECONDS)
 
 def run_cycle():
@@ -53,8 +56,10 @@ def main():
     deletions.start()
     try:
         while not STOPPED.is_set():
-            try:run_cycle()
-            except Exception:logging.exception("Lifecycle maintenance failure")
+            with activity() as allowed:
+                if allowed:
+                    try:run_cycle()
+                    except Exception:logging.exception("Lifecycle maintenance failure")
             STOPPED.wait(30)
     finally:
         STOPPED.set()
