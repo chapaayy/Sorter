@@ -22,3 +22,30 @@ jobs:
       - uses: actions/checkout@v4
       - name: Boot pristine Ubuntu VM and verify actual systemd, reboot and update
         run: bash PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh
+
+  realistic-load:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Real image corpus and browser dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          python -m pip install requests Pillow playwright
+          python -m playwright install --with-deps chromium
+          curl --fail --retry 3 --location --output "$RUNNER_TEMP/coco-val2017.zip" https://images.cocodataset.org/zips/val2017.zip
+      - name: Real MegaLoc 1100 unique photos, codecs, three cycles and actual ZIP TTL
+        run: |
+          sudo --preserve-env=CI,GITHUB_ACTIONS,PLAYWRIGHT_BROWSERS_PATH env PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" "$(command -v python)" PhotoSorter/tools/maintenance/ci_release_load.py "$RUNNER_TEMP/map-corpus" "$RUNNER_TEMP/coco-val2017.zip" "$RUNNER_TEMP/map-release-report.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: measured-map-release-load
+          path: ${{ runner.temp }}/map-release-report.json
+          retention-days: 7
+      - name: Disposable runner diagnostics
+        if: failure()
+        run: sudo docker compose --env-file .env --env-file .env.generated logs --tail=40 api worker cleanup thumbnail || true
