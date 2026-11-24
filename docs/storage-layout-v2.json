@@ -870,5 +870,6 @@
     "logs/updater"
   ],
   "reference_history_grace_days": 30,
-  "reference_unowned_grace_hours": 24
+  "reference_unowned_grace_hours": 24,
+  "temporary_grace_seconds": 3600
 }

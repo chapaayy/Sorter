@@ -54,6 +54,7 @@ services:
     command: ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
     environment:
       <<: *app_env
+      MAP_SERVICE: api
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
     volumes:
       - *app_storage_bind
@@ -78,7 +79,9 @@ services:
       dockerfile: PhotoSorter/docker/app/Dockerfile
     restart: unless-stopped
     command: ["python", "-m", "server.worker"]
-    environment: *app_env
+    environment:
+      <<: *app_env
+      MAP_SERVICE: worker
     volumes: *app_data
     depends_on:
       postgres:

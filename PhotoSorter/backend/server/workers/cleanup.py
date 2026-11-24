@@ -5,6 +5,9 @@ import signal
 import threading
 import time
 from ..database import wait_and_initialize
+from app.config import APP_STORAGE_ROOT
+from app.storage.temporary import collect_abandoned
+from app.storage.categories import ARCHIVE_SWEEP_SECONDS
 from ..services import heartbeat
 from ..services.update_gate import activity
 from ..services import cleanup,retention,thumbnail_gc,temp_cleanup,auto_processing,archive_cache,reference_gc
@@ -33,6 +36,8 @@ def run_deletions(stopped):
 def run_cycle():
     global NEXT_GC
     expired=archive_cache.collect()
+    scratch=collect_abandoned(APP_STORAGE_ROOT)
+    if scratch:logging.info("Removed %s abandoned scratch operations",scratch)
     if expired:logging.info("Removed %s expired ZIP cache files",expired)
     for batch_id,run_id in auto_processing.schedule_ready():
         logging.info('Auto processing queued for %s: %s',batch_id,run_id)
@@ -63,7 +68,7 @@ def main():
                 if allowed:
                     try:run_cycle()
                     except Exception:logging.exception("Lifecycle maintenance failure")
-            STOPPED.wait(30)
+            STOPPED.wait(ARCHIVE_SWEEP_SECONDS)
     finally:
         STOPPED.set()
         deletions.join()

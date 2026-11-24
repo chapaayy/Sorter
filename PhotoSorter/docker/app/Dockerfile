@@ -26,4 +26,5 @@ COPY PhotoSorter/frontend ./frontend
 COPY --from=vue-build /ui/dist ./frontend/dist
 ENV PYTHONPATH=/workspace/PhotoSorter/backend
 USER 10001:10001
+ENTRYPOINT ["python", "-m", "app.storage.entrypoint"]
 

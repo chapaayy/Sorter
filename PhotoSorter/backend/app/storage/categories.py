@@ -12,6 +12,7 @@ if _contract["layout_version"] != 2:
 LAYOUT_VERSION = _contract["layout_version"]
 ARCHIVE_TTL_SECONDS = _contract["archive_ttl_seconds"]
 ARCHIVE_SWEEP_SECONDS = _contract["archive_sweep_seconds"]
+TEMPORARY_GRACE_SECONDS = _contract["temporary_grace_seconds"]
 APP_UID = _contract["app_uid"]
 APP_GID = _contract["app_gid"]
 CONTAINER_APP_ROOT = Path(_contract["container_app_root"])

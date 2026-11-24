@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 import subprocess
-import tempfile
+from app.storage.temporary import temporary_file
 import time
 
 from .formats import VIDEO_CONTAINERS, compatible_streams, probe
@@ -27,7 +27,7 @@ def _read_progress(stream, offset, partial, callback):
 
 
 def _run(args, *, stop=None, timeout=120, progress=None):
-    with tempfile.TemporaryFile() as errors,tempfile.TemporaryFile() as output:
+    with temporary_file() as errors,temporary_file() as output:
         offset,partial=0,b''
         with subprocess.Popen(args, stdin=subprocess.DEVNULL,
                               stdout=output if progress else subprocess.DEVNULL, stderr=errors) as process:
@@ -83,7 +83,7 @@ def encode(source, out, target, *, stop=None, progress=None, meta=None, cpus=2):
 def _index(source, *, stop):
     # ffprobe emits decoded video frame timestamps in presentation order. Stream
     # to a bounded temporary index instead of holding frames or JSON in RAM.
-    with tempfile.TemporaryFile() as index:
+    with temporary_file() as index:
         args = ['ffprobe', '-v', 'error', '-protocol_whitelist', 'file',
                 '-format_whitelist', VIDEO_CONTAINERS, '-threads', '1',
                 '-select_streams', 'V:0', '-show_frames', '-show_entries',
