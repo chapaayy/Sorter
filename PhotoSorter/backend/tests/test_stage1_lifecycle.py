@@ -275,7 +275,7 @@ def test_confirm_calendar_months_extension_and_warning(sandbox):
     run=_job(sandbox,own)
     directory=paths.run_dir(run)/"megaloc"
     directory.mkdir(parents=True)
-    (directory/"manifest.json").write_text("[]",encoding="utf8")
+    (directory/"manifest.rows.jsonl").write_text("",encoding="utf8")
     assert retention.status(own)["delete_after_at"] is None
     data=retention.confirm(own,run)
     assert data["delete_after_at"]>data["download_confirmed_at"]
@@ -300,12 +300,10 @@ def test_legacy_zip_and_stream_lease_survives_delete_request(sandbox):
     target=paths.run_dir(run)/"megaloc"/"SAM-0045"/"photo.jpg"
     target.parent.mkdir(parents=True)
     os.link(source,target)
-    run_model_dir=sandbox/"runs"/run/"models"
-    run_model_dir.mkdir(parents=True)
-    (run_model_dir/"megaloc.json").write_text(json.dumps({"path":str(target.parents[1]/"manifest.json")}),encoding="utf8")
-    (target.parents[1]/"manifest.json").write_text(json.dumps([{
+    from app.results.exporter import export
+    export(target.parents[1],[{
         "query":str(source),"copy":str(target),"assigned_sam":"SAM-0045","top":[]
-    }]),encoding="utf8")
+    }])
     with connect() as db:
         archive_day=db.execute("""SELECT (COALESCE(started_at,created_at) AT TIME ZONE 'Europe/Samara')::date AS day
             FROM jobs WHERE id=%s""",(run,)).fetchone()['day'].isoformat()
@@ -327,7 +325,7 @@ def test_retention_due_guard_cannot_delete_after_new_run(sandbox):
     run=_job(sandbox,own)
     directory=paths.run_dir(run)/"megaloc"
     directory.mkdir(parents=True)
-    (directory/"manifest.json").write_text("[]",encoding="utf8")
+    (directory/"manifest.rows.jsonl").write_text("",encoding="utf8")
     retention.confirm(own,run)
     with connect() as db:
         db.execute("""UPDATE batches SET delete_after_at=now()-interval '1 minute'
@@ -418,7 +416,10 @@ def test_result_export_atomic_hardlink_and_manifest_contract(sandbox):
     copy=Path(saved[0]["copy"])
     assert copy.exists() and copy.stat().st_ino==source.stat().st_ino
     assert sha256(source)==original
-    assert (copy.parents[1]/"manifest.json").is_file()
+    assert (copy.parents[1]/"manifest.rows.jsonl").is_file()
+    assert not (copy.parents[1]/"manifest.json").exists()
+    assert not (copy.parents[1]/"manifest.csv").exists()
+    assert not (sandbox/"runs"/run/"models").exists()
     reloaded=repository.load_model(run,"megaloc")
     assert reloaded[0]["assigned_sam"]=="SAM-0045"
     assert reloaded[0]["score"]==0.95
@@ -460,7 +461,7 @@ def test_cannot_reconfirm_old_zip_after_a_newer_run(sandbox):
     old=_job(sandbox,own)
     olddir=paths.run_dir(old)/"megaloc"
     olddir.mkdir(parents=True)
-    (olddir/"manifest.json").write_text("[]",encoding="utf8")
+    (olddir/"manifest.rows.jsonl").write_text("",encoding="utf8")
     retention.confirm(own,old)
     new=_job(sandbox,own,"running")
     with connect() as db:

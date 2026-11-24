@@ -38,7 +38,6 @@ def test_1315_synthetic_hardlinks_full_zip_filters_and_cleanup(sandbox,monkeypat
     run=_job(sandbox,own)
     output=sandbox/"outputs"/run/"megaloc"
     output.mkdir(parents=True)
-    (sandbox/"runs"/run/"models").mkdir(parents=True)
     records=[]
     sam_counts={"SAM-0001":0,"SAM-0002":0,"_Неопределено":0}
     for i in range(1315):
@@ -51,10 +50,8 @@ def test_1315_synthetic_hardlinks_full_zip_filters_and_cleanup(sandbox,monkeypat
         records.append({"query":str(source),"copy":str(linked),"assigned_sam":label,
             "group_id":f"G{i//40:04d}","score":round((i%100)/100,2),
             "top":[{"label":label,"score":round((i%100)/100,2)}] if label!="_Неопределено" else []})
-    (output/"manifest.json").write_text(json.dumps(records,ensure_ascii=False),encoding="utf8")
     with (output/"manifest.rows.jsonl").open("w",encoding="utf8") as f:
         for i,row in enumerate(records):f.write(json.dumps({"index":i,**row},ensure_ascii=False)+"\n")
-    (sandbox/"runs"/run/"models"/"megaloc.json").write_text(json.dumps({"path":str(output/"manifest.json")}))
 
     start=time.perf_counter()
     assert result_pages.counts(run)["sam"]==sam_counts

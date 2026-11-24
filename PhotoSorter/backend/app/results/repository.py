@@ -2,7 +2,7 @@
 from pathlib import Path
 import json,os,re,shutil
 from ..config import RUNS_DIR
-from .exporter import atomic_json,export
+from .exporter import MANIFEST_NAME,export
 from .copier import copy_photo
 
 def run_path(run_id):
@@ -10,20 +10,22 @@ def run_path(run_id):
         raise FileNotFoundError('Некорректный идентификатор запуска')
     return RUNS_DIR/run_id
 
-def save_run(info): atomic_json(run_path(info['id'])/'run.json',info)
-
 def load_run(run_id):
-    file=run_path(run_id)/'run.json'
-    if not file.is_file(): raise FileNotFoundError(run_id)
-    return json.loads(file.read_text('utf-8'))
+    from server.database import connect
+    from server.db.repositories.job_status import decorated
+    run_path(run_id)
+    with connect() as db:
+        row=db.execute("SELECT id,snapshot,status,created_at,started_at,finished_at FROM jobs WHERE id=%s",(run_id,)).fetchone()
+        if not row:raise FileNotFoundError(run_id)
+        return decorated(db,row)
 
-def list_runs():
-    rows=[]
-    if not RUNS_DIR.is_dir():return rows
-    for folder in RUNS_DIR.iterdir():
-        try:rows.append(load_run(folder.name))
-        except (OSError,ValueError):pass
-    return sorted(rows,key=lambda x:x.get('started_at',''),reverse=True)
+def manifest_path(run_id,model="megaloc"):
+    from server.storage.paths import run_dir,owned_file
+    if model!="megaloc":raise FileNotFoundError(model)
+    root=run_dir(run_id)
+    path=owned_file(root/model/MANIFEST_NAME,root)
+    if not path.is_file():raise FileNotFoundError(run_id)
+    return path
 
 def save_model(info,model,rows,query_stamps=None,progress=None,on_export_start=None):
     output=Path(info['output'])/info['id']/model
@@ -51,16 +53,13 @@ def save_model(info,model,rows,query_stamps=None,progress=None,on_export_start=N
     except Exception:
         if staging.exists():shutil.rmtree(staging)
         raise
-    index=run_path(info['id'])/'models'
-    index.mkdir(parents=True,exist_ok=True)
-    atomic_json(index/f'{model}.json',{'model':model,
-        'path':str(output/'manifest.json'),'count':len(rows)})
     return stored
 
 def load_model(run_id,model):
-    if not re.fullmatch(r'[a-z0-9-]+',str(model)):
-        raise FileNotFoundError('Некорректная модель')
-    path=run_path(run_id)/'models'/f'{model}.json'
-    if not path.is_file():raise FileNotFoundError(model)
-    index=json.loads(path.read_text('utf-8'))
-    return json.loads(Path(index['path']).read_text('utf-8'))
+    with manifest_path(run_id,model).open("r",encoding="utf-8") as stream:
+        rows=[]
+        for index,line in enumerate(stream):
+            row=json.loads(line)
+            if row.pop("index")!=index:raise ValueError("Invalid result row index")
+            rows.append(row)
+        return rows

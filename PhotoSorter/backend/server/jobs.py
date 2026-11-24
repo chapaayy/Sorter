@@ -1,6 +1,6 @@
 """MegaLoc queue REST API; PostgreSQL serializes scheduling, never invent progress."""
 from __future__ import annotations
-import time,uuid
+import copy,time,uuid
 from datetime import datetime,timezone
 from fastapi import APIRouter,HTTPException
 from pydantic import BaseModel,Field
@@ -183,8 +183,10 @@ class ServerJob(Job):
         build_for_job(self)
 
     def save(self):
-        super().save()
-        save_snapshot(self.snapshot())
+        with self._save_lock:
+            snapshot=copy.deepcopy(self.info)
+            save_snapshot(snapshot)
+            self._saved_snapshot=snapshot
     def stopped(self):
         if self.cancel_event.is_set():return True
         if time.monotonic()-self._last_db_stop>1:

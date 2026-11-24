@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy,threading,time,traceback,uuid
 from datetime import datetime,timezone
 from pathlib import Path
-from ..results.repository import run_path,save_run,load_run,list_runs
+from ..results.repository import run_path
 from ..recognition.errors import JobCancelled
 from ..logging.events import emit
 from .progress import record
@@ -22,11 +22,7 @@ class Job:
         self._last_progress_stage=None
     def save(self):
         with self._save_lock:
-            # Keep a committed copy for HTTP polling so it does not repeatedly
-            # open run.json on Windows while os.replace is publishing it.
-            snapshot=copy.deepcopy(self.info)
-            save_run(snapshot)
-            self._saved_snapshot=snapshot
+            self._saved_snapshot=copy.deepcopy(self.info)
     def snapshot(self):
         with self._save_lock:
             return copy.deepcopy(self._saved_snapshot)

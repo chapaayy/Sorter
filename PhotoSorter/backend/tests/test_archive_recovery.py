@@ -46,8 +46,6 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
     title=batches.rename(batch,"Самара 15.11")["display_name"]
     run=_job(sandbox,batch)
     model=paths.run_dir(run)/"megaloc"
-    index=sandbox/"runs"/run/"models"
-    index.mkdir(parents=True)
     sam="SAM 9961"
     address="Гагарина 64"
     with connect() as db:
@@ -68,9 +66,8 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
             source.parent.mkdir(parents=True,exist_ok=True)
             source.write_bytes(name.encode())
             rows.append({"copy":str(source),"query":query,"assigned_sam":folder})
-        manifest=model/"manifest.json"
-        manifest.write_text(json.dumps(rows))
-        (index/"megaloc.json").write_text(json.dumps({"path":str(manifest)}))
+        from app.results.exporter import export
+        manifest=export(model,rows)
         if legacy_format:
             initial=archives.prepare(run,None,archive_pipeline.legacy_selections(run))
         else:
@@ -145,8 +142,6 @@ def test_manual_date_and_video_zip_layout(sandbox):
     batch=_batch(sandbox)
     run=_job(sandbox,batch)
     model=paths.run_dir(run)/"megaloc"
-    index=sandbox/"runs"/run/"models"
-    index.mkdir(parents=True,exist_ok=True)
     items=[]
     try:
         with connect() as db:
@@ -162,9 +157,8 @@ def test_manual_date_and_video_zip_layout(sandbox):
             source.write_bytes(name.encode())
             items.append({"query":str(source),"copy":str(source),"assigned_sam":sam,
                           "media_kind":kind,"export_name":name,"side":side})
-        manifest=model/"manifest.json"
-        manifest.write_text(json.dumps(items))
-        (index/"megaloc.json").write_text(json.dumps({"path":str(manifest)}))
+        from app.results.exporter import export
+        manifest=export(model,items)
         plan=archive_pipeline.named_plan(run,batch,"Отчёт по выезду")
         members={name for _,name in plan.files}
         assert members=={
@@ -187,11 +181,8 @@ def test_processing_date_uses_job_start_not_upload_date(sandbox):
     source=model/"SAM 0001"/"one.jpg"
     source.parent.mkdir(parents=True,exist_ok=True)
     source.write_bytes(b"photo")
-    index=sandbox/"runs"/run/"models"
-    index.mkdir(parents=True,exist_ok=True)
-    manifest=model/"manifest.json"
-    manifest.write_text(json.dumps([{"copy":str(source),"assigned_sam":"SAM 0001"}]))
-    (index/"megaloc.json").write_text(json.dumps({"path":str(manifest)}))
+    from app.results.exporter import export
+    manifest=export(model,[{"copy":str(source),"assigned_sam":"SAM 0001"}])
     try:
         with connect() as db:
             db.execute("UPDATE jobs SET started_at=%s WHERE id=%s",

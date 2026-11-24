@@ -121,3 +121,11 @@ def test_groups_are_built_before_any_reference_inference(tmp_path):
     rows=match_grouped_megaloc(Engine(),[(sample,'SAM-0001')],fo,grouping_fn=check_group)
     assert visited==['fo_a.jpg','fo_b.jpg','sample.jpg']
     assert rows[0]['group_id']==rows[1]['group_id']
+
+
+def test_runtime_snapshot_not_written_as_duplicate_json(tmp_path):
+    job=Job({"id":"20261104T000000-abcdef123456","status":"running","progress":{}})
+    job.path=tmp_path
+    job.save()
+    assert job.snapshot()["status"]=="running"
+    assert not (tmp_path/"run.json").exists()

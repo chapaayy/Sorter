@@ -8,6 +8,7 @@ import uuid
 from fastapi import HTTPException
 from ..database import connect
 from ..storage.paths import run_dir
+from app.results.exporter import MANIFEST_NAME
 from .batches import uid, _require_active
 from app.config import DATA_DIR
 
@@ -69,7 +70,7 @@ def confirm(batch_id,run_id):
             raise HTTPException(409,"Подтвердите последний запуск этой партии")
         if latest["status"] not in ("completed","completed_with_errors"):
             raise HTTPException(409,"Последний запуск ещё не завершён")
-        try:manifest=run_dir(run_id,DATA_DIR/"outputs")/"megaloc"/"manifest.json"
+        try:manifest=run_dir(run_id,DATA_DIR/"outputs")/"megaloc"/MANIFEST_NAME
         except ValueError:raise HTTPException(422,"Неверный запуск")
         if not manifest.is_file():raise HTTPException(409,"Полный результат не опубликован")
         pref=_deadline(db)

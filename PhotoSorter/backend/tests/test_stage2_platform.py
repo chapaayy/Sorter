@@ -156,6 +156,8 @@ def test_export_rows_jsonl_and_paged_results(thumbs,monkeypatch):
         rows.append({"query":str(picture),"top":[{"label":f"SAM-000{i%3+1}",
             "reference":"ref","score":.88}],"group_id":f"G{i//3:04d}"})
     repository.save_model({"id":run,"output":str(thumbs/"outputs")},"megaloc",rows)
+    manifest=repository.manifest_path(run)
+    assert {p.name for p in manifest.parent.iterdir() if p.is_file()}=={"manifest.rows.jsonl"}
     cursor=None
     indexes=[]
     while True:
