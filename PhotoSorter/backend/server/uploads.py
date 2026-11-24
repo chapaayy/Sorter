@@ -156,6 +156,8 @@ def _append_chunk(path: Path, expected: int, data: bytes, declared_size: int) ->
             raise HTTPException(413, 'Превышен размер файла')
         # The full transfer was admitted durably at registration. Do not
         # charge it again on resume or after a policy reduction.
+        from .services.disk_guard import check_accepted_chunk
+        check_accepted_chunk(output.fileno(),actual+len(data))
         try:
             output.write(data)
             output.flush()

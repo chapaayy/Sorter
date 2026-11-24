@@ -52,7 +52,7 @@ def counters(db):
     stat of the exact registered path; no recursive filesystem enumeration.
     """
     temp=db.execute("""SELECT coalesce(sum(physical_bytes),0)::bigint AS n
-      FROM storage_accounted_files WHERE scope='temporary'""").fetchone()["n"]
+      FROM storage_accounted_files WHERE scope='temporary' OR (scope='unknown' AND starts_with(path,'app/temporary/'))""").fetchone()["n"]
     owners={r["owner_id"]:{"used_bytes":r["n"],"reserved_bytes":0} for r in db.execute(
         "SELECT owner_id,coalesce(sum(charged_bytes),0)::bigint AS n FROM storage_accounted_files WHERE scope='personal' AND owner_id IS NOT NULL GROUP BY owner_id")}
     pending=_receipt_rows(db)
@@ -142,7 +142,9 @@ def account_budget(db,owner,values=None,settings=None):
 
 def status(db=None):
     if db is None:
-        with connect() as conn:return status(conn)
+        with connect() as conn:
+            lock(conn)
+            return status(conn)
     settings=policy(db);values=counters(db)
     total,free=disk_guard.stat(config.APP_STORAGE_ROOT)
     baseline=disk_guard.reserve(total,configured=None)

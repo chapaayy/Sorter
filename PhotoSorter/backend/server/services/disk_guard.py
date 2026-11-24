@@ -16,6 +16,15 @@ def reserve(total_bytes,*,configured=None):
     baseline=max(0,int(env)) if env else min(12*1024**3,max(256*1024**2,int(total_bytes*.06)))
     return max(baseline,configured or 0)
 
+def check_accepted_chunk(fd, size_after):
+    """Physical safety for an already admitted transfer, not a new reservation."""
+    st=os.fstat(fd)
+    fs=os.fstatvfs(fd)
+    block=max(512,fs.f_frsize)
+    extra=max(0,((size_after+block-1)//block)*block-st.st_blocks*512)
+    if fs.f_bavail*fs.f_frsize-extra<reserve(fs.f_blocks*fs.f_frsize):
+        raise HTTPException(507,"Недостаточно физического места: системный резерв диска")
+    
 def check_admission(bytes_needed,*,path=None):
     from .. import database
     root=path or config.APP_STORAGE_ROOT

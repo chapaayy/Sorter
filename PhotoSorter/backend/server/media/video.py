@@ -23,10 +23,12 @@ INDEX_LIMIT=16*1024**2
 def _limited(args,limit):
     # Apply a kernel limit before exec, without preexec_fn in threaded workers.
     if limit is None:return args
-    code=("import os,resource,sys;limit=int(sys.argv[1]);"
+    code=("import os,resource,sys,ctypes,signal;limit=int(sys.argv[1]);"
+          "assert ctypes.CDLL(None,use_errno=True).prctl(1,signal.SIGKILL,0,0,0)==0;"
+          "os.getppid()==int(sys.argv[2]) or os._exit(125);"
           "resource.setrlimit(resource.RLIMIT_FSIZE,(limit,resource.getrlimit(resource.RLIMIT_FSIZE)[1]));"
-          "os.execvp(sys.argv[2],sys.argv[2:])")
-    return [sys.executable,"-c",code,str(limit),*args]
+          "os.execvp(sys.argv[3],sys.argv[3:])")
+    return [sys.executable,"-c",code,str(limit),str(os.getpid()),*args]
 
 def _read_progress(stream,partial,callback):
     while True:
