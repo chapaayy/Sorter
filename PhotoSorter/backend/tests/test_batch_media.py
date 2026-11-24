@@ -164,6 +164,11 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     with database.connect() as conn:
         task=work_queue.claim_next(conn)
     media_prepare.run(task,stopping=lambda:False)
+    from app.config import APP_STORAGE_ROOT
+    from app.storage.categories import Category
+    from app.storage.paths import app_key
+    for upload,_ in saved:
+        assert not (APP_STORAGE_ROOT/app_key(Category.TRANSCODE_TEMP,task_id=upload.upload_id).relative).exists()
     state=batches.get(batch)
     assert state['media_preparation']['state']=='completed'
     assert state['media_preparation']['completed_count']==2
@@ -193,7 +198,10 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     assert len(rows)==3
     videos=[row for row in rows if row['media_kind']=='video']
     assert len(videos)==1 and videos[0]['assigned_sam']=='SAM 0001'
-    assert not list(job.path.glob('media-frames-*'))
+    assert not (APP_STORAGE_ROOT/app_key(Category.VIDEO_FRAMES,run_id=item['id']).relative).exists()
+    for row in rows:
+        source, target = Path(row['query']), Path(row['copy'])
+        assert (source.stat().st_dev,source.stat().st_ino)==(target.stat().st_dev,target.stat().st_ino)
     assert job.info['archive_state']=='on_demand'
     assert not list((thumbs/'outputs'/item['id']).rglob('*.zip'))
     from server.api.routes.downloads import router as download_router
@@ -247,6 +255,10 @@ def test_bad_file_does_not_poison_fifo_and_retry_has_own_history(thumbs,clips,mo
     with database.connect() as db:
         task=work_queue.claim_next(db)
     media_prepare.run(task,stopping=lambda:False)
+    from app.config import APP_STORAGE_ROOT
+    from app.storage.categories import Category
+    from app.storage.paths import app_key
+    assert not (APP_STORAGE_ROOT/app_key(Category.TRANSCODE_TEMP,task_id=saved[0][0].upload_id).relative).exists()
     assert batches.get(batch)['media_preparation']['state']=='completed_with_errors'
     assert media_preparation.file_errors(batch)['files'][0]['filename']=='bad.mov'
     assert Path(saved[0][1]['path']).read_bytes()==broken

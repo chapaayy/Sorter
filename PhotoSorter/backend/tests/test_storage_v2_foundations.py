@@ -134,3 +134,29 @@ def test_model_roots_never_fall_back_to_operator_home(tmp_path,monkeypatch):
     model_store.configure_model_environment()
     assert os.environ["TORCH_HOME"]==str(cache/"torch")
     assert os.environ["HF_HUB_CACHE"]==str(cache/"huggingface/hub")
+
+
+def test_pipeline_stage_cleanup_and_retry(tmp_path,monkeypatch):
+    from app import config
+    from app.storage.temporary import pipeline_directory
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",tmp_path)
+    task=uuid.uuid4()
+    key=app_key(Category.TRANSCODE_TEMP,task_id=task).relative
+    abandoned=tmp_path/key
+    abandoned.mkdir(parents=True)
+    (abandoned/"old.part").write_bytes(b"stale")
+    with pytest.raises(RuntimeError):
+        with pipeline_directory(Category.TRANSCODE_TEMP,task_id=task) as stage:
+            assert stage==abandoned
+            assert not list(stage.iterdir())
+            (stage/"new.part").write_bytes(b"partial")
+            raise RuntimeError("failed conversion")
+    assert not abandoned.exists()
+    outside=tmp_path/"outside"
+    outside.mkdir()
+    (outside/"keep").write_bytes(b"keep")
+    abandoned.symlink_to(outside,target_is_directory=True)
+    with pytest.raises(ValueError):
+        with pipeline_directory(Category.TRANSCODE_TEMP,task_id=task):
+            pass
+    assert (outside/"keep").read_bytes()==b"keep"

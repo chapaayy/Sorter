@@ -5,6 +5,8 @@ import time
 from pathlib import Path
 
 from app.config import DATA_DIR
+from app.storage.categories import Category
+from app.storage.temporary import pipeline_directory
 from ..database import connect
 from ..media.formats import normalized_image,probe
 from ..media.estimate import Estimate,work
@@ -84,30 +86,28 @@ def run(item, *, stopping, cpus=2):
                     save_progress(index,fraction,row['filename'])
                     last_update=now
             output = dest / f"{row['id']}.{ext}"
-            partial = dest / f".{row['id']}.part.{ext}"
-            partial.unlink(missing_ok=True)
             failure = None
             duration = None
             try:
-                source = owned_file(Path(row['target_path']), root)
-                usage=shutil.disk_usage(dest)
-                if usage.free-max(64*1024**2,source.stat().st_size)<disk_guard.reserve(usage.total):
-                    raise ValueError('Недостаточно места для подготовленной копии')
-                if is_video:duration=encode(source,partial,ext,stop=stop,meta=meta,
-                    progress=video_progress,cpus=cpus).duration
-                else:normalized_image(source,partial,ext)
-                if stop():raise InterruptedError()
-                with partial.open('rb') as file:os.fsync(file.fileno())
-                partial.chmod(0o444)
-                os.replace(partial, output)
+                with pipeline_directory(Category.TRANSCODE_TEMP, task_id=row["id"]) as stage:
+                    partial = stage / f"output.{ext}"
+                    source = owned_file(Path(row['target_path']), root)
+                    usage=shutil.disk_usage(dest)
+                    if usage.free-max(64*1024**2,source.stat().st_size)<disk_guard.reserve(usage.total):
+                        raise ValueError('Недостаточно места для подготовленной копии')
+                    if is_video:duration=encode(source,partial,ext,stop=stop,meta=meta,
+                        progress=video_progress,cpus=cpus).duration
+                    else:normalized_image(source,partial,ext)
+                    if stop():raise InterruptedError()
+                    with partial.open('rb') as file:os.fsync(file.fileno())
+                    partial.chmod(0o444)
+                    os.replace(partial, output)
             except InterruptedError:
                 raise
             except Exception as exc:
                 # Do not expose command lines, local paths or raw FFmpeg output.
                 failure = str(exc)[:300] if isinstance(exc,ValueError) else 'Не удалось прочитать или перекодировать файл'
                 failures += 1
-            finally:
-                partial.unlink(missing_ok=True)
             if not failure:estimate.observe(index,1,time.monotonic()-started)
             percent,eta=estimate.snapshot(index+1,0)
             with connect() as db:

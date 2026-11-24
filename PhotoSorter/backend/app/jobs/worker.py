@@ -2,7 +2,8 @@
 from __future__ import annotations
 import time
 import traceback
-from tempfile import TemporaryDirectory
+from ..storage.categories import Category
+from ..storage.temporary import pipeline_directory
 from pathlib import Path
 from ..recognition.engines.megaloc.extractor import MegaLocEngine
 from ..recognition.pipeline import match_grouped_megaloc
@@ -14,7 +15,7 @@ from ..results.sides import attach_sides
 
 def process(job):
     if job.info.get('has_media_profile'):
-        with TemporaryDirectory(prefix='media-frames-',dir=job.path) as temp:
+        with pipeline_directory(Category.VIDEO_FRAMES, run_id=job.info['id']) as temp:
             from server.media.sorting import MediaQueries
             media=MediaQueries(job,Path(temp))
             _process(job,media)

@@ -3,7 +3,7 @@ Branch: feature/storage-architecture-v2; base: c6d77ebb1c9c80c732df209a17a993dd3
 ## Stage status
 1. **ACCEPTED — 2026-11-24** — 96 remaining modules mapped, 573 original candidate lines dispositioned, 35 migrations indexed, 51 categories (45 + 6 external boundaries), consumer/native dependency review and documentation corrections committed. Coverage tests added. Accepted on a2645c7 with CI 7/7; runtime evidence deferred to the designated implementation stages.
 2. **COMPLETED — 2026-11-24** — code SHA 475a585fcf3dc3be9f58b52b105b80d30d69bef6, CI 45451924195: 7/7 successful. Stage 3 not started.
-3. Personal pipeline — not started.
+3. Personal pipeline — in progress.
 4. References — not started.
 5. Temporary pool, ZIP and models — not started.
 6. Logs and infrastructure — not started.
@@ -62,3 +62,6 @@ Owner accepted stage 1 at a2645c7b5f3bfb3050e3976d68a85c0d0ed7d06c, [CI 45447879
 - Implemented: single app mount and centralized configuration, category policy and typed paths; safe descriptor-relative read/stat/publish/unlink and temporary operation primitives; ownership migration 0037 (required owner FK RESTRICT/index, authenticated creator and retry checks); category-derived clean bootstrap, protected layout marker, immutable generated root and read-only preflight; Git/build exclusions; schema 2 snapshot/restore path contract; model environment rooted in managed storage; storage reporting roots updated. Docker smoke verifies actual non-root UID and same-mount link/rename; test suite verifies path containment, symlink attacks, owner constraints, repeat bootstrap, external roots and exclusions. Installer regressions fixed rather than disabling tests.
 - Intentional phase boundary: existing producers use transitional paths inside storage/app/state until stages 3–5 switch them to exact category paths; no second app root, legacy mount or old-data migration. Infrastructure binds, host updater, bounded diagnostics/logs and full infrastructure restore remain stage 6; native conversion, embeddings, scratch and offline MegaLoc checks remain mandatory for their designated stages. No quota enforcement or new automatic deletion. No real VPS deployment or local Docker run; CI supplies execution evidence.
 - Main verified unchanged at c6d77ebb1c9c80c732df209a17a993dd38ec381f. No merge. Stage 3 not started. This closure entry is documentation-only, recording the successful CI of the exact final implementation SHA; any subsequent documentation-only CI is distinct.
+
+## Stage 3 entry
+Owner accepted stage 2; closing-doc SHA e7d641f passed [CI 45452611814](https://github.com/chapaayy/Sorter/actions/runs/45452611814). Original specification consulted, no new global inventory. First implementation: category-derived transcode and frame workdirs, cleanup on success/failure and exclusive-worker retry; mixed real FFmpeg test now checks scratch removal and inode identity. The personal originals/normalized/results layout, unfinished uploads, canonical manifest, DB-only run snapshots and full lifecycle acceptance still need implementation; stage 3 is OPEN. Stage 4 not started.

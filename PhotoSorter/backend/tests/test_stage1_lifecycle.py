@@ -59,6 +59,9 @@ def sandbox(tmp_path,monkeypatch,db):
     from server.api.routes import images
     from app.results import repository
     data=tmp_path/"data"
+    from app import config
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",tmp_path/"storage/app")
+    config.APP_STORAGE_ROOT.mkdir(parents=True)
     for folder in ("uploads","outputs","incoming","references","runs"):
         (data/folder).mkdir(parents=True)
     monkeypatch.setattr(paths,"UPLOADS",data/"uploads")
