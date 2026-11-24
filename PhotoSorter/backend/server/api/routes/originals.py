@@ -75,7 +75,7 @@ def original(photo_id:str):
     token=operations.start(row["batch_id"],"original") if row["batch_id"] else None
     try:
         if row["kind"]=="fo":
-            root=DATA_DIR/"uploads"/str(row["batch_id"])
+            root=batch_dir(row["batch_id"])
         else:
             # Renaming updates the UUID gallery index, not the immutable hardlink path.
             root=DATA_DIR/"references"

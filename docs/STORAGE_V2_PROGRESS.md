@@ -65,3 +65,5 @@ Owner accepted stage 1 at a2645c7b5f3bfb3050e3976d68a85c0d0ed7d06c, [CI 45447879
 
 ## Stage 3 entry
 Owner accepted stage 2; closing-doc SHA e7d641f passed [CI 45452611814](https://github.com/chapaayy/Sorter/actions/runs/45452611814). Original specification consulted, no new global inventory. First implementation: category-derived transcode and frame workdirs, cleanup on success/failure and exclusive-worker retry; mixed real FFmpeg test now checks scratch removal and inode identity. The personal originals/normalized/results layout, unfinished uploads, canonical manifest, DB-only run snapshots and full lifecycle acceptance still need implementation; stage 3 is OPEN. Stage 4 not started.
+
+- Stage 3 checkpoint: `84a97bf` CI 45453759013 passed all seven jobs (real FFmpeg and inode checks). `0e27ce4` routes FO originals, parts and normalized files through typed owner paths. CI 45454281545 exposed 6 backend regressions (337 passed): original-download root and fixture paths/DB isolation; corrected in the next commit. Stage 3 remains open pending result publication, canonical metadata, state, cleanup and acceptance.

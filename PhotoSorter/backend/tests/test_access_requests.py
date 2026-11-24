@@ -38,7 +38,7 @@ def isolated(monkeypatch):
     with psycopg.connect(database.DB_URL, autocommit=True) as root:
         root.execute(f"CREATE SCHEMA {schema}")
         try:
-            for module in (auth, database, moderation, admin_users, results, downloads):
+            for module in (auth, database, moderation, admin_users, results, downloads, images):
                 monkeypatch.setattr(module, "connect", connect)
             monkeypatch.setattr(auth, "limiter", LoginThrottle())
             monkeypatch.setattr(access_requests, "submissions", LoginThrottle())
@@ -122,8 +122,8 @@ def test_approval_is_required_and_viewer_cannot_use_working_area(isolated, tmp_p
     assert [row["id"] for row in public.get("/api/results/catalog").json()["items"]] == [RUN]
     assert public.get(f"/api/results/{RUN}").json() == {"id":RUN,"status":"completed","display_name":"Тестовый ФО"}
 
-    file = tmp_path/"outputs"/"test.jpg"
-    file.parent.mkdir()
+    file = tmp_path/"outputs"/RUN/"megaloc"/"test.jpg"
+    file.parent.mkdir(parents=True)
     file.write_bytes(b"published-photo")
     monkeypatch.setattr(images,"DATA_DIR",tmp_path)
     monkeypatch.setattr(images,"safe_manifest",lambda _:[{"copy":str(file),"query":"/private/original.jpg"}])

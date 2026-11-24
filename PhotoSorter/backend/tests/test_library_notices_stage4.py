@@ -96,7 +96,8 @@ def test_receipt_idempotency_and_first_upload_sql_manifest_hook(system):
         assert upload_manifest.reconcile_locked(db,own) is False
         assert db.execute("SELECT count(*) AS n FROM fo_library_upload_receipts").fetchone()["n"]==0
     from pathlib import Path
-    root=system/"uploads"/str(own)
+    from server.storage.paths import batch_dir
+    root=batch_dir(own)
     root.mkdir(parents=True)
     picture=root/"photo.jpg"
     picture.write_bytes(raw)
