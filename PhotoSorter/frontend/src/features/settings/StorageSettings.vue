@@ -89,6 +89,7 @@ async function cleanup(){
       </span>
     </div>
     <template v-if="usage">
+      <p v-if="usage.registry" class="meta">Учёт: {{usage.registry.sampled_at?date(usage.registry.sampled_at):"ещё не готов"}} · {{usage.registry.partial?"сверка / ожидаются изменения":"сверено"}} · не найдено ожидаемых: {{usage.registry.missing_expected??0}} · расхождений: {{Object.values(usage.registry.issues||{}).reduce((a,b)=>a+b,0)}}</p>
       <div class="row between wrap">
         <strong style="font-size:21px">{{bytes(usage.disk.used_bytes)}} / {{bytes(usage.disk.total_bytes)}}</strong>
         <span class="meta">Свободно: {{bytes(usage.disk.available_bytes)}}</span>
@@ -124,8 +125,7 @@ async function cleanup(){
         {{breakdown?'Пересчитать':'Анализировать диск'}}
       </UiButton>
     </div>
-    <p class="meta">Анализ запускается только по кнопке, а не при каждом обновлении страницы.
-      Сканирование ограничено по времени и количеству файлов.</p>
+    <p class="meta">Показатели берутся из автоматического реестра. Подробный отчёт запрашивается по кнопке, без повторного обхода диска.</p>
     <div v-if="scanError" class="alert error" role="alert">{{scanError}}</div>
     <template v-if="breakdown">
       <div v-if="breakdown.partial" class="alert warning" role="status">

@@ -6,6 +6,7 @@ from fastapi import HTTPException
 import pytest
 from server.services import archive_cache,archives
 from server.api.file_response import LeasedFileResponse
+from .test_stage1_lifecycle import db
 
 def test_expiry_does_not_remove_pinned_archive_or_other_files(tmp_path):
     folder=tmp_path/".archives"
@@ -71,7 +72,7 @@ def test_low_disk_space_rejects_zip_without_partial_file(tmp_path,monkeypatch):
     assert not list(tmp_path.rglob("*.zip"))
     assert not list(tmp_path.rglob("*.tmp"))
 
-def test_same_zip_concurrent_requests_build_once_and_expiry_rebuilds(tmp_path,monkeypatch):
+def test_same_zip_concurrent_requests_build_once_and_expiry_rebuilds(tmp_path,monkeypatch,db):
     from concurrent.futures import ThreadPoolExecutor
     import threading
     from .test_archives import mock_run_storage

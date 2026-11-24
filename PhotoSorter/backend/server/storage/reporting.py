@@ -2,7 +2,7 @@
 from datetime import datetime,timezone
 from app import config
 from ..database import connect
-from .accounting import SUMS,snapshot
+from .accounting import SUMS,snapshot,aggregate
 from app.storage.categories import CATEGORIES,Category
 
 # Stable legacy response labels; stage 8 can consume native category IDs.
@@ -62,14 +62,17 @@ def history(db):
        count(*) FILTER(WHERE category='reference_embedding') AS embeddings,
        coalesce(sum(physical_bytes) FILTER(WHERE category='reference_embedding'),0)::bigint AS embedding_bytes
       FROM evidence""").fetchone()
-    row.update(missing=None,partial=True)
+    row.update(missing=0,partial=True)
     return row
 
 def breakdown():
     data=snapshot()
-    groups=legacy_categories(data.get("categories",{}))
     metrics=("originals","normalized","results_files","results_zip","results_temporary")
     with connect() as db:
+        db.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        live=aggregate(db)
+        data.update(live)
+        groups=legacy_categories(live["categories"])
         rows=db.execute("""WITH top_batches AS (
             SELECT batch_id,sum(physical_bytes) AS bytes FROM storage_accounted_files
             WHERE batch_id IS NOT NULL GROUP BY batch_id ORDER BY bytes DESC,batch_id LIMIT 50)
@@ -117,4 +120,4 @@ def inventory(limit=25000):
     return {"snapshot_id":str(uuid.uuid4()),"captured_at":data.get("sampled_at") or datetime.now(timezone.utc).isoformat(),
        "files_scanned":len(entries),"allocated_bytes":sum(x["allocated_bytes"] for x in groups.values()),
        "logical_bytes":sum(x["logical_bytes"] for x in groups.values()),"categories":groups,"skipped_paths":data["errors"],
-       "partial":partial,"scan_seconds":0,"checked_roots":["registry:app"],"not_scanned":["Host-protected categories are aggregated separately","Docker and filesystem metadata are separate"],"batch_metadata_available":True},entries
+       "partial":partial,"scan_seconds":0,"checked_roots":["registry:app"],"not_scanned":["Host-protected categories are aggregated separately","Docker and filesystem metadata are separate"],"batch_metadata_available":True,"description":"Registry snapshot, no filesystem scan"},entries

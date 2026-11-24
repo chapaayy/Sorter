@@ -120,7 +120,7 @@ def bootstrap(root, *, host_uid=0, host_gid=0, app_uid=APP_UID, app_gid=APP_GID,
                 with walk_directory(root_fd,"system/state",host_uid,host_gid,0o700,create=False) as state:
                     fd=os.open(".log-policy.tmp",os.O_WRONLY|os.O_CREAT|os.O_TRUNC|os.O_NOFOLLOW,0o600,dir_fd=state)
                     with os.fdopen(fd,"w") as stream:
-                        json.dump({"log_budgets_mib":POLICY["log_budgets_mib"]},stream);stream.flush();os.fsync(stream.fileno())
+                        json.dump(POLICY,stream);stream.flush();os.fsync(stream.fileno())
                     os.replace(".log-policy.tmp","log-policy.json",src_dir_fd=state,dst_dir_fd=state)
                     os.fsync(state)
             with directory_fd(root,"system/updater/control") as control:

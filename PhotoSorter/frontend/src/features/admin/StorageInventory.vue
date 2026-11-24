@@ -65,7 +65,7 @@ function applyFilters(){
     <div class="row between wrap">
       <div class="stack" style="gap:4px">
         <h2>Учёт файлов MAP</h2>
-        <p class="meta">Проверка файлов на диске: пути, размеры, категории и связь с ФО.
+        <p class="meta">Снимок автоматического реестра: пути, размеры, категории и связь с ФО.
           Только чтение — без удаления, лимитов и изменений в обработке.</p>
       </div>
       <div class="row wrap">
@@ -79,7 +79,7 @@ function applyFilters(){
       </div>
     </div>
     <div v-if="error" class="alert error" role="alert">{{error}}</div>
-    <p v-if="scanning" class="meta" role="status">Проверяем файлы на диске…</p>
+    <p v-if="scanning" class="meta" role="status">Читаем реестр…</p>
     <template v-if="summary">
       <div class="row wrap meta">
         <span>Файлов: {{summary.files_scanned.toLocaleString('ru-RU')}}</span>
@@ -119,6 +119,7 @@ function applyFilters(){
             <strong>{{bytes(item.allocated_bytes)}} на диске</strong>
           </div>
           <code class="inventory-path">{{item.path}}</code>
+          <span v-if="item.issue" class="meta" role="status">Расхождение: {{item.issue}}</span>
           <div class="row wrap meta">
             <span>{{purposeNames[item.purpose]||item.purpose}}</span>
             <span>Размер: {{bytes(item.logical_bytes)}}</span>

@@ -97,6 +97,7 @@ export interface StorageUsage {
     warning?: 'warning' | 'critical' | null; reserved_bytes?: number; admission_ok?: boolean }
   categories_bytes: Record<string, number>; database_estimated_bytes?: number | null; not_scanned?: string[]
   journals?: {at:string|null;services:Record<string,{bytes:number|null;budget_bytes:number;partial:boolean}>}
+  registry?:{sampled_at:string|null;reconciled_at:string|null;partial:boolean;pending_changes:number;missing_expected?:number;issues?:Record<string,number>;cross_owner_inode_conflicts?:number}
 }
 export interface StorageCounter {
   allocated_bytes:number;logical_bytes:number;hardlink_reused_bytes:number
@@ -138,6 +139,7 @@ export interface StorageInventoryFile {
   path:string;category:string;purpose:'permanent'|'temporary'|'cache'|'system'|'service'|'archive'|'unknown'
   owner_kind:string;owner_id:string|null;owner_name:string|null
   logical_bytes:number;allocated_bytes:number;hardlink:boolean;links:number;modified_at:string
+  issue?:string|null;registry_category?:string
 }
 export interface StorageInventoryPage {
   snapshot_id:string;total:number;offset:number;limit:number;files:StorageInventoryFile[]

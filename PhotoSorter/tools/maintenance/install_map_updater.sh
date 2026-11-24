@@ -13,6 +13,7 @@ chmod 0644 "$CONTROL/activity.lock"
 install -m 0644 "$ROOT/PhotoSorter/tools/maintenance/map_updater.py" /usr/local/lib/map-updater/map_updater.py
 install -m 0644 "$ROOT/PhotoSorter/tools/maintenance/map_build.py" /usr/local/lib/map-updater/map_build.py
 install -m 0644 "$ROOT/PhotoSorter/tools/maintenance/host_logs.py" /usr/local/lib/map-updater/host_logs.py
+install -m 0644 "$ROOT/PhotoSorter/tools/maintenance/host_accounting.py" /usr/local/lib/map-updater/host_accounting.py
 cat > /etc/systemd/system/map-updater.service <<EOF
 [Unit]
 Description=MAP restricted host updater

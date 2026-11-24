@@ -56,32 +56,25 @@ def prune_postgres(storage,*,budget=None):
     return removed
 
 def publish_usage(storage):
-    """Only fixed log trees, no user-file census, filenames or contents exported."""
+    """The protected-host sample also supplies journal-budget usage."""
     storage=Path(storage)
-    budgets=policy(storage/"system/state/log-policy.json")
-    rows={}
-    for service,budget in budgets.items():
-        root=storage/"logs"/service
-        total=0
-        count=0
-        partial=False
-        try:
-            for directory,dirs,files in os.walk(root,followlinks=False):
-                dirs[:]=[d for d in dirs if not (Path(directory)/d).is_symlink()]
-                for name in files:
-                    if count>=100000:
-                        partial=True;break
-                    try:
-                        st=(Path(directory)/name).lstat()
-                        if stat.S_ISREG(st.st_mode):
-                            total+=st.st_size;count+=1
-                    except OSError:partial=True
-                if partial:break
-        except OSError:partial=True
-        rows[service]={"bytes":total,"budget_bytes":budget*1024*1024,"partial":partial}
+    contract=json.loads((storage/"system/state/log-policy.json").read_text())
+    from host_accounting import measure
     from map_updater import atomic_json
-    atomic_json(storage/"system/updater/control/log-usage.json",
-                {"at":datetime.now(timezone.utc).isoformat(),"services":rows})
+    control=storage/"system/updater/control"
+    engine=None
+    try:
+        previous=json.loads((control/"storage-host.json").read_text())
+        sample=datetime.fromisoformat(previous["engine_sampled_at"])
+        if (datetime.now(timezone.utc)-sample).total_seconds()<300:
+            engine=previous["docker"]
+            sampled=previous["engine_sampled_at"]
+    except (OSError,ValueError,KeyError,TypeError):pass
+    report=measure(storage,contract,engine=engine)
+    report["engine_sampled_at"]=sampled if engine is not None else report["at"]
+    rows=report.pop("journals")
+    atomic_json(control/"storage-host.json",report)
+    atomic_json(control/"log-usage.json",{"at":report["at"],"services":rows})
 
 def maintenance(storage):
     storage=Path(storage)

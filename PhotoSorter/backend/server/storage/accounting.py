@@ -59,8 +59,9 @@ def snapshot():
     summary=dict(row["summary"])
     for field in ("sampled_at","reconciled_at","started_at"):
         summary[field]=row[field].isoformat() if row[field] else None
-    summary.update(pending_changes=pending,errors=row["errors"],temporary_peak_bytes=row["temporary_peak_bytes"],
-                   partial=row["reconciled_at"] is None or bool(row["errors"]) or bool(pending))
+    reconciling=bool(row["started_at"] and (not row["reconciled_at"] or row["started_at"]>row["reconciled_at"]))
+    summary.update(pending_changes=pending,reconciling=reconciling,errors=row["errors"],temporary_peak_bytes=row["temporary_peak_bytes"],
+                   partial=row["reconciled_at"] is None or bool(row["errors"]) or bool(pending) or reconciling)
     return summary
 def disk():
     fs=os.statvfs(config.APP_STORAGE_ROOT)

@@ -137,3 +137,5 @@ Registry schema, typed classification, dirty coalescing and bounded background r
 Stage 7 checkpoint 2: durable coalesced hooks in publication/unlink/rename, upload receipts, archive builds/expiry, model, transcode, scratch and batch deletion. Session-lock reservation evidence with crash recovery; not quota enforcement.
 
 Stage 7 checkpoint 3: cached registry totals, physical/logical/charged/user/device dimensions, missing expected paths and issue API; existing usage, breakdown and inventory endpoints now read the same registry instead of live filesystem scans. Host evidence and acceptance remain open.
+
+Stage 7 checkpoint 4: protected-host measurement, journal budget usage from same sample, per-device capacity, Docker engine summary and sampled unlinked-open bytes. Existing UI receives freshness and issues only; full admin UI remains stage 8. Fixed archive fixture to initialize real PostgreSQL.
