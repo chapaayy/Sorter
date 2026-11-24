@@ -200,6 +200,9 @@ def main():
         run("git","clone","--no-hardlinks","--no-checkout",str(root),str(project))
         run("git","checkout","-B",BRANCH,old,cwd=project)
         run("git","init","--bare",str(remote))
+        # GitHub Actions checkout is shallow; permit its boundary only in the
+        # disposable local test remote, never in the production updater.
+        run("git","config","receive.shallowUpdate","true",cwd=remote)
         run("git","push",str(remote),BRANCH,cwd=project)
         run("git","config","user.name","CI storage acceptance",cwd=project)
         run("git","config","user.email","ci@example.invalid",cwd=project)
