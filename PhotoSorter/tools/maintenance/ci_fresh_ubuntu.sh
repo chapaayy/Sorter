@@ -6,9 +6,14 @@ cd "$(dirname "$0")/../../.."
 revision="$(git rev-parse HEAD)"
 vm="$(mktemp -d)"
 cleanup() {
-  if [[ -f "$vm/pid" ]]; then sudo kill "$(cat "$vm/pid")" 2>/dev/null || true; fi
-  if [[ -f "$vm/serial.log" ]]; then tail -n 80 "$vm/serial.log"; fi
+  local rc=$?
+  trap - EXIT
+  if sudo test -f "$vm/pid"; then
+    sudo kill "$(sudo cat "$vm/pid")" 2>/dev/null || true
+  fi
+  if sudo test -f "$vm/serial.log"; then sudo tail -n 80 "$vm/serial.log" || true; fi
   sudo rm -rf -- "$vm"
+  exit "$rc"
 }
 trap cleanup EXIT
 sudo apt-get update -qq
@@ -50,15 +55,18 @@ wait_ssh() {
   echo 'VM SSH deadline exceeded'; return 1
 }
 wait_ssh
-"${sshvm[@]}" sudo bash -s -- "$revision" <<'GUEST'
-set -euo pipefail
+# Copy complete scripts as files. Native children (including Compose exec -T)
+# must never be able to consume the rest of a streamed bash program.
+cat > "$vm/before.sh" <<'GUEST'
+set -Eeuo pipefail
+trap 'echo "VM preparation failed at line $LINENO" >&2' ERR
 revision=$1
 cloud-init status --wait
 . /etc/os-release
 [[ "$ID" == ubuntu && "$VERSION_ID" == 24.04 ]]
 [[ "$(ps -p 1 -o comm=)" == systemd ]]
-! command -v docker
-! systemctl cat map-updater.service >/dev/null 2>&1
+if command -v docker; then echo 'Expected no preinstalled Docker' >&2; exit 1; fi
+if systemctl cat map-updater.service >/dev/null 2>&1; then echo 'Unexpected installed updater' >&2; exit 1; fi
 test ! -e /opt/Sorter
 echo STAGE10_PRISTINE_UBUNTU_OK
 apt-get update -qq
@@ -96,30 +104,60 @@ for _ in $(seq 1 600); do
   sleep 3
 done
 api https://localhost/api/models | python3 -c 'import json,sys;assert json.load(sys.stdin)["models"][0]["available"]'
-docker compose --env-file .env --env-file .env.generated exec -T api python -c 'from app.system.model_store import verified;assert verified()'
+docker compose --env-file .env --env-file .env.generated exec -T api python -c 'from app.system.model_store import verified;assert verified()' </dev/null
 echo STAGE10_MODEL_VERIFIED_OK
 api -H 'Content-Type: application/json' --data '{"display_name":"STAGE10_REBOOT_SENTINEL"}' https://localhost/api/batches > /root/stage10-batch.json
-sha256sum .env.generated > /root/stage10-secrets.sha
+# Actual API upload, not merely an empty batch row. A generated JPEG is
+# sufficient for the reboot preservation drill (not the large load corpus).
+docker compose --env-file .env --env-file .env.generated exec -T api python -c 'from PIL import Image;import sys;Image.new("RGB",(96,64),(10,45,123)).save(sys.stdout.buffer,format="JPEG")' </dev/null > /root/stage10-photo.jpg
+bid=$(python3 -c 'import json;print(json.load(open("/root/stage10-batch.json"))["batch_id"])')
+bytes=$(stat -c %s /root/stage10-photo.jpg)
+python3 -c 'import json,sys;print(json.dumps(dict(kind="fo",filename="reboot.jpg",size=int(sys.argv[1]),batch_id=sys.argv[2])))' "$bytes" "$bid" |
+  api -H 'Content-Type: application/json' --data-binary @- https://localhost/api/uploads >/root/stage10-upload.json
+uid=$(python3 -c 'import json;print(json.load(open("/root/stage10-upload.json"))["id"])')
+api -X PATCH -H 'upload-offset: 0' --data-binary @/root/stage10-photo.jpg "https://localhost/api/uploads/$uid" >/dev/null
+api -X POST "https://localhost/api/uploads/$uid/finish" >/dev/null
+original=$(find storage/app/users -type f -name "$uid.*" -path '*/originals/*' -print)
+test -f "$original"
+cmp /root/stage10-photo.jpg "$original"
+sha256sum "$original" > /root/stage10-photo.sha
+sha256sum .env .env.generated > /root/stage10-secrets.sha
 find storage/app/models -type f -exec sha256sum {} + | sort > /root/stage10-model.sha
+test -s /root/stage10-model.sha
 openssl s_client -connect localhost:443 -servername localhost </dev/null 2>/dev/null | openssl x509 -fingerprint -sha256 -noout > /root/stage10-cert
 cat /proc/sys/kernel/random/boot_id > /root/stage10-boot
 bash install.sh --deploy
 sha256sum -c /root/stage10-secrets.sha
 sha256sum -c /root/stage10-model.sha
+sha256sum -c /root/stage10-photo.sha
 echo STAGE10_REPEAT_INSTALL_OK
+printf '%s\n' "$revision" > /root/stage10-ready
+sync
 GUEST
-"${sshvm[@]}" sudo systemctl reboot || true
-sleep 15
-wait_ssh
-"${sshvm[@]}" sudo bash -s <<'GUEST'
-set -euo pipefail
+cat > "$vm/after.sh" <<'GUEST'
+set -Eeuo pipefail
+trap 'echo "VM reboot/update acceptance failed at line $LINENO" >&2' ERR
 cd /opt/Sorter
+test -s /root/stage10-ready
+test -s /root/stage10-boot
 test "$(cat /proc/sys/kernel/random/boot_id)" != "$(cat /root/stage10-boot)"
-systemctl is-active --quiet docker.service
+echo "STAGE10_BOOT_ID_CHANGED $(cat /root/stage10-boot) -> $(cat /proc/sys/kernel/random/boot_id)"
+# No restart/start or compose up: verify recovery by systemd and Docker alone.
+all_healthy() {
+  local service id
+  systemctl is-active --quiet docker.service map-updater.service map-log-maintenance.timer || return 1
+  for service in postgres caddy api worker thumbnail cleanup; do
+    id=$(docker compose --env-file .env --env-file .env.generated ps -q "$service") || return 1
+    [[ -n "$id" && "$(docker inspect -f '{{.State.Health.Status}}' "$id")" == healthy ]] || return 1
+  done
+  curl -kfsS --max-time 5 https://localhost/api/health >/dev/null
+}
 for _ in $(seq 1 120); do
-  if systemctl is-active --quiet map-updater.service && curl -kfsS https://localhost/api/health >/dev/null 2>&1; then break; fi
+  if all_healthy; then break; fi
   sleep 2
 done
+all_healthy
+echo STAGE10_ALL_SERVICES_AUTO_RECOVERED_OK
 systemctl is-enabled --quiet map-updater.service
 systemctl is-active --quiet map-updater.service
 systemctl is-active --quiet map-log-maintenance.timer
@@ -128,6 +166,8 @@ api() { curl -kfsS --max-time 60 -b "$cookie" -H 'Origin: https://localhost' "$@
 api https://localhost/api/system/update | python3 -c 'import json,sys;assert json.load(sys.stdin)["available"]'
 sha256sum -c /root/stage10-secrets.sha
 sha256sum -c /root/stage10-model.sha
+sha256sum -c /root/stage10-photo.sha
+openssl s_client -connect localhost:443 -servername localhost </dev/null 2>/dev/null | openssl x509 -fingerprint -sha256 -noout | cmp - /root/stage10-cert
 id=$(python3 -c 'import json;print(json.load(open("/root/stage10-batch.json"))["batch_id"])')
 api "https://localhost/api/batches/$id" | python3 -c 'import json,sys;assert json.load(sys.stdin)["display_name"]=="STAGE10_REBOOT_SENTINEL"'
 echo STAGE10_REAL_REBOOT_OK
@@ -160,6 +200,26 @@ sha256sum -c /root/stage10-secrets.sha
 sha256sum -c /root/stage10-model.sha
 openssl s_client -connect localhost:443 -servername localhost </dev/null 2>/dev/null | openssl x509 -fingerprint -sha256 -noout | cmp - /root/stage10-cert
 api "https://localhost/api/batches/$id" | python3 -c 'import json,sys;assert json.load(sys.stdin)["display_name"]=="STAGE10_REBOOT_SENTINEL"'
+sha256sum -c /root/stage10-photo.sha
+all_healthy
 echo STAGE10_REAL_SYSTEMD_API_UPDATE_OK
 GUEST
+# SCP over the same isolated forwarded SSH connection.
+scp -i "$vm/key" -P 2222 -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$vm/before.sh" "$vm/after.sh" ci@127.0.0.1:/home/ci/
+"${sshvm[@]}" -n sudo bash /home/ci/before.sh "$revision"
+"${sshvm[@]}" -n sudo test -s /root/stage10-ready
+old_boot=$("${sshvm[@]}" -n sudo cat /root/stage10-boot)
+[[ "$old_boot" =~ ^[0-9a-f-]{36}$ ]]
+[[ "$("${sshvm[@]}" -n cat /proc/sys/kernel/random/boot_id)" == "$old_boot" ]]
+rc=0
+"${sshvm[@]}" -n sudo systemctl reboot || rc=$?
+[[ "$rc" == 0 || "$rc" == 255 ]]
+new_boot=
+for _ in $(seq 1 180); do
+  new_boot=$("${sshvm[@]}" -n cat /proc/sys/kernel/random/boot_id 2>/dev/null) || new_boot=
+  if [[ "$new_boot" =~ ^[0-9a-f-]{36}$ && "$new_boot" != "$old_boot" ]]; then break; fi
+  sleep 2
+done
+[[ "$new_boot" =~ ^[0-9a-f-]{36}$ && "$new_boot" != "$old_boot" ]]
+"${sshvm[@]}" -n sudo bash /home/ci/after.sh
 echo STAGE10_FRESH_UBUNTU_COMPLETE

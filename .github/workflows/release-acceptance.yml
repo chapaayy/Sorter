@@ -12,9 +12,47 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: map-storage-v2-release-acceptance-${{ github.ref }}
-  cancel-in-progress: true
+  # A VM-harness repair must not cancel a real-photo run on identical app code.
+  group: map-storage-v2-release-acceptance-${{ github.sha }}
+  cancel-in-progress: false
 jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    outputs:
+      load: ${{ steps.scope.outputs.load }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Preserve the load run for a strictly VM-harness-only change
+        id: scope
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          load = True
+          if os.environ["EVENT"] == "push":
+              before = os.environ.get("BEFORE", "")
+              try:
+                  paths = subprocess.check_output(["git", "diff", "--name-only", before, "HEAD"], text=True).splitlines()
+                  allowed = {"PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md"}
+                  old = subprocess.check_output(["git", "show", before+":.github/workflows/release-acceptance.yml"], text=True)
+                  new = open(".github/workflows/release-acceptance.yml").read()
+                  # Only skip if the load job itself and every workload/runtime file are identical.
+                  marker = "  realistic-load:\n"
+                  old_load = old.split(marker, 1)[1]
+                  new_load = new.split(marker, 1)[1]
+                  old_load = old_load.removeprefix("    needs: scope\n    if: needs.scope.outputs.load == 'true'\n")
+                  new_load = new_load.removeprefix("    needs: scope\n    if: needs.scope.outputs.load == 'true'\n")
+                  if paths and set(paths) <= allowed and old_load == new_load:
+                      load = False
+                      print("VM-harness-only change; load evidence remains tied to", before)
+              except (subprocess.CalledProcessError, IndexError):
+                  pass
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("load="+str(load).lower()+"\n")
+          PY
   clean-ubuntu-systemd:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
@@ -24,6 +62,8 @@ jobs:
         run: bash PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh
 
   realistic-load:
+    needs: scope
+    if: needs.scope.outputs.load == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
