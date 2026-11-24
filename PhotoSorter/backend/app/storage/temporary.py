@@ -110,3 +110,4 @@ def pipeline_directory(category, **fields):
             yield APP_STORAGE_ROOT / key
         finally:
             shutil.rmtree(name, dir_fd=fd)
+            changed(APP_STORAGE_ROOT/key,subtree=True)

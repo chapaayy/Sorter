@@ -1,0 +1,153 @@
+"""Actual filesystem and PostgreSQL integration; no fake accounting rows."""
+import concurrent.futures
+import hashlib
+import os
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+
+from app import config
+from app.storage.categories import Category
+from app.storage.paths import managed_path,managed_prefix
+from server import database,uploads
+from server.storage import registry,reporting
+from server.storage.reconciliation import Reconciler
+from server.services import cleanup,upload_manifest
+from .test_unified_queue_stage3 import system
+from .test_stage1_lifecycle import _batch
+from .test_stage2_platform import _jpg
+from .test_upload_manifest import File
+from .accounting_checks import settle,observed,exact
+
+def test_parallel_resumable_uploads_hardlinks_owners_and_missing(system):
+    raw=_jpg()
+    first=_batch(system,with_photo=False)
+    second=uuid.uuid4()
+    with database.connect() as db:
+        owner=db.execute("SELECT owner_id FROM batches WHERE id=%s",(first,)).fetchone()["owner_id"]
+        other=db.execute("INSERT INTO users(username,role) VALUES (%s,'viewer') RETURNING id",("accounting-"+uuid.uuid4().hex,)).fetchone()["id"]
+        db.execute("INSERT INTO batches(id,display_name,owner_id) VALUES (%s,'Second owner',%s)",(second,other))
+    items=[(first,File(uuid.uuid4(),f"one/{i}.jpg",len(raw))) for i in range(2)]+[(second,File(uuid.uuid4(),"two/3.jpg",len(raw)))]
+    for batch in (first,second):
+        upload_manifest.register(batch,[f for bid,f in items if bid==batch])
+    def begin(pair):
+        batch,f=pair
+        uploads._create_upload(uploads.BeginUpload(kind="fo",filename=f.filename,batch_id=str(batch),size=len(raw)),f.upload_id)
+        p=uploads.part_path(batch,f.upload_id)
+        end=uploads._append_chunk(p,0,raw[:len(raw)//2],len(raw))
+        uploads._record_chunk(f.upload_id,end)
+        return p,end
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        parts=list(pool.map(begin,items))
+    r=Reconciler()
+    try:
+        data=settle(r)
+        for p,end in parts:
+            row=exact(p)
+            assert row["category"]=="fo_upload_part" and row["logical_bytes"]==end
+            assert row["charged_bytes"]==0
+        assert data["unfinished_fo"]["files"]==3
+        def finish(pair):
+            (batch,f),(p,end)=pair
+            confirmed=uploads._append_chunk(p,end,raw[end:],len(raw))
+            uploads._record_chunk(f.upload_id,confirmed)
+            return Path(uploads._finalize_sync(str(f.upload_id))["path"])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            paths=list(pool.map(finish,zip(items,parts)))
+        data=settle(r)
+        assert paths[0].stat().st_ino==paths[1].stat().st_ino
+        assert paths[0].stat().st_ino!=paths[2].stat().st_ino
+        block=paths[0].stat().st_blocks*512
+        assert data["owners"][str(owner)]["allocated_bytes"]==block
+        assert data["owners"][str(owner)]["logical_bytes"]==2*len(raw)
+        assert data["owners"][str(owner)]["charged_bytes"]==max(block,len(raw))
+        assert data["owners"][str(other)]["allocated_bytes"]==paths[2].stat().st_blocks*512
+        assert data["unfinished_fo"]["files"]==0
+        assert all(observed(p) is None for p,_ in parts)
+        assert sum(exact(p)["physical_bytes"] for p in paths[:2])==block
+        # Out-of-band unlink: no notification; a new generation must find it.
+        paths[0].unlink()
+        unknown=config.APP_STORAGE_ROOT/"unmanaged.bin"
+        unknown.write_bytes(b"do not delete")
+        data=settle()
+        assert observed(paths[0]) is None
+        assert exact(unknown)["category"]=="unknown"
+        assert data["missing_expected"]>=1
+        assert any(x["path"]==registry.key_for(paths[0]) for x in reporting.issues()["missing"])
+        assert unknown.read_bytes()==b"do not delete"
+        cleanup.request(first)
+        assert cleanup.cleanup_one(first)=="completed"
+        data=settle()
+        assert str(owner) not in data["owners"]
+        assert exact(paths[2])["owner_id"]==other
+        assert unknown.exists()
+    finally:r.close()
+
+def test_crashed_writer_reservation_and_abandoned_scratch(system):
+    from app.storage.temporary import collect_abandoned
+    from app.storage.changes import changed
+    script="""import sys
+from app import config
+from app.storage.temporary import temporary_operation
+from server.storage.reservations import reservation
+with reservation('archive',1048576),temporary_operation(config.APP_STORAGE_ROOT,'worker') as directory:
+    p=directory/'fragment'
+    with p.open('wb') as stream:
+        stream.write(b'x'*131072)
+        stream.flush()
+        print(p,flush=True)
+        sys.stdin.readline()
+"""
+    env=dict(os.environ,DATABASE_URL=database.DB_URL,MAP_APP_STORAGE_ROOT=str(config.APP_STORAGE_ROOT))
+    p=subprocess.Popen([sys.executable,"-c",script],env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
+    try:
+        path=Path(p.stdout.readline().strip())
+        assert path.is_file() and path.is_relative_to(config.APP_STORAGE_ROOT)
+        data=settle()
+        assert data["reserved_bytes"]==1048576
+        assert exact(path)["logical_bytes"]==131072
+        assert data["temporary"]["allocated_bytes"]>=path.stat().st_blocks*512
+        assert collect_abandoned(config.APP_STORAGE_ROOT,grace_seconds=0)==0
+        p.kill();p.wait(timeout=10)
+        for _ in range(20):
+            data=settle()
+            if not data["reserved_bytes"]:break
+            time.sleep(.1)
+        assert data["reserved_bytes"]==0
+        assert path.exists()
+        assert collect_abandoned(config.APP_STORAGE_ROOT,grace_seconds=0)==1
+        data=settle()
+        assert observed(path) is None and not path.exists()
+        assert data["temporary_peak_bytes"]>=131072
+    finally:
+        if p.poll() is None:p.kill();p.wait(timeout=10)
+
+def test_bounded_reconciliation_sparse_and_links_no_polling_walk(system,monkeypatch):
+    root=config.APP_STORAGE_ROOT
+    folder=managed_prefix(Category.TECHNICAL_CACHE)/"accounting-fixture"
+    folder.mkdir(parents=True)
+    base=folder/"sparse"
+    with base.open("wb") as stream:
+        stream.seek(64*1024*1024-1);stream.write(b"x")
+    for i in range(2300):os.link(base,folder/str(i))
+    r=Reconciler()
+    try:
+        assert r.tick(limit=128)
+        assert r.busy
+        data=settle(r)
+        row=data["categories"]["technical_cache"]
+        assert row["files"]==2301
+        assert row["logical_bytes"]==2301*base.stat().st_size
+        assert row["allocated_bytes"]==base.stat().st_blocks*512
+        assert row["hardlink_paths"]==2300
+        from server.services import storage_usage,storage_breakdown,storage_inventory
+        def forbidden(*args,**kwargs):raise AssertionError("HTTP must not scan disk")
+        with monkeypatch.context() as patch:
+            patch.setattr(os,"walk",forbidden)
+            patch.setattr(os,"scandir",forbidden)
+            assert storage_usage.usage()
+            assert storage_breakdown.breakdown()
+            assert storage_inventory.scan()
+    finally:r.close()

@@ -98,6 +98,7 @@ def _create_part(batch_id,upload_id):
     with parent_fd(config.APP_STORAGE_ROOT,key,create=True) as (fd,name):
         handle=os.open(name,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600,dir_fd=fd)
         os.close(handle)
+    changed(config.APP_STORAGE_ROOT/key)
 
 def _remove_part(batch_id,upload_id):
     path=part_path(batch_id,upload_id)
@@ -370,12 +371,14 @@ async def direct_upload(
                     offset=await asyncio.to_thread(
                         _append_chunk,path,offset,bytes(buffered),size)
                     buffered.clear()
+                    await asyncio.to_thread(_record_chunk,row['id'],offset)
                 if token and asyncio.get_running_loop().time()-last_heartbeat>5:
                     await asyncio.to_thread(operations.heartbeat,token)
                     last_heartbeat=asyncio.get_running_loop().time()
             if buffered:
                 offset=await asyncio.to_thread(
                     _append_chunk,path,offset,bytes(buffered),size)
+                await asyncio.to_thread(_record_chunk,row['id'],offset)
             if offset!=size:
                 raise HTTPException(409,'Файл загружен не полностью')
             return await asyncio.to_thread(_finalize_sync,upload_id)

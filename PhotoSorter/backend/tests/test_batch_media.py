@@ -178,6 +178,10 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
         assert original.read_bytes()==source[upload.filename]
         assert not part_path(batch,upload.upload_id).exists()
     assert len(list(normalized_dir(batch).iterdir()))==2
+    from .accounting_checks import settle,exact,observed
+    settle()
+    for _,metadata in saved:assert exact(Path(metadata['path']))['category']=='fo_original'
+    for normalized in normalized_dir(batch).iterdir():assert exact(normalized)['category']=='fo_normalized'
     with database.connect() as conn:
         item=work_queue.claim_next(conn)
     assert item['kind']=='fo_processing' and item['info']['has_media_profile']
@@ -218,6 +222,17 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     with TestClient(app) as client:
         response=client.get('/api/download/'+item['id'])
     assert response.status_code==200
+    settle()
+    for row in rows:
+        assert exact(Path(row['copy']))['physical_bytes']==0
+    from server.services import archive_cache
+    archive=next((APP_STORAGE_ROOT/app_key(Category.ZIP_RESULTS,run_id=item['id']).relative).glob('*.zip'))
+    assert exact(archive)['category']=='zip_results'
+    assert exact(archive)['charged_bytes']==0
+    import time
+    assert archive_cache.sweep_folder(archive.parent,now=time.time()+7200)>=1
+    settle()
+    assert observed(archive) is None
     with zipfile.ZipFile(BytesIO(response.content)) as zipped:
         assert {Path(name).name for name in zipped.namelist()}=={'Альфа.jpg','Клип.mp4','Совместимый.JPG'}
         mp4=next(name for name in zipped.namelist() if name.endswith('.mp4'))
@@ -259,6 +274,9 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     assert not first_dir.exists()
     from server.storage.paths import batch_root
     assert not batch_root(batch).exists()
+    settle()
+    with database.connect() as conn:
+        assert not conn.execute('SELECT 1 FROM storage_files WHERE batch_id=%s',(batch,)).fetchone()
 
 
 def test_frame_sampling_last_frame_and_alternative_video_format(tmp_path,clips):

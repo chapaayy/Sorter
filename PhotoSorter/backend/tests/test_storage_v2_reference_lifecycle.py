@@ -87,6 +87,12 @@ def test_reference_lifecycle_shared_bytes_pins_and_cache_reuse(system,monkeypatc
     with zipfile.ZipFile(archive) as z:
         assert len(z.namelist())==3
         assert all(z.read(n)==raw for n in z.namelist())
+    from .accounting_checks import settle,exact,observed
+    data=settle()
+    for path,category in ((target,'reference_object'),(embedding,'reference_embedding'),(preview,'reference_thumbnail'),(archive,'zip_references')):
+        assert exact(path)['category']==category
+        assert exact(path)['charged_bytes']==0
+        assert data['categories'][category]['files']==1
     run=add_fo()
     with database.connect() as db:
         task=work_queue.claim_next(db)
@@ -125,6 +131,8 @@ def test_reference_lifecycle_shared_bytes_pins_and_cache_reuse(system,monkeypatc
     assert not target.exists() and not embedding.exists()
     assert thumbnails.gc_unowned(grace_seconds=0)==1
     assert not preview.exists()
+    settle()
+    assert all(observed(p) is None for p in (target,embedding,preview))
 
 
 def test_reference_upload_expiry_respects_transfer_lock(system):

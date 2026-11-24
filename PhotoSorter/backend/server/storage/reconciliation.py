@@ -93,7 +93,7 @@ class Reconciler:
                     else:
                         db.execute("DELETE FROM storage_dirty WHERE path=%s AND revision=%s",(row["path"],row["revision"]))
                         self.dirty=None
-            now=time.monotonic()
+            now=time.monotonic();finished=False
             if self.full is None and not self.sweep and (not self.last_full or now-self.last_full>=FULL_INTERVAL):
                 self.generation=uuid.uuid4();self.errors=0;self.cursor=0
                 self.full=walk(self.root,onerror=self.error)
@@ -107,7 +107,7 @@ class Reconciler:
                 if old:self.cursor=old[-1]["id"]
                 else:
                     db.execute("UPDATE storage_accounting_state SET reconciled_at=now(),errors=%s",(self.errors,))
-                    self.sweep=False;self.last_full=now
+                    self.sweep=False;self.last_full=now;finished=True
             # Native writes are sampled in the temporary subtree, not traced.
             if self.temp is None and now-self.last_temp>=TEMP_INTERVAL:
                 self.temp=walk(self.root,"app/temporary",self.error)
@@ -122,7 +122,7 @@ class Reconciler:
             from .reservations import recover
             recover(db)
             from .accounting import refresh
-            refresh(db)
+            refresh(db,force=finished)
             return True
     def close(self):
         for iterator in (self.full,self.temp,self.dirty[1] if self.dirty else None):
