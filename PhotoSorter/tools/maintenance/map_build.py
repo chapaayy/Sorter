@@ -5,7 +5,11 @@ import subprocess
 import uuid
 from pathlib import Path
 
-STATE=Path("/var/lib/map-updater/private/builders")
+STATE=None
+
+def configure(storage):
+    global STATE
+    STATE=Path(storage)/"system/updater/private/builders"
 CURRENT="map-local/app:current"
 PROJECT="outdoor-sorter"
 
@@ -13,6 +17,7 @@ def run(args, cwd=None, timeout=7200):
     subprocess.run(args,cwd=cwd,timeout=timeout,check=True)
 
 def clean_owned_builders():
+    if STATE is None:raise RuntimeError("Builder storage root not configured")
     STATE.mkdir(parents=True,exist_ok=True,mode=0o700)
     warnings=[]
     for marker in STATE.iterdir():
@@ -50,7 +55,9 @@ if __name__=="__main__":
     p=argparse.ArgumentParser()
     p.add_argument("root",type=Path)
     p.add_argument("revision")
+    p.add_argument("--storage-root",type=Path,required=True)
     a=p.parse_args()
+    configure(a.storage_root)
     for w in build(a.root,a.revision,CURRENT):
         print("[WARN]",w)
     run(["docker","tag",CURRENT,"map-local/app:rev-"+a.revision],timeout=60)

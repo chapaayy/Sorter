@@ -32,9 +32,8 @@ trap cleanup EXIT
 # Exercise the exact disposable builder used by the VPS updater.
 sudo touch $MAP_STORAGE_ROOT/system/updater/control/activity.lock
 sudo chmod 0644 $MAP_STORAGE_ROOT/system/updater/control/activity.lock
-sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0700 /var/lib/map-updater/private/builders
-python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)"
-test -z "$(find /var/lib/map-updater/private/builders -type f -print -quit)"
+sudo python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)" --storage-root "$MAP_STORAGE_ROOT"
+test -z "$(sudo find "$MAP_STORAGE_ROOT/system/updater/private/builders" -type f -print -quit)"
 docker compose up -d --no-build
 # Real app UID, same mount hardlink and rename, private host paths not mounted.
 docker compose exec -T api python - <<'PY'

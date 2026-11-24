@@ -115,6 +115,14 @@ def bootstrap(root, *, host_uid=0, host_gid=0, app_uid=APP_UID, app_gid=APP_GID,
                         st=os.fstat(stream.fileno())
                         if st.st_uid!=host_uid or stat.S_IMODE(st.st_mode)!=0o600 or stream.read(128)!=branch:
                             raise ValueError("Invalid installation branch pin")
+            # The root-owned policy copy is the host service's only budget source.
+            if not check:
+                with walk_directory(root_fd,"system/state",host_uid,host_gid,0o700,create=False) as state:
+                    fd=os.open(".log-policy.tmp",os.O_WRONLY|os.O_CREAT|os.O_TRUNC|os.O_NOFOLLOW,0o600,dir_fd=state)
+                    with os.fdopen(fd,"w") as stream:
+                        json.dump({"log_budgets_mib":POLICY["log_budgets_mib"]},stream);stream.flush();os.fsync(stream.fileno())
+                    os.replace(".log-policy.tmp","log-policy.json",src_dir_fd=state,dst_dir_fd=state)
+                    os.fsync(state)
             with directory_fd(root,"system/updater/control") as control:
                 if not check:
                     fd=os.open("activity.lock",os.O_CREAT|os.O_RDONLY|os.O_NOFOLLOW,0o644,dir_fd=control)

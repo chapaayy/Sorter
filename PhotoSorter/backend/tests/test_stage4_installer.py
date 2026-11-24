@@ -28,6 +28,7 @@ def deploy(tmp_path):
     (pg/"PG_VERSION").write_text("17\n")
     # Host prerequisite tests mock privileged bootstrap; real bootstrap tests
     # exercise ownership and marker creation independently.
+    (host.parent/"map_build.py").write_text("pass\n")
     (host.parent/"bootstrap_storage.py").write_text("import sys; from pathlib import Path; assert (Path(sys.argv[1])/'system/state/layout-version').read_text().strip() == '2'\n")
     stub=tmp_path/"stubs"
     stub.mkdir()
@@ -36,7 +37,7 @@ def deploy(tmp_path):
 echo "$*" >> "$STAGE4_DOCKER_LOG"
 if [ "$1" = compose ]; then echo "$PHOTOSORTER_CADDY_TCP_CC" >> "$STAGE4_CADDY_TCP_CC_LOG"; fi
 if [ "$1" = compose ] && [ "$ADMIN_PASSWORD" != 'new_test_admin_$password' ]; then exit 9; fi
-case "$*" in *"up -d --build") [ "$STAGE4_FAIL_UP" != 1 ] || exit 8 ;; esac
+case "$*" in *"up -d --no-build --wait --wait-timeout 180") [ "$STAGE4_FAIL_UP" != 1 ] || exit 8 ;; esac
 if [ "$1" = volume ] && [ "$2" = inspect ]; then
   [ "$STAGE4_VOLUME" = 1 ] && exit 0 || exit 1
 fi
@@ -62,7 +63,7 @@ esac
 """)
     (stub/"sysctl").chmod(0o755)
     env=os.environ.copy()
-    env.update({"PATH":str(stub)+":"+env["PATH"],
+    env.update({"MAP_UPDATER_PREBUILT":"1","CI":"true","PATH":str(stub)+":"+env["PATH"],
         "STAGE4_DOCKER_LOG":str(tmp_path/"docker.log"),
         "STAGE4_CADDY_TCP_CC_LOG":str(tmp_path/"caddy-tcp.log"),
         "STAGE4_VOLUME":"1",
@@ -95,13 +96,13 @@ def test_upgrade_blocks_missing_original_secrets(deploy):
     assert result.returncode!=0
     assert "ORIGINAL credentials" in result.stderr
     assert not (root/".env.generated").exists()
-    assert not any(line.endswith("up -d --build") for line in log.read_text().splitlines())
+    assert not any(line.endswith("up -d --no-build --wait --wait-timeout 180") for line in log.read_text().splitlines())
 
 def test_beta_upgrade_uses_one_command_without_approval_switches(deploy):
     root,run,log=deploy
     result=run("--deploy",overrides={"ADMIN_PASSWORD":"ignored_shell_password"})
     assert result.returncode==0,result.stderr
-    assert any(line.endswith("up -d --build") for line in log.read_text().splitlines())
+    assert any(line.endswith("up -d --no-build --wait --wait-timeout 180") for line in log.read_text().splitlines())
     assert (root/".env.generated").read_text()==f"POSTGRES_PASSWORD=synthetic_test_password_000\nMAP_STORAGE_ROOT={root}/storage\n"
     assert "new_test_admin_" not in result.stdout+result.stderr
     assert "synthetic_test_" not in result.stdout+result.stderr
@@ -126,7 +127,7 @@ def test_invalid_cpu_preflight_fails_without_up(deploy):
     result=run("--check",overrides={"PHOTOSORTER_WORKER_CPUSET":"999999"})
     assert result.returncode!=0
     assert "CPU affinity" in result.stderr
-    assert not any(line.endswith("up -d --build") for line in log.read_text().splitlines())
+    assert not any(line.endswith("up -d --no-build --wait --wait-timeout 180") for line in log.read_text().splitlines())
 
 
 def test_check_does_not_load_bbr_or_write_host_settings(deploy):
@@ -163,7 +164,7 @@ def test_missing_bbr_module_warns_but_site_still_deploys(deploy):
     assert "module unavailable" in result.stderr
     assert (root.parent/"caddy-tcp.log").read_text().splitlines()[-1]=="cubic"
     assert not (root.parent/"mock-etc").exists()
-    assert any(line.endswith("up -d --build") for line in log.read_text().splitlines())
+    assert any(line.endswith("up -d --no-build --wait --wait-timeout 180") for line in log.read_text().splitlines())
 
 def test_explicit_bbr_disable_only_removes_owned_files(deploy):
     root,run,log=deploy

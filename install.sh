@@ -181,14 +181,17 @@ if [[ "$(id -u)" == 0 && "${CI:-}" != true && "${GITHUB_ACTIONS:-}" != true ]] &
   fi
   bash PhotoSorter/tools/maintenance/install_map_updater.sh
   if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
-    python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)"
+    python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)" --storage-root "$MAP_STORAGE_ROOT"
   fi
   "${COMPOSE[@]}" up -d --no-build --wait --wait-timeout 180
   if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
     systemctl restart map-updater.service
   fi
 else
-  "${COMPOSE[@]}" up -d --build
+  if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
+    python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)" --storage-root "$MAP_STORAGE_ROOT"
+  fi
+  "${COMPOSE[@]}" up -d --no-build --wait --wait-timeout 180
 fi
 # The historical observer writes to the legacy layout. Do not launch it in v2.
 # Bounded host diagnostics are restored in stage 6.

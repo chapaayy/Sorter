@@ -20,10 +20,15 @@ from pathlib import Path
 from datetime import datetime,timezone
 import map_build
 
-ROOT=Path("/var/lib/map-updater")
+ROOT=Path("/nonexistent/map-updater")
 CONTROL=ROOT/"control"
 RPC=ROOT/"rpc"
 PRIVATE=ROOT/"private"
+WORKSPACE=ROOT/"workspace"
+BACKUPS=ROOT/"backups"
+STORAGE=None
+BRANCH="feature/storage-architecture-v2"
+LOG_DIRECTORY=None
 STATE=CONTROL/"status.json"
 MARKER=CONTROL/"maintenance"
 LOCK=CONTROL/"activity.lock"
@@ -35,6 +40,34 @@ REPO_URLS={"https://github.com/chapaayy/Sorter","https://github.com/chapaayy/Sor
            "git@github.com:chapaayy/Sorter.git","ssh://git@github.com/chapaayy/Sorter.git"}
 MIN_FREE=8*1024**3
 ROLLBACK="map-local/app:rollback"
+
+def configure(storage,project):
+    global ROOT,CONTROL,RPC,PRIVATE,WORKSPACE,BACKUPS,STATE,MARKER,LOCK,STORAGE,BRANCH,LOG_DIRECTORY
+    storage=Path(storage)
+    if not storage.is_absolute() or storage.resolve()!=storage:raise ValueError("Unsafe storage root")
+    pin=storage/"system/state/update-branch"
+    info=pin.stat(follow_symlinks=False)
+    if pin.is_symlink() or info.st_uid!=0 or info.st_mode&0o077:raise ValueError("Unsafe update branch pin")
+    branch=pin.read_text().strip()
+    if branch not in ("main","feature/storage-architecture-v2"):raise ValueError("Invalid trusted branch")
+    expected=[line.split("=",1)[1] for line in (project/".env.generated").read_text().splitlines() if line.startswith("MAP_STORAGE_ROOT=")]
+    if expected!=[str(storage)]:raise ValueError("Storage pin mismatch")
+    STORAGE=storage
+    ROOT=storage/"system/updater"
+    CONTROL=ROOT/"control";RPC=ROOT/"rpc";PRIVATE=ROOT/"private";WORKSPACE=ROOT/"workspace"
+    BACKUPS=storage/"system/backups/updater";LOG_DIRECTORY=storage/"logs/updater"
+    STATE=CONTROL/"status.json";MARKER=CONTROL/"maintenance";LOCK=CONTROL/"activity.lock"
+    BRANCH=branch
+    map_build.configure(storage)
+
+def recover_owned_work():
+    # Caller owns deployment lock; never remove another running build.
+    warnings=map_build.clean_owned_builders()
+    for path in WORKSPACE.glob("source-*"):
+        if path.is_dir() and not path.is_symlink():shutil.rmtree(path)
+    for path in BACKUPS.glob(".pending-*"):
+        if path.is_dir() and not path.is_symlink():shutil.rmtree(path)
+    return warnings
 
 def now():
     return datetime.now(timezone.utc).isoformat()
@@ -131,7 +164,8 @@ def disk_available(project):
     return min(shutil.disk_usage(p).free for p in paths if p.exists())
 
 def backup(project,revision):
-    directory=PRIVATE/("backup-"+revision[:12]+"-"+uuid.uuid4().hex)
+    name="backup-"+revision[:12]+"-"+uuid.uuid4().hex
+    directory=BACKUPS/(".pending-"+name)
     directory.mkdir(mode=0o700)
     for name in (".env",".env.generated","compose.yaml"):
         shutil.copy2(project/name,directory/name)
@@ -147,7 +181,15 @@ def backup(project,revision):
         subprocess.run(["docker","exec","-i",service_id("postgres"),"pg_restore","-l"],
                        stdin=stream,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
                        timeout=120,check=True)
-    return directory
+    (directory/"revision").write_text(revision+"\n")
+    for file in directory.iterdir():
+        with file.open("rb") as stream:os.fsync(stream.fileno())
+    published=BACKUPS/name
+    os.rename(directory,published)
+    fd=os.open(BACKUPS,os.O_RDONLY|os.O_DIRECTORY)
+    try:os.fsync(fd)
+    finally:os.close(fd)
+    return published
 
 def clean_images(current,previous):
     warnings=[]
@@ -178,7 +220,7 @@ class Updater:
             self.state=json.loads(STATE.read_text())
         except (OSError,ValueError):
             self.state={}
-        self.state.update(available=True,busy=False)
+        self.state.update(available=True,busy=False,branch=BRANCH)
         if MARKER.exists():
             self.state.update(phase="recovery_required",detail="Прервано переключение версии. Нужна проверка на сервере.")
         elif self.state.get("phase") not in ("success","failed","checked"):
@@ -192,6 +234,10 @@ class Updater:
     def publish(self,**fields):
         with self.mutex:
             self.state.update(fields,updated_at=now())
+            if LOG_DIRECTORY is not None and "phase" in fields:
+                # Host log contains only trusted phase/revision, not command output.
+                from host_logs import record
+                record(LOG_DIRECTORY,"updater",str(fields["phase"]))
             atomic_json(STATE,self.state)
 
     def status(self):
@@ -204,11 +250,11 @@ class Updater:
     def target(self):
         if self.git("remote","get-url","origin") not in REPO_URLS:
             raise RuntimeError("origin не соответствует репозиторию MAP")
-        if self.git("symbolic-ref","--short","HEAD")!="main":
-            raise RuntimeError("Рабочая ветка должна быть main")
+        if self.git("symbolic-ref","--short","HEAD")!=BRANCH:
+            raise RuntimeError("Рабочая ветка не соответствует закреплённой ветке установки")
         if self.git("status","--porcelain","--untracked-files=no"):
             raise RuntimeError("Есть локальные изменения отслеживаемых файлов")
-        self.git("fetch","--no-tags","origin","main")
+        self.git("fetch","--no-tags","origin",BRANCH)
         target=self.git("rev-parse","FETCH_HEAD")
         if not REV.fullmatch(target):
             raise RuntimeError("Некорректная версия Git")
@@ -253,8 +299,9 @@ class Updater:
         warnings=[]
         candidate=None
         try:
-            locked=(ROOT/"deploy.lock").open("a")
+            locked=(PRIVATE/"deploy.lock").open("a")
             fcntl.flock(locked,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            warnings+=recover_owned_work()
             old,old_image=installed()
             target=self.target()
             if target!=expected or target==old:
@@ -275,7 +322,7 @@ class Updater:
             before=shutil.disk_usage(self.project).free
             self.publish(phase="building",detail="Сборка нового образа; MAP продолжает работать",
                          free_before=before,free_change=None,warnings=[])
-            with tempfile.TemporaryDirectory(prefix="source-",dir=PRIVATE) as directory:
+            with tempfile.TemporaryDirectory(prefix="source-",dir=WORKSPACE) as directory:
                 archive=Path(directory)/"source.tar"
                 with archive.open("wb") as out:
                     subprocess.run(["git","archive","--format=tar",target],cwd=self.project,
@@ -335,7 +382,7 @@ class Updater:
             try:
                 warnings+=clean_images(target,old)
                 warnings+=map_build.clean_owned_builders()
-                for path in PRIVATE.glob("backup-*"):
+                for path in BACKUPS.glob("backup-*"):
                     if path!=backup_dir and path.is_dir() and not path.is_symlink() and re.fullmatch(r"backup-[0-9a-f]{12}-[0-9a-f]{32}",path.name):
                         shutil.rmtree(path)
             except Exception:
@@ -383,6 +430,7 @@ class Handler(socketserver.StreamRequestHandler):
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument("--project-root",type=Path,required=True)
+    parser.add_argument("--storage-root",type=Path,required=True)
     args=parser.parse_args()
     if os.geteuid()!=0:
         parser.error("root required")
@@ -390,6 +438,11 @@ def main():
     project=args.project_root.resolve(strict=True)
     if project.stat().st_uid!=0 or project.stat().st_mode&0o022:
         parser.error("project must be root-owned and not group/world writable")
+    configure(args.storage_root,project)
+    with (PRIVATE/"deploy.lock").open("a") as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:pass
+        else:recover_owned_work()
     socket_path=RPC/"control.sock"
     socket_path.unlink(missing_ok=True)
     updater=Updater(project)

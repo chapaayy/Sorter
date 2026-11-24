@@ -179,6 +179,7 @@ export interface LiveAuditStatus {
 }
 
 export interface MapUpdateStatus {
+  branch?:string
   available:boolean;busy?:boolean;phase?:string;detail?:string
   installed?:string|null;target?:string|null;previous?:string|null;update_available?:boolean
   free_before?:number;free_after?:number;free_change?:number;warnings?:string[]
