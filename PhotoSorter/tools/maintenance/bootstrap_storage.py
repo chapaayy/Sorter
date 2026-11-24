@@ -1,5 +1,6 @@
 """Create/check fresh storage V2 without following symlinks or reowning data."""
 import argparse
+import json
 from contextlib import contextmanager, ExitStack
 import fcntl
 import os
@@ -8,10 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
-from app.storage.categories import APP_UID, APP_GID, LAYOUT_VERSION, BOOTSTRAP_DIRS, APP_BOOTSTRAP_DIRS
+from app.storage.categories import APP_UID, APP_GID, LAYOUT_VERSION, BOOTSTRAP_DIRS, APP_BOOTSTRAP_DIRS, CONTRACT_PATH
 from app.storage.config import absolute_root
 from app.storage.filesystem import directory_fd
 
+POLICY=json.loads(CONTRACT_PATH.read_text())
 APP_DIRS = APP_BOOTSTRAP_DIRS
 PRIVATE_DIRS = tuple(folder for folder in BOOTSTRAP_DIRS if not folder.startswith("app/"))
 _DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -77,13 +79,46 @@ def bootstrap(root, *, host_uid=0, host_gid=0, app_uid=APP_UID, app_gid=APP_GID,
             marked = read_marker(root_fd, host_uid, host_gid)
             if not marked and (check or os.listdir(root_fd)):
                 raise ValueError("Nonempty or missing unmarked storage root; refusing initialization")
-            for rel in PRIVATE_DIRS:
-                with walk_directory(root_fd, rel, host_uid, host_gid, 0o700, create=not check):
-                    pass
+            # Parents are host-private. Only exact bind-mount leaves have
+            # native service ownership; never recursively chown PGDATA.
+            native=POLICY["infrastructure_owners"]["postgres"]
+            pg_uid,pg_gid=(native["uid"],native["gid"]) if host_uid==0 else (host_uid,host_gid)
+            for rel in sorted(set(PRIVATE_DIRS),key=lambda p:(len(Path(p).parts),p)):
+                parts=Path(rel).parts
+                with ExitStack() as stack:
+                    fd=root_fd
+                    for n,part in enumerate(parts,1):
+                        key="/".join(parts[:n])
+                        uid,gid,mode=host_uid,host_gid,0o700
+                        if key=="infrastructure/postgres/data":uid,gid=pg_uid,pg_gid
+                        if key=="logs/postgres":uid,gid=pg_uid,pg_gid
+                        if key in ("logs/api","logs/worker","logs/cleanup","logs/thumbnail","logs/processing","logs/models"):
+                            uid,gid=app_uid,app_gid
+                        if key in ("system/updater/control","system/updater/rpc"):mode=0o755
+                        fd=stack.enter_context(child_directory(fd,part,uid,gid,mode,create=not check))
             with child_directory(root_fd, "app", app_uid, app_gid, 0o750, create=not check) as app_fd:
                 for rel in APP_DIRS:
                     with walk_directory(app_fd, rel, app_uid, app_gid, 0o750, create=not check):
                         pass
+            with walk_directory(root_fd,"system/state",host_uid,host_gid,0o700,create=False) as state:
+                branch=POLICY["update_branch"].encode()+b"\n"
+                try:
+                    fd=os.open("update-branch",os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=state)
+                except FileNotFoundError:
+                    if check:raise
+                    fd=os.open("update-branch",os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=state)
+                    with os.fdopen(fd,"wb") as stream:
+                        stream.write(branch);stream.flush();os.fsync(stream.fileno())
+                    os.fsync(state)
+                else:
+                    with os.fdopen(fd,"rb") as stream:
+                        st=os.fstat(stream.fileno())
+                        if st.st_uid!=host_uid or stat.S_IMODE(st.st_mode)!=0o600 or stream.read(128)!=branch:
+                            raise ValueError("Invalid installation branch pin")
+            with directory_fd(root,"system/updater/control") as control:
+                if not check:
+                    fd=os.open("activity.lock",os.O_CREAT|os.O_RDONLY|os.O_NOFOLLOW,0o644,dir_fd=control)
+                    os.close(fd)
             if not marked:
                 with walk_directory(root_fd, "system/state", host_uid, host_gid, 0o700, create=False) as state:
                     fd = os.open("layout-version", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,

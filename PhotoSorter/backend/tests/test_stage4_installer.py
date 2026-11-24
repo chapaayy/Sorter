@@ -23,6 +23,9 @@ def deploy(tmp_path):
     marker=root/"storage/system/state/layout-version"
     marker.parent.mkdir(parents=True)
     marker.write_text("2\n")
+    pg=root/"storage/infrastructure/postgres/data"
+    pg.mkdir(parents=True)
+    (pg/"PG_VERSION").write_text("17\n")
     # Host prerequisite tests mock privileged bootstrap; real bootstrap tests
     # exercise ownership and marker creation independently.
     (host.parent/"bootstrap_storage.py").write_text("import sys; from pathlib import Path; assert (Path(sys.argv[1])/'system/state/layout-version').read_text().strip() == '2'\n")

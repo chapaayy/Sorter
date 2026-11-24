@@ -60,16 +60,14 @@ if root.resolve()!=root or root==project or project.is_relative_to(root) or (roo
     raise SystemExit("[ERROR] Unsafe storage root: use project/storage or a separate absolute directory")
 PY
 
-# Deterministic volume name derives from "name: outdoor-sorter" in compose.yaml.
-# A missing .env.generated while PostgreSQL volume exists MUST NOT generate a
-# new DB password. The admin password is configured separately in .env.
+# Existing bind-mounted PGDATA must retain original credentials.
 EXISTING_POSTGRES=0
-if docker volume inspect outdoor-sorter_postgres_data >/dev/null 2>&1; then
+if [[ -e "$MAP_STORAGE_ROOT/infrastructure/postgres/data/PG_VERSION" ]]; then
   EXISTING_POSTGRES=1
 fi
 if [[ ! -f .env.generated ]]; then
   if [[ "$EXISTING_POSTGRES" -eq 1 ]]; then
-    echo '[ERROR] Existing PostgreSQL volume but .env.generated is missing.' >&2
+    echo '[ERROR] Existing PostgreSQL data but .env.generated is missing.' >&2
     echo 'Restore the ORIGINAL credentials from your backup; do not regenerate.' >&2
     exit 1
   fi
@@ -155,7 +153,7 @@ if [[ "$MODE" == "--check" ]]; then
 fi
 
 if [[ "$EXISTING_POSTGRES" -eq 1 ]]; then
-  echo '[INFO] Updating beta test containers; existing Docker volumes are unchanged.'
+  echo '[INFO] Updating beta test containers; persistent PostgreSQL and Caddy binds are unchanged.'
 fi
 chmod 600 .env .env.generated
 
@@ -176,9 +174,9 @@ python3 PhotoSorter/tools/maintenance/bootstrap_storage.py "$MAP_STORAGE_ROOT"
 # Host updater and disposable builder on production Ubuntu. CI uses Compose.
 if [[ "$(id -u)" == 0 && "${CI:-}" != true && "${GITHUB_ACTIONS:-}" != true ]] &&
    [[ -d /run/systemd/system ]] && command -v systemctl >/dev/null; then
-  mkdir -p /var/lib/map-updater
+  mkdir -p "$MAP_STORAGE_ROOT/system/updater/private"
   if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
-    exec 9>/var/lib/map-updater/deploy.lock
+    exec 9>"$MAP_STORAGE_ROOT/system/updater/private/deploy.lock"
     flock -n 9 || { echo '[ERROR] Another MAP deployment is running'; exit 1; }
   fi
   bash PhotoSorter/tools/maintenance/install_map_updater.sh

@@ -15,7 +15,7 @@ x-app-env: &app_env
 
 x-app-data: &app_data
   - &app_storage_bind ${MAP_STORAGE_ROOT:-./storage}/app:/storage/app
-  - /var/lib/map-updater/control:/run/map-updater:ro
+  - ${MAP_STORAGE_ROOT:-./storage}/system/updater/control:/run/map-updater:ro
 
 services:
   caddy:
@@ -23,8 +23,8 @@ services:
     logging: &bounded_logs
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "2m"
+        max-file: "2"
     restart: unless-stopped
     # TCP congestion control is namespaced: force the same algorithm in Caddy.
     sysctls:
@@ -37,8 +37,9 @@ services:
       - "443:443/udp"
     volumes:
       - ./PhotoSorter/docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - ${MAP_STORAGE_ROOT:-./storage}/infrastructure/caddy/data:/data
+      - ${MAP_STORAGE_ROOT:-./storage}/infrastructure/caddy/config:/config
+      - ${MAP_STORAGE_ROOT:-./storage}/logs/caddy:/logs
     depends_on:
       api:
         condition: service_healthy
@@ -58,8 +59,8 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
     volumes:
       - *app_storage_bind
-      - /var/lib/map-updater/control:/run/map-updater:ro
-      - /var/lib/map-updater/rpc:/run/map-updater-rpc:ro
+      - ${MAP_STORAGE_ROOT:-./storage}/system/updater/control:/run/map-updater:ro
+      - ${MAP_STORAGE_ROOT:-./storage}/system/updater/rpc:/run/map-updater-rpc:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -140,7 +141,9 @@ services:
       POSTGRES_USER: sorter
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run install.sh first}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ${MAP_STORAGE_ROOT:-./storage}/infrastructure/postgres/data:/var/lib/postgresql/data
+      - ${MAP_STORAGE_ROOT:-./storage}/logs/postgres:/logs
+    command: ["postgres", "-c", "logging_collector=on", "-c", "log_directory=/logs", "-c", "log_filename=postgresql-%Y%m%d-%H%M%S.log", "-c", "log_rotation_age=60", "-c", "log_rotation_size=10MB", "-c", "log_statement=none", "-c", "log_min_error_statement=panic", "-c", "log_parameter_max_length=0", "-c", "log_parameter_max_length_on_error=0"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sorter -d sorter"]
       interval: 5s
@@ -152,7 +155,3 @@ networks:
   public:
   private:
     internal: true
-volumes:
-  postgres_data:
-  caddy_data:
-  caddy_config:

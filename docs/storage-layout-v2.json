@@ -23,8 +23,8 @@
     "worker": 100,
     "cleanup": 30,
     "thumbnail": 30,
-    "caddy_access": 100,
-    "caddy_runtime": 30,
+    "caddy/access": 100,
+    "caddy/runtime": 30,
     "postgres": 100,
     "processing": 512,
     "models": 30,
@@ -867,9 +867,23 @@
     "logs/postgres",
     "logs/caddy/runtime",
     "logs/models",
-    "logs/updater"
+    "logs/updater",
+    "system/updater/rpc",
+    "system/updater/private/builders"
   ],
   "reference_history_grace_days": 30,
   "reference_unowned_grace_hours": 24,
-  "temporary_grace_seconds": 3600
+  "temporary_grace_seconds": 3600,
+  "run_log_budget_mib": 20,
+  "infrastructure_owners": {
+    "postgres": {
+      "uid": 70,
+      "gid": 70
+    },
+    "caddy": {
+      "uid": 0,
+      "gid": 0
+    }
+  },
+  "update_branch": "feature/storage-architecture-v2"
 }

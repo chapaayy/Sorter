@@ -29,9 +29,8 @@ cleanup() {
 }
 trap cleanup EXIT
 # Exercise the exact disposable builder used by the VPS updater.
-sudo install -d -m 0755 /var/lib/map-updater/control
-sudo touch /var/lib/map-updater/control/activity.lock
-sudo chmod 0644 /var/lib/map-updater/control/activity.lock
+sudo touch $MAP_STORAGE_ROOT/system/updater/control/activity.lock
+sudo chmod 0644 $MAP_STORAGE_ROOT/system/updater/control/activity.lock
 sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0700 /var/lib/map-updater/private/builders
 python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)"
 test -z "$(find /var/lib/map-updater/private/builders -type f -print -quit)"
@@ -98,10 +97,10 @@ if [[ "$ready" -ne 1 ]]; then
 fi
 # Real bind-mounted lock/maintenance gate and owner-only status endpoint.
 curl -kfsS --max-time 8 -b "$cookie_file" https://localhost/api/system/update | grep -q '"available":false'
-sudo touch /var/lib/map-updater/control/maintenance
+sudo touch $MAP_STORAGE_ROOT/system/updater/control/maintenance
 test "$(curl -ksS -o /dev/null -w '%{http_code}' -b "$cookie_file" https://localhost/api/system/status)" = 503
 curl -kfsS --max-time 8 https://localhost/api/health >/dev/null
-sudo rm /var/lib/map-updater/control/maintenance
+sudo rm $MAP_STORAGE_ROOT/system/updater/control/maintenance
 created="$(curl -kfsS --max-time 8 -b "$cookie_file" \
   -H 'Content-Type: application/json' -H 'Origin: https://localhost' \
   --data '{"display_name":"PHOTOSORTER_CI_SYNTHETIC_ONLY"}' \
@@ -110,6 +109,9 @@ id="$(printf '%s' "$created" | python3 -c 'import json,sys;print(json.load(sys.s
 curl -kfsS --max-time 8 -b "$cookie_file" "https://localhost/api/batches/$id" >/dev/null
 curl -kfsS --max-time 8 -b "$cookie_file" -X DELETE \
   -H 'Origin: https://localhost' "https://localhost/api/batches/$id" >/dev/null
+test -z "$(docker volume ls -q --filter label=com.docker.compose.project=outdoor-sorter)"
+sudo test -f "$MAP_STORAGE_ROOT/infrastructure/postgres/data/PG_VERSION"
+sudo test -d "$MAP_STORAGE_ROOT/infrastructure/caddy/data/caddy"
 echo "[OK] Full image build and isolated runtime: TLS self-signed, API/login, root Vue SPA, 3 workers and synthetic batch lifecycle"
 
 
