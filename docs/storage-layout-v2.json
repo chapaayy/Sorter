@@ -1,6 +1,6 @@
 {
   "layout_version": 2,
-  "status": "target_contract_not_active",
+  "status": "foundation_active_lifecycle_pending",
   "base_sha": "c6d77ebb1c9c80c732df209a17a993dd38ec381f",
   "host_root_default": "/opt/Sorter/storage",
   "container_app_root": "/storage/app",
@@ -848,5 +848,25 @@
       "growth": "outside server disk and user server quota",
       "consumer": "frontend and browser user"
     }
+  ],
+  "foundation_paths": {
+    "data": "app/state",
+    "models": "app/models",
+    "model_cache": "app/cache"
+  },
+  "bootstrap_extra_directories": [
+    "app/cache/huggingface",
+    "app/cache/torch",
+    "app/cache/xdg",
+    "infrastructure/caddy/data",
+    "infrastructure/caddy/config",
+    "logs/api",
+    "logs/worker",
+    "logs/cleanup",
+    "logs/thumbnail",
+    "logs/postgres",
+    "logs/caddy/runtime",
+    "logs/models",
+    "logs/updater"
   ]
 }

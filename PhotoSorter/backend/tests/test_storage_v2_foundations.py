@@ -67,3 +67,27 @@ def test_temporary_cleanup(tmp_path):
             (path / "file").write_bytes(b"x")
             raise RuntimeError()
     assert not path.exists()
+
+
+def test_injected_config_and_category_bootstrap(tmp_path):
+    from app.storage.config import StorageConfig
+    from app.storage.categories import APP_BOOTSTRAP_DIRS
+    root = tmp_path / "app"
+    config = StorageConfig(root)
+    config.ensure_dirs()
+    assert config.data == root / "state"
+    assert config.models == root / "models"
+    assert all((root / key).is_dir() for key in APP_BOOTSTRAP_DIRS)
+    assert not (tmp_path / "Models").exists()
+    assert not (tmp_path / "PhotoSorter/data").exists()
+
+def test_existing_owned_paths_reject_internal_symlinks(tmp_path):
+    from server.storage.paths import owned_file, owned_directory
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real/photo.jpg").write_bytes(b"keep")
+    (tmp_path / "alias").symlink_to(tmp_path / "real", target_is_directory=True)
+    for check in (owned_file, owned_directory):
+        with pytest.raises(ValueError):
+            check(tmp_path / "alias/photo.jpg", tmp_path)
+        with pytest.raises(ValueError):
+            check(tmp_path / "real/../real/photo.jpg", tmp_path)

@@ -2,7 +2,8 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from .categories import CONTAINER_APP_ROOT
+from .categories import FOUNDATION_PATHS, APP_BOOTSTRAP_DIRS
+from .filesystem import directory_fd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
@@ -28,20 +29,18 @@ class StorageConfig:
     @property
     def data(self):
         # Transitional internal routing for existing producers, replaced in stages 3–6.
-        return self.app_root / "state"
+        return self.app_root / FOUNDATION_PATHS["data"].removeprefix("app/")
 
     @property
     def models(self):
-        return self.app_root / "models"
+        return self.app_root / FOUNDATION_PATHS["models"].removeprefix("app/")
 
     @property
     def model_cache(self):
-        return self.app_root / "cache"
+        return self.app_root / FOUNDATION_PATHS["model_cache"].removeprefix("app/")
 
     def ensure_dirs(self):
-        for folder in (self.data, self.data / "runs", self.models / "megaloc",
-                       self.model_cache, self.app_root / "users",
-                       self.app_root / "shared/references", self.app_root / "temporary"):
-            if folder.resolve() != folder:
-                raise ValueError("Symlinked storage directory")
-            folder.mkdir(parents=True, exist_ok=True)
+        self.app_root.mkdir(parents=True, exist_ok=True)
+        for key in APP_BOOTSTRAP_DIRS:
+            with directory_fd(self.app_root, key, create=True):
+                pass

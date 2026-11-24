@@ -14,7 +14,7 @@ x-app-env: &app_env
   PHOTOSORTER_PREFETCH_WORKERS: "2"
 
 x-app-data: &app_data
-  - ${MAP_STORAGE_ROOT:-./storage}/app:/storage/app
+  - &app_storage_bind ${MAP_STORAGE_ROOT:-./storage}/app:/storage/app
   - /var/lib/map-updater/control:/run/map-updater:ro
 
 services:
@@ -56,7 +56,7 @@ services:
       <<: *app_env
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
     volumes:
-      - ${MAP_STORAGE_ROOT:-./storage}/app:/storage/app
+      - *app_storage_bind
       - /var/lib/map-updater/control:/run/map-updater:ro
       - /var/lib/map-updater/rpc:/run/map-updater-rpc:ro
     depends_on:

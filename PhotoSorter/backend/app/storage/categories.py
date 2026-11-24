@@ -19,3 +19,24 @@ if len(_specs) != len(_contract["categories"]):
     raise RuntimeError("Duplicate storage category")
 Category = Enum("Category", {name.upper(): name for name in _specs}, type=str)
 CATEGORIES = MappingProxyType({Category(name): spec for name, spec in _specs.items()})
+
+# Directory bootstrap is generated from the same policy templates. Dynamic
+# owner, run and upload identifiers are never materialized by the installer.
+FOUNDATION_PATHS = MappingProxyType(_contract["foundation_paths"])
+def _static_directory(template):
+    if template.startswith("@"):
+        return None
+    parts = []
+    for part in template.rstrip("/").split("/"):
+        if "{" in part:
+            break
+        parts.append(part)
+    if len(parts) == len(template.rstrip("/").split("/")) and not template.endswith("/"):
+        parts.pop()
+    return "/".join(parts) if parts else None
+
+BOOTSTRAP_DIRS = tuple(sorted({
+    folder for spec in CATEGORIES.values()
+    if (folder := _static_directory(spec["path"]))
+} | set(_contract["bootstrap_extra_directories"])))
+APP_BOOTSTRAP_DIRS = tuple(folder[4:] for folder in BOOTSTRAP_DIRS if folder.startswith("app/"))

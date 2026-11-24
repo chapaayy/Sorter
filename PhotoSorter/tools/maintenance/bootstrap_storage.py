@@ -6,26 +6,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
-from app.storage.categories import APP_UID, APP_GID, LAYOUT_VERSION
+from app.storage.categories import APP_UID, APP_GID, LAYOUT_VERSION, BOOTSTRAP_DIRS, APP_BOOTSTRAP_DIRS
 from app.storage.config import absolute_root
 
-APP_DIRS = (
-    "users", "shared/references/objects", "shared/references/gallery",
-    "shared/references/thumbnails", "shared/references/embeddings",
-    "temporary/uploads/fo", "temporary/uploads/references",
-    "temporary/transcoding", "temporary/video-frames", "temporary/processing",
-    "temporary/archives/results", "temporary/archives/references",
-    "temporary/model-downloads", "temporary/scratch",
-    "models/megaloc/weights", "models/megaloc/source", "models/megaloc/metadata",
-    "cache/huggingface", "cache/torch", "cache/xdg", "state",
-)
-PRIVATE_DIRS = (
-    "infrastructure/postgres/data", "infrastructure/caddy/data", "infrastructure/caddy/config",
-    "logs/api", "logs/worker", "logs/cleanup", "logs/thumbnail", "logs/processing",
-    "logs/postgres", "logs/caddy/access", "logs/caddy/runtime", "logs/models",
-    "logs/updater", "logs/audit", "system/backups/updater", "system/updater/control",
-    "system/updater/private", "system/updater/workspace", "system/audits", "system/state",
-)
+APP_DIRS = APP_BOOTSTRAP_DIRS
+PRIVATE_DIRS = tuple(folder for folder in BOOTSTRAP_DIRS if not folder.startswith("app/"))
 
 def ensure_directory(path, uid, gid, mode):
     try:

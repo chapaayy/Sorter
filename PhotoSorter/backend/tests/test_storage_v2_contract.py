@@ -7,7 +7,7 @@ CONTRACT = Path(__file__).resolve().parents[3] / "docs" / "storage-layout-v2.jso
 def test_storage_v2_target_contract():
     data = json.loads(CONTRACT.read_text(encoding="utf-8"))
     assert data["layout_version"] == 2
-    assert data["status"] == "target_contract_not_active"
+    assert data["status"] == "foundation_active_lifecycle_pending"
     assert data["container_app_root"] == "/storage/app"
     assert data["quotas_enabled_default"] is False
     assert data["archive_ttl_seconds"] == 3600
