@@ -205,6 +205,11 @@ def main():
     assert sample["postgres_wal_subset_bytes"]>0
     assert sample["docker"]["available"],sample
     assert sample["filesystems"]
+    memory=sample["tmpfs"]
+    assert memory["available"] and memory["devices"],memory
+    assert {row["service"] for row in memory["mounts"] if row["mount"]=="/tmp"} >= {"api","worker","cleanup","thumbnail"},memory
+    assert all(v["total_bytes"]>=v["used_bytes"] for v in memory["devices"].values())
+    assert sample["deleted_open"]["basis"]=="sampled_lower_bound_unlinked_open_app_files"
     print("REAL_HOST_STORAGE_ACCOUNTING_OK",flush=True)
     print("REAL_ABANDONED_BUILDKIT_RECOVERY_OK",flush=True)
     with tempfile.TemporaryDirectory(prefix="map-ci-update-") as folder:

@@ -120,6 +120,7 @@ def disk():
     fs=os.statvfs(config.APP_STORAGE_ROOT)
     total=fs.f_frsize*fs.f_blocks;free=fs.f_frsize*fs.f_bavail
     used=total-fs.f_frsize*fs.f_bfree
+    guard=reserve(total)
     return {"device":os.stat(config.APP_STORAGE_ROOT).st_dev,"total_bytes":total,"used_bytes":used,
-            "available_bytes":free,"reserved_bytes":reserve(total),"admission_ok":free>reserve(total),
+            "available_bytes":free,"reserved_bytes":guard,"allocatable_bytes":max(0,free-guard),"admission_ok":free>guard,
             "used_fraction":used/total if total else 0,"warning":"critical" if used>=total*.90 else "warning" if used>=total*.80 else None}

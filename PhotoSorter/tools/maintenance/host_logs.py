@@ -63,6 +63,7 @@ def publish_usage(storage):
     from map_updater import atomic_json
     control=storage/"system/updater/control"
     engine=None
+    previous={}
     try:
         previous=json.loads((control/"storage-host.json").read_text())
         sample=datetime.fromisoformat(previous["engine_sampled_at"])
@@ -72,6 +73,14 @@ def publish_usage(storage):
     except (OSError,ValueError,KeyError,TypeError):pass
     report=measure(storage,contract,engine=engine)
     report["engine_sampled_at"]=sampled if engine is not None else report["at"]
+    # WAL is a subset of PGDATA, and change is meaningful only between
+    # complete samples. Negative change after checkpoint/recycling is valid.
+    report["postgres_wal_delta_bytes"]=None
+    if previous and not previous.get("partial",True) and not report["partial"]:
+        old_wal=previous.get("postgres_wal_subset_bytes")
+        if isinstance(old_wal,int):
+            report["postgres_wal_delta_bytes"]=report["postgres_wal_subset_bytes"]-old_wal
+            report["previous_host_sample_at"]=previous.get("at")
     rows=report.pop("journals")
     atomic_json(control/"storage-host.json",report)
     atomic_json(control/"log-usage.json",{"at":report["at"],"services":rows})

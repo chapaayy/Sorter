@@ -32,6 +32,41 @@ def engine_metrics():
         result["available"]=True
     except (OSError,ValueError,subprocess.SubprocessError):pass
     return result
+def runtime_tmpfs():
+    """Only fixed MAP container mounts, read through trusted root /proc.
+
+    These are memory-backed filesystems, never added to disk accounting.
+    Multiple containers sharing a mount device are listed but summed once.
+    """
+    result={"available":False,"partial":True,"mounts":[],"devices":{},
+            "basis":"sampled_container_tmpfs_capacity_not_disk"}
+    services={"api","worker","cleanup","thumbnail","postgres","caddy"}
+    wanted={"/tmp","/var/tmp","/dev/shm"}
+    try:
+        ids=[c for c in _docker("ps","-q","--filter","label=com.docker.compose.project=outdoor-sorter").splitlines()
+             if re.fullmatch(r"[0-9a-f]{12,64}",c)]
+        if not ids:return result
+        rows=_docker("inspect","--format",'{{.State.Pid}} {{index .Config.Labels "com.docker.compose.service"}}',*ids[:12]).splitlines()
+        result["available"]=True
+        result["partial"]=len(ids)>12
+        for row in rows:
+            fields=row.split()
+            if len(fields)!=2 or fields[1] not in services or not fields[0].isdigit() or int(fields[0])<=0:continue
+            pid,service=fields
+            try:
+                mountinfo=Path("/proc")/pid/"mountinfo"
+                for line in mountinfo.read_text().splitlines():
+                    left,right=line.split(" - ",1)
+                    mount=left.split()[4]
+                    if mount not in wanted or right.split()[0]!="tmpfs":continue
+                    dev,info=capacity(Path("/proc")/pid/"root"/mount.lstrip("/"))
+                    result["mounts"].append({"service":service,"mount":mount,"device":dev})
+                    result["devices"][dev]=info
+            except (OSError,ValueError,IndexError):result["partial"]=True
+        if not result["mounts"]:result["partial"]=True
+    except (OSError,ValueError,subprocess.SubprocessError):pass
+    return result
+
 def deleted_open(storage,*,limit=3000,seconds=.5):
     result={"allocated_bytes":0,"logical_bytes":0,"files":0,"partial":True,"basis":"sampled_lower_bound_unlinked_open_app_files"}
     seen=set();count=0
@@ -137,4 +172,4 @@ def measure(storage,contract,*,limit=100000,seconds=4,engine=None,include_engine
     if engine is None:engine=engine_metrics() if include_engine else {"available":False}
     if engine.get("root"):fs(Path(engine["root"]))
     partial=partial or bool(errors)
-    return {"at":datetime.now(timezone.utc).isoformat(),"categories":categories,"devices":devices,"filesystems":filesystems,"unknown_sample":unknown,"partial":partial,"errors":errors,"postgres_wal_subset_bytes":wal,"docker":engine,"deleted_open":deleted_open(storage) if include_engine else None,"journals":journals,"basis":"bounded_host_protected_inode_sample; app registry separate"}
+    return {"at":datetime.now(timezone.utc).isoformat(),"categories":categories,"devices":devices,"filesystems":filesystems,"unknown_sample":unknown,"partial":partial,"errors":errors,"postgres_wal_subset_bytes":wal,"docker":engine,"deleted_open":deleted_open(storage) if include_engine else None,"tmpfs":runtime_tmpfs() if include_engine else None,"journals":journals,"basis":"bounded_host_protected_inode_sample; app registry separate"}

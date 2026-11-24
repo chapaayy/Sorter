@@ -85,6 +85,7 @@ class ResultAudit:
                         item=json.loads(line)
                         if item["index"]!=self.index:raise ValueError("Wrong manifest index")
                         key="app/"+(media/relative_media_key(item["copy"])).as_posix()
+                        key.encode("utf-8")
                     except (ValueError,KeyError,TypeError,UnicodeError):
                         invalid=True;break
                     try:
