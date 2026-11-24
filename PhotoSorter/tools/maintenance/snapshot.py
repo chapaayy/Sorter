@@ -19,10 +19,13 @@ import tempfile
 from pathlib import Path,PurePosixPath
 from urllib.parse import urlsplit,unquote
 
-INCLUDED_DIRS=("storage/app",)
+INCLUDED_DIRS=("storage/app","storage/infrastructure/caddy/data","storage/infrastructure/caddy/config")
+# No live PGDATA copy; PostgreSQL uses a verified logical dump. Transient
+# archives and scratch, logs and updater workspaces are reproducible/excluded.
+EXCLUDED_PREFIXES=("storage/app/temporary/",)
 MODEL_DIRS=("storage/app/models","storage/app/cache")
-INCLUDED_FILES=(".env",".env.generated","compose.yaml","PhotoSorter/docker/caddy/Caddyfile","storage/system/state/layout-version")
-SCHEMA_VERSION=2
+INCLUDED_FILES=(".env",".env.generated","compose.yaml","PhotoSorter/docker/caddy/Caddyfile","storage/system/state/layout-version","storage/system/state/update-branch","storage/system/state/log-policy.json")
+SCHEMA_VERSION=3
 BLOCK=1024*1024
 
 def digest(path):
@@ -58,6 +61,7 @@ def validate_rel(name):
     posix=PurePosixPath(name)
     if not name or posix.is_absolute() or any(p in ("..",".","") for p in name.split("/")) or chr(0) in name or "\\" in name:
         raise ValueError("Unsafe backup member")
+    if any(name.startswith(p) for p in EXCLUDED_PREFIXES):raise ValueError("Transient backup member")
     if not (any(name==d or name.startswith(d+"/") for d in INCLUDED_DIRS)
             or name in INCLUDED_FILES):
         raise ValueError("Unexpected backup member: "+name)
@@ -100,6 +104,7 @@ def enumerate_files(root,storage):
             raise ValueError("Missing or symlinked backup directory: "+rel)
         for path in sorted(folder.rglob("*")):
             name=rel+"/"+path.relative_to(folder).as_posix()
+            if any(name.startswith(p) for p in EXCLUDED_PREFIXES):continue
             if path.is_symlink():
                 safe_model_symlink(name,os.readlink(path))
                 if not any(path.resolve(strict=True).is_relative_to(storage/prefix.removeprefix("storage/")) for prefix in MODEL_DIRS):
@@ -127,7 +132,7 @@ def write_payload(root,tar_path,storage):
             info=tar.gettarinfo(str(path),arcname=relative)
             info.uid=10001 if relative.startswith("storage/app/") else 0
             info.gid=info.uid;info.uname="";info.gname=""
-            info.mode=0o600 if relative.startswith(".env") else (before.st_mode&0o777)
+            info.mode=0o600 if relative.startswith((".env","storage/infrastructure/caddy/","storage/system/state/")) else (before.st_mode&0o777)
             symlink_target=None
             if stat.S_ISLNK(before.st_mode):
                 symlink_target=safe_model_symlink(relative,os.readlink(path))
@@ -230,7 +235,7 @@ def verify(archive):
                 raise ValueError("Unexpected regular file instead of model symlink")
             if member.islnk():
                 link=item["hardlink_of"]
-                if not link or member.linkname!=link or link not in listed or not members[link].isfile():
+                if not link or member.linkname!=link or link not in listed or not members[link].isfile() or (name.startswith("storage/app/") != link.startswith("storage/app/")):
                     raise ValueError("Unsafe hardlink in backup")
                 if item["sha256"]!=listed[link]["sha256"] or item["bytes"]!=listed[link]["bytes"]:
                     raise ValueError("Hardlink metadata mismatch")

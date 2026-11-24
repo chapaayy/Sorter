@@ -76,20 +76,22 @@ def overlay_upper_paths(container, proc_root: Path):
 class LiveAudit:
     def __init__(self, project: Path, *, roots=None, project_name="outdoor-sorter",
                  proc_root=Path("/proc"), rediscover_seconds=10,
-                 containers_fn=docker_containers):
+                 containers_fn=docker_containers, storage=None, duration=60, max_bytes=90*1024*1024):
         self.project = Path(project).resolve(strict=True)
         self.project_name = project_name
         self.proc_root = Path(proc_root)
         self.containers_fn = containers_fn
         self.rediscover_seconds = rediscover_seconds
-        self.report = self.project / "PhotoSorter" / "data" / "audits" / "host"
+        self.storage=Path(storage) if storage else self.project/"storage"
+        self.report=self.storage/"logs/audit"
+        self.duration=min(300,max(1,duration))
+        self.max_bytes=min(90*1024*1024,max_bytes)
+        self.written=0
+        self.deadline=time.monotonic()+self.duration
         self.primary_roots = list(roots) if roots is not None else [
-            self.project / "PhotoSorter" / "data",
-            self.project / "Models",
-            Path("/tmp"), Path("/var/tmp"),
-            Path("/var/lib/map-updater"), Path("/usr/local/lib/map-updater"),
+            self.storage/"app",
         ]
-        self.skip_root = self.report.parent
+        self.skip_root = self.report
         self.wd_paths = {}
         self.path_wds = {}
         self.live_roots = {}
@@ -132,31 +134,24 @@ class LiveAudit:
         self.add_watch = library.inotify_add_watch
         self.add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
         self.add_watch.restype = ctypes.c_int
-        if self.report.is_symlink() or not within(self.report.resolve(strict=False), self.project):
+        if self.report.is_symlink() or self.report.resolve(strict=False)!=self.report:
             raise RuntimeError("Audit event output path is not safe")
         self.report.mkdir(parents=True, exist_ok=True)
-        if os.geteuid() == 0:
-            data_gid=(self.project / "PhotoSorter" / "data").stat().st_gid
-            # The API runs as group 10001 and needs directory traversal.
-            # UMask=0027 on the unit otherwise makes root-owned 0750 dirs unreadable.
-            for folder in (self.report.parent, self.report):
-                os.chown(folder, -1, data_gid)
-                os.chmod(folder, 0o750)
-        self.stream = (self.report / "live-events.jsonl").open("a", encoding="utf-8", buffering=1)
-        if os.geteuid() == 0:
-            # The owner-only API runs as uid/gid 10001 and needs read access.
-            os.chown(self.report / "live-events.jsonl", 0,
-                     (self.project / "PhotoSorter" / "data").stat().st_gid)
-            os.chmod(self.report / "live-events.jsonl", 0o640)
-        else:
-            os.chmod(self.report / "live-events.jsonl", 0o644)
+        self.stream=(self.report/"live-events.jsonl").open("w",encoding="utf-8",buffering=1)
+        os.chmod(self.report/"live-events.jsonl",0o644)
         self.emit("observer_started", path=str(self.project), scope="system")
 
     def emit(self, kind, *, path, scope, **details):
         record = {"time_utc": utcnow(), "event": kind, "path": path, "scope": scope}
         record.update(details)
         if self.stream:
-            self.stream.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
+            line=json.dumps(record,ensure_ascii=False,separators=(",",":"))+"\n"
+            size=len(line.encode("utf8"))
+            if self.written+size>self.max_bytes:
+                self.stop=True
+                return
+            self.stream.write(line)
+            self.written+=size
         self.total += 1
         self.events_by_type[kind] = self.events_by_type.get(kind, 0) + 1
         self.last_event_at = record["time_utc"]
@@ -376,14 +371,14 @@ class LiveAudit:
         try:
             self.discover()
             self.state()
-            while not self.stop:
+            while not self.stop and time.monotonic()<self.deadline:
                 if time.monotonic()-self.last_discovery >= self.rediscover_seconds:
                     self.discover()
                 if self.fd is None:
                     break
                 ready,_,_ = select.select([self.fd],[],[],1.0)
                 if ready:
-                    while True:
+                    while not self.stop and time.monotonic()<self.deadline:
                         try:
                             data = os.read(self.fd,1024*1024)
                         except BlockingIOError:
@@ -411,12 +406,18 @@ def main():
     args=parser.parse_args()
     if os.geteuid()!=0:
         parser.error("Host event observation requires root")
-    observer=LiveAudit(args.project_root,project_name=args.project_name)
+    from snapshot import configured_storage_root
+    import fcntl
+    storage=configured_storage_root(args.project_root.resolve())
+    lock=(storage/"logs/audit/observer.lock").open("a")
+    fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    observer=LiveAudit(args.project_root,project_name=args.project_name,storage=storage)
     def shutdown(_signal,_frame):
         observer.stop=True
     signal.signal(signal.SIGTERM,shutdown)
     signal.signal(signal.SIGINT,shutdown)
-    observer.run()
+    try:observer.run()
+    finally:lock.close()
 
 if __name__=="__main__":
     main()

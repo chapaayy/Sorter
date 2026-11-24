@@ -47,7 +47,8 @@ def inventory_csv_report(snapshot_id: str):
     )
 
 
-_HOST_REPORT = DATA_DIR / "audits" / "host"
+_HOST_REPORT = Path("/host-audit")
+_LIVE_REPORT = Path("/logs/audit")
 
 @router.get("/host-audit")
 def host_audit_summary():
@@ -108,7 +109,7 @@ def host_audit_json():
 
 @router.get("/host-audit/live")
 def host_live_audit_status():
-    path = _HOST_REPORT / "live-state.json"
+    path = _LIVE_REPORT / "live-state.json"
     if not path.is_file():
         return {"available": False, "detail": "Наблюдение ещё не запущено"}
     try:
@@ -126,14 +127,14 @@ def host_live_audit_status():
     except (ValueError, TypeError):
         payload["heartbeat_stale"] = True
     payload["running"] = bool(payload.get("running")) and not payload["heartbeat_stale"]
-    payload["download_available"] = (_HOST_REPORT / "live-events.jsonl").is_file()
+    payload["download_available"] = (_LIVE_REPORT / "live-events.jsonl").is_file()
     return payload
 
 
 @router.get("/host-audit/live-events.jsonl")
 def host_live_audit_events():
-    """No page limit or compression: all observed events from observer startup."""
-    path = _HOST_REPORT / "live-events.jsonl"
+    """Bounded latest opt-in observer session."""
+    path = _LIVE_REPORT / "live-events.jsonl"
     if not path.is_file():
         raise HTTPException(404, "Наблюдение ещё не запущено")
     return FileResponse(

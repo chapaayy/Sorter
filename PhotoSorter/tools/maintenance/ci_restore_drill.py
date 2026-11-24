@@ -38,6 +38,10 @@ def main():
             a.mkdir(parents=True);b.mkdir(parents=True)
             (root/"storage"/"app"/"models"/"megaloc").mkdir(parents=True)
             (root/"storage"/"app"/"cache"/"torch"/"hub").mkdir(parents=True)
+            for name in ("data","config"):
+                (root/"storage/infrastructure/caddy"/name).mkdir(parents=True)
+            cert=root/"storage/infrastructure/caddy/data/test-cert.pem"
+            cert.write_bytes(b"synthetic TLS state")
             marker=root/"storage/system/state/layout-version"
             marker.parent.mkdir(parents=True)
             marker.write_text("2\n")
@@ -57,6 +61,7 @@ def main():
             result_b=restored/(b/"ref.jpg").relative_to(root)
             assert result_a.read_bytes()==data and result_b.read_bytes()==data
             assert result_a.stat().st_ino==result_b.stat().st_ino
+            assert (restored/"storage/infrastructure/caddy/data/test-cert.pem").read_bytes()==b"synthetic TLS state"
             with psycopg.connect(target) as conn:
                 row=conn.execute("SELECT digest FROM ci_restore_marker WHERE key=%s",(token,)).fetchone()
                 assert row and row[0]==signature

@@ -63,7 +63,7 @@ onMounted(()=>{void refresh()})
   <section class="panel stack" aria-label="Полный аудит сервера">
     <div class="row between wrap">
       <div class="stack" style="gap:4px">
-        <h2>Аудит всего сервера MAP</h2>
+        <h2>Диагностический снимок MAP</h2>
         <p class="meta">Файлы приложения, PostgreSQL и Caddy, Docker, слои и кэш сборки,
           временные каталоги контейнеров, системные журналы. Только чтение.</p>
       </div>
@@ -134,15 +134,14 @@ onMounted(()=>{void refresh()})
         <ul><li v-for="(item,index) in report.errors" :key="index">{{item}}</li></ul>
       </details>
       <p class="meta">Это снимок файлов на диске. Файлы, которые были созданы и удалены
-        до проверки, нельзя увидеть задним числом. Для них потребуется отдельный
-        непрерывный журнал событий. Ничего не очищается.</p>
+        до проверки, нельзя увидеть задним числом. Для них доступно только ограниченное наблюдение по запросу. Ничего не очищается.</p>
     </template>
     <p v-else-if="!loading" class="meta">Серверный аудит ещё не выполнялся.
       Первая проверка запускается на VPS с правами администратора.</p>
     <div class="stack" style="gap:8px" aria-label="Непрерывный учёт файлов">
-      <h3>Непрерывный учёт файловых событий</h3>
+      <h3>Ограниченное наблюдение файловых событий</h3>
       <p v-if="!live?.available" class="meta">
-        Наблюдатель ещё не запускался. Он устанавливается как системная служба при обновлении MAP от root.
+        Наблюдатель запускается вручную на ограниченное время. Постоянная служба не используется.
       </p>
       <template v-else>
         <p class="meta">
@@ -157,7 +156,7 @@ onMounted(()=>{void refresh()})
         </p>
         <a v-if="live.download_available" class="btn secondary"
           href="/api/storage/host-audit/live-events.jsonl"
-          download="map-file-live-events.jsonl">Скачать все события файлов JSONL</a>
+          download="map-file-live-events.jsonl">Скачать события последнего сеанса JSONL</a>
         <details v-if="live.warnings?.length">
           <summary>Ошибки наблюдения ({{live.warnings.length}})</summary>
           <ul><li v-for="(item,index) in live.warnings" :key="index">{{item}}</li></ul>
@@ -168,7 +167,7 @@ onMounted(()=>{void refresh()})
         Пропуски и переполнение очереди фиксируются, но не скрываются.</p>
     </div>
     <details>
-      <summary>Команда запуска полной проверки на VPS</summary>
+      <summary>Команда запуска диагностики на VPS</summary>
       <p class="meta">Нужны права root: Docker-тома и временные файлы контейнеров не доступны
         обычному пользователю сайта. Команда только читает файлы и создаёт CSV-отчёт.</p>
       <code class="command">cd /opt/Sorter &amp;&amp; sudo python3 PhotoSorter/tools/maintenance/audit_host.py --project-root /opt/Sorter</code>

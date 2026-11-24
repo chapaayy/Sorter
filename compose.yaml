@@ -64,6 +64,8 @@ services:
       - ${MAP_STORAGE_ROOT:-./storage}/system/updater/rpc:/run/map-updater-rpc:ro
       - ${MAP_STORAGE_ROOT:-./storage}/logs/api:/logs/api
       - ${MAP_STORAGE_ROOT:-./storage}/logs/models:/logs/models
+      - ${MAP_STORAGE_ROOT:-./storage}/system/audits:/host-audit:ro
+      - ${MAP_STORAGE_ROOT:-./storage}/logs/audit:/logs/audit:ro
       - ${MAP_STORAGE_ROOT:-./storage}/logs/processing:/logs/processing:ro
     depends_on:
       postgres:

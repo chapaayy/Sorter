@@ -7,6 +7,8 @@ This is a point-in-time census, NOT a lossless log of transient file events.
 """
 from __future__ import annotations
 import argparse
+import fcntl
+import resource
 import csv
 import hashlib
 import importlib.util
@@ -66,13 +68,17 @@ def layers(root, images, warnings):
 
 class HostAudit:
     def __init__(self, project, *, project_name='outdoor-sorter',
-                 call=docker, shared_roots=None, proc_root=Path('/proc')):
+                 call=docker, shared_roots=None, proc_root=Path('/proc'), storage=None, bounded=False):
         self.project = Path(project).resolve(strict=True)
         self.name = project_name
         self.call = call
         self.shared_roots = [Path(p) for p in (DEFAULT_SHARED if shared_roots is None else shared_roots)]
         self.proc_root = Path(proc_root)
-        self.output = self.project/'PhotoSorter'/'data'/'audits'/'host'
+        self.storage=Path(storage) if storage else self.project/'storage'
+        self.output=self.storage/'system/audits'
+        self.bounded=bounded
+        self.deadline=time.monotonic()+60
+        self.max_entries=100000
         self.errors = []
         self.count = 0
         self.skipped = 0
@@ -184,6 +190,10 @@ class HostAudit:
             return ('runtime_view','container_root_mount',owner,'non_additive_view')
         if hint=='open_deleted_fd':
             return ('app','open_deleted_file',owner,'disk')
+        if within(path,self.storage):
+            rel=path.relative_to(self.storage).parts
+            category=('/'.join(rel[:2]) if rel else 'storage')
+            return ('app',category,self.name,'disk')
         if within(path,self.project):
             rel = path.relative_to(self.project).parts
             if len(rel)>=3 and rel[:3]==('PhotoSorter','data','uploads'):
@@ -243,6 +253,8 @@ class HostAudit:
         return ('shared_unattributed',hint,owner,'disk')
 
     def add(self,writer,path,kind,owner,*,view=False,display=None,entry=None):
+        if self.bounded and (self.count>=self.max_entries or time.monotonic()>self.deadline):
+            raise TimeoutError('Diagnostic scan budget reached; previous report preserved')
         try:
             info = entry or path.lstat()
         except (OSError,ValueError):
@@ -384,7 +396,7 @@ class HostAudit:
         if target.is_symlink():
             raise RuntimeError('Audit directory is a symlink')
         target.mkdir(parents=True,exist_ok=True)
-        if not within(target.resolve(),self.project):
+        if target.resolve()!=target or not within(target.resolve(),self.storage):
             raise RuntimeError('Audit output escaped the project')
         first=datetime.now(timezone.utc)
         tmpcsv=tmpjson=tmpwrites=None
@@ -395,26 +407,28 @@ class HostAudit:
             with os.fdopen(fd,'w',encoding='utf-8-sig',newline='') as out:
                 writer=csv.writer(out,delimiter=';',lineterminator='\n')
                 writer.writerow(COLUMNS)
-                self.walk(writer,self.project,'project',self.name)
-                if self.docker_root and self.docker_root.is_dir():
+                self.walk(writer,self.storage if self.bounded else self.project,'project',self.name)
+                if self.bounded:
+                    self.errors.append('Bounded diagnostic: host-wide file census disabled; engine metrics are read-only Docker summaries.')
+                elif self.docker_root and self.docker_root.is_dir():
                     self.walk(writer,self.docker_root,'docker_global','Docker')
                 else:
                     self.errors.append('Docker root not scanned')
-                for root,name in (self.project_volumes+self.project_uppers+self.project_containers):
+                for root,name in ([] if self.bounded else self.project_volumes+self.project_uppers+self.project_containers):
                     if not (self.docker_root and within(root,self.docker_root)):
                         self.walk(writer,root,'docker_external',name)
-                for root in self.project_layers:
+                for root in ([] if self.bounded else self.project_layers):
                     if not (self.docker_root and within(root,self.docker_root)):
                         self.walk(writer,root,'image_external','MAP image')
-                for root in (Path('/var/lib/map-updater'),Path('/usr/local/lib/map-updater')):
+                for root in (() if self.bounded else (Path('/usr/local/lib/map-updater'),)):
                     if root.is_dir() and not within(root,self.project):
                         self.walk(writer,root,'host_updater','MAP updater')
                 unit=Path('/etc/systemd/system/map-updater.service')
                 if unit.is_file():
                     self.add(writer,unit,'host_updater','MAP updater')
-                for root,kind,name in self.additional_roots:
+                for root,kind,name in ([] if self.bounded else self.additional_roots):
                     self.walk(writer,root,kind,name)
-                for root in self.shared_roots:
+                for root in ([] if self.bounded else self.shared_roots):
                     if root.is_dir() and not within(root,self.project) and not (
                         self.docker_root and within(root,self.docker_root)):
                         self.walk(writer,root,'shared_system','not MAP-specific')
@@ -427,11 +441,12 @@ class HostAudit:
                         if root.is_dir() and not root.is_symlink():
                             self.walk(writer,root,'container_tmp_view',
                                       container.get('Name','').lstrip('/'),view=True)
-                self.host_dependencies(writer)
+                if not self.bounded:self.host_dependencies(writer)
                 self.deleted_fds(writer)
             # List the *potential* writes in source code as a second audit.
             # It never opens photos, references or model files.
             try:
+                if self.bounded:raise ImportError('Source inventory intentionally disabled in operational diagnostic')
                 module_path=Path(__file__).with_name('audit_write_sites.py')
                 spec=importlib.util.spec_from_file_location('map_audit_write_sites',module_path)
                 module=importlib.util.module_from_spec(spec)
@@ -440,7 +455,7 @@ class HostAudit:
                 os.close(fd)
                 write_sites_count=module.export_csv(self.project,Path(tmpwrites))
             except (OSError,RuntimeError,ImportError,ValueError) as exc:
-                self.errors.append('Source write-site inventory failed: '+str(exc)[:200])
+                if not self.bounded:self.errors.append('Source write-site inventory failed: '+str(exc)[:200])
                 if tmpwrites and os.path.exists(tmpwrites):
                     os.unlink(tmpwrites)
                 tmpwrites=None
@@ -512,10 +527,21 @@ def main():
     options=parser.parse_args()
     if os.geteuid()!=0:
         parser.error('Use sudo/root: Docker and process files require host permissions')
-    report=HostAudit(options.project_root,project_name=options.project_name).execute()
+    from snapshot import configured_storage_root
+    from host_logs import record
+    storage=configured_storage_root(options.project_root.resolve())
+    directory=storage/'system/audits'
+    with (directory/'diagnostic.lock').open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        # Protect the host from unlimited output even on unexpected native paths.
+        resource.setrlimit(resource.RLIMIT_FSIZE,(32*1024*1024,32*1024*1024))
+        for stale in directory.glob('.host-audit-*.tmp'):
+            if stale.is_file() and not stale.is_symlink():stale.unlink()
+        report=HostAudit(options.project_root,project_name=options.project_name,storage=storage,bounded=True).execute()
+        record(storage/'logs/audit','audit','diagnostic_completed')
     print('Files:',report['files_scanned'],'allocated bytes:',report['allocated_bytes'],
           'skipped:',report['skipped_paths'])
-    print('Report:',Path(options.project_root)/'PhotoSorter/data/audits/host/latest.csv')
+    print('Report:',storage/'system/audits/latest.csv')
     if report['errors']:
         print('Coverage warnings:',len(report['errors']),file=sys.stderr)
     return 0 if not report['errors'] else 2

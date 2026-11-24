@@ -23,6 +23,9 @@ def project(tmp_path,monkeypatch):
     (root/"storage"/"app"/"state"/"uploads"/"test-batch").mkdir(parents=True)
     (root/"storage"/"app"/"models"/"megaloc").mkdir(parents=True)
     (root/"storage"/"app"/"cache"/"torch"/"hub").mkdir(parents=True)
+    for name in ("data","config"):
+        (root/"storage/infrastructure/caddy"/name).mkdir(parents=True)
+    (root/"storage/infrastructure/caddy/data/test-cert.pem").write_bytes(b"synthetic TLS state")
     marker=root/"storage/system/state/layout-version"
     marker.parent.mkdir(parents=True)
     marker.write_text("2\n")
@@ -62,6 +65,7 @@ def test_backup_restore_verifies_checksum_and_inode(project,tmp_path):
     assert a.read_bytes()==source.read_bytes()
     assert b.read_bytes()==target.read_bytes()
     assert a.stat().st_ino==b.stat().st_ino
+    assert (restored/"storage/infrastructure/caddy/data/test-cert.pem").read_bytes()==b"synthetic TLS state"
     assert ("pg_dump",TEST_DB) in commands and ("pg_restore",RESTORE_DB) in commands
 
 def test_backup_refuses_symlinks_and_project_internal_destination(project,tmp_path):

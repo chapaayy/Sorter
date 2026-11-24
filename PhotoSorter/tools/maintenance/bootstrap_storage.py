@@ -94,7 +94,7 @@ def bootstrap(root, *, host_uid=0, host_gid=0, app_uid=APP_UID, app_gid=APP_GID,
                         if key=="logs/postgres":uid,gid=pg_uid,pg_gid
                         if key in ("logs/api","logs/worker","logs/cleanup","logs/thumbnail","logs/processing","logs/models"):
                             uid,gid=app_uid,app_gid
-                        if key in ("system/updater/control","system/updater/rpc"):mode=0o755
+                        if key in ("system/updater/control","system/updater/rpc","system/audits","logs/audit"):mode=0o755
                         fd=stack.enter_context(child_directory(fd,part,uid,gid,mode,create=not check))
             with child_directory(root_fd, "app", app_uid, app_gid, 0o750, create=not check) as app_fd:
                 for rel in APP_DIRS:
