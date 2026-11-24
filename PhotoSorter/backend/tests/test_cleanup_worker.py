@@ -12,7 +12,7 @@ def test_deletions_run_while_zip_maintenance_is_busy(monkeypatch):
     def slow_zip(**_):
         archive_started.set()
         release_archive.wait(5)
-        return []
+        return 0
 
     def delete():
         delete_seen.set()
@@ -22,7 +22,7 @@ def test_deletions_run_while_zip_maintenance_is_busy(monkeypatch):
     monkeypatch.setattr(worker,"wait_and_initialize",lambda:None)
     monkeypatch.setattr(worker.signal,"signal",lambda *_:None)
     monkeypatch.setattr(worker.heartbeat,"start",lambda _: (Event(),ThreadStub()))
-    monkeypatch.setattr(worker.archive_retries,"process_pending",slow_zip)
+    monkeypatch.setattr(worker.archive_cache,"collect",slow_zip)
     monkeypatch.setattr(worker.cleanup,"process_pending",delete)
     monkeypatch.setattr(worker.auto_processing,"schedule_ready",lambda:[])
     monkeypatch.setattr(worker.retention,"due_batch_ids",lambda:[])

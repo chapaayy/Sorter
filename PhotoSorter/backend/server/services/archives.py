@@ -99,7 +99,7 @@ def _build(target,selected,total,progress,should_stop,root):
                     if progress:progress(done,total)
             output.flush()
             os.fsync(output.fileno())
-        # Publishing an archive is the last completion gate: verify
+        # Publishing an archive is atomic: verify
         # every entry's CRC and count before making the ZIP visible.
         with zipfile.ZipFile(tmp,"r") as verified:
             if len(verified.infolist())!=len(selected):
@@ -107,6 +107,7 @@ def _build(target,selected,total,progress,should_stop,root):
             corrupt=verified.testzip()
             if corrupt is not None:
                 raise OSError("Ошибка проверки ZIP: "+corrupt)
+        os.utime(tmp,None)
         os.chmod(tmp,0o444)
         os.replace(tmp,target)
         return target

@@ -102,8 +102,7 @@ def prepare(plan: ReferenceExport) -> Path:
     lock = directory / (plan.key + ".lock")
     if lock.is_symlink() or target.is_symlink():
         raise HTTPException(409, "Небезопасный путь ZIP образцов")
-    descriptor = os.open(lock, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
-    with archive_cache.pin(directory), os.fdopen(descriptor, "a+b") as handle:
+    with archive_cache.pin(directory), os.fdopen(os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600), "a+b") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
             if target.exists():
@@ -136,6 +135,7 @@ def _build(plan,target,directory):
         with zipfile.ZipFile(temporary) as archive:
             if len(archive.infolist()) != len(plan.files) or archive.testzip() is not None:
                 raise OSError("Проверка целостности ZIP образцов не пройдена")
+        os.utime(temporary, None)
         os.chmod(temporary, 0o444)
         os.replace(temporary, target)
         return target
