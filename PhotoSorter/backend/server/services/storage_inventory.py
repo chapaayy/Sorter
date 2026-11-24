@@ -229,14 +229,8 @@ def scan():
     if not _scan_lock.acquire(blocking=False):
         raise HTTPException(409, "Сканирование уже выполняется")
     try:
-        try:
-            names, jobs = _metadata()
-            metadata_available = True
-        except Exception:
-            names, jobs = {}, {}
-            metadata_available = False
-        summary, entries = _collect(DATA_DIR, MODELS_DIR, names, jobs, model_cache_dir=MODEL_CACHE_DIR,app_root=config.APP_STORAGE_ROOT)
-        summary["batch_metadata_available"] = metadata_available
+        from ..storage.reporting import inventory
+        summary, entries = inventory()
         with _state_lock:
             _snapshot = (summary, entries)
         return summary

@@ -9,7 +9,7 @@ from app import config
 from ..database import connect
 from .registry import observe,stat_key
 LEADER=723409190
-BATCH=512
+BATCH=1024
 FULL_INTERVAL=900
 TEMP_INTERVAL=5
 
@@ -66,8 +66,19 @@ class Reconciler:
             for row in rows:
                 db.execute("DELETE FROM storage_dirty WHERE path=%s AND revision=%s",(row["path"],row["revision"]))
             if self.dirty is None:
-                row=db.execute("SELECT path,revision FROM storage_dirty WHERE subtree ORDER BY touched_at LIMIT 1").fetchone()
-                if row:self.dirty=(row,walk(self.root,row["path"],self.error),0)
+                # Most scratch scopes are short-lived; discard their dirty key
+                # without spending two ticks on an empty directory. Preserve
+                # scopes with recorded files for the bounded recheck below.
+                candidates=db.execute("SELECT path,revision FROM storage_dirty WHERE subtree ORDER BY touched_at LIMIT %s",(limit,)).fetchall()
+                for row in candidates:
+                    try:stat_key(self.root,row["path"])
+                    except (FileNotFoundError,NotADirectoryError):
+                        if not db.execute("SELECT 1 FROM storage_files WHERE starts_with(path,%s) LIMIT 1",(row["path"]+"/",)).fetchone():
+                            db.execute("DELETE FROM storage_dirty WHERE path=%s AND revision=%s",(row["path"],row["revision"]))
+                            continue
+                    except OSError:pass
+                    self.dirty=(row,walk(self.root,row["path"],self.error),0)
+                    break
             if self.dirty:
                 row,iterator,cursor=self.dirty
                 if iterator is not None:
@@ -113,3 +124,8 @@ class Reconciler:
             from .accounting import refresh
             refresh(db)
             return True
+    def close(self):
+        for iterator in (self.full,self.temp,self.dirty[1] if self.dirty else None):
+            if iterator is not None:iterator.close()
+    @property
+    def busy(self):return self.full is not None or self.sweep or self.dirty is not None

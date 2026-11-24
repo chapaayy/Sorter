@@ -5,7 +5,7 @@ from pathlib import Path
 from string import Formatter
 from app import config
 from app.storage.categories import CATEGORIES,Category
-from app.storage.paths import _field,_check_prefix
+from app.storage.paths import _field,_check_prefix,uuid_key
 from ..database import connect
 
 # Compile the actual contract, not a second path layout.
@@ -31,6 +31,7 @@ def classify(key):
         try:
             for name,value in fields.items():_field(name,value)
             _check_prefix(fields)
+            if category in (Category.TRANSCODE_TEMP,Category.MODEL_DOWNLOAD):uuid_key(fields["task_id"])
         except ValueError:continue
         if category in (Category.ARCHIVE_LOCK,Category.ZIP_FRAGMENT,Category.ZIP_RESULTS,Category.ZIP_CONSTRUCTION,Category.ZIP_REFERENCES):
             name=key.rsplit("/",1)[-1]
@@ -80,21 +81,27 @@ def stat_key(root,key):
 
 def observe(db,root,keys,generation=None):
     """Small batches. Metadata ownership is authoritative, path labels are not."""
-    pending=[]
+    pending=[];missing=[];unreadable=[]
     for key in dict.fromkeys(keys):
+        try:key.encode("utf8")
+        except UnicodeEncodeError:continue
         try:st=stat_key(root,key)
         except (FileNotFoundError,NotADirectoryError):
-            db.execute("DELETE FROM storage_files WHERE path=%s",(key,))
+            missing.append(key)
             continue
         except OSError:
-            db.execute("UPDATE storage_files SET issue='unreadable' WHERE path=%s",(key,))
+            unreadable.append(key)
             continue
-        if stat.S_ISDIR(st.st_mode):continue
+        if stat.S_ISDIR(st.st_mode):
+            missing.append(key);continue
         category,scope,fields,issue=classify(key)
         kind="file" if stat.S_ISREG(st.st_mode) else "symlink" if stat.S_ISLNK(st.st_mode) else "other"
         if kind!="file" and not (kind=="symlink" and category=="technical_cache"):
             issue="unexpected_"+kind
         pending.append((key,st,category,scope,fields,issue,kind))
+    if missing:db.execute("DELETE FROM storage_files WHERE path=ANY(%s)",(missing,))
+    if unreadable:db.execute("UPDATE storage_files SET issue='unreadable' WHERE path=ANY(%s)",(unreadable,))
+    if not pending:return 0
     tasks=[p[4]["task_id"] for p in pending if p[2]=="transcode_temp"]
     task_rows={str(r["id"]):str(r["batch_id"]) for r in db.execute("SELECT id,batch_id FROM uploads WHERE id=ANY(%s::uuid[])",(tasks,))}
     batches={p[4]["batch_uuid"] for p in pending if "batch_uuid" in p[4]}

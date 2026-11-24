@@ -196,14 +196,5 @@ def _scan(data_dir:Path,models_dir:Path,batch_names:dict,run_to_batch:dict,
             "basis":"st_blocks_512_inode_deduplicated"}
 
 def breakdown():
-    """Triggered only by the explicit UI button, never the 20s polling."""
-    names,lookup={},{}
-    metadata_available=True
-    try:names,lookup=_metadata()
-    except Exception:metadata_available=False
-    report=_scan(DATA_DIR,MODELS_DIR,names,lookup,model_cache_dir=MODEL_CACHE_DIR,app_root=config.APP_STORAGE_ROOT)
-    report["batch_metadata_available"]=metadata_available
-    from .reference_gc import history_usage
-    try:report["reference_history"]=history_usage()
-    except Exception:report["reference_history"]=None
-    return report
+    from ..storage.reporting import breakdown as registry_breakdown
+    return registry_breakdown()

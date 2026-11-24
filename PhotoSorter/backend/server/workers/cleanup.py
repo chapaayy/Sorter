@@ -76,8 +76,10 @@ def main():
                     try:reconciler.tick()
                     except Exception:
                         logging.exception('Storage reconciliation failure')
+                        reconciler.close()
                         reconciler=Reconciler()
-            STOPPED.wait(5)
+            STOPPED.wait(1 if reconciler.busy else 5)
+        reconciler.close()
     accounting=threading.Thread(name='storage-accounting',target=accounting_loop)
     accounting.start()
     try:

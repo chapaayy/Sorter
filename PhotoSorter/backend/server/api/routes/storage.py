@@ -6,6 +6,7 @@ from ...services import storage_inventory
 from fastapi import Query
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi import HTTPException
+from ...storage.reporting import issues
 from pathlib import Path
 from datetime import datetime, timezone
 import json
@@ -14,6 +15,10 @@ router=APIRouter(prefix="/api/storage",tags=["storage"])
 
 @router.get("/usage")
 def storage_usage():return usage()
+
+@router.get("/accounting/issues")
+def accounting_issues(offset:int=Query(0,ge=0),limit:int=Query(100,ge=1,le=200)):
+    return issues(limit,offset)
 
 @router.get("/breakdown")
 def storage_breakdown():return breakdown()
