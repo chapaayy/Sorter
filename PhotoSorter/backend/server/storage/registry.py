@@ -6,6 +6,7 @@ from string import Formatter
 from app import config
 from app.storage.categories import CATEGORIES,Category
 from app.storage.paths import _field,_check_prefix,uuid_key
+from app.results.exporter import MANIFEST_NAME
 from ..database import connect
 
 # Compile the actual contract, not a second path layout.
@@ -47,7 +48,8 @@ def classify(key):
                 except ValueError:continue
         if category==Category.ATOMIC_FRAGMENT and not key.endswith("/fragment"):category=Category.SCRATCH
         if category==Category.REFERENCE_GALLERY:return "unknown","unknown",fields,"unexpected_gallery_file"
-        return category.value,CATEGORIES[category]["scope"],fields,None
+        issue="unexpected_result_metadata" if category==Category.RESULT_METADATA and not key.endswith("/metadata/"+MANIFEST_NAME) else None
+        return category.value,CATEGORIES[category]["scope"],fields,issue
     return "unknown","unknown",{},"unclassified_path"
 
 def key_for(path,root=None):
@@ -79,18 +81,19 @@ def stat_key(root,key):
         return os.stat(parts[-1],dir_fd=fd,follow_symlinks=False)
     finally:os.close(fd)
 
-def observe(db,root,keys,generation=None):
+def observe(db,root,keys,generation=None,onerror=lambda:None):
     """Small batches. Metadata ownership is authoritative, path labels are not."""
     pending=[];missing=[];unreadable=[]
     for key in dict.fromkeys(keys):
         try:key.encode("utf8")
-        except UnicodeEncodeError:continue
+        except UnicodeEncodeError:onerror();continue
         try:st=stat_key(root,key)
         except (FileNotFoundError,NotADirectoryError):
             missing.append(key)
             continue
         except OSError:
             unreadable.append(key)
+            onerror()
             continue
         if stat.S_ISDIR(st.st_mode):
             missing.append(key);continue
@@ -103,7 +106,7 @@ def observe(db,root,keys,generation=None):
     if unreadable:db.execute("UPDATE storage_files SET issue='unreadable' WHERE path=ANY(%s)",(unreadable,))
     if not pending:return 0
     tasks=[p[4]["task_id"] for p in pending if p[2]=="transcode_temp"]
-    task_rows={str(r["id"]):str(r["batch_id"]) for r in db.execute("SELECT id,batch_id FROM uploads WHERE id=ANY(%s::uuid[])",(tasks,))}
+    task_rows={str(r["id"]):str(r["batch_id"]) for r in db.execute("SELECT id,batch_id FROM uploads WHERE kind='fo' AND id=ANY(%s::uuid[])",(tasks,))}
     batches={p[4]["batch_uuid"] for p in pending if "batch_uuid" in p[4]}
     batches.update(task_rows.values())
     runs={p[4]["run_id"] for p in pending if "run_id" in p[4]}
@@ -112,7 +115,7 @@ def observe(db,root,keys,generation=None):
     batch_rows={str(r["id"]):r["owner_id"] for r in db.execute("SELECT id,owner_id FROM batches WHERE id=ANY(%s::uuid[])",(list(batches),))}
     owner_ids={int(p[4]["user_id"]) for p in pending if "user_id" in p[4]}
     owners={r["id"] for r in db.execute("SELECT id FROM users WHERE id=ANY(%s::bigint[])",(list(owner_ids),))}
-    uploads={str(r["id"]):r for r in db.execute("SELECT id,batch_id,target_path,media_output_path,declared_size,finalized FROM uploads WHERE id=ANY(%s::uuid[])",([p[4]["upload_uuid"] for p in pending if "upload_uuid" in p[4] and p[2] in ("fo_original","fo_normalized","fo_upload_part")],))}
+    uploads={str(r["id"]):r for r in db.execute("SELECT id,batch_id,target_path,media_output_path,declared_size,received,finalized FROM uploads WHERE kind='fo' AND id=ANY(%s::uuid[])",([p[4]["upload_uuid"] for p in pending if "upload_uuid" in p[4] and p[2] in ("fo_original","fo_normalized","fo_upload_part")],))}
     hashes=[p[4]["sha256"] for p in pending if p[2]=="reference_object"]
     refs={r["source_hash"]:r["declared_size"] for r in db.execute("SELECT source_hash,declared_size FROM reference_physical_objects WHERE source_hash=ANY(%s)",(hashes,))}
     embeddings={(r["source_hash"],r["model_signature"]):r["cache_path"] for r in db.execute(
@@ -125,32 +128,45 @@ def observe(db,root,keys,generation=None):
     for key,st,category,scope,fields,issue,kind in pending:
         user=int(fields["user_id"]) if "user_id" in fields else None
         batch=fields.get("batch_uuid");run=fields.get("run_id")
-        if category=="transcode_temp":batch=task_rows.get(fields["task_id"])
+        if category=="transcode_temp":
+            batch=task_rows.get(fields["task_id"])
+            if batch is None:issue=issue or "orphan_transcode"
         if category=="reference_upload_part" and (fields["session_uuid"],fields["upload_uuid"]) not in ref_parts:issue=issue or "orphan_reference_upload"
         if run:
             row=run_rows.get(run)
             if row:
                 actual=str(row["batch_id"])
                 if batch and batch!=actual:issue="run_batch_mismatch"
-                else:batch=actual
-            elif scope=="personal":issue="orphan_run"
+                batch=actual
+            else:issue=issue or "orphan_run"
         if batch:
             actual=batch_rows.get(batch)
-            if actual is None:issue=issue or "orphan_batch"
-            elif user is not None and actual!=user:issue="owner_mismatch"
-            elif user is None:user=actual
-        if "user_id" in fields and int(fields["user_id"]) not in owners:issue=issue or "orphan_owner"
+            if actual is None:
+                issue=issue or "orphan_batch"
+                user=None
+            else:
+                if user is not None and actual!=user:issue=issue or "owner_mismatch"
+                # The owner of the authoritative batch is never inferred from
+                # the directory label, even when the label is wrong.
+                user=actual
+        if "user_id" in fields and int(fields["user_id"]) not in owners:
+            issue=issue or "orphan_owner"
+            if batch is None:user=None
         if category in ("fo_original","fo_normalized","fo_upload_part"):
             row=uploads.get(fields.get("upload_uuid"))
             if not row or str(row["batch_id"])!=batch:issue=issue or "orphan_upload"
-            elif category!="fo_upload_part":
+            elif category=="fo_upload_part":
+                if row["finalized"]:issue=issue or "leftover_finalized_part"
+                elif st.st_size!=row["received"]:issue=issue or "part_receipt_size_mismatch"
+            else:
                 expected=row["target_path"] if category=="fo_original" else row["media_output_path"]
-                if expected!=str(root/key[4:]):issue=issue or "unpublished_or_unexpected_path"
-                elif category=="fo_original" and st.st_size!=row["declared_size"]:issue="size_mismatch"
+                if not row["finalized"]:issue=issue or "incomplete_publication"
+                elif expected!=str(root/key[4:]):issue=issue or "unpublished_or_unexpected_path"
+                elif category=="fo_original" and st.st_size!=row["declared_size"]:issue=issue or "size_mismatch"
         if category=="reference_object":
             size=refs.get(fields["sha256"])
             if size is None:issue=issue or "orphan_reference"
-            elif size!=st.st_size:issue="size_mismatch"
+            elif size!=st.st_size:issue=issue or "size_mismatch"
         if category=="reference_embedding" and embeddings.get((fields["sha256"],fields["model_signature"]))!=str(root/key[4:]):
             issue=issue or "orphan_or_mismatched_embedding"
         values.append((key,category,scope,user,batch,run,st.st_dev,st.st_ino,st.st_size,

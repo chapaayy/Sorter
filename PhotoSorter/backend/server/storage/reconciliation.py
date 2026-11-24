@@ -56,14 +56,14 @@ class Reconciler:
         while len(keys)<limit and time.monotonic()<deadline:
             try:keys.append(next(iterator))
             except StopIteration:done=True;break
-        observe(db,self.root,keys,generation)
+        observe(db,self.root,keys,generation,onerror=self.error)
         return done
     def tick(self,limit=BATCH):
         with connect() as db:
             if not db.execute("SELECT pg_try_advisory_xact_lock(%s) AS ok",(LEADER,)).fetchone()["ok"]:return False
             # Coalesced exact file updates first; trees are streamed over ticks.
             rows=db.execute("SELECT path,revision,subtree FROM storage_dirty WHERE NOT subtree ORDER BY touched_at LIMIT %s",(limit,)).fetchall()
-            observe(db,self.root,[r["path"] for r in rows],self.generation)
+            observe(db,self.root,[r["path"] for r in rows],self.generation,onerror=self.error)
             for row in rows:
                 db.execute("DELETE FROM storage_dirty WHERE path=%s AND revision=%s",(row["path"],row["revision"]))
             if self.dirty is None:
@@ -89,7 +89,7 @@ class Reconciler:
                     # another writer may already have recreated a file.
                     old=db.execute("SELECT id,path FROM storage_files WHERE id>%s AND (path=%s OR starts_with(path,%s)) ORDER BY id LIMIT %s",
                                    (cursor,row["path"],row["path"]+"/",limit)).fetchall()
-                    observe(db,self.root,[r["path"] for r in old],self.generation)
+                    observe(db,self.root,[r["path"] for r in old],self.generation,onerror=self.error)
                     if old:self.dirty=(row,None,old[-1]["id"])
                     else:
                         db.execute("DELETE FROM storage_dirty WHERE path=%s AND revision=%s",(row["path"],row["revision"]))
@@ -104,7 +104,7 @@ class Reconciler:
             if self.sweep:
                 old=db.execute("SELECT id,path FROM storage_files WHERE id>%s AND seen_generation IS DISTINCT FROM %s ORDER BY id LIMIT %s",
                                (self.cursor,self.generation,limit)).fetchall()
-                observe(db,self.root,[r["path"] for r in old],self.generation)
+                observe(db,self.root,[r["path"] for r in old],self.generation,onerror=self.error)
                 if old:self.cursor=old[-1]["id"]
                 else:
                     self.sweep=False;self.results=ResultAudit()
@@ -120,10 +120,11 @@ class Reconciler:
             # between full passes (native unlink and crashed process recovery).
             old=db.execute("SELECT id,path FROM storage_files WHERE scope='temporary' AND id>%s ORDER BY id LIMIT %s",
                            (self.temp_cursor,limit)).fetchall()
-            observe(db,self.root,[r["path"] for r in old],self.generation)
+            observe(db,self.root,[r["path"] for r in old],self.generation,onerror=self.error)
             self.temp_cursor=old[-1]["id"] if old else 0
             from .reservations import recover
             self.reservation_cursor=recover(db,after=self.reservation_cursor)
+            db.execute("UPDATE storage_accounting_state SET errors=%s WHERE errors IS DISTINCT FROM %s",(self.errors,self.errors))
             from .accounting import refresh
             refresh(db,force=finished)
             return True

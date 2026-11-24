@@ -198,9 +198,17 @@ def test_missing_published_manifest_and_stale_snapshot(system):
     key=registry.key_for(manifest)
     media_key=registry.key_for(media)
     assert not any(row["path"] in (key,media_key) for row in reporting.issues()["missing"])
+    extra=media.with_name("unexpected.jpg")
+    extra.write_bytes(b"unexpected")
+    data=settle()
+    assert data["issues"]["unlisted_result_media"]==1
+    assert any(row["path"]==registry.key_for(extra) and row["issue"]=="unlisted_result_media" for row in reporting.issues()["files"])
+    assert extra.read_bytes()==b"unexpected"
+    extra.unlink()
     media.unlink()
     data=settle()
     assert data["issues"]["missing_result_media"]==1
+    assert "unlisted_result_media" not in data["issues"]
     assert any(row["path"]==media_key for row in reporting.issues()["missing"])
     media.write_bytes(b"media")
     data=settle()
@@ -216,3 +224,24 @@ def test_missing_published_manifest_and_stale_snapshot(system):
     with database.connect() as db:
         db.execute("UPDATE storage_accounting_state SET sampled_at=now()-interval '2 minutes'")
     assert snapshot()["stale"] and snapshot()["partial"]
+
+def test_mismatched_owner_and_incomplete_part_are_diagnostic_only(system):
+    batch=_batch(system)
+    with database.connect() as db:
+        owner=db.execute("SELECT owner_id FROM batches WHERE id=%s",(batch,)).fetchone()["owner_id"]
+        other=db.execute("INSERT INTO users(username,access_role) VALUES (%s,'viewer') RETURNING id",
+                         ("mismatch-"+uuid.uuid4().hex,)).fetchone()["id"]
+        upload=db.execute("SELECT id,target_path FROM uploads WHERE batch_id=%s",(batch,)).fetchone()
+    original=Path(upload["target_path"])
+    wrong=managed_path(Category.FO_ORIGINAL,user_id=other,batch_uuid=batch,upload_uuid=upload["id"],ext=original.suffix.lstrip("."))
+    wrong.parent.mkdir(parents=True)
+    wrong.write_bytes(original.read_bytes())
+    part=uploads.part_path(batch,upload["id"])
+    part.parent.mkdir(parents=True,exist_ok=True)
+    part.write_bytes(b"leftover")
+    data=settle()
+    evidence=exact(wrong)
+    assert evidence["owner_id"]==owner and evidence["issue"]=="owner_mismatch"
+    assert evidence["charged_bytes"]==0 and str(other) not in data["owners"]
+    assert exact(part)["issue"]=="leftover_finalized_part"
+    assert wrong.exists() and part.exists() and original.exists()

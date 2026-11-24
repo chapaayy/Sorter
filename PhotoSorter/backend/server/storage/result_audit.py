@@ -26,6 +26,7 @@ class ResultAudit:
         self.index=0
         self.stamp=None
         self.generation=uuid.uuid4()
+        self.unlisted_cursor=None
 
     def _done(self):
         self.cursor=self.run
@@ -61,7 +62,28 @@ class ResultAudit:
             self._done()
             return False
         manifest_key="app/"+manifest.as_posix()
+        if self.unlisted_cursor is not None:
+            # Once the manifest is complete, compare the same registry's
+            # observed media against it. No second full path index is stored.
+            try:
+                st=stat_key(root,manifest_key)
+                stamp=(st.st_dev,st.st_ino,st.st_size,st.st_mtime_ns,st.st_ctime_ns)
+                if stamp!=self.stamp:self._reset();return False
+            except OSError:
+                self._done()
+                return False
+            extra=db.execute("""SELECT id,path FROM storage_files WHERE run_id=%s AND category='result_media'
+              AND id>%s AND manifest_generation IS DISTINCT FROM %s ORDER BY id LIMIT %s""",
+              (self.run,self.unlisted_cursor,self.generation,limit)).fetchall()
+            self._issues(db,[(r["path"],"unlisted_result_media") for r in extra])
+            if extra:
+                self.unlisted_cursor=extra[-1]["id"]
+            else:
+                db.execute("DELETE FROM storage_result_issues WHERE run_id=%s AND generation<>%s",(self.run,self.generation))
+                self._done()
+            return False
         found=[]
+        listed=[]
         complete=False
         invalid=False
         try:
@@ -88,6 +110,7 @@ class ResultAudit:
                         key.encode("utf-8")
                     except (ValueError,KeyError,TypeError,UnicodeError):
                         invalid=True;break
+                    listed.append(key)
                     try:
                         if not stat.S_ISREG(stat_key(root,key).st_mode):found.append((key,"invalid_result_media"))
                     except (FileNotFoundError,NotADirectoryError):
@@ -110,7 +133,10 @@ class ResultAudit:
             invalid=True
         if invalid:found.append((manifest_key,"invalid_result_manifest"))
         self._issues(db,found)
-        if complete and not invalid:
-            db.execute("DELETE FROM storage_result_issues WHERE run_id=%s AND generation<>%s",(self.run,self.generation))
-        if complete or invalid:self._done()
+        if listed:
+            db.execute("""UPDATE storage_files SET manifest_generation=%s WHERE run_id=%s AND category='result_media'
+              AND path=ANY(%s) AND manifest_generation IS DISTINCT FROM %s""",
+              (self.generation,self.run,listed,self.generation))
+        if complete and not invalid:self.unlisted_cursor=0
+        elif invalid:self._done()
         return False
