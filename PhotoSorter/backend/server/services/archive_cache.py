@@ -59,14 +59,14 @@ class DirectoryPin:
         self.close()
 
 @contextmanager
-def build_space(root,needed):
+def build_space(root,needed,*,message="Недостаточно места для временного ZIP"):
     """Serialize archive allocations across results/reference caches on data mount."""
     fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
     try:
         fcntl.flock(fd,fcntl.LOCK_EX)
         total,available=disk_guard.stat(root)
         if available-needed<disk_guard.reserve(total):
-            raise HTTPException(507,"Недостаточно места для временного ZIP")
+            raise HTTPException(507,message)
         yield
     finally:
         os.close(fd)
@@ -75,8 +75,12 @@ def sweep_folder(folder,*,reference=False,now=None):
     """Delete only expired, recognized archives/fragments/locks, never active ones."""
     now=time.time() if now is None else now
     try:
-        fd=os.open(folder,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
-    except OSError:
+        folder=Path(folder)
+        if folder.is_relative_to(config.APP_STORAGE_ROOT):
+            with directory_fd(config.APP_STORAGE_ROOT,folder.relative_to(config.APP_STORAGE_ROOT)) as opened:fd=os.dup(opened)
+        else:
+            fd=os.open(folder,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    except (OSError,ValueError):
         return 0
     removed=0
     pattern,tmp=(REF_NAME,REF_TMP) if reference else (FO_NAME,FO_TMP)

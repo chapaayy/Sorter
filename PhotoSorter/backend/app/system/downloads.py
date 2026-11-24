@@ -97,7 +97,7 @@ class Downloads:
                 source=stage/"source"
                 source.mkdir()
                 weight=stage/model_store.WEIGHT_NAME
-                with build_space(root,model_store.MAX_WEIGHT_BYTES+10_000_000):
+                with build_space(root,model_store.MAX_WEIGHT_BYTES+10_000_000,message="Недостаточно места для установки MegaLoc"):
                     for name in model_store.SOURCE_BLOBS:
                         _fetch(f"https://raw.githubusercontent.com/gmberton/MegaLoc/{model_store.SOURCE_REVISION}/{name}",
                                source/name,maximum=1_000_000)
@@ -117,7 +117,7 @@ class Downloads:
               "from app.recognition.engines.megaloc.loader import load_megaloc;"
               "torch.set_num_threads(2);"
               "m=load_megaloc(staged=(Path(sys.argv[1]),Path(sys.argv[2])));"
-              "x=m(torch.zeros(1,3,322,322));"
+              "torch.set_grad_enabled(False);x=m(torch.zeros(1,3,322,322));"
               "assert tuple(x.shape)==(1,8448) and torch.isfinite(x).all();print('MODEL_OK')")
         env=os.environ.copy()
         env.update({k:str(stage) for k in ("TMPDIR","TEMP","TMP")})
