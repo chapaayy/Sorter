@@ -65,11 +65,13 @@ def operational():
             COALESCE((SELECT max(f.updated_at) FROM reference_import_files f WHERE f.session_id=s.id),s.created_at))
             +interval '30 days') AS next_eligible_at
           FROM reference_import_sessions s WHERE s.upload_state='uploading'""").fetchone()
+        leases=db.execute("""SELECT kind,count(*) AS operations,max(heartbeat_at) AS last_seen
+          FROM batch_operations WHERE heartbeat_at>now()-interval '12 hours' GROUP BY kind ORDER BY kind""").fetchall()
         health=heartbeat.status(db)["cleanup"]
     for row in archives:
         from datetime import datetime,timezone
         row["next_eligible_at"]=datetime.fromtimestamp(row.pop("oldest_mtime_ns")/1e9+ARCHIVE_TTL_SECONDS,timezone.utc).isoformat()
-    return {"active_queue":active,"archives":archives,"unfinished_fo_next_eligible_at":fo["next_eligible_at"],
+    return {"active_queue":active,"io_leases":leases,"archives":archives,"unfinished_fo_next_eligible_at":fo["next_eligible_at"],
             "unfinished_reference_next_eligible_at":refs["next_eligible_at"],
             "archive_ttl_seconds":ARCHIVE_TTL_SECONDS,"scratch_grace_seconds":TEMPORARY_GRACE_SECONDS,
             "cleanup_worker":health}

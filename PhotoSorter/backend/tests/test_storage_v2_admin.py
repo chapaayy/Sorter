@@ -101,7 +101,12 @@ def test_manual_reconciliation_and_safe_archive_action(system,monkeypatch):
         after=settle(reconciler)
         assert not after["reconciliation_requested"]
         assert after["reconciled_at"]>=first["reconciled_at"]
-        operations=owner.get("/api/storage/operations").json()
+        from server.services import operations as io_operations
+        lease=io_operations.start(batch,"download")
+        try:
+            operations=owner.get("/api/storage/operations").json()
+            assert any(row["kind"]=="download" and row["operations"]==1 for row in operations["io_leases"])
+        finally:io_operations.finish(lease)
         assert sum(row["files"] for row in operations["archives"])==2
         assert sum(row["expired"] for row in operations["archives"])==1
         preview=owner.get("/api/storage/maintenance/expired_archives/preview")

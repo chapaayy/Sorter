@@ -137,6 +137,7 @@ export interface StorageAccountDetail {
   total:number;offset:number;limit:number;sampled_at:string|null;basis:string
 }
 export interface StorageOperations {
+  io_leases?:Array<{kind:string;operations:number;last_seen:string}>
   active_queue:Array<{seq:number;kind:string;state:string;fo_run_id:string|null;batch_id:string|null;display_name:string|null;started_at:string|null}>
   archives:Array<{category:string;files:number;expired:number;next_eligible_at:string}>
   unfinished_fo_next_eligible_at:string|null;unfinished_reference_next_eligible_at?:string|null;archive_ttl_seconds:number;scratch_grace_seconds:number

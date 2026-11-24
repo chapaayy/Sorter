@@ -36,7 +36,9 @@ usePolling(refresh,15000)
     <p v-if="data&&!data.cleanup_worker.alive" class="alert warning" role="status">Нет свежего сигнала службы очистки.</p>
     <div v-for="row in data?.active_queue||[]" :key="row.seq" class="row between wrap"><span>{{categoryName(row.kind)}}<small v-if="row.display_name" class="meta"> · {{row.display_name}}</small></span><span class="meta">Начало {{date(row.started_at)}}</span></div>
     <div v-for="(row,key) in registry?.reservations||{}" :key="key" class="row between wrap"><span>{{categoryName(key)}} · резервов {{row.operations}}</span><strong>{{bytes(row.bytes)}}</strong></div>
-    <p v-if="data&&!data.active_queue.length&&!Object.keys(registry?.reservations||{}).length" class="meta">Активных задач очереди и наблюдаемых резервов нет.</p>
+    <div v-for="row in data?.io_leases||[]" :key="row.kind" class="row between wrap"><span>{{categoryName(row.kind)}} · зарегистрированных IO-операций: {{row.operations}}</span><span class="meta">Сигнал {{date(row.last_seen)}}</span></div>
+    <p v-if="data&&!data.active_queue.length&&!data.io_leases?.length&&!Object.keys(registry?.reservations||{}).length" class="meta">Активных задач очереди и наблюдаемых резервов нет.</p>
+    <p class="meta">IO-операции показаны по действующим записям блокировок; после аварии запись может сохраняться до истечения защитного срока.</p>
     <h3>ZIP-архивы</h3>
     <div v-for="row in data?.archives||[]" :key="row.category" class="stack item">
       <div class="row between wrap"><strong>{{categoryName(row.category)}}</strong><span>{{row.files}} готовых · {{row.expired}} просрочено</span></div>

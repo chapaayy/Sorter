@@ -1925,3 +1925,39 @@ test('storage empty and unmeasured states never fabricate capacity or history',a
   await expect(storage.getByText('Сведения Docker пока недоступны.')).toBeVisible()
   await expect(storage.getByRole('img',{name:'Распределение физических блоков MAP по категориям'})).toHaveCount(0)
 })
+
+
+test('storage temporary view distinguishes future bytes and observed archives; host action requires confirmation',async({page})=>{
+  let confirmed=0
+  const stamp='2026-11-25T00:00:00Z'
+  await page.route('**/api/storage/usage',route=>{
+    const data=storageFixture()
+    return respond(route,{...data,registry:{...data.registry,temporary:stat(4096),reserved_bytes:2*1024**3,temporary_peak_bytes:8192,unfinished_fo:{files:3,remaining_bytes:1024**3},unfinished_references:{files:2,remaining_bytes:1024},reservations:{archive:{bytes:2*1024**3,operations:1}},temporary_operations:{rows:[],total_groups:0,partial:false}}})
+  })
+  await page.route('**/api/storage/operations',route=>respond(route,{active_queue:[{seq:1,kind:'media_preparation',state:'running',display_name:'Активный ФО',started_at:stamp}],io_leases:[{kind:'download',operations:1,last_seen:stamp}],archives:[{category:'zip_results',files:2,expired:1,next_eligible_at:stamp}],unfinished_fo_next_eligible_at:stamp,unfinished_reference_next_eligible_at:stamp,archive_ttl_seconds:3600,scratch_grace_seconds:3600,cleanup_worker:{alive:true,last_seen:stamp}}))
+  await page.route('**/api/system/update',route=>respond(route,{available:true,busy:confirmed>0,storage_maintenance_supported:true,phase:'idle',...(confirmed?{storage_action:{kind:'storage-cache',state:'running',started_at:stamp}}:{})}))
+  await page.route('**/api/storage/host-maintenance/storage-cache/preview',route=>respond(route,{kind:'storage-cache',files:5,allocated_bytes:4096,sampled_at:stamp,partial:false,basis:'typed_provider_cache_offline_only'}))
+  await page.route('**/api/storage/host-maintenance/storage-cache',route=>{
+    expect(route.request().postDataJSON()).toEqual({confirmed:true});confirmed++
+    return respond(route,{available:true,busy:true,storage_maintenance_supported:true,storage_action:{kind:'storage-cache',state:'running',started_at:stamp}})
+  })
+  await page.goto('/admin')
+  const storage=page.getByRole('region',{name:'Хранилище'})
+  await storage.getByRole('button',{name:'Временные данные',exact:true}).click()
+  await expect(storage.getByText('Активный ФО',{exact:false})).toBeVisible()
+  await expect(storage.getByText('2 готовых · 1 просрочено')).toBeVisible()
+  await expect(storage.getByText('ФО: 3 файлов')).toBeVisible()
+  await expect(storage.getByText(/Скачивание файлов · зарегистрированных IO-операций: 1/)).toBeVisible()
+  await expect(storage.getByText('Зарезервировано операциями')).toBeVisible()
+  await storage.getByRole('button',{name:'Обслуживание',exact:true}).click()
+  await storage.getByText('Технический кэш и закрытые журналы',{exact:true}).click()
+  const button=storage.getByRole('button',{name:'Предпросмотр: Удаляемый технический кэш'})
+  await button.click()
+  await expect(page.getByRole('alertdialog').getByText(/Приложение будет временно остановлено/)).toBeVisible()
+  expect(confirmed).toBe(0)
+  await page.getByRole('alertdialog').getByRole('button',{name:'Отмена'}).click()
+  await button.click()
+  await page.getByRole('alertdialog').getByRole('button',{name:'Запустить очистку'}).click()
+  await expect.poll(()=>confirmed).toBe(1)
+  await expect(button).toBeDisabled()
+})

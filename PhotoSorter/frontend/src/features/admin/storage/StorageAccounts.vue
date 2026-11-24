@@ -15,7 +15,8 @@ async function load(offset=0){
 }
 async function select(id:string,offset=0){
   if(loading.value)return
-  selected.value=id;loading.value=true;error.value='';detail.value=null
+  const same=selected.value===id
+  selected.value=id;loading.value=true;error.value='';if(!same)detail.value=null
   try{detail.value=await systemApi.storageAccount(id,offset)}
   catch(e){error.value=errorText(e)}finally{loading.value=false}
 }
@@ -41,7 +42,7 @@ onMounted(()=>void load())
   </template>
   <template v-else>
     <UiButton small :disabled="loading" @click="selected='';detail=null">К аккаунтам</UiButton>
-    <LoadingSkeleton v-if="loading" variant="lines" label="Загружаем данные аккаунта"/>
+    <LoadingSkeleton v-if="loading&&!detail" variant="lines" label="Загружаем данные аккаунта"/>
     <template v-if="detail">
       <div class="row between wrap"><h3>{{detail.account.username}}</h3><strong>{{bytes(detail.sampled_at?accountTotal:null)}}</strong></div>
       <p class="meta">Текущие записи реестра; последнее агрегированное измерение: {{date(detail.sampled_at)}}. Hardlink учитывается глобально, поэтому повторная обработка может занимать 0 дополнительных блоков.</p>

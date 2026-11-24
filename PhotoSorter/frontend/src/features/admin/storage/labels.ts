@@ -13,7 +13,7 @@ export const labels:Record<string,string>={
   updater_workspace:'Временные файлы обновления',builder_marker:'Состояние сборок',updater_control:'Состояние обновлятора',
   installation_state:'Состояние установки',unknown:'Неизвестные файлы',media_preparation:'Перекодирование ФО',
   fo_processing:'Обработка ФО',reference_preparation:'Подготовка образцов',reference_deletion:'Удаление образцов',
-  archive:'Создание ZIP',transcode:'Перекодирование',model:'Загрузка модели',model_install:'Установка модели'
+  upload:'Загрузка файлов',download:'Скачивание файлов',archive:'Создание ZIP',transcode:'Перекодирование',model:'Загрузка модели',model_install:'Установка модели'
 }
 export const categoryName=(key:string)=>labels[key]||key
 export const groups=[
