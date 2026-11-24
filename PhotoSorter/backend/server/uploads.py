@@ -15,7 +15,8 @@ from .services import upload_manifest
 from .db.repositories import batches as batch_repository
 from .services import thumbnails
 from .services.disk_guard import check_admission
-from .storage.paths import original_path,part_path,owned_file
+from .storage.paths import original_path,part_path,owned_file,batch_dir
+from .storage.batch_cleanup import discard_uncommitted_upload
 from app.storage.filesystem import parent_fd,safe_read,safe_unlink
 from app.storage.paths import app_key
 from app.storage.categories import Category
@@ -125,7 +126,7 @@ def get_upload(upload_id):
     try: uid=uuid.UUID(upload_id)
     except ValueError:raise HTTPException(404,'Загрузка не найдена')
     with connect() as db:
-        row=db.execute('SELECT * FROM uploads WHERE id=%s',(uid,)).fetchone()
+        row=db.execute("SELECT * FROM uploads WHERE id=%s AND kind='fo'",(uid,)).fetchone()
     if row is None:raise HTTPException(404,'Загрузка не найдена')
     return row
 
@@ -257,7 +258,20 @@ def _finalize_sync(upload_id:str):
                 if old!=digest:raise HTTPException(409,'Конфликт имён ФО')
             else:
                 # Keep part until DB commit for interrupted-commit retries.
-                with parent_fd(config.APP_STORAGE_ROOT,part.relative_to(config.APP_STORAGE_ROOT)) as (src_fd,src_name):
+                source=part
+                duplicate=db.execute("""SELECT target_path FROM uploads
+                    WHERE kind='fo' AND batch_id=%s AND finalized AND checksum=%s
+                      AND declared_size=%s AND target_path IS NOT NULL
+                    ORDER BY created_at,id LIMIT 1""",
+                    (row["batch_id"],digest,row["declared_size"])).fetchone()
+                if duplicate:
+                    try:
+                        candidate=owned_file(duplicate["target_path"],batch_dir(row["batch_id"],batch["owner_id"]))
+                        with safe_read(config.APP_STORAGE_ROOT,candidate.relative_to(config.APP_STORAGE_ROOT)) as stream:
+                            if hashlib.file_digest(stream,"sha256").hexdigest()==digest:source=candidate
+                    except (OSError,ValueError):
+                        pass
+                with parent_fd(config.APP_STORAGE_ROOT,source.relative_to(config.APP_STORAGE_ROOT)) as (src_fd,src_name):
                     os.link(src_name,dst_name,src_dir_fd=src_fd,dst_dir_fd=dst_fd,follow_symlinks=False)
             with safe_read(config.APP_STORAGE_ROOT,target.relative_to(config.APP_STORAGE_ROOT)) as stream:
                 os.fchmod(stream.fileno(),0o444)
@@ -333,6 +347,7 @@ async def direct_upload(
         token=await asyncio.to_thread(operations.start,row['batch_id'],'upload') if row['batch_id'] else None
         try:
             if row['finalized']:
+                await asyncio.to_thread(_remove_part,row['batch_id'],row['id'])
                 return {'already_finalized':True,'path':row['target_path']}
             path=part_path(row['batch_id'],row['id'])
             length=await asyncio.to_thread(path.stat)
@@ -377,7 +392,7 @@ async def cancel_upload(upload_id:str):
                     target=db.execute("""SELECT id FROM uploads WHERE id=%s AND NOT finalized FOR UPDATE""",
                                       (row['id'],)).fetchone()
                     if not target:raise HTTPException(409,'Загрузка уже завершена')
-                    _remove_part(row['batch_id'],row['id'])
+                    discard_uncommitted_upload(row['batch_id'],row['id'],row['filename'])
                     db.execute("DELETE FROM uploads WHERE id=%s",(row['id'],))
                     if row['batch_id']:batch_repository.refresh_upload_state(db,row['batch_id'])
             await asyncio.to_thread(remove)

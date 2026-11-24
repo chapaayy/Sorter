@@ -68,7 +68,7 @@ def has_operations(db,batch_id):
                            (batch_id,)).fetchone())
 
 def photo_row(db,batch_id,photo_id):
-    return db.execute("""SELECT id,target_path,media_output_path FROM uploads
+    return db.execute("""SELECT id,filename,target_path,media_output_path FROM uploads
         WHERE id=%s AND batch_id=%s AND kind='fo' FOR UPDATE""",
         (photo_id,batch_id)).fetchone()
 

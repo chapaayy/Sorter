@@ -14,6 +14,9 @@ from datetime import datetime,timezone
 from pathlib import Path
 from ..database import connect
 from app.config import DATA_DIR,MODELS_DIR,MODEL_CACHE_DIR
+from app.storage.paths import category_prefix
+from app.storage.categories import Category
+from app import config
 
 MAX_FILES=250_000
 MAX_SECONDS=10.0
@@ -31,6 +34,17 @@ ROOT_ORDER=("uploads","outputs","reference_staging","references",
 def _kind(parts: tuple[str,...]) -> str:
     if not parts:return "other"
     section=parts[0]
+    if section=="users" and len(parts)>=6 and parts[2]=="batches":
+        if parts[4]=="originals":return "originals"
+        if parts[4]=="normalized":return "normalized"
+        if parts[4]=="results":
+            if len(parts)>6 and parts[6]==".archives":
+                return "results_zip" if parts[-1].lower().endswith(".zip") else "results_temporary"
+            return "results_files"
+    if section=="temporary":
+        if parts[1:3]==("uploads","fo"):return "incoming"
+        if len(parts)>1 and parts[1] in ("processing","transcoding","video-frames"):return "results_temporary"
+        return "other"
     if section=="uploads":
         return "normalized" if len(parts)>2 and parts[2]==".normalized" else "originals"
     if section=="outputs":
@@ -71,7 +85,7 @@ def _metadata():
     return batches,jobs
 
 def _scan(data_dir:Path,models_dir:Path,batch_names:dict,run_to_batch:dict,
-          *,max_files=MAX_FILES,max_seconds=MAX_SECONDS,model_cache_dir=None):
+          *,max_files=MAX_FILES,max_seconds=MAX_SECONDS,model_cache_dir=None,app_root=None):
     """Standalone scanner, also used by tests; no database or write access."""
     groups={key:_counter() for key in BUCKETS}
     batches={}
@@ -84,6 +98,9 @@ def _scan(data_dir:Path,models_dir:Path,batch_names:dict,run_to_batch:dict,
 
     def owner(parts):
         if len(parts)<2:return None
+        if parts[0]=="users" and len(parts)>4 and parts[2]=="batches":return parts[3] if parts[3] in batch_names else None
+        if parts[:3]==("temporary","uploads","fo") and len(parts)>3:return parts[3] if parts[3] in batch_names else None
+        if parts[0]=="temporary" and len(parts)>2 and parts[1] in ("processing","video-frames"):return run_to_batch.get(parts[2])
         if parts[0]=="uploads":return parts[1] if parts[1] in batch_names else None
         if parts[0] in ("outputs","runs"):return run_to_batch.get(parts[1])
         return None
@@ -125,7 +142,7 @@ def _scan(data_dir:Path,models_dir:Path,batch_names:dict,run_to_batch:dict,
         nonlocal skipped
         skipped+=1
 
-    def walk(root,model=False):
+    def walk(root,model=False,prefix=()):
         nonlocal partial,skipped
         if root.is_symlink():
             skipped+=1
@@ -145,11 +162,16 @@ def _scan(data_dir:Path,models_dir:Path,batch_names:dict,run_to_batch:dict,
                     partial=True
                     return
                 file=Path(folder)/name
-                parts=file.relative_to(root).parts
+                parts=prefix+file.relative_to(root).parts
                 add(file,"models" if model else _kind(parts),
                     None if model else owner(parts))
 
-    walk(data_dir)
+    if app_root is not None:
+        users=category_prefix(Category.FO_ORIGINAL)
+        temporary=category_prefix(Category.PROCESSING_STAGING).parent
+        walk(app_root/users,prefix=users.parts)
+        if not partial:walk(app_root/temporary,prefix=temporary.parts)
+    if not partial:walk(data_dir)
     if not partial:walk(models_dir,True)
     if not partial and model_cache_dir is not None:walk(model_cache_dir,True)
     rows=sorted(batches.values(),key=lambda row:(-row["allocated_bytes"],row["batch_id"]))
@@ -169,6 +191,6 @@ def breakdown():
     metadata_available=True
     try:names,lookup=_metadata()
     except Exception:metadata_available=False
-    report=_scan(DATA_DIR,MODELS_DIR,names,lookup,model_cache_dir=MODEL_CACHE_DIR)
+    report=_scan(DATA_DIR,MODELS_DIR,names,lookup,model_cache_dir=MODEL_CACHE_DIR,app_root=config.APP_STORAGE_ROOT)
     report["batch_metadata_available"]=metadata_available
     return report

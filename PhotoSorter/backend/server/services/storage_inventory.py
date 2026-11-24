@@ -20,7 +20,9 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app.config import DATA_DIR, MODELS_DIR, MODEL_CACHE_DIR
-from app.storage.categories import FOUNDATION_PATHS
+from app.storage.categories import FOUNDATION_PATHS,Category
+from app.storage.paths import category_prefix
+from app import config
 from .storage_breakdown import _kind, _metadata, ROOT_ORDER
 
 MAX_FILES = 250_000
@@ -63,6 +65,15 @@ def _owner(parts: tuple[str, ...], names: dict, jobs: dict):
     if len(parts) < 2:
         return ("system", None, None)
     section, identity = parts[0], parts[1]
+    if section=="users" and len(parts)>4 and parts[2]=="batches":
+        batch_id=parts[3]
+        return ("batch",batch_id,names.get(batch_id))
+    if parts[:3]==("temporary","uploads","fo") and len(parts)>3:
+        batch_id=parts[3]
+        return ("batch",batch_id,names.get(batch_id))
+    if section=="temporary" and len(parts)>2 and parts[1] in ("processing","video-frames"):
+        batch_id=jobs.get(parts[2])
+        return ("batch",batch_id,names.get(batch_id)) if batch_id else ("run",parts[2],None)
     if section == "uploads":
         return ("batch", identity, names.get(identity))
     if section in ("runs", "outputs"):
@@ -76,7 +87,7 @@ def _owner(parts: tuple[str, ...], names: dict, jobs: dict):
 
 
 def _collect(data_dir: Path, models_dir: Path, names: dict, jobs: dict,
-             *, max_files: int = MAX_FILES, max_seconds: float = MAX_SECONDS, model_cache_dir=None):
+             *, max_files: int = MAX_FILES, max_seconds: float = MAX_SECONDS, model_cache_dir=None, app_root=None):
     """Perform a bounded, symlink-safe scan. Inject paths in unit tests."""
     began = time.monotonic()
     stop_at = began + max_seconds
@@ -88,6 +99,11 @@ def _collect(data_dir: Path, models_dir: Path, names: dict, jobs: dict,
     checked_roots = []
 
     roots=[("data", data_dir), ("models", models_dir)]
+    personal_prefixes={}
+    if app_root is not None:
+        for name,prefix in (("users",category_prefix(Category.FO_ORIGINAL)),("temporary",category_prefix(Category.PROCESSING_STAGING).parent)):
+            personal_prefixes[name]=prefix
+        roots=[(name,app_root/prefix) for name,prefix in personal_prefixes.items()]+roots
     if model_cache_dir is not None:
         roots.append(("model_cache",model_cache_dir))
     for root_name, root in roots:
@@ -143,10 +159,13 @@ def _collect(data_dir: Path, models_dir: Path, names: dict, jobs: dict,
                     partial = True
                     continue
                 relative = path.relative_to(root).parts
-                category = "models" if root_name != "data" else _kind(relative)
-                purpose = _purpose(category, relative)
+                prefix=personal_prefixes.get(root_name)
+                classified=prefix.parts+relative if prefix is not None else relative
+                model=root_name in ("models","model_cache")
+                category = "models" if model else _kind(classified)
+                purpose = _purpose(category, classified)
                 owner_kind, owner_id, owner_name = (
-                    ("system", None, None) if root_name != "data" else _owner(relative, names, jobs)
+                    ("system", None, None) if model else _owner(classified, names, jobs)
                 )
                 inode = (item.st_dev, item.st_ino)
                 duplicate = inode in seen_inodes
@@ -161,7 +180,7 @@ def _collect(data_dir: Path, models_dir: Path, names: dict, jobs: dict,
                 stats["allocated_bytes"] += physical
                 stats["hardlink_paths"] += int(duplicate)
                 entries.append({
-                    "path": ("storage/"+FOUNDATION_PATHS[root_name]+"/") +
+                    "path": ("storage/app/"+str(prefix)+"/" if prefix is not None else "storage/"+FOUNDATION_PATHS[root_name]+"/") +
                             "/".join(relative),
                     "category": category,
                     "purpose": purpose,
@@ -210,7 +229,7 @@ def scan():
         except Exception:
             names, jobs = {}, {}
             metadata_available = False
-        summary, entries = _collect(DATA_DIR, MODELS_DIR, names, jobs, model_cache_dir=MODEL_CACHE_DIR)
+        summary, entries = _collect(DATA_DIR, MODELS_DIR, names, jobs, model_cache_dir=MODEL_CACHE_DIR,app_root=config.APP_STORAGE_ROOT)
         summary["batch_metadata_available"] = metadata_available
         with _state_lock:
             _snapshot = (summary, entries)

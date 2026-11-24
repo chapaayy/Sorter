@@ -8,7 +8,8 @@ from fastapi import HTTPException
 from ..database import connect
 from ..db.repositories import batches as repository
 from . import batch_runs
-from ..storage.paths import batch_dir,batch_root,part_path,owned_file
+from ..storage.paths import batch_dir,batch_root,part_path,owned_file,normalized_dir
+from ..storage.batch_cleanup import discard_uncommitted_upload
 from app import config
 from app.storage.filesystem import safe_unlink
 from ..storage.ownership import require_creator
@@ -224,10 +225,12 @@ def remove_unprocessed_photo(batch_id,photo_id):
             if not repository.path_is_shared(db,item["target_path"],photo_id):
                 path.unlink(missing_ok=True)
         else:
-            path=part_path(batch_id,photo_id)
-            safe_unlink(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
+            discard_uncommitted_upload(batch_id,photo_id,item["filename"])
         if item.get("media_output_path"):
-            owned_file(item["media_output_path"],batch_root(batch_id)).unlink(missing_ok=True)
+            path=owned_file(item["media_output_path"],normalized_dir(batch_id))
+            safe_unlink(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
+        part=part_path(batch_id,photo_id)
+        safe_unlink(config.APP_STORAGE_ROOT,part.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
         repository.delete_photo_row(db,photo_id)
         # Deleting a registered original invalidates proof of complete upload.
         db.execute("""UPDATE batches SET upload_manifest_state='waiting',

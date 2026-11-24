@@ -42,7 +42,7 @@ def run_cycle():
     if removed:logging.info("Removed %s orphaned unpublished exports",len(removed))
     if time.monotonic()>=NEXT_GC:
         NEXT_GC=time.monotonic()+600
-        abandoned=temp_cleanup.reclaim_abandoned(limit=50)
+        abandoned=temp_cleanup.reclaim_abandoned(limit=50)+temp_cleanup.reclaim_finalized_parts(limit=50)
         if abandoned:logging.info("Reclaimed %s abandoned upload parts",abandoned)
         stale=thumbnail_gc.collect(limit=100)
         if stale:logging.info("Cleared %s unreferenced thumbnails",stale)

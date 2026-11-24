@@ -9,7 +9,24 @@ from .paths import batch_dir,batch_root,part_path,normalized_dir,owned_directory
 from app import config
 from app.storage.paths import managed_path,managed_prefix,run_key
 from app.storage.categories import Category
+from app.storage.filesystem import safe_unlink
+from app.photos.reader import EXTS
+from pathlib import Path
+from .paths import original_path
 
+
+def discard_uncommitted_upload(batch_id,upload_id,filename):
+    """Caller has the unfinalized upload row locked and no competing writer."""
+    suffix=Path(filename).suffix.lower()
+    # A failed SQL commit can leave the pre-publication hardlink behind.
+    # Only this upload UUID's possible canonical original is eligible.
+    extensions={"media"}
+    if suffix in EXTS:extensions.add(suffix.lstrip("."))
+    for ext in extensions:
+        path=original_path(batch_id,upload_id,ext)
+        safe_unlink(config.APP_STORAGE_ROOT,path.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
+    part=part_path(batch_id,upload_id)
+    safe_unlink(config.APP_STORAGE_ROOT,part.relative_to(config.APP_STORAGE_ROOT),missing_ok=True)
 
 def remove_batch_files(batch_id,run_ids,upload_ids,data_dir,runs_dir,report):
     # Run trees (including the ZIP), temporary parts and individual originals.

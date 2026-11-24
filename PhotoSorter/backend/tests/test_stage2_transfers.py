@@ -111,7 +111,7 @@ def test_seekable_zip_lease_released_after_response_and_preserves_originals(thum
             %s,%s,%s,true,%s)""",(uid,own,len(blob),len(blob),
              hashlib.sha256(blob).hexdigest(),str(source)))
     run=_job(thumbs,own)
-    repository.save_model({"id":run,"output":str(thumbs/"outputs")},
+    repository.save_model({"id":run,"batch_id":str(own)},
       "megaloc",[{"query":str(source),"top":[],"group_id":"G0001"}])
     async def consume_part():
         response=downloads.download_results(run)

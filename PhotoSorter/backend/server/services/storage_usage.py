@@ -3,7 +3,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from app.config import DATA_DIR, MODELS_DIR, MODEL_CACHE_DIR
-from app.storage.paths import managed_prefix
+from app.storage.paths import managed_prefix,category_prefix
+from app import config
+from .storage_breakdown import _kind
 from app.storage.categories import Category
 from .disk_guard import reserve
 from ..database import connect
@@ -35,10 +37,28 @@ def usage():
     seen=set()
     groups={}
     groups["logs"]=_size_logfiles(RUNS_DIR,seen)
-    for key,root in (("photos",managed_prefix(Category.FO_ORIGINAL)),("results",DATA_DIR/"outputs"),
+    groups.update(photos=0,results=0,incoming=0)
+    # Walk only managed personal and temp trees, with inode dedup shared with other groups.
+    for prefix in (category_prefix(Category.FO_ORIGINAL),category_prefix(Category.PROCESSING_STAGING).parent):
+        root=config.APP_STORAGE_ROOT/prefix
+        for directory,subdirs,files in os.walk(root,followlinks=False):
+            subdirs[:]=[d for d in subdirs if not (Path(directory)/d).is_symlink()]
+            for name in files:
+                path=Path(directory)/name
+                try:
+                    if path.is_symlink() or not path.is_file():continue
+                    st=path.stat()
+                except OSError:continue
+                identity=(st.st_dev,st.st_ino)
+                if identity in seen:continue
+                seen.add(identity)
+                category=_kind(path.relative_to(config.APP_STORAGE_ROOT).parts)
+                key="photos" if category in ("originals","normalized") else "incoming" if category=="incoming" else "results"
+                groups[key]+=st.st_size
+    for key,root in (
                       ("references",DATA_DIR/"references"),("thumbnails",DATA_DIR/"cache"/"thumbnails"),
                       ("reference_cache",DATA_DIR/"cache"/"megaloc"),("models",MODELS_DIR),
-                      ("runs",DATA_DIR/"runs"),("incoming",managed_prefix(Category.FO_UPLOAD_PART))):
+                      ("runs",DATA_DIR/"runs")):
         groups[key]=_size(root,seen)
     groups["models"]+=_size(MODEL_CACHE_DIR,seen)
     groups["other"]= _size(DATA_DIR,seen)
