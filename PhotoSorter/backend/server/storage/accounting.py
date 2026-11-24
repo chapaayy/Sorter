@@ -109,12 +109,13 @@ def snapshot():
     summary=dict(row["summary"])
     age=(datetime.now(timezone.utc)-row["sampled_at"]).total_seconds() if row["sampled_at"] else None
     stale=age is None or age>60 or age< -60
-    for field in ("sampled_at","reconciled_at","started_at"):
+    requested=bool(row["requested_at"] and (not row["started_at"] or row["requested_at"]>row["started_at"]))
+    for field in ("sampled_at","reconciled_at","started_at","requested_at"):
         summary[field]=row[field].isoformat() if row[field] else None
     reconciling=bool(row["started_at"] and (not row["reconciled_at"] or row["started_at"]>row["reconciled_at"]))
-    summary.update(pending_changes=pending,reconciling=reconciling,errors=row["errors"],temporary_peak_bytes=row["temporary_peak_bytes"],
+    summary.update(pending_changes=pending,reconciling=reconciling,reconciliation_requested=requested,errors=row["errors"],temporary_peak_bytes=row["temporary_peak_bytes"],
                    sample_age_seconds=age,stale=stale,
-                   partial=stale or row["reconciled_at"] is None or bool(row["errors"]) or bool(pending) or reconciling)
+                   partial=stale or requested or row["reconciled_at"] is None or bool(row["errors"]) or bool(pending) or reconciling)
     return summary
 def disk():
     fs=os.statvfs(config.APP_STORAGE_ROOT)

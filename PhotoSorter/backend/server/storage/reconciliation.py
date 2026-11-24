@@ -95,7 +95,9 @@ class Reconciler:
                         db.execute("DELETE FROM storage_dirty WHERE path=%s AND revision=%s",(row["path"],row["revision"]))
                         self.dirty=None
             now=time.monotonic();finished=False
-            if self.full is None and not self.sweep and self.results is None and (not self.last_full or now-self.last_full>=FULL_INTERVAL):
+            requested=db.execute("""SELECT requested_at IS NOT NULL AND
+                (started_at IS NULL OR requested_at>started_at) AS pending FROM storage_accounting_state""").fetchone()["pending"]
+            if self.full is None and not self.sweep and self.results is None and (requested or not self.last_full or now-self.last_full>=FULL_INTERVAL):
                 self.generation=uuid.uuid4();self.errors=0;self.cursor=0
                 self.full=walk(self.root,onerror=self.error)
                 db.execute("UPDATE storage_accounting_state SET generation=%s,started_at=now(),errors=0",(self.generation,))

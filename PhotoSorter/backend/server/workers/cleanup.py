@@ -35,6 +35,8 @@ def run_deletions(stopped):
 
 def run_cycle():
     global NEXT_GC
+    from ..services.storage_maintenance import run_pending
+    run_pending()
     expired=archive_cache.collect()
     scratch=collect_abandoned(APP_STORAGE_ROOT)
     if scratch:logging.info("Removed %s abandoned scratch operations",scratch)

@@ -52,8 +52,8 @@ def system_status():
 @router.post("/cache/cleanup")
 def clean_unused_thumbnails():
     """Manual, owner-checked cleanup only of orphaned preview cache."""
-    from ..services.thumbnails import gc_unowned,gc_incomplete
-    return {"removed":gc_unowned(limit=200)+gc_incomplete(limit=200)}
+    from ...services.thumbnails import gc_unowned
+    return {"removed":gc_unowned(limit=200)}
 
 class RetentionPreference(BaseModel):
     enabled:bool

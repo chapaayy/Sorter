@@ -1,5 +1,5 @@
 """Read-only actual data-mount storage statistics."""
-from fastapi import APIRouter
+from fastapi import APIRouter,Request
 from ...services.storage_usage import usage
 from ...services.storage_breakdown import breakdown
 from ...services import storage_inventory
@@ -11,7 +11,53 @@ from pathlib import Path
 from datetime import datetime, timezone
 import json
 from app.config import DATA_DIR
+from pydantic import BaseModel,StrictBool
+from ...security.access_policy import is_owner
+from ...services import storage_admin,storage_maintenance
 router=APIRouter(prefix="/api/storage",tags=["storage"])
+
+def require_owner(request:Request):
+    user=getattr(request.state,"user",None)
+    if not user or not is_owner(user):raise HTTPException(403,"Недостаточно прав")
+
+@router.get("/accounts")
+def storage_accounts(request:Request,offset:int=Query(0,ge=0),limit:int=Query(25,ge=1,le=100)):
+    require_owner(request)
+    return storage_admin.accounts(offset,limit)
+
+@router.get("/accounts/{owner_id}")
+def storage_account(request:Request,owner_id:int,offset:int=Query(0,ge=0),limit:int=Query(25,ge=1,le=100)):
+    require_owner(request)
+    if not 0<owner_id<2**63:raise HTTPException(422,"Неверный аккаунт")
+    return storage_admin.account_detail(owner_id,offset,limit)
+
+@router.get("/operations")
+def storage_operations(request:Request):
+    require_owner(request)
+    return storage_admin.operational()
+
+@router.post("/reconcile",status_code=202)
+def reconcile_storage(request:Request):
+    require_owner(request)
+    return storage_admin.request_reconciliation()
+
+@router.get("/maintenance")
+def maintenance_status(request:Request):
+    require_owner(request)
+    return storage_maintenance.status()
+
+@router.get("/maintenance/{kind}/preview")
+def maintenance_preview(request:Request,kind:str):
+    require_owner(request)
+    return storage_maintenance.preview(kind)
+
+class MaintenanceConfirmation(BaseModel):
+    confirmed:StrictBool
+
+@router.post("/maintenance/{kind}",status_code=202)
+def maintenance_start(request:Request,kind:str,payload:MaintenanceConfirmation):
+    require_owner(request)
+    return storage_maintenance.enqueue(kind,payload.confirmed)
 
 @router.get("/usage")
 def storage_usage():return usage()
