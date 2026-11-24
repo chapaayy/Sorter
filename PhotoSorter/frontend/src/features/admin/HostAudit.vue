@@ -39,7 +39,7 @@ const categoryLabels:Record<string,string>={
   open_deleted_file:'Удалённые файлы, ещё открытые процессом',
   model_weights:'Веса моделей',model_cache:'Кэши моделей',
   app_source_installer_and_git:'Приложение, установщик и Git',
-  audit_reports:'Отчёты аудита'
+  audit_reports:'Отчёты аудита',host_updater:'Обновлятор MAP, его резервные копии и состояние'
 }
 const scopes=computed(()=>Object.entries(report.value?.scopes||{})
   .sort((a,b)=>b[1].allocated_bytes-a[1].allocated_bytes))

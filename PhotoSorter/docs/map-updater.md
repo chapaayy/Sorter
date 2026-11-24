@@ -39,7 +39,8 @@
 ## Файлы обновлятора
 
 * /var/lib/map-updater/control — root-owned состояние, activity.lock,
-  maintenance и локальный Unix socket, только чтение в контейнерах;
+  maintenance, только чтение в контейнерах;
+* /var/lib/map-updater/rpc — локальный Unix socket, монтируется только в API;
 * /var/lib/map-updater/private — ограниченные резервные копии, временный
   исходный код и идентификаторы собственных BuildKit builder; root-only;
 * /usr/local/lib/map-updater — установленные Python-скрипты root;
