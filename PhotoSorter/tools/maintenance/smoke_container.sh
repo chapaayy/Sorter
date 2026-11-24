@@ -27,7 +27,14 @@ cleanup() {
   docker compose down --remove-orphans || true
 }
 trap cleanup EXIT
-docker compose up -d --build
+# Exercise the exact disposable builder used by the VPS updater.
+sudo install -d -m 0755 /var/lib/map-updater/control
+sudo touch /var/lib/map-updater/control/activity.lock
+sudo chmod 0644 /var/lib/map-updater/control/activity.lock
+sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0700 /var/lib/map-updater/private/builders
+python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)"
+test -z "$(find /var/lib/map-updater/private/builders -type f -print -quit)"
+docker compose up -d --no-build
 
 healthy=0
 for i in $(seq 1 90); do
@@ -62,6 +69,12 @@ if [[ "$ready" -ne 1 ]]; then
   echo "[ERROR] Worker heartbeat did not become healthy" >&2
   exit 1
 fi
+# Real bind-mounted lock/maintenance gate and owner-only status endpoint.
+curl -kfsS --max-time 8 -b "$cookie_file" https://localhost/api/system/update | grep -q '"available":false'
+sudo touch /var/lib/map-updater/control/maintenance
+test "$(curl -ksS -o /dev/null -w '%{http_code}' -b "$cookie_file" https://localhost/api/system/status)" = 503
+curl -kfsS --max-time 8 https://localhost/api/health >/dev/null
+sudo rm /var/lib/map-updater/control/maintenance
 created="$(curl -kfsS --max-time 8 -b "$cookie_file" \
   -H 'Content-Type: application/json' -H 'Origin: https://localhost' \
   --data '{"display_name":"PHOTOSORTER_CI_SYNTHETIC_ONLY"}' \

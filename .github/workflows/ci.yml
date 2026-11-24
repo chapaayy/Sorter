@@ -40,7 +40,7 @@ jobs:
       - name: Compile all Python, shell syntax and Docker compose
         run: |
           python -m compileall -q PhotoSorter/backend PhotoSorter/tools
-          for script in install.sh PhotoSorter/tools/maintenance/{install_prerequisites,test_install_prerequisites,setup_tcp_bbr}.sh; do
+          for script in install.sh PhotoSorter/tools/maintenance/{install_prerequisites,test_install_prerequisites,setup_tcp_bbr,install_map_updater}.sh; do
             bash -n "$script"
           done
           bash PhotoSorter/tools/maintenance/test_install_prerequisites.sh

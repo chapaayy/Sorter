@@ -174,6 +174,8 @@ class HostAudit:
             self.errors.append('Docker global usage: '+str(exc))
 
     def label(self,path,hint,owner):
+        if hint=='host_updater':
+            return ('app','host_updater',self.name,'disk')
         if hint in ('host_package_file','host_installer_config'):
             return ('shared_unattributed',hint,'Host dependencies (shared)','disk')
         if hint=='container_tmp_view':
@@ -404,6 +406,12 @@ class HostAudit:
                 for root in self.project_layers:
                     if not (self.docker_root and within(root,self.docker_root)):
                         self.walk(writer,root,'image_external','MAP image')
+                for root in (Path('/var/lib/map-updater'),Path('/usr/local/lib/map-updater')):
+                    if root.is_dir() and not within(root,self.project):
+                        self.walk(writer,root,'host_updater','MAP updater')
+                unit=Path('/etc/systemd/system/map-updater.service')
+                if unit.is_file():
+                    self.add(writer,unit,'host_updater','MAP updater')
                 for root,kind,name in self.additional_roots:
                     self.walk(writer,root,kind,name)
                 for root in self.shared_roots:
