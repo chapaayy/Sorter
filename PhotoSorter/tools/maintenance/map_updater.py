@@ -363,6 +363,7 @@ class Updater:
                     raise RuntimeError("Неподдерживаемый путь хранения")
                 prefix=["docker","compose","--env-file",".env","--env-file",".env.generated"]
                 # If stop partially fails, finally still attempts to restore every service.
+                old_workers=worker_instances()
                 stopped=True
                 cmd([*prefix,"stop",*SERVICES],cwd=self.project,timeout=120)
                 docker("run","--rm","--network","none","--read-only","--user","10001:10001",
@@ -377,16 +378,29 @@ class Updater:
                 try:
                     cmd([*prefix,"up","-d","--no-build","--wait","--wait-timeout","180",*SERVICES],
                         cwd=self.project,timeout=240)
-                    if installed()[0]!=revision:raise RuntimeError("Рабочая ревизия изменилась")
-                    check_proxy()
+                    deadline=time.monotonic()+90
+                    while True:
+                        try:
+                            if installed()[0]!=revision:raise RuntimeError("Рабочая ревизия изменилась")
+                            fresh=worker_instances()
+                            if len(fresh)!=3 or fresh.intersection(old_workers):raise RuntimeError("Нет новых heartbeat работников")
+                            check_proxy()
+                            break
+                        except (RuntimeError,OSError,ValueError,http.client.HTTPException,subprocess.SubprocessError):
+                            if time.monotonic()>=deadline:raise
+                            time.sleep(2)
                 except Exception:
                     recovery=True
                     error="Не удалось восстановить приложение после обслуживания. Требуется проверка сервера."
             if marked and not recovery:
-                MARKER.unlink(missing_ok=True)
-                fd=os.open(CONTROL,os.O_RDONLY|os.O_DIRECTORY)
-                try:os.fsync(fd)
-                finally:os.close(fd)
+                try:
+                    MARKER.unlink(missing_ok=True)
+                    fd=os.open(CONTROL,os.O_RDONLY|os.O_DIRECTORY)
+                    try:os.fsync(fd)
+                    finally:os.close(fd)
+                except OSError:
+                    recovery=True
+                    error="Не удалось снять режим обслуживания. Требуется проверка сервера."
             if gate is not None:gate.close()
             if lock is not None:lock.close()
             delta=None

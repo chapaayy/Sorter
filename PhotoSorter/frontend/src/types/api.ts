@@ -98,7 +98,7 @@ export interface StorageCounter {
 }
 export interface StorageCapacity {
   total_bytes:number;used_bytes:number;available_bytes:number
-  map_allocated_bytes?:number;outside_map_or_unexplained_bytes?:number
+  map_allocated_bytes?:number|null;outside_map_or_unexplained_bytes?:number|null
 }
 export interface StorageHistory {
   objects:number;object_bytes:number;embeddings:number;embedding_bytes:number;missing:number;partial:boolean
@@ -139,13 +139,15 @@ export interface StorageAccountDetail {
 export interface StorageOperations {
   active_queue:Array<{seq:number;kind:string;state:string;fo_run_id:string|null;batch_id:string|null;display_name:string|null;started_at:string|null}>
   archives:Array<{category:string;files:number;expired:number;next_eligible_at:string}>
-  unfinished_fo_next_eligible_at:string|null;archive_ttl_seconds:number;scratch_grace_seconds:number
+  unfinished_fo_next_eligible_at:string|null;unfinished_reference_next_eligible_at?:string|null;archive_ttl_seconds:number;scratch_grace_seconds:number
   cleanup_worker:{alive:boolean;last_seen:string|null}
 }
 export interface StorageIssues {files:Array<{path:string;category:string;issue:string;logical_bytes:number;allocated_bytes:number}>;missing:Array<{path:string;issue:string}>;offset:number;limit:number;snapshot:string|null}
 export type MaintenanceKind='expired_archives'|'unused_thumbnails'|'abandoned_scratch'
-export interface StorageMaintenance {kind:MaintenanceKind;state:'queued'|'running'|'completed'|'failed'|'interrupted';requested_at:string;started_at:string|null;finished_at:string|null;removed:number|null;detail:string|null}
-export interface StoragePreview {kind:MaintenanceKind;files:number;allocated_bytes:number;sampled_at:string|null;partial:boolean;basis:string}
+export type HostMaintenanceKind='storage-cache'|'storage-logs'
+export interface HostStorageAction {kind:HostMaintenanceKind;state:'running'|'completed'|'failed'|'interrupted';started_at?:string|null;finished_at?:string|null;removed?:number|null;available_delta_bytes?:number|null;detail?:string}
+export interface StorageMaintenance {kind:MaintenanceKind;state:'queued'|'running'|'completed'|'failed'|'interrupted';requested_at:string;started_at:string|null;finished_at:string|null;removed:number|null;detail:string|null;available_delta_bytes?:number|null}
+export interface StoragePreview {kind:MaintenanceKind|HostMaintenanceKind;files:number|null;allocated_bytes:number|null;logical_excess_bytes?:number|null;sampled_at:string|null;partial:boolean;basis:string}
 export interface SystemStatus {
   at: string; worker: { queue: Record<string, number>; expected_threads: number }
   thumbnails: Record<string, number>;
@@ -211,6 +213,7 @@ export interface LiveAuditStatus {
 }
 
 export interface MapUpdateStatus {
+  storage_maintenance_supported?:boolean;storage_action?:HostStorageAction
   branch?:string
   available:boolean;busy?:boolean;phase?:string;detail?:string
   installed?:string|null;target?:string|null;previous?:string|null;update_available?:boolean

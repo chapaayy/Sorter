@@ -54,8 +54,8 @@ def usage():
     for device,fs in devices.items():
         app_bytes=data.get("devices",{}).get(device,{}).get("allocated_bytes",0)
         host_bytes=host.get("devices",{}).get(device,{}).get("allocated_bytes",0)
-        fs["map_allocated_bytes"]=app_bytes+host_bytes
-        fs["outside_map_or_unexplained_bytes"]=fs["used_bytes"]-fs["map_allocated_bytes"]
+        fs["map_allocated_bytes"]=app_bytes+host_bytes if data.get("sampled_at") or host.get("at") else None
+        fs["outside_map_or_unexplained_bytes"]=fs["used_bytes"]-fs["map_allocated_bytes"] if fs["map_allocated_bytes"] is not None else None
     groups["logs"]=sum(v.get("allocated_bytes",0) for k,v in host.get("categories",{}).items() if k in ("service_log","run_log","access_log","audit_event"))
     return {"journals":journals,"disk":capacity,"filesystems":devices,"categories_bytes":groups,
       "registry":data,"host":host or None,"database_estimated_bytes":db_size,"postgres_diagnostics":pg,

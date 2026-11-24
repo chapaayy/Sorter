@@ -61,9 +61,10 @@ def operational():
           AND kind='file' GROUP BY category""",(ARCHIVE_TTL_SECONDS,)).fetchall()
         fo=db.execute("""SELECT min(updated_at+interval '30 days') AS next_eligible_at
           FROM uploads WHERE kind='fo' AND NOT finalized""").fetchone()
-        refs=db.execute("""SELECT min(f.updated_at+interval '30 days') AS next_eligible_at
-          FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id
-          WHERE f.state='pending' AND s.upload_state='uploading'""").fetchone()
+        refs=db.execute("""SELECT min(GREATEST(s.created_at,COALESCE(s.manifest_registered_at,s.created_at),
+            COALESCE((SELECT max(f.updated_at) FROM reference_import_files f WHERE f.session_id=s.id),s.created_at))
+            +interval '30 days') AS next_eligible_at
+          FROM reference_import_sessions s WHERE s.upload_state='uploading'""").fetchone()
         health=heartbeat.status(db)["cleanup"]
     for row in archives:
         from datetime import datetime,timezone

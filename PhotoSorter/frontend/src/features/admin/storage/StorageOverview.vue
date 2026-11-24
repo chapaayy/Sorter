@@ -7,7 +7,7 @@ import {groups} from './labels'
 const props=defineProps<{usage:StorageUsage}>()
 const registry=computed(()=>props.usage.registry)
 const host=computed(()=>props.usage.host)
-const hostKnown=computed(()=>!!host.value?.at&&!host.value.partial)
+const hostKnown=computed(()=>!!host.value?.at&&!host.value.partial&&!host.value.stale)
 const categories=computed(()=>{
   const all:Record<string,StorageCounter>={...registry.value?.categories}
   for(const [key,row] of Object.entries(host.value?.categories||{})){
@@ -24,7 +24,7 @@ const groupTotals=computed(()=>groups.map(g=>({...g,value:g.keys.reduce((n,k)=>n
 const remainder=computed(()=>Object.keys(categories.value).filter(k=>!groups.some(g=>g.keys.includes(k))))
 const pct=(n:number,total:number)=>total>0?Math.max(0,Math.min(100,n/total*100)):0
 const groupColors=['#5679bc','#43a18b','#d59749','#9374c9','#84909f']
-function mapped(fs:{map_allocated_bytes?:number;used_bytes:number}){return fs.map_allocated_bytes!=null&&fs.map_allocated_bytes>=0&&fs.map_allocated_bytes<=fs.used_bytes?fs.map_allocated_bytes:null}
+function mapped(fs:{map_allocated_bytes?:number|null;used_bytes:number}){return fs.map_allocated_bytes!=null&&fs.map_allocated_bytes>=0&&fs.map_allocated_bytes<=fs.used_bytes?fs.map_allocated_bytes:null}
 </script>
 <template>
   <div class="stack">
@@ -58,7 +58,7 @@ function mapped(fs:{map_allocated_bytes?:number;used_bytes:number}){return fs.ma
         <div><span class="meta">Резерв диска (действующий)</span><strong>{{bytes(usage.disk.reserved_bytes)}}</strong></div>
         <div><span class="meta">Доступно сверх резерва</span><strong>{{bytes(usage.disk.allocatable_bytes)}}</strong></div>
       </div>
-      <p class="meta">Docker и остальные данные входят в «Вне MAP / расхождение», но не суммируются с MAP повторно. Разница также включает метаданные ФС и несинхронность выборок. Свободные блоки, зарезервированные ФС, не входят в доступное место.</p>
+      <p class="meta">Измерение хоста: {{date(host?.at)}}. <span v-if="usage.disk.warning">Внимание: мало свободного места. </span>Docker и остальные данные входят в «Вне MAP / расхождение», но не суммируются с MAP повторно. Разница также включает метаданные ФС и несинхронность выборок. Свободные блоки, зарезервированные ФС, не входят в доступное место.</p>
       <p v-if="!host||host.stale||host.partial" class="alert warning" role="status">Хостовый учёт {{!host?'ещё недоступен':host.stale?'устарел':'неполный'}}. Размер инфраструктуры и общий объём MAP предварительные.</p>
     </section>
     <section class="panel stack">
@@ -81,6 +81,7 @@ function mapped(fs:{map_allocated_bytes?:number;used_bytes:number}){return fs.ma
         <div class="row between wrap"><span>Эмбеддинги ({{registry.reference_history.embeddings}})</span><strong>{{bytes(registry.reference_history.embedding_bytes)}}</strong></div>
         <p v-if="registry.reference_history.partial" class="meta">Недоступно файлов: {{registry.reference_history.missing}}; выборка неполная.</p>
       </details>
+      <p class="meta">Повторных hardlink-путей в реестре приложения: {{registry?.sampled_at?Object.values(registry.categories||{}).reduce((n,r)=>n+(r.hardlink_paths||0),0):'—'}}.</p>
       <p class="meta">На диске — выделенные блоки уникального inode. По файлам — сумма размеров всех путей, включая hardlink. История образцов, WAL и подкатегории не прибавляются к итогам повторно.</p>
     </section>
     <section class="panel stack">

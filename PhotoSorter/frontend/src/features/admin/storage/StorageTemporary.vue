@@ -31,7 +31,7 @@ usePolling(refresh,15000)
     <h3>Незавершённые загрузки</h3>
     <div class="row between wrap"><span>ФО: {{registry?.unfinished_fo?.files??'—'}} файлов</span><strong>Осталось {{bytes(registry?.unfinished_fo?.remaining_bytes)}}</strong></div>
     <div class="row between wrap"><span>Образцы: {{registry?.unfinished_references?.files??'—'}} файлов</span><strong>Осталось {{bytes(registry?.unfinished_references?.remaining_bytes)}}</strong></div>
-    <p class="meta">Следующий возможный срок проверки ФО: {{date(data?.unfinished_fo_next_eligible_at)}}. Незавершённые загрузки защищены действующими операциями; срок без активности — 30 дней.</p>
+    <p class="meta">Следующий возможный срок проверки ФО: {{date(data?.unfinished_fo_next_eligible_at)}}; образцов: {{date(data?.unfinished_reference_next_eligible_at)}}. Незавершённые загрузки защищены действующими операциями; срок без активности — 30 дней.</p>
     <h3>Активные операции</h3>
     <p v-if="data&&!data.cleanup_worker.alive" class="alert warning" role="status">Нет свежего сигнала службы очистки.</p>
     <div v-for="row in data?.active_queue||[]" :key="row.seq" class="row between wrap"><span>{{categoryName(row.kind)}}<small v-if="row.display_name" class="meta"> · {{row.display_name}}</small></span><span class="meta">Начало {{date(row.started_at)}}</span></div>

@@ -1,5 +1,5 @@
 import {api,post} from './client'
-import type {StorageUsage,SystemStatus,RetentionPreference,StorageInventorySummary,StorageInventoryPage,HostAuditReport,LiveAuditStatus,MapUpdateStatus,StorageAccountsPage,StorageAccountDetail,StorageOperations,StorageIssues,StorageMaintenance,StoragePreview,MaintenanceKind} from '../types/api'
+import type {StorageUsage,SystemStatus,RetentionPreference,StorageInventorySummary,StorageInventoryPage,HostAuditReport,LiveAuditStatus,MapUpdateStatus,StorageAccountsPage,StorageAccountDetail,StorageOperations,StorageIssues,StorageMaintenance,StoragePreview,MaintenanceKind,HostMaintenanceKind} from '../types/api'
 export const systemApi={
   updateStatus:()=>api<MapUpdateStatus>('/system/update'),
   checkUpdate:()=>post<MapUpdateStatus>('/system/update/check',{}),
@@ -13,6 +13,8 @@ export const systemApi={
   maintenance:()=>api<StorageMaintenance[]>('/storage/maintenance'),
   maintenancePreview:(kind:MaintenanceKind)=>api<StoragePreview>('/storage/maintenance/'+kind+'/preview'),
   maintenanceStart:(kind:MaintenanceKind)=>post<StorageMaintenance>('/storage/maintenance/'+kind,{confirmed:true}),
+  hostMaintenancePreview:(kind:HostMaintenanceKind)=>api<StoragePreview>('/storage/host-maintenance/'+kind+'/preview'),
+  hostMaintenanceStart:(kind:HostMaintenanceKind)=>post<MapUpdateStatus>('/storage/host-maintenance/'+kind,{confirmed:true}),
   scanInventory:()=>post<StorageInventorySummary>('/storage/inventory/scan',{}),
   inventoryFiles:(snapshotId:string,offset=0,category='',search='')=>
     api<StorageInventoryPage>('/storage/inventory/files?'+new URLSearchParams({
