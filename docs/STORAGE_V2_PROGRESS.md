@@ -1,8 +1,8 @@
 # MAP Storage V2 progress
 Branch: feature/storage-architecture-v2; base: c6d77ebb1c9c80c732df209a17a993dd38ec381f. Main read only. No deploy, migration of old data, or merge.
 ## Stage status
-1. **STATIC AUDIT RECORDED; FINAL CI GATE OPEN** — 96 remaining modules mapped, 573 original candidate lines dispositioned, 35 migrations indexed, 51 categories (45 + 6 external boundaries), consumer/native dependency review and documentation corrections committed. Coverage tests added. Do not claim fully exhaustive source/runtime tracing or acceptance until current-head checks pass.
-2. Root and foundations — not started.
+1. **ACCEPTED — 2026-11-24** — 96 remaining modules mapped, 573 original candidate lines dispositioned, 35 migrations indexed, 51 categories (45 + 6 external boundaries), consumer/native dependency review and documentation corrections committed. Coverage tests added. Do not claim fully exhaustive source/runtime tracing or acceptance until current-head checks pass.
+2. Root and foundations — in progress.
 3. Personal pipeline — not started.
 4. References — not started.
 5. Temporary pool, ZIP and models — not started.
@@ -15,7 +15,7 @@ Branch: feature/storage-architecture-v2; base: c6d77ebb1c9c80c732df209a17a993dd3
 [Actions run 45408161752](https://github.com/chapaayy/Sorter/actions/runs/45408161752) at exact base SHA succeeded: backend, restore, frontend, chromium-desktop, webkit-desktop, webkit-mobile, docker-runtime. Prior WebKit mobile failures not reproduced by that run; this is not proof of absence of flakiness.
 ## Findings and blockers
 Existing config and storage paths, compose, database, migrations 0001–0036 (35 files), update gate, archive compatibility service, audit write-site helper and key project docs inspected for dependency evidence. See catalog and source/schema indexes; lexical candidates are not a semantic review. AGENTS, PROJECT_MAP and active docs corrected to ZIP on demand; actual archive_retries is compatibility only. Removal is out of stage 1. Existing audit helper is not exhaustive. Local git clone failed DNS resolution; no local Docker executable. Connector access works. Do not claim complete local test run.
-## Next action within stage 1
+## Historical stage 1 next action (superseded)
 Check CI on final code/doc commit, including new invariant tests. Native actual image UID/permissions, offline MegaLoc with verified assets, end-to-end syscall evidence and new lifecycle tests belong to stages 3–7. Remaining limitation: module-level review used relevant source excerpts for some large modules; no claim of exhaustive line-by-line review of all frontend/test/native code. Do not start stage 2 without user instruction.
 
 ## Commits and checks
@@ -39,3 +39,6 @@ Check CI on final code/doc commit, including new invariant tests. Native actual 
 - Backend job [138634360885](https://github.com/chapaayy/Sorter/actions/runs/45447264904/job/138634360885) on 57b3035 succeeded (318 passed, 28 subtests passed, one warning). [Full CI for 9933060](https://github.com/chapaayy/Sorter/actions/runs/45446789021) succeeded. [CI for 0e527c2](https://github.com/chapaayy/Sorter/actions/runs/45447428583) started; final conclusion not yet available when recorded. Check [latest branch Actions](https://github.com/chapaayy/Sorter/actions?query=branch%3Afeature%2Fstorage-architecture-v2) for the final SHA. No successful current-head conclusion is asserted here.
 - Remaining decisions: canonical manifest/index and CSV demand; explicit historical reference retention policy (until resolved, retain dependencies); stable construction ID; reference abandonment TTL; lock namespace; image permissions and log owner; verified content model signature and working-model/cache separation; quota reserve default not agreed. Preserve unknown data, active leases, and published historical dependencies. No stage 2 started.
 - Upstream MegaLoc inspected at 5fe0dd6; direct model constructor/forward does not explicitly download, hubconf entry point does; MAP uses direct loader. Browser resume/localStorage and gallery/download consumer dependencies recorded in dependency review. No actual model weights downloaded during audit.
+
+## Stage 1 closure / stage 2 entry
+Owner accepted stage 1 at a2645c7b5f3bfb3050e3976d68a85c0d0ed7d06c, [CI 45447879690](https://github.com/chapaayy/Sorter/actions/runs/45447879690), seven of seven jobs successful. No repeated global inventory. Mandatory acceptance gates transferred: stage 2 real non-root app UID, link/rename, path containment, clean bootstrap; stage 3 actual FFmpeg conversion and frame writes; stage 4 native thumbnail/embedding publication and dependency/pin checks; stage 5 native scratch/unnamed FD and offline verified MegaLoc after permitted cache removal; stage 6 actual image UID, PG/Caddy and infrastructure writes/permissions; stage 7 reconciliation and runtime write evidence. Stage 2 only; no migration of old data.
