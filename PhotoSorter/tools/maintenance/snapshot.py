@@ -22,7 +22,8 @@ from urllib.parse import urlsplit,unquote
 INCLUDED_DIRS=("storage/app","storage/infrastructure/caddy/data","storage/infrastructure/caddy/config")
 # No live PGDATA copy; PostgreSQL uses a verified logical dump. Transient
 # archives and scratch, logs and updater workspaces are reproducible/excluded.
-EXCLUDED_PREFIXES=("storage/app/temporary/",)
+EXCLUDED_PREFIXES=tuple("storage/app/temporary/"+part+"/" for part in
+                   ("archives","scratch","model-downloads","transcoding","video-frames","processing"))
 MODEL_DIRS=("storage/app/models","storage/app/cache")
 INCLUDED_FILES=(".env",".env.generated","compose.yaml","PhotoSorter/docker/caddy/Caddyfile","storage/system/state/layout-version","storage/system/state/update-branch","storage/system/state/log-policy.json")
 SCHEMA_VERSION=3

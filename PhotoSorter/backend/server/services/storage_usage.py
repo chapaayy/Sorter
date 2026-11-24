@@ -9,7 +9,7 @@ from .storage_breakdown import _kind
 from app.storage.categories import Category
 from .disk_guard import reserve
 from ..database import connect
-from app.config import RUNS_DIR
+from app.logging.events import RUNS_DIR
 
 def _size(root,seen):
     total=0
@@ -76,7 +76,7 @@ def usage():
             else "warning" if fraction>=.80 else None},
             "categories_bytes":groups,
             "database_estimated_bytes":db_size,
-            "not_scanned":["postgres_WAL","Docker_logs","Caddy_volumes"],
+            "not_scanned":["postgres_WAL","Docker_logs","Caddy_state"],
             "counting":"physical_inode_deduplicated"}
 
 def _size_logfiles(root,seen):

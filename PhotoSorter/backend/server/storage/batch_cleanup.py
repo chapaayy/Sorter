@@ -81,9 +81,11 @@ def remove_batch_files(batch_id,run_ids,upload_ids,data_dir,runs_dir,report):
         for folder in (incoming,batch_root(batch_id)/"results",batch_root(batch_id)):
             try:folder.rmdir()
             except FileNotFoundError:pass
-        from app.logging.events import RUNS_DIR as LOG_RUNS_DIR
-        for run_id in run_ids:
-            if LOG_RUNS_DIR.is_dir():safe_remove_tree(LOG_RUNS_DIR,run_key(run_id),missing_ok=True)
+        from app.logging import events
+        if events.RUNS_DIR.is_dir():
+            with events.journal_lock():
+                for run_id in run_ids:
+                    safe_remove_tree(events.RUNS_DIR,run_key(run_id),missing_ok=True)
         return total
     finally:
         if fd is not None:

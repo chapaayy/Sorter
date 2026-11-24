@@ -13,7 +13,10 @@ def policy(root):
 def record(directory,service,message):
     directory=Path(directory)
     contract=directory.parents[1]/"system/state/log-policy.json"
-    cap=policy(contract)[service]*1024*1024//5
+    budget=policy(contract)[service]
+    # Audit events have a separate bounded 90 MiB session within the 100 MiB total.
+    if service=="audit":budget=min(10,budget)
+    cap=budget*1024*1024//5
     payload=(json.dumps({"at":datetime.now(timezone.utc).isoformat(),"phase":str(message)[:128]})+"\n").encode()
     fd=os.open(directory,os.O_DIRECTORY|os.O_RDONLY|os.O_NOFOLLOW)
     try:

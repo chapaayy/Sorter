@@ -52,6 +52,11 @@ def run_cycle():
         refs=reference_gc.collect(limit=50)
         if any(refs[k] for k in ('retired_versions','objects','embeddings','parts','cancelled_imports')):
             logging.info('Reference lifecycle cleanup: %s',refs)
+        from app.logging import events
+        from ..database import connect
+        with connect() as db:
+            terminal=[r['id'] for r in db.execute("SELECT id FROM jobs WHERE status IN ('completed','completed_with_errors','failed','stopped','interrupted')").fetchall()]
+        events.prune_terminal(terminal)
         stale=thumbnail_gc.collect(limit=100)
         if stale:logging.info("Cleared %s unreferenced thumbnails",stale)
 

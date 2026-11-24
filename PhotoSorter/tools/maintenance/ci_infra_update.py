@@ -89,7 +89,7 @@ def main():
     storage=Path(sys.argv[2]).resolve()
     assert storage==root/"storage" and (root/".env.generated").exists()
     old=run("git","rev-parse","HEAD",cwd=root)
-    assert all(host.image_info(host.service_id(s)) if False else True for s in host.SERVICES)
+    assert host.installed()[0]==old
     compose(root,"up","-d","--no-build","--wait","--wait-timeout","180")
     await_health()
     initial=permanent(storage)
@@ -136,11 +136,40 @@ def main():
         for name in (".env",".env.generated"):
             shutil.copy2(root/name,project/name)
         host.configure(storage,project)
-        updater=host.Updater(project)
-        updater.check()
-        assert updater.status()["target"]==target and updater.status()["update_available"],updater.status()
-        updater.update(target)
-        assert updater.status()["phase"]=="success",updater.status()
+        # Run the actual root Unix-socket daemon and send its fixed RPC commands.
+        daemon=subprocess.Popen([sys.executable,str(Path(__file__).with_name("map_updater.py")),
+                     "--project-root",str(project),"--storage-root",str(storage)])
+        def rpc(command):
+            with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as sock:
+                sock.settimeout(5)
+                sock.connect(str(host.RPC/"control.sock"))
+                sock.sendall((command+"\n").encode())
+                with sock.makefile("rb") as stream:return json.loads(stream.readline(65536))
+        def wait_phase(expected,timeout=300):
+            deadline=time.monotonic()+timeout
+            while time.monotonic()<deadline:
+                try:state=json.loads(host.STATE.read_text())
+                except (OSError,ValueError):
+                    time.sleep(.3);continue
+                if state.get("phase")==expected and not state.get("busy"):return state
+                if state.get("phase") in ("failed","recovery_required") and not state.get("busy"):
+                    raise RuntimeError("Updater failure: "+str(state.get("detail")))
+                time.sleep(.5)
+            raise RuntimeError("Updater acceptance deadline: "+expected)
+        try:
+            deadline=time.monotonic()+10
+            while not (host.RPC/"control.sock").exists() and time.monotonic()<deadline:time.sleep(.1)
+            assert rpc("status")["branch"]==BRANCH
+            rpc("check")
+            state=wait_phase("checked")
+            assert state["target"]==target and state["update_available"],state
+            rpc("update")
+            wait_phase("success",1200)
+            assert daemon.wait(timeout=10)==0
+        finally:
+            if daemon.poll() is None:
+                daemon.terminate()
+                daemon.wait(timeout=20)
         assert host.installed()[0]==target
         assert run("git","rev-parse","HEAD",cwd=project)==target
         assert host.sql("SELECT system_identifier FROM pg_control_system()")==pgid and tls()==cert
