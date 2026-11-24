@@ -111,3 +111,11 @@ Owner accepted stage 4; closure 87013b4 passed [CI 45463543056](https://github.c
 
 ## Stage 6 entry
 Stage 5 accepted; closing CI 45468345763 successful. Infrastructure bind mounts, native UID, installation branch pin, credentials checks first. Real update and full integration acceptance remain open. No stage 7 work.
+
+
+### Stage 6 checkpoints — acceptance still open
+- 0a62ebc3 infrastructure binds, UID/mode and installation pin ([CI 45469870675](https://github.com/chapaayy/Sorter/actions/runs/45469870675) success); a35aec4 managed journals and native rotation config ([CI 45470090033](https://github.com/chapaayy/Sorter/actions/runs/45470090033) success).
+- e840acf restricted updater branch/path changes; 24e39bd bounded audit and snapshot schema 3; b8e22e8 real clean/repeat install and updater harness; 1dc434b read-only rootfs and log budgets; 020b9fd fixed secure umask lock mode; 5f7fa31 fixed backup name and added native PostgreSQL/Caddy restore drill; 7cda720 restart sequence and abandoned BuildKit test; 17c3272 actual Caddy rotation at MiB granularity; 9689d52 journal usage summary, periodic host recovery and restored app ownership.
+- [CI 45472409650](https://github.com/chapaayy/Sorter/actions/runs/45472409650): backend 364 passed +28 subtests, restore, frontend and all browser jobs success. Docker run proved clean installation, HTTPS login, actual model offline/cache reuse, repeat install, real PostgreSQL/Caddy recreation and identical PG cluster, TLS certificate, credentials and permanent file stamps. Failed Caddy rotation fixture at 1 KiB; Caddy uses MiB granularity. Corrected to 1 MiB and closed-log boundary seeding; actual native logger rotates on real writes. No bypass or weakened acceptance.
+- [CI 45473348104](https://github.com/chapaayy/Sorter/actions/runs/45473348104) and [CI 45473814193](https://github.com/chapaayy/Sorter/actions/runs/45473814193) are the expanded acceptance runs. Do not mark stage 6 complete before final Docker evidence, including the actual two-commit updater, post-update offline MegaLoc, real native rotation and restore.
+- Main verified unchanged c6d77ebb1c9c80c732df209a17a993dd38ec381f. No production VPS, old-data migration, global inventory, merge or stage 7 work.

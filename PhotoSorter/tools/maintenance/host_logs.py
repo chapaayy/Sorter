@@ -88,20 +88,13 @@ def maintenance(storage):
     prune_postgres(storage)
     # This is the same lock held by install.sh and the host updater, never a
     # second cleanup system. An active build retains all of its resources.
-    from map_updater import configure,recover_owned_work
-    from map_build import configure as configure_builder,clean_owned_builders
+    from map_updater import recover_owned_work
     lock=storage/"system/updater/private/deploy.lock"
     with lock.open("a") as handle:
         try:fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:pass
         else:
-            configure_builder(storage)
-            clean_owned_builders()
-            import shutil
-            for path in (storage/"system/updater/workspace").glob("source-*"):
-                if path.is_dir() and not path.is_symlink():shutil.rmtree(path)
-            for path in (storage/"system/backups/updater").glob(".pending-*"):
-                if path.is_dir() and not path.is_symlink():shutil.rmtree(path)
+            recover_owned_work(storage)
     publish_usage(storage)
 
 if __name__=="__main__":

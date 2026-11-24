@@ -60,12 +60,18 @@ def configure(storage,project):
     BRANCH=branch
     map_build.configure(storage)
 
-def recover_owned_work():
+def recover_owned_work(storage=None):
     # Caller owns deployment lock; never remove another running build.
+    workspace,backups=WORKSPACE,BACKUPS
+    if storage is not None:
+        storage=Path(storage)
+        map_build.configure(storage)
+        workspace=storage/"system/updater/workspace"
+        backups=storage/"system/backups/updater"
     warnings=map_build.clean_owned_builders()
-    for path in WORKSPACE.glob("source-*"):
+    for path in workspace.glob("source-*"):
         if path.is_dir() and not path.is_symlink():shutil.rmtree(path)
-    for path in BACKUPS.glob(".pending-*"):
+    for path in backups.glob(".pending-*"):
         if path.is_dir() and not path.is_symlink():shutil.rmtree(path)
     return warnings
 
