@@ -7,6 +7,7 @@ from ..database import connect
 from ..db.repositories import batches as repository
 from . import batch_runs
 from ..storage.paths import batch_dir,owned_file
+from ..storage.ownership import require_creator
 from app.config import DATA_DIR
 
 def uid(value):
@@ -28,7 +29,7 @@ def _available_name(db,base,exclude_id=None):
         number+=1
     return name
 
-def create(display_name=None,creation_request_id=None,report_date_mode='processing',report_date=None):
+def create(display_name=None,creation_request_id=None,report_date_mode='processing',report_date=None,*,owner_id):
     name=(display_name or "").strip()
     if len(name)>120:raise HTTPException(422,"Название слишком длинное")
     if (report_date_mode=='manual') != (report_date is not None):
@@ -37,16 +38,19 @@ def create(display_name=None,creation_request_id=None,report_date_mode='processi
         from datetime import datetime,timezone
         name="Фотоотчёт "+datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M")
     with connect() as db:
+        owner_id=require_creator(db,owner_id)
         repository.lock_names(db)
         if creation_request_id is not None:
             existing=repository.by_creation_request(db,creation_request_id)
             if existing:
+                if existing['owner_id'] != owner_id:
+                    raise HTTPException(404,'Партия не найдена')
                 if (existing['report_date_mode'],existing['report_date']) != (report_date_mode,report_date):
                     raise HTTPException(409,'Дата повторной загрузки не совпадает с созданной партией')
                 return {"batch_id":str(existing["id"]),"display_name":existing["display_name"]}
         batch_id=uuid.uuid4()
         name=_available_name(db,name)
-        repository.insert(db,batch_id,name,creation_request_id,report_date_mode,report_date)
+        repository.insert(db,batch_id,name,creation_request_id,report_date_mode,report_date,owner_id=owner_id)
     return {"batch_id":str(batch_id),"display_name":name}
 
 def _serialize(row,counters=None):

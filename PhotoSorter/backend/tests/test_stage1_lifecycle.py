@@ -71,10 +71,16 @@ def sandbox(tmp_path,monkeypatch,db):
     monkeypatch.setattr(repository,"RUNS_DIR",data/"runs")
     return data
 
+def owner_for_test(db):
+    return db.execute("""INSERT INTO users(username,access_role) VALUES ('admin','owner')
+        ON CONFLICT(username) DO UPDATE SET access_role='owner' RETURNING id""").fetchone()["id"]
+
 def _batch(data,with_photo=True):
     from server.services import batches
     from server.database import connect
-    ident=uuid.UUID(batches.create("Тестовая партия")["batch_id"])
+    with connect() as db:
+        owner_id=owner_for_test(db)
+    ident=uuid.UUID(batches.create("Тестовая партия",owner_id=owner_id)["batch_id"])
     if with_photo:
         file_id=uuid.uuid4()
         folder=paths.batch_dir(ident)
@@ -98,10 +104,16 @@ def _job(data,batch_id,status="completed"):
                    (run_id,batch_id,status,Jsonb({"id":run_id,"status":status})))
     return run_id
 
-def test_additive_migration_legacy_rows_survive(db):
+def test_historical_additive_migrations_and_v2_rejects_unowned_rows(db,tmp_path,monkeypatch):
     import psycopg
     from server.database import DB_URL,SCHEMA
     from server.db.migration_runner import migrate,MIGRATIONS
+    import shutil
+    from server.db import migration_runner
+    for file in MIGRATIONS.glob('*.sql'):
+        if file.name != '0037_batch_ownership.sql':
+            shutil.copy2(file,tmp_path/file.name)
+    monkeypatch.setattr(migration_runner,'MIGRATIONS',tmp_path)
     schema="stage1_"+uuid.uuid4().hex[:16]
     with psycopg.connect(DB_URL) as conn:
         conn.execute(f'CREATE SCHEMA "{schema}"')
@@ -115,8 +127,12 @@ def test_additive_migration_legacy_rows_survive(db):
             assert conn.execute("SELECT display_name FROM batches WHERE id=%s",(old,)).fetchone()[0].startswith("ФО ")
             migrate(conn)
             assert {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}=={
-                file.name for file in MIGRATIONS.glob("*.sql")}
+                file.name for file in tmp_path.glob("*.sql")}
             assert conn.execute("SELECT id FROM batches WHERE id=%s",(old,)).fetchone()[0]==old
+            monkeypatch.setattr(migration_runner,"MIGRATIONS",MIGRATIONS)
+            with pytest.raises(psycopg.errors.NotNullViolation):
+                with conn.transaction():
+                    migrate(conn)
         finally:
             conn.execute("RESET search_path")
             conn.execute(f'DROP SCHEMA "{schema}" CASCADE')
