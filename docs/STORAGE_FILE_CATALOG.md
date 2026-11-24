@@ -1,5 +1,5 @@
-# Storage file catalog — initial mapping, not exhaustive
-Base c6d77ebb1c9c80c732df209a17a993dd38ec381f. Target path, policy, owner, accounting and recovery are in [storage-layout-v2.json](storage-layout-v2.json). Mapping below uses current config, compose, schema and supplied source audit as initial leads. Individual reader/writer/delete call sites still require semantic review; no unsupported completeness claim.
+# Storage file catalog — reviewed stage 1 baseline
+Base c6d77ebb1c9c80c732df209a17a993dd38ec381f. Target path, policy, owner, accounting and recovery are in [storage-layout-v2.json](storage-layout-v2.json). Mapping below links pinned source, schema, semantic site dispositions and module review. Native writes require future runtime verification; no unsupported exhaustive-runtime claim.
 | Source modules (under PhotoSorter/backend unless noted) | Current paths / data | Target categories | Stage / regression tests |
 |---|---|---|---|
 | app/config.py; server/storage/paths.py; install.sh; compose.yaml | data, Models, RUNS_DIR, UUID/run helpers | all app roots | 2; test_stage4_installer, test_stage4_security, new traversal/link tests |
@@ -18,8 +18,8 @@ Base c6d77ebb1c9c80c732df209a17a993dd38ec381f. Target path, policy, owner, accou
 | tools/maintenance/snapshot.py, ci_restore_drill.py | external protected snapshots, temp restore directories | updater_backup or explicit external backup (not personal) | 6; test_stage4_snapshots, restore CI |
 | tools/maintenance/audit_host.py, audit_live.py, audit_containerd.py, audit_write_sites.py; services/storage_inventory, storage_breakdown, storage_usage | data/audits/host and engine scans | audit_snapshot, audit_event, unknown | 6/7; test_host_audit, test_live_audit, test_audit_containerd, test_storage_inventory, test_storage_breakdown |
 | server/database.py, db/migrations, db/repositories, security/access_policy.py, auth.py | SQL state, path columns, access grants | ownership and registry links (not duplicate filesystem metadata) | 2/7; test_stage4_migration, test_access_requests, test_unified_queue_stage3 |
-## Remaining inspection
-Enumerate exact file APIs including reads, deletes, aliases, native library writes, SQL/JSON path columns, frontend callers and maintenance scripts; compare with existing audit_write_sites.py (write-only heuristic). Verify tests map to actual behavior; proposed tests above are not a claim of passing new functionality. Explicitly classify any discovered additional categories. Unknown never authorizes deletion.
+## Review evidence
+[573 candidate dispositions](STORAGE_V2_SITE_DISPOSITIONS.md), [96 module mappings](STORAGE_V2_MODULE_REVIEW.md), and [consumer and native dependency review](STORAGE_V2_DEPENDENCIES.md). These are static evidence, not runtime tracing. Unknown never authorizes deletion.
 
 ## Verified dependency findings (base SHA)
 - database.py: users.id BIGINT identity; sessions.user_id CASCADE; batches currently UUID and no owner; uploads.batch_id CASCADE, jobs.batch_id required without cascade. Introduce explicit non-cascading batches.owner_id; do not infer ownership from result_access_grants. access_policy.is_owner requires username admin and owner role; viewer GET/HEAD whitelist and require_published join grants, jobs, active batch. Preserve policy; do not generalize permissions.
@@ -31,3 +31,13 @@ Enumerate exact file APIs including reads, deletes, aliases, native library writ
 - media/video.py has three unnamed TemporaryFile calls (L30, L86); services/thumbnails.py L105 uses TemporaryDirectory without explicit dir. These must be routed, not only named media files.
 - map_updater.py L103 checks archive_retries.state='running' in verify_idle even though archive_retries service no longer enqueues jobs. Stage 6 must remove obsolete dependency only after caller/schema audit. Dockerfile HF_HOME/HF_HUB_CACHE/HF_XET_CACHE/TORCH_HOME point into Models/cache; prove working model offline before any cache purge.
 - Exact source candidate indexes: [core](STORAGE_V2_SOURCE_SITES_CORE.md), [references/models/logs](STORAGE_V2_SOURCE_SITES_REFERENCES.md), [infrastructure](STORAGE_V2_SOURCE_SITES_INFRA.md). 43 source files, 573 lexical candidates; no failed fetches. Schema indexes: [0001–0019](STORAGE_V2_SCHEMA_SITES_1.md), [0020–0036](STORAGE_V2_SCHEMA_SITES_2.md). These are audit evidence, not full semantic coverage. See [remaining source scope](STORAGE_V2_REVIEW_BACKLOG.md).
+
+## Additional boundary categories
+| Category | Current location / producer | Consumer and policy |
+|---|---|---|
+| deployment_config | project .env and .env.generated, install/updater | root-protected; compose reads; never user quota or GC |
+| host_config | /etc/systemd/system, /etc/sysctl.d, apt/systemd installer writes | OS/root lifecycle, not app-writable |
+| external_backup | snapshot explicit destination and restore scratch | operator-controlled protected snapshots, not updater backup |
+| test_artifact | pytest tmp_path, CI restore, Docker and Playwright | runner-only fixtures; never production |
+| external_diagnostic | staging_probe explicit output path | operator-only reports, separate from managed audit |
+| client_storage | browser preferences, selected source and download target | browser-controlled, not server disk |

@@ -31,3 +31,39 @@ def test_storage_v2_target_contract():
         assert by_id[name]["path"].startswith("app/temporary/")
     assert by_id["reference_embedding"]["scope"] == "shared"
     assert by_id["unknown"]["cleanup"] == "never automatic deletion"
+
+
+def test_stage_one_site_review_coverage():
+    import re
+    from collections import Counter
+    docs = CONTRACT.parent
+    def rows(path, pattern):
+        current = None
+        result = []
+        for line in path.read_text(encoding='utf-8').splitlines():
+            if line.startswith('## `'):
+                current = line.split('`')[1]
+            match = re.match(pattern, line)
+            if match:
+                assert current
+                result.append((current, int(match[1])))
+        return result
+    candidates = []
+    for path in sorted(docs.glob('STORAGE_V2_SOURCE_SITES_*.md')):
+        candidates.extend(rows(path, r'- L(\d+):'))
+    review = docs / 'STORAGE_V2_SITE_DISPOSITIONS.md'
+    dispositions = rows(review, r'\| (\d+) \|')
+    assert len(candidates) == len(set(candidates)) == 573
+    assert Counter(dispositions) == Counter(candidates)
+    ids = {c['id'] for c in json.loads(CONTRACT.read_text())['categories']}
+    for line in review.read_text(encoding='utf-8').splitlines():
+        if re.match(r'\| \d+ \|', line):
+            cells = line.split('|')
+            assert set(c.strip() for c in cells[3].split(',')) <= ids
+            assert cells[2].strip() and cells[4].strip()
+    backlog = (docs / 'STORAGE_V2_REVIEW_BACKLOG.md').read_text(encoding='utf-8')
+    modules = (docs / 'STORAGE_V2_MODULE_REVIEW.md').read_text(encoding='utf-8')
+    expected = re.findall(r'^- \[x\] `([^`]+)`', backlog, re.M)
+    reviewed = re.findall(r'^- \*\*`([^`]+)`\*\*', modules, re.M)
+    assert len(expected) == len(set(expected)) == 96
+    assert Counter(reviewed) == Counter(expected)

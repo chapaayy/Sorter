@@ -1,100 +1,100 @@
 # Stage 1 review backlog
 
-Pinned baseline tree. These files were not included in the 43-file lexical candidate indexes. Some were individually inspected (config, paths, update gate, archive_retries, operations, access policy); all still require explicit reviewed-site mapping. No assumption that an unlisted or zero-hit module has no side effects. Also review frontend API clients and all tests for path/manifest/ZIP consumers. Review actual code, including aliases/native writes and indirect call graph; update catalog before closing stage 1.
+Pinned baseline tree. Checked boxes indicate module-level source/dependency mapping in [STORAGE_V2_MODULE_REVIEW.md](STORAGE_V2_MODULE_REVIEW.md), not runtime tracing or proof that every line was inspected. All 96 files retrieved; relevant bodies/excerpts reviewed. The separate 573-site semantic table covers the original candidate set exactly. Remaining gates: current-head CI; stage-specific native runtime verification (see catalog). No implication that unknown writes are safe to delete.
 
-- [ ] `PhotoSorter/backend/app/config.py`
-- [ ] `PhotoSorter/backend/app/jobs/overall_progress.py`
-- [ ] `PhotoSorter/backend/app/jobs/progress.py`
-- [ ] `PhotoSorter/backend/app/jobs/worker.py`
-- [ ] `PhotoSorter/backend/app/photos/construction.py`
-- [ ] `PhotoSorter/backend/app/photos/labels.py`
-- [ ] `PhotoSorter/backend/app/photos/reader.py`
-- [ ] `PhotoSorter/backend/app/photos/scanner.py`
-- [ ] `PhotoSorter/backend/app/recognition/engines/base.py`
-- [ ] `PhotoSorter/backend/app/recognition/engines/megaloc/extractor.py`
-- [ ] `PhotoSorter/backend/app/recognition/errors.py`
-- [ ] `PhotoSorter/backend/app/recognition/grouping/finder.py`
-- [ ] `PhotoSorter/backend/app/recognition/matching/resolver.py`
-- [ ] `PhotoSorter/backend/app/recognition/math.py`
-- [ ] `PhotoSorter/backend/app/recognition/pipeline.py`
-- [ ] `PhotoSorter/backend/app/results/copier.py`
-- [ ] `PhotoSorter/backend/app/results/match_filter.py`
-- [ ] `PhotoSorter/backend/app/results/sides.py`
-- [ ] `PhotoSorter/backend/app/system/performance.py`
-- [ ] `PhotoSorter/backend/server/api/file_response.py`
-- [ ] `PhotoSorter/backend/server/api/routes/access_requests.py`
-- [ ] `PhotoSorter/backend/server/api/routes/admin_users.py`
-- [ ] `PhotoSorter/backend/server/api/routes/auth.py`
-- [ ] `PhotoSorter/backend/server/api/routes/batches.py`
-- [ ] `PhotoSorter/backend/server/api/routes/downloads.py`
-- [ ] `PhotoSorter/backend/server/api/routes/images.py`
-- [ ] `PhotoSorter/backend/server/api/routes/library_notices.py`
-- [ ] `PhotoSorter/backend/server/api/routes/logs.py`
-- [ ] `PhotoSorter/backend/server/api/routes/models.py`
-- [ ] `PhotoSorter/backend/server/api/routes/originals.py`
-- [ ] `PhotoSorter/backend/server/api/routes/processing_settings.py`
-- [ ] `PhotoSorter/backend/server/api/routes/reference_imports.py`
-- [ ] `PhotoSorter/backend/server/api/routes/references.py`
-- [ ] `PhotoSorter/backend/server/api/routes/regions.py`
-- [ ] `PhotoSorter/backend/server/api/routes/results.py`
-- [ ] `PhotoSorter/backend/server/api/routes/site.py`
-- [ ] `PhotoSorter/backend/server/api/routes/storage.py`
-- [ ] `PhotoSorter/backend/server/api/routes/system.py`
-- [ ] `PhotoSorter/backend/server/api/routes/thumbnails.py`
-- [ ] `PhotoSorter/backend/server/api/routes/updater.py`
-- [ ] `PhotoSorter/backend/server/api/routes/work_queue.py`
-- [ ] `PhotoSorter/backend/server/auth.py`
-- [ ] `PhotoSorter/backend/server/db/migration_runner.py`
-- [ ] `PhotoSorter/backend/server/db/repositories/access_requests.py`
-- [ ] `PhotoSorter/backend/server/db/repositories/batches.py`
-- [ ] `PhotoSorter/backend/server/db/repositories/job_status.py`
-- [ ] `PhotoSorter/backend/server/db/repositories/pagination.py`
-- [ ] `PhotoSorter/backend/server/db/repositories/reference_imports.py`
-- [ ] `PhotoSorter/backend/server/db/repositories/work_queue.py`
-- [ ] `PhotoSorter/backend/server/main.py`
-- [ ] `PhotoSorter/backend/server/media/estimate.py`
-- [ ] `PhotoSorter/backend/server/media/formats.py`
-- [ ] `PhotoSorter/backend/server/media/preview.py`
-- [ ] `PhotoSorter/backend/server/media/sorting.py`
-- [ ] `PhotoSorter/backend/server/security/access_policy.py`
-- [ ] `PhotoSorter/backend/server/security/login_throttle.py`
-- [ ] `PhotoSorter/backend/server/services/access_requests.py`
-- [ ] `PhotoSorter/backend/server/services/admin_users.py`
-- [ ] `PhotoSorter/backend/server/services/archive_layout.py`
-- [ ] `PhotoSorter/backend/server/services/archive_pipeline.py`
-- [ ] `PhotoSorter/backend/server/services/archive_retries.py`
-- [ ] `PhotoSorter/backend/server/services/auto_processing.py`
-- [ ] `PhotoSorter/backend/server/services/batch_runs.py`
-- [ ] `PhotoSorter/backend/server/services/cleanup.py`
-- [ ] `PhotoSorter/backend/server/services/compute_settings.py`
-- [ ] `PhotoSorter/backend/server/services/construction_catalog.py`
-- [ ] `PhotoSorter/backend/server/services/construction_relabel.py`
-- [ ] `PhotoSorter/backend/server/services/disk_guard.py`
-- [ ] `PhotoSorter/backend/server/services/heartbeat.py`
-- [ ] `PhotoSorter/backend/server/services/library_notices.py`
-- [ ] `PhotoSorter/backend/server/services/media_preparation.py`
-- [ ] `PhotoSorter/backend/server/services/operations.py`
-- [ ] `PhotoSorter/backend/server/services/reference_sides.py`
-- [ ] `PhotoSorter/backend/server/services/references.py`
-- [ ] `PhotoSorter/backend/server/services/regions.py`
-- [ ] `PhotoSorter/backend/server/services/retention.py`
-- [ ] `PhotoSorter/backend/server/services/storage_breakdown.py`
-- [ ] `PhotoSorter/backend/server/services/storage_inventory.py`
-- [ ] `PhotoSorter/backend/server/services/storage_usage.py`
-- [ ] `PhotoSorter/backend/server/services/update_gate.py`
-- [ ] `PhotoSorter/backend/server/services/upload_manifest.py`
-- [ ] `PhotoSorter/backend/server/services/upload_validation.py`
-- [ ] `PhotoSorter/backend/server/services/worker_cpu_affinity.py`
-- [ ] `PhotoSorter/backend/server/storage/hardlinks.py`
-- [ ] `PhotoSorter/backend/server/storage/paths.py`
-- [ ] `PhotoSorter/backend/server/worker.py`
-- [ ] `PhotoSorter/backend/server/workers/reference_prepare.py`
-- [ ] `PhotoSorter/backend/server/workers/thumbnail.py`
-- [ ] `PhotoSorter/backend/server/workers/warm_megaloc.py`
-- [ ] `PhotoSorter/tools/benchmark_api.py`
-- [ ] `PhotoSorter/tools/maintenance/audit_write_sites.py`
-- [ ] `PhotoSorter/tools/maintenance/compare_baseline.py`
-- [ ] `PhotoSorter/tools/maintenance/install_prerequisites.sh`
-- [ ] `PhotoSorter/tools/maintenance/setup_tcp_bbr.sh`
-- [ ] `PhotoSorter/tools/maintenance/staging_probe.py`
-- [ ] `PhotoSorter/tools/maintenance/test_install_prerequisites.sh`
+- [x] `PhotoSorter/backend/app/config.py`
+- [x] `PhotoSorter/backend/app/jobs/overall_progress.py`
+- [x] `PhotoSorter/backend/app/jobs/progress.py`
+- [x] `PhotoSorter/backend/app/jobs/worker.py`
+- [x] `PhotoSorter/backend/app/photos/construction.py`
+- [x] `PhotoSorter/backend/app/photos/labels.py`
+- [x] `PhotoSorter/backend/app/photos/reader.py`
+- [x] `PhotoSorter/backend/app/photos/scanner.py`
+- [x] `PhotoSorter/backend/app/recognition/engines/base.py`
+- [x] `PhotoSorter/backend/app/recognition/engines/megaloc/extractor.py`
+- [x] `PhotoSorter/backend/app/recognition/errors.py`
+- [x] `PhotoSorter/backend/app/recognition/grouping/finder.py`
+- [x] `PhotoSorter/backend/app/recognition/matching/resolver.py`
+- [x] `PhotoSorter/backend/app/recognition/math.py`
+- [x] `PhotoSorter/backend/app/recognition/pipeline.py`
+- [x] `PhotoSorter/backend/app/results/copier.py`
+- [x] `PhotoSorter/backend/app/results/match_filter.py`
+- [x] `PhotoSorter/backend/app/results/sides.py`
+- [x] `PhotoSorter/backend/app/system/performance.py`
+- [x] `PhotoSorter/backend/server/api/file_response.py`
+- [x] `PhotoSorter/backend/server/api/routes/access_requests.py`
+- [x] `PhotoSorter/backend/server/api/routes/admin_users.py`
+- [x] `PhotoSorter/backend/server/api/routes/auth.py`
+- [x] `PhotoSorter/backend/server/api/routes/batches.py`
+- [x] `PhotoSorter/backend/server/api/routes/downloads.py`
+- [x] `PhotoSorter/backend/server/api/routes/images.py`
+- [x] `PhotoSorter/backend/server/api/routes/library_notices.py`
+- [x] `PhotoSorter/backend/server/api/routes/logs.py`
+- [x] `PhotoSorter/backend/server/api/routes/models.py`
+- [x] `PhotoSorter/backend/server/api/routes/originals.py`
+- [x] `PhotoSorter/backend/server/api/routes/processing_settings.py`
+- [x] `PhotoSorter/backend/server/api/routes/reference_imports.py`
+- [x] `PhotoSorter/backend/server/api/routes/references.py`
+- [x] `PhotoSorter/backend/server/api/routes/regions.py`
+- [x] `PhotoSorter/backend/server/api/routes/results.py`
+- [x] `PhotoSorter/backend/server/api/routes/site.py`
+- [x] `PhotoSorter/backend/server/api/routes/storage.py`
+- [x] `PhotoSorter/backend/server/api/routes/system.py`
+- [x] `PhotoSorter/backend/server/api/routes/thumbnails.py`
+- [x] `PhotoSorter/backend/server/api/routes/updater.py`
+- [x] `PhotoSorter/backend/server/api/routes/work_queue.py`
+- [x] `PhotoSorter/backend/server/auth.py`
+- [x] `PhotoSorter/backend/server/db/migration_runner.py`
+- [x] `PhotoSorter/backend/server/db/repositories/access_requests.py`
+- [x] `PhotoSorter/backend/server/db/repositories/batches.py`
+- [x] `PhotoSorter/backend/server/db/repositories/job_status.py`
+- [x] `PhotoSorter/backend/server/db/repositories/pagination.py`
+- [x] `PhotoSorter/backend/server/db/repositories/reference_imports.py`
+- [x] `PhotoSorter/backend/server/db/repositories/work_queue.py`
+- [x] `PhotoSorter/backend/server/main.py`
+- [x] `PhotoSorter/backend/server/media/estimate.py`
+- [x] `PhotoSorter/backend/server/media/formats.py`
+- [x] `PhotoSorter/backend/server/media/preview.py`
+- [x] `PhotoSorter/backend/server/media/sorting.py`
+- [x] `PhotoSorter/backend/server/security/access_policy.py`
+- [x] `PhotoSorter/backend/server/security/login_throttle.py`
+- [x] `PhotoSorter/backend/server/services/access_requests.py`
+- [x] `PhotoSorter/backend/server/services/admin_users.py`
+- [x] `PhotoSorter/backend/server/services/archive_layout.py`
+- [x] `PhotoSorter/backend/server/services/archive_pipeline.py`
+- [x] `PhotoSorter/backend/server/services/archive_retries.py`
+- [x] `PhotoSorter/backend/server/services/auto_processing.py`
+- [x] `PhotoSorter/backend/server/services/batch_runs.py`
+- [x] `PhotoSorter/backend/server/services/cleanup.py`
+- [x] `PhotoSorter/backend/server/services/compute_settings.py`
+- [x] `PhotoSorter/backend/server/services/construction_catalog.py`
+- [x] `PhotoSorter/backend/server/services/construction_relabel.py`
+- [x] `PhotoSorter/backend/server/services/disk_guard.py`
+- [x] `PhotoSorter/backend/server/services/heartbeat.py`
+- [x] `PhotoSorter/backend/server/services/library_notices.py`
+- [x] `PhotoSorter/backend/server/services/media_preparation.py`
+- [x] `PhotoSorter/backend/server/services/operations.py`
+- [x] `PhotoSorter/backend/server/services/reference_sides.py`
+- [x] `PhotoSorter/backend/server/services/references.py`
+- [x] `PhotoSorter/backend/server/services/regions.py`
+- [x] `PhotoSorter/backend/server/services/retention.py`
+- [x] `PhotoSorter/backend/server/services/storage_breakdown.py`
+- [x] `PhotoSorter/backend/server/services/storage_inventory.py`
+- [x] `PhotoSorter/backend/server/services/storage_usage.py`
+- [x] `PhotoSorter/backend/server/services/update_gate.py`
+- [x] `PhotoSorter/backend/server/services/upload_manifest.py`
+- [x] `PhotoSorter/backend/server/services/upload_validation.py`
+- [x] `PhotoSorter/backend/server/services/worker_cpu_affinity.py`
+- [x] `PhotoSorter/backend/server/storage/hardlinks.py`
+- [x] `PhotoSorter/backend/server/storage/paths.py`
+- [x] `PhotoSorter/backend/server/worker.py`
+- [x] `PhotoSorter/backend/server/workers/reference_prepare.py`
+- [x] `PhotoSorter/backend/server/workers/thumbnail.py`
+- [x] `PhotoSorter/backend/server/workers/warm_megaloc.py`
+- [x] `PhotoSorter/tools/benchmark_api.py`
+- [x] `PhotoSorter/tools/maintenance/audit_write_sites.py`
+- [x] `PhotoSorter/tools/maintenance/compare_baseline.py`
+- [x] `PhotoSorter/tools/maintenance/install_prerequisites.sh`
+- [x] `PhotoSorter/tools/maintenance/setup_tcp_bbr.sh`
+- [x] `PhotoSorter/tools/maintenance/staging_probe.py`
+- [x] `PhotoSorter/tools/maintenance/test_install_prerequisites.sh`

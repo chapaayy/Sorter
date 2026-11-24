@@ -1,4 +1,4 @@
-"""The run cannot become completed until its full ZIP is prepared.
+"""The run must finish its result publication hook before completion; ZIP is on demand.
 
 CPU inference, DB and user photo directories are not touched by these unit tests.
 """
@@ -14,7 +14,7 @@ def _execute(monkeypatch,tmp_path,finalize):
         completed.append("megaloc")
         job.info["models"]["megaloc"]={"status":"completed"}
     monkeypatch.setattr(worker,"process",inference)
-    class ZIPJob(Job):
+    class FinalizeJob(Job):
         def __init__(self):
             super().__init__({"id":"20261107T120000-abcdef123456",
                 "status":"queued","models":{},"progress":{}})
@@ -23,30 +23,31 @@ def _execute(monkeypatch,tmp_path,finalize):
             completed.append(self.info["status"])
         def log(self,*_args,**_kwargs):pass
         def finalize_results(self):
-            completed.append("zip")
+            completed.append("finalize")
             finalize(self)
-    job=ZIPJob()
+    job=FinalizeJob()
     job.run()
     return job,completed
 
 
-def test_full_zip_must_finish_before_run_becomes_completed(monkeypatch,tmp_path):
-    def zip_success(job):
-        job.info["archive_state"]="ready"
-    job,trace=_execute(monkeypatch,tmp_path,zip_success)
+def test_result_publication_must_finish_before_run_becomes_completed(monkeypatch,tmp_path):
+    def publication_success(job):
+        from server.services.archive_pipeline import build_for_job
+        build_for_job(job)
+    job,trace=_execute(monkeypatch,tmp_path,publication_success)
     assert job.info["status"]=="completed"
     assert job.info["progress"]["overall_percent"]==100
-    assert trace.index("zip") < trace.index("completed")
+    assert trace.index("finalize") < trace.index("completed")
     assert "megaloc" in trace
+    assert job.info["archive_state"]=="on_demand"
+    assert "archive_file" not in job.info
 
 
-def test_zip_failure_never_marks_run_completed(monkeypatch,tmp_path):
-    def zip_failure(job):
-        job.info["archive_state"]="failed"
+def test_result_publication_failure_never_marks_run_completed(monkeypatch,tmp_path):
+    def publication_failure(job):
         raise OSError("disk full")
-    job,trace=_execute(monkeypatch,tmp_path,zip_failure)
+    job,trace=_execute(monkeypatch,tmp_path,publication_failure)
     assert job.info["models"]["megaloc"]["status"]=="completed"
-    assert job.info["archive_state"]=="failed"
     assert job.info["status"]=="failed"
     assert "completed" not in trace
     assert "disk full" in job.info["error"]
