@@ -12,6 +12,9 @@ def accounts(offset=0,limit=25):
         total=db.execute("SELECT count(*) AS n FROM users").fetchone()["n"]
         rows=db.execute("""SELECT id::text,username,access_role FROM users
           ORDER BY id LIMIT %s OFFSET %s""",(limit,offset)).fetchall()
+        from ..storage import admission
+        budgets=admission.counters(db);policy=admission.policy(db)
+        for row in rows:row['quota']=admission.account_budget(db,int(row['id']),budgets,policy)
     for row in rows:
         row["usage"]=data.get("owners",{}).get(row["id"],counter() if data.get("sampled_at") else None)
     return {"rows":rows,"total":total,"offset":offset,"limit":limit,
@@ -36,6 +39,8 @@ def account_detail(owner,offset=0,limit=25):
         batches=db.execute("""SELECT id::text AS batch_id,display_name FROM batches
           WHERE owner_id=%s AND delete_state<>'deleted' ORDER BY created_at DESC,id LIMIT %s OFFSET %s""",
           (owner,limit,offset)).fetchall()
+        from ..storage import admission
+        user['quota']=admission.account_budget(db,owner)
         sampled=db.execute("SELECT sampled_at FROM storage_accounting_state").fetchone()["sampled_at"]
     index={b["batch_id"]:dict(b,categories={}) for b in batches}
     for row in rows:

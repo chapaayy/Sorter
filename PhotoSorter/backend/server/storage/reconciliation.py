@@ -61,6 +61,8 @@ class Reconciler:
     def tick(self,limit=BATCH):
         with connect() as db:
             if not db.execute("SELECT pg_try_advisory_xact_lock(%s) AS ok",(LEADER,)).fetchone()["ok"]:return False
+            from .admission import LOCK
+            if not db.execute("SELECT pg_try_advisory_xact_lock(%s) AS ok",(LOCK,)).fetchone()["ok"]:return False
             # Coalesced exact file updates first; trees are streamed over ticks.
             rows=db.execute("SELECT path,revision,subtree FROM storage_dirty WHERE NOT subtree ORDER BY touched_at LIMIT %s",(limit,)).fetchall()
             observe(db,self.root,[r["path"] for r in rows],self.generation,onerror=self.error)

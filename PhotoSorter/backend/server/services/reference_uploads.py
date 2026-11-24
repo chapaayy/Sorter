@@ -48,13 +48,31 @@ def _locked_pending(db,session_id,upload_id):
 
 def append(session_id,upload_id,offset,data):
     session_id,upload_id=reference_imports._uid(session_id),reference_imports._uid(upload_id)
+    from ..storage import admission
+    # Reserve the whole file on the first accepted block; persist before IO.
+    with connect() as db:
+        entry=_locked_pending(db,session_id,upload_id)
+        if offset<0 or offset+len(data)>entry['declared_size'] or not data or len(data)>storage.CHUNK_LIMIT:
+            raise HTTPException(422,"Неверный блок загрузки")
+        actual=storage.offset(session_id,upload_id,entry['declared_size'])
+        if actual!=offset:raise HTTPException(409,{"expected_offset":actual})
+        admitted=db.execute("SELECT storage_admitted FROM reference_import_files WHERE session_id=%s AND upload_id=%s",(session_id,upload_id)).fetchone()["storage_admitted"]
+        if not admitted:
+            admission.lock(db)
+            if not entry['received']:
+                size=admission.rounded(entry['declared_size'])
+                admission.admit(db,size,temporary=size)
+            db.execute("UPDATE reference_import_files SET storage_admitted=true WHERE session_id=%s AND upload_id=%s",(session_id,upload_id))
     with connect() as db:
         entry=_locked_pending(db,session_id,upload_id)
         if offset<0:
             raise HTTPException(422,"Отрицательное смещение")
         actual=storage.append(session_id,upload_id,offset,entry["declared_size"],data)
         repository.update_received(db,session_id,upload_id,actual)
-        from ..storage.registry import note
+        from ..storage.registry import note,key_for
+        from ..storage.reservations import sync_paths
+        admission.lock(db)
+        sync_paths(db,[key_for(storage.partial(session_id,upload_id))])
         note([storage.partial(session_id,upload_id)],db=db)
     return {"offset":actual}
 
@@ -95,6 +113,11 @@ def finish(session_id,upload_id):
             target=storage.publish_staged_file(session_id,upload_id,entry["filename"],entry["declared_size"],digest)
             repository.finish_file(db,session_id,upload_id,digest,target)
             storage.register(db,digest,entry["declared_size"])
+        from ..storage import admission
+        from ..storage.reservations import sync_paths
+        from ..storage.registry import key_for
+        admission.lock(db)
+        sync_paths(db,[key_for(part)]+([] if duplicate else [key_for(target)]))
         # This takes session FOR UPDATE only after per-file processing.
         reference_imports.reconcile(db,session_id)
     storage.remove_partial_after_commit(session_id,upload_id)

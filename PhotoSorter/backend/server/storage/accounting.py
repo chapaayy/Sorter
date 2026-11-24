@@ -83,8 +83,10 @@ def aggregate(db):
     conflicts=db.execute("""SELECT count(*) AS n FROM (
       SELECT device,inode FROM storage_files WHERE scope='personal' GROUP BY device,inode
       HAVING count(DISTINCT owner_id)>1) x""").fetchone()["n"]
-    reservations={r["kind"]:{"bytes":r["bytes"],"operations":r["operations"]} for r in db.execute("SELECT kind,sum(requested_bytes)::bigint AS bytes,count(*) AS operations FROM storage_reservations GROUP BY kind")}
-    reserved=sum(r["bytes"] for r in reservations.values())
+    from .admission import counters
+    budgets=counters(db)
+    reservations=budgets["reservations"]
+    reserved=budgets["disk_reserved_bytes"]
     incoming=db.execute("""SELECT count(*) AS files,coalesce(sum(greatest(declared_size-received,0)),0)::bigint AS remaining_bytes FROM uploads WHERE NOT finalized AND kind='fo'""").fetchone()
     reference_incoming=db.execute("""SELECT count(*) AS files,coalesce(sum(greatest(f.declared_size-f.received,0)),0)::bigint AS remaining_bytes FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id WHERE f.state='pending' AND s.upload_state='uploading'""").fetchone()
     return {"categories":categories,"owners":owners,"devices":devices,"temporary":temporary,"issues":issues,
@@ -121,7 +123,8 @@ def disk():
     fs=os.statvfs(config.APP_STORAGE_ROOT)
     total=fs.f_frsize*fs.f_blocks;free=fs.f_frsize*fs.f_bavail
     used=total-fs.f_frsize*fs.f_bfree
-    guard=reserve(total)
+    from .admission import policy
+    with connect() as db:guard=reserve(total,configured=policy(db)['disk_reserve_bytes'])
     return {"device":os.stat(config.APP_STORAGE_ROOT).st_dev,"total_bytes":total,"used_bytes":used,
             "available_bytes":free,"reserved_bytes":guard,"allocatable_bytes":max(0,free-guard),"admission_ok":free>guard,
             "used_fraction":used/total if total else 0,"warning":"critical" if used>=total*.90 else "warning" if used>=total*.80 else None}

@@ -1,23 +1,31 @@
-"""Reserve filesystem space for PostgreSQL/WAL and running operations."""
+"""Existing filesystem floor plus optional stricter owner reserve."""
 from __future__ import annotations
 import os
 from pathlib import Path
 from fastapi import HTTPException
-from app.config import DATA_DIR
+from app import config
 
-def stat(path:Path=DATA_DIR):
-    fs=os.statvfs(path)
-    total=fs.f_frsize*fs.f_blocks
-    return total,fs.f_frsize*fs.f_bavail
+def stat(path=None):
+    fs=os.statvfs(path or config.APP_STORAGE_ROOT)
+    return fs.f_frsize*fs.f_blocks,fs.f_frsize*fs.f_bavail
 
-def reserve(total_bytes):
-    configured=os.environ.get("PHOTOSORTER_MIN_FREE_BYTES")
-    if configured:return max(0,int(configured))
-    return min(12*1024**3,max(256*1024**2,int(total_bytes*.06)))
+def reserve(total_bytes,*,configured=None):
+    env=os.environ.get("PHOTOSORTER_MIN_FREE_BYTES")
+    baseline=max(0,int(env)) if env else min(12*1024**3,max(256*1024**2,int(total_bytes*.06)))
+    return max(baseline,configured or 0)
 
-def check_admission(bytes_needed):
-    DATA_DIR.mkdir(parents=True,exist_ok=True)
-    total,available=stat(DATA_DIR)
-    if available-int(bytes_needed)<reserve(total):
-        raise HTTPException(507,"Недостаточно места: сохранён резерв для базы и системы")
-    return {"total":total,"available":available,"reserved":reserve(total)}
+def check_admission(bytes_needed,*,path=None):
+    from .. import database
+    root=path or config.APP_STORAGE_ROOT
+    if database.DB_URL:
+        from ..storage import admission
+        with database.connect() as db:
+            admission.lock(db)
+            admission.admit(db,int(bytes_needed),path=root)
+            total,available=stat(root)
+            minimum=reserve(total,configured=admission.policy(db)["disk_reserve_bytes"])
+    else:
+        total,available=stat(root);minimum=reserve(total)
+        if available-int(bytes_needed)<minimum:
+            raise HTTPException(507,"Недостаточно места: сохранён резерв для базы и системы")
+    return {"total":total,"available":available,"reserved":minimum}

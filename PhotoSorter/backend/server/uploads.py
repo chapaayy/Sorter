@@ -14,7 +14,7 @@ from .services import operations
 from .services import upload_manifest
 from .db.repositories import batches as batch_repository
 from .services import thumbnails
-from .services.disk_guard import check_admission
+from .storage import admission
 from .storage.paths import original_path,part_path,owned_file,batch_dir
 from .storage.batch_cleanup import discard_uncommitted_upload
 from app.storage.filesystem import parent_fd,safe_read,safe_unlink
@@ -60,14 +60,13 @@ def _create_upload(payload:BeginUpload,file_id:uuid.UUID):
     except ValueError as exc:raise HTTPException(422,'Нужна партия ФО') from exc
     if payload.sha256 and not re_full_sha(payload.sha256):
         raise HTTPException(422,'Неверная контрольная сумма')
-    check_admission(payload.size)
     token=operations.start(batch_id,'init')
     recorded=False
     try:
         with connect() as db:
             # Global order before batch-row locking (same as auto FIFO enqueue).
             db.execute('SELECT pg_advisory_xact_lock(723409133)')
-            batch=db.execute('SELECT delete_state FROM batches WHERE id=%s FOR NO KEY UPDATE',
+            batch=db.execute('SELECT delete_state,owner_id FROM batches WHERE id=%s FOR NO KEY UPDATE',
                              (batch_id,)).fetchone()
             if not batch:raise HTTPException(404,'Партия не найдена')
             if batch['delete_state']!='active':raise HTTPException(409,'Партия удаляется')
@@ -75,6 +74,9 @@ def _create_upload(payload:BeginUpload,file_id:uuid.UUID):
                           (batch_id,)).fetchone():
                 raise HTTPException(409,'Партия уже использовалась для сортировки')
             upload_manifest.require_expected_upload(db,batch_id,file_id,filename,payload.size)
+            admission.lock(db)
+            size=admission.rounded(payload.size)
+            admission.admit(db,size,temporary=size,owner=batch['owner_id'],personal=size)
             db.execute("""INSERT INTO uploads(id,kind,batch_id,filename,
                 declared_size,checksum)
                 VALUES (%s,'fo',%s,%s,%s,%s)""",
@@ -152,7 +154,8 @@ def _append_chunk(path: Path, expected: int, data: bytes, declared_size: int) ->
             raise HTTPException(409, {'expected_offset': actual})
         if actual + len(data) > declared_size:
             raise HTTPException(413, 'Превышен размер файла')
-        check_admission(len(data))
+        # The full transfer was admitted durably at registration. Do not
+        # charge it again on resume or after a policy reduction.
         try:
             output.write(data)
             output.flush()
@@ -164,9 +167,14 @@ def _append_chunk(path: Path, expected: int, data: bytes, declared_size: int) ->
 
 def _record_chunk(upload_id: uuid.UUID, received: int) -> None:
     with connect() as db:
+        admission.lock(db)
         row=db.execute('UPDATE uploads SET received=%s,updated_at=now() WHERE id=%s RETURNING batch_id',
                    (received, upload_id)).fetchone()
-        if row:note([part_path(row['batch_id'],upload_id)],db=db)
+        if row:
+            from .storage.reservations import sync_paths
+            from .storage.registry import key_for
+            sync_paths(db,[key_for(part_path(row['batch_id'],upload_id))])
+            note([part_path(row['batch_id'],upload_id)],db=db)
 
 
 @router.patch('/uploads/{upload_id}')
@@ -252,6 +260,7 @@ def _finalize_sync(upload_id:str):
             WHERE id=%s FOR UPDATE""",(row['id'],)).fetchone()
         if current['finalized']:
             return {'path':current['target_path'],'already_finalized':True}
+        admission.lock(db)
         # Original name is metadata; stable UUID is the physical identity.
         ext=Path(row['filename']).suffix.lower().lstrip('.') if media_type is None else 'media'
         target=original_path(row['batch_id'],row['id'],ext,batch['owner_id'])
@@ -285,6 +294,9 @@ def _finalize_sync(upload_id:str):
             checksum=%s,target_path=%s,original_media_type=%s,media_action=%s,
             media_duration=%s,media_error=%s WHERE id=%s""",
             (digest,str(target),media_type,action,duration,media_error,row['id']))
+        from .storage.reservations import sync_paths
+        from .storage.registry import key_for
+        sync_paths(db,[key_for(target),key_for(part)])
         note([target],db=db)
         if media_type is None or action is not None:
             thumbnails.enqueue(db,row['id'],digest)

@@ -11,7 +11,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 import json
 from app.config import DATA_DIR
-from pydantic import BaseModel,StrictBool
+from pydantic import BaseModel,StrictBool,StrictInt,Field
+from ...storage import admission
 from ...security.access_policy import is_owner
 from ...services import storage_admin,storage_maintenance
 router=APIRouter(prefix="/api/storage",tags=["storage"])
@@ -19,6 +20,30 @@ router=APIRouter(prefix="/api/storage",tags=["storage"])
 def require_owner(request:Request):
     user=getattr(request.state,"user",None)
     if not user or not is_owner(user):raise HTTPException(403,"Недостаточно прав")
+
+class StorageLimits(BaseModel):
+    personal_enabled:StrictBool
+    temporary_limit_bytes:StrictInt|None=Field(default=None,ge=0,le=2**63-1)
+    disk_reserve_bytes:StrictInt|None=Field(default=None,ge=0,le=2**63-1)
+
+class AccountLimit(BaseModel):
+    limit_bytes:StrictInt|None=Field(ge=0,le=2**63-1)
+
+@router.get("/limits")
+def limits(request:Request):
+    require_owner(request)
+    return admission.status()
+
+@router.patch("/limits")
+def save_limits(request:Request,payload:StorageLimits):
+    require_owner(request)
+    return admission.configure(payload.model_dump())
+
+@router.patch("/accounts/{owner_id}/limit")
+def save_account_limit(request:Request,owner_id:int,payload:AccountLimit):
+    require_owner(request)
+    if not 0<owner_id<2**63:raise HTTPException(422,"Неверный аккаунт")
+    return admission.set_account(owner_id,payload.limit_bytes)
 
 @router.get("/accounts")
 def storage_accounts(request:Request,offset:int=Query(0,ge=0),limit:int=Query(25,ge=1,le=100)):

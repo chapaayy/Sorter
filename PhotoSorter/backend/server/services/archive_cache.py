@@ -60,7 +60,7 @@ class DirectoryPin:
         self.close()
 
 @contextmanager
-def build_space(root,needed,*,message="Недостаточно места для временного ZIP",kind="archive"):
+def build_space(root,needed,*,message="Недостаточно места для временного ZIP",kind="archive",work=None,tree=False):
     """Serialize archive allocations across results/reference caches on data mount."""
     fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
     try:
@@ -69,7 +69,7 @@ def build_space(root,needed,*,message="Недостаточно места дл�
         if available-needed<disk_guard.reserve(total):
             raise HTTPException(507,message)
         from ..storage.reservations import reservation
-        with reservation(kind,needed):yield
+        with reservation(kind,needed,path=root,work=work,tree=tree) as lease:yield lease
     finally:
         os.close(fd)
 
