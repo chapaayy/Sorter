@@ -31,7 +31,7 @@ def test_repeat_bootstrap_preserves_data(tmp_path):
 
 def test_unmarked_nonempty_and_symlink_roots_rejected(tmp_path):
     root=tmp_path/"storage"
-    root.mkdir()
+    root.mkdir(mode=0o750)
     (root/"unknown").write_bytes(b"preserve")
     with pytest.raises(ValueError,match="Nonempty"):
         bootstrap(root)

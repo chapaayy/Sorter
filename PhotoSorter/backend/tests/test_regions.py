@@ -66,8 +66,8 @@ def test_manual_run_pins_regions_without_changing_full_library(system):
     # Create a batch without enqueueing it via the legacy helper.
     batch=uuid.uuid4()
     with database.connect() as db:
-        db.execute("""INSERT INTO batches(id,display_name,upload_manifest_state)
-            VALUES (%s,'Regional FO','complete')""",(batch,))
+        db.execute("""INSERT INTO batches(id,display_name,upload_manifest_state,owner_id)
+            VALUES (%s,'Regional FO','complete',(SELECT id FROM users WHERE username='admin'))""",(batch,))
         db.execute("""INSERT INTO uploads(id,kind,batch_id,filename,declared_size,
             received,finalized) VALUES (%s,'fo',%s,'report.jpg',100,100,true)""",
             (uuid.uuid4(),batch))

@@ -69,7 +69,7 @@ def apply(browser, email=EMAIL, **overrides):
 
 def add_run(connect, identifier, status):
     with connect() as db:
-        batch = db.execute("INSERT INTO batches(id,display_name) VALUES (%s,'Тестовый ФО') RETURNING id",
+        batch = db.execute("INSERT INTO batches(id,display_name,owner_id) VALUES (%s,'Тестовый ФО',(SELECT id FROM users WHERE username='admin')) RETURNING id",
                            (uuid.uuid4(),)).fetchone()["id"]
         db.execute("INSERT INTO jobs(id,batch_id,status,snapshot) VALUES (%s,%s,%s,%s)",
                    (identifier,batch,status,Jsonb({"id":identifier})))

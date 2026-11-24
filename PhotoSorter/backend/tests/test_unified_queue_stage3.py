@@ -43,6 +43,9 @@ def system(tmp_path,monkeypatch):
     cache.mkdir(parents=True)
     monkeypatch.setattr(reference_cache,"CACHE_DIR",cache)
     database.initialize()
+    from .test_stage1_lifecycle import owner_for_test
+    with database.connect() as db:
+        owner_for_test(db)
     # Tests that predate the region picker create standard constructions in
     # these two cities. Register both, like the upgrade migration does on VPS.
     from server.services import regions
@@ -82,8 +85,8 @@ def add_published_reference(root,sam="SAM 0001",address="Победы 12"):
 def add_fo():
     batch=uuid.uuid4()
     with database.connect() as db:
-        db.execute("""INSERT INTO batches(id,display_name,upload_manifest_state)
-             VALUES (%s,'Test FO','complete')""",(batch,))
+        db.execute("""INSERT INTO batches(id,display_name,upload_manifest_state,owner_id)
+             VALUES (%s,'Test FO','complete',(SELECT id FROM users WHERE username='admin'))""",(batch,))
         db.execute("""INSERT INTO uploads(id,kind,batch_id,filename,declared_size,
              received,finalized) VALUES (%s,'fo',%s,'report.jpg',100,100,true)""",
              (uuid.uuid4(),batch))
@@ -230,7 +233,7 @@ def test_auto_fo_reserves_fifo_on_final_manifest_file(system,monkeypatch):
     batch=uuid.uuid4()
     file_id=uuid.uuid4()
     with database.connect() as db:
-        db.execute("""INSERT INTO batches(id,display_name) VALUES (%s,'Auto FO')""",
+        db.execute("""INSERT INTO batches(id,display_name,owner_id) VALUES (%s,'Auto FO',(SELECT id FROM users WHERE username='admin'))""",
                    (batch,))
     files=[SimpleNamespace(upload_id=file_id,relative_path="photo.jpg",
                            filename="photo.jpg",size=len(raw))]

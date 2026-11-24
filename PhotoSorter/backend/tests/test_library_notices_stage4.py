@@ -16,7 +16,7 @@ from .test_stage2_platform import _jpg
 def batch():
     ident=uuid.uuid4()
     with database.connect() as db:
-        db.execute("INSERT INTO batches(id,display_name) VALUES (%s,'FO notice')",(ident,))
+        db.execute("INSERT INTO batches(id,display_name,owner_id) VALUES (%s,'FO notice',(SELECT id FROM users WHERE username='admin'))",(ident,))
     return ident
 
 def publish(kind='reference_prepared'):
