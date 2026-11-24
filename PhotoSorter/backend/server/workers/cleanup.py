@@ -67,6 +67,19 @@ def main():
     pulse,thread=heartbeat.start("cleanup")
     deletions=threading.Thread(name="batch-deletions",target=run_deletions,args=(STOPPED,))
     deletions.start()
+    from ..storage.reconciliation import Reconciler
+    def accounting_loop():
+        reconciler=Reconciler()
+        while not STOPPED.is_set():
+            with activity() as allowed:
+                if allowed:
+                    try:reconciler.tick()
+                    except Exception:
+                        logging.exception('Storage reconciliation failure')
+                        reconciler=Reconciler()
+            STOPPED.wait(5)
+    accounting=threading.Thread(name='storage-accounting',target=accounting_loop)
+    accounting.start()
     try:
         while not STOPPED.is_set():
             with activity() as allowed:
@@ -77,6 +90,7 @@ def main():
     finally:
         STOPPED.set()
         deletions.join()
+        accounting.join()
         pulse.set()
         thread.join()
 

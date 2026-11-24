@@ -10,6 +10,7 @@ import shutil
 from contextlib import contextmanager
 from pathlib import Path
 from .paths import relative_key
+from .changes import changed
 
 _DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 
@@ -73,6 +74,7 @@ def safe_unlink(root, key, *, missing_ok=False):
                 return
             os.unlink(name, dir_fd=fd)
             os.fsync(fd)
+            changed(Path(root)/str(key))
     except FileNotFoundError:
         if not missing_ok:
             raise
@@ -94,6 +96,7 @@ def atomic_publish(root, staged, target):
             os.replace(src_name, dst_name, src_dir_fd=src_fd, dst_dir_fd=dst_fd)
             os.fsync(dst_fd)
             os.fsync(src_fd)
+            changed(Path(root)/str(staged),Path(root)/str(target))
         finally:
             os.close(fd)
 
@@ -135,5 +138,6 @@ def safe_remove_tree(root,key,*,missing_ok=False):
                 raise ValueError("Not a managed directory")
             shutil.rmtree(name,dir_fd=fd)
             os.fsync(fd)
+            changed(Path(root)/str(key),subtree=True)
     except FileNotFoundError:
         if not missing_ok:raise

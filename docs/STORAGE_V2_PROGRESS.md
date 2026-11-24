@@ -6,8 +6,8 @@ Branch: feature/storage-architecture-v2; base: c6d77ebb1c9c80c732df209a17a993dd3
 3. **COMPLETED — 2026-11-24** — implementation SHA ab8f9fa9a4908020c7f49e81a0dac8f47ce73b77; CI 45456816578: 7/7 successful. Owner accepted stage 3; closing CI 45457511601 successful.
 4. **COMPLETED — 2026-11-24** — implementation SHA 03bd584cd239bd1f20abbb6b386f90c2d9deb60b; CI 45462424379 attempt 2: 7/7 successful. Owner accepted stage 4; closing CI 45463543056 successful.
 5. **COMPLETED — 2026-11-24** — implementation SHA cb0c3bdd743914d71170b65157e7e1761a488779; CI 45467591019: 7/7 successful, including actual MegaLoc offline acceptance. Stage 6 not started.
-6. Logs and infrastructure — in progress.
-7. Accounting and reconciliation — not started.
+6. **COMPLETED — 2026-11-25** — 97dc4de, CI 45476432794 7/7; systemd installation deferred to stage 10.
+7. Accounting and reconciliation — in progress.
 8. Admin — not started.
 9. Disabled-by-default quotas — not started.
 10. Final install and PR (no merge) — not started.
@@ -130,3 +130,6 @@ Stage 5 accepted; closing CI 45468345763 successful. Infrastructure bind mounts,
 - Owner accepted stage 6. Exact tested SHA 97dc4dea321572b3e7367bd970d116d7c3e8bace; CI [45476432794](https://github.com/chapaayy/Sorter/actions/runs/45476432794) completed 7/7 success including WebKit desktop and Docker runtime. Docker job 138737766139 confirms REAL_TWO_COMMIT_UPDATER_PRESERVATION_OK, REAL_SNAPSHOT_RESTORE_POSTGRES_CADDY_TLS_OK, STAGE6_REAL_HOST_HARNESS_OK, REAL_NETWORK_NONE_INFERENCE_OK and post-update actual offline MegaLoc cached embeddings. No repeat of already passed isolated acceptance required.
 - Actual systemd service installation on clean Ubuntu is deferred by owner to mandatory stage 10 final acceptance; real root daemon/RPC tested in stage 6.
 - Stage 7 started: registry, accounting and reconciliation only. No quotas, stage 8 UI redesign, legacy migration or production deployment.
+
+### Stage 7 checkpoint 1
+Registry schema, typed classification, dirty coalescing and bounded background reconciler. Native producer hooks, API adapters, host measurements and acceptance still open.
