@@ -220,10 +220,53 @@ def physical():
     # are kept separately. No attribution of external Docker/OS blocks to MAP.
     return int(subprocess.check_output(["du","-s","-B1",str(STORAGE)],text=True).split()[0])
 
+def exact_app_tree(s,label):
+    # Compare independently collected kernel blocks to the file ledger, not
+    # a directory residual inferred from the ledger. Retry live mutations;
+    # neither a partial scan nor a stale registry is accepted as exact.
+    from storage_tree import measure_tree
+    def matching():
+        before=obj(s,"GET","/api/storage/usage")["registry"]
+        measured=measure_tree(STORAGE/"app",scope_roots={},default_scope="app")
+        actual=int(subprocess.check_output(["du","-x","-B1","-s",str(STORAGE/"app")],text=True).split()[0])
+        latest=obj(s,"GET","/api/storage/usage")
+        after=latest["registry"]
+        evidence={"label":label,"independent_bytes":measured["allocated_bytes"],
+                  "directory_bytes":measured["directory_bytes"],"file_bytes":measured["app"]["file_bytes"],
+                  "du_bytes":actual,"registry_bytes":after.get("allocated_bytes"),
+                  "partial":measured["partial"] or before["partial"] or after["partial"],
+                  "before_registry_bytes":before.get("allocated_bytes")}
+        if (not evidence["partial"] and before.get("allocated_bytes")==after.get("allocated_bytes")
+            and measured["app"]["file_bytes"]==after.get("allocated_bytes")
+            and measured["allocated_bytes"]==actual):
+            print("PHYSICAL_APP_TREE_EXACT_OK",json.dumps(evidence),flush=True)
+            return latest,evidence
+        print("PHYSICAL_APP_TREE_RETRY",json.dumps(evidence),flush=True)
+    return wait(matching,timeout=150,period=3,description="independent byte-for-byte app tree comparison "+label)
+
+def unknown_file_probe(s):
+    # Disposable runner only; never inject into a live user's storage.
+    path=STORAGE/"app/ci-unmanaged-storage-probe.bin"
+    assert not path.exists()
+    try:
+        path.write_bytes(b"unknown evidence"*1024)
+        data=settle(s)
+        unknown=data["registry"]["categories"]["unknown"]
+        assert unknown["allocated_bytes"]>=path.stat().st_blocks*512
+        assert data["registry"]["issues"]["unclassified_path"]>=1
+        assert any(row["path"]=="app/"+path.name for row in obj(s,"GET","/api/storage/accounting/issues")["files"])
+        assert path.read_bytes()==b"unknown evidence"*1024
+        exact_app_tree(s,"unmanaged_file_detected")
+        print("PHYSICAL_UNKNOWN_FILE_DETECTED_OK",flush=True)
+    finally:
+        path.unlink(missing_ok=True)
+    assert not settle(s)["registry"]["issues"],"unknown probe did not disappear from registry"
+
 def storage_snapshot(s,label):
-    data=settle(s)
+    settle(s)
+    data,independent=exact_app_tree(s,label)
     host_children={child.name:int(subprocess.check_output(["du","-s","-B1",str(child)],text=True).split()[0]) for child in STORAGE.iterdir() if child.is_dir()}
-    row={"label":label,"at":time.time(),"host_storage_children_bytes":host_children,"host_storage_allocated_bytes":physical(),"disk":data["disk"],"registry":data["registry"],"limits":obj(s,"GET","/api/storage/limits")}
+    row={"label":label,"at":time.time(),"independent_app_tree":independent,"host_storage_children_bytes":host_children,"host_storage_allocated_bytes":physical(),"disk":data["disk"],"registry":data["registry"],"limits":obj(s,"GET","/api/storage/limits")}
     print("STAGE10_STORAGE_SNAPSHOT",json.dumps(row,ensure_ascii=False,separators=(",",":")),flush=True)
     return row
 
@@ -264,6 +307,9 @@ def browser_probe(stop,samples):
             page.get_by_role("button",name="Продолжить").click()
             page.wait_for_url(BASE+"/admin",timeout=60000)
             page.get_by_role("region",name="Хранилище").wait_for(timeout=60000)
+            page.get_by_role("button",name="Контроль",exact=True).click()
+            page.get_by_role("heading",name="Побайтовый контроль MAP").wait_for(timeout=60000)
+            print("PHYSICAL_CONTROL_REAL_BROWSER_OK",flush=True)
             print("STAGE10_REAL_ADMIN_DEEP_LINK_OK",flush=True)
         except Exception as exc:
             samples.append({"browser_error":str(exc)[:500],"url":page.url,"page_errors":errors[-10:]})
@@ -371,6 +417,7 @@ def main():
     obj(s,"POST","/api/models/megaloc/download")
     wait(lambda:obj(s,"GET","/api/models")["models"][0]["available"],timeout=1800,description="official MegaLoc download")
     refs=references(s,photos[:8])
+    unknown_file_probe(s)
     initial=storage_snapshot(s,"baseline_after_reference_preparation")
     assert not initial["limits"]["policy"]["personal_enabled"] and initial["limits"]["policy"]["temporary_limit_bytes"] is None
     quota_probe(s,photos[0])

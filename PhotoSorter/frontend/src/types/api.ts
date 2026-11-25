@@ -125,6 +125,7 @@ export interface PhysicalTreeBucket {file_bytes:number;directory_bytes:number;fi
 export interface PhysicalTreeSample {
   finished_at:string;started_at?:string;device?:string;allocated_bytes?:number;directory_bytes?:number
   partial:boolean;comparable:boolean;errors:number;entries?:number;changed_directories?:number
+  stale?:boolean;sample_age_seconds?:number|null
   limit_reached?:boolean;cross_scope_links?:number;other_devices?:number;excluded_mounts?:number
   registry_file_bytes?:number|null;host_file_bytes?:number|null;app_delta_bytes?:number|null;host_delta_bytes?:number|null
   unexplained_bytes?:number|null;absolute_discrepancy_bytes?:number|null;unknown_bytes?:number|null;unknown_files?:number|null

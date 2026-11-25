@@ -29,6 +29,13 @@ def usage():
         except (KeyError,TypeError,ValueError):age=None
         host["sample_age_seconds"]=age
         host["stale"]=age is None or age>180 or age< -60
+        for key,period in (("tree_check",3600),("disk_check",21600)):
+            sample=host.get(key)
+            if not isinstance(sample,dict):continue
+            try:sample_age=(datetime.now(timezone.utc)-datetime.fromisoformat(sample["finished_at"])).total_seconds()
+            except (KeyError,TypeError,ValueError):sample_age=None
+            sample["sample_age_seconds"]=sample_age
+            sample["stale"]=sample_age is None or sample_age>period+600 or sample_age< -60
     journal=_host("log-usage.json")
     journals={"at":journal.get("at"),"services":{name:{"bytes":journal.get("services",{}).get(name,{}).get("bytes"),
                   "budget_bytes":n*1024*1024,"partial":journal.get("services",{}).get(name,{}).get("partial",True)}

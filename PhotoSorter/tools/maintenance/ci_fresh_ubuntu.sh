@@ -133,6 +133,26 @@ sha256sum -c /root/stage10-secrets.sha
 sha256sum -c /root/stage10-model.sha
 sha256sum -c /root/stage10-photo.sha
 echo STAGE10_REPEAT_INSTALL_OK
+# Force only a diagnostic sample (no retention, pruning or recovery).
+python3 /usr/local/lib/map-updater/host_logs.py /opt/Sorter/storage --sample-only --force-check
+api https://localhost/api/storage/usage > /root/stage10-control-sample.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+report=json.load(open("/root/stage10-control-sample.json"))["host"]
+tree=report["tree_check"]
+disk=report["disk_check"]
+assert tree["allocated_bytes"]>0 and tree["directory_bytes"]>0,tree
+assert disk["allocated_bytes"]>0 and disk["capacity_after"]["used_bytes"]>0,disk
+assert report["tree_history"][-1]["finished_at"]==tree["finished_at"]
+assert report["disk_history"][-1]["finished_at"]==disk["finished_at"]
+path=Path("/root/stage10-control-first.txt")
+if path.exists():
+    assert any(r["finished_at"]==path.read_text().strip() for r in report["tree_history"]),"history lost after reboot/update"
+else:
+    path.write_text(tree["finished_at"])
+print("PHYSICAL_CONTROL_INSTALLED_HISTORY_OK",tree["finished_at"],"comparable",tree["comparable"],"root_comparable",disk["comparable"])
+PY
 printf '%s\n' "$revision" > /root/stage10-ready
 install -m 0700 /home/ci/ci_vm_health.py /root/stage10-health.py
 python3 /root/stage10-health.py --mode baseline --output /root/stage10-health-before.json
@@ -164,6 +184,26 @@ openssl s_client -connect localhost:443 -servername localhost </dev/null 2>/dev/
 id=$(python3 -c 'import json;print(json.load(open("/root/stage10-batch.json"))["batch_id"])')
 api "https://localhost/api/batches/$id" | python3 -c 'import json,sys;assert json.load(sys.stdin)["display_name"]=="STAGE10_REBOOT_SENTINEL"'
 echo STAGE10_REAL_REBOOT_OK
+# Force only a diagnostic sample (no retention, pruning or recovery).
+python3 /usr/local/lib/map-updater/host_logs.py /opt/Sorter/storage --sample-only --force-check
+api https://localhost/api/storage/usage > /root/stage10-control-sample.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+report=json.load(open("/root/stage10-control-sample.json"))["host"]
+tree=report["tree_check"]
+disk=report["disk_check"]
+assert tree["allocated_bytes"]>0 and tree["directory_bytes"]>0,tree
+assert disk["allocated_bytes"]>0 and disk["capacity_after"]["used_bytes"]>0,disk
+assert report["tree_history"][-1]["finished_at"]==tree["finished_at"]
+assert report["disk_history"][-1]["finished_at"]==disk["finished_at"]
+path=Path("/root/stage10-control-first.txt")
+if path.exists():
+    assert any(r["finished_at"]==path.read_text().strip() for r in report["tree_history"]),"history lost after reboot/update"
+else:
+    path.write_text(tree["finished_at"])
+print("PHYSICAL_CONTROL_INSTALLED_HISTORY_OK",tree["finished_at"],"comparable",tree["comparable"],"root_comparable",disk["comparable"])
+PY
 # Create a *local* second revision on a disposable bare origin; never push to GitHub.
 git clone --bare . /root/stage10-origin.git
 git clone --branch feature/storage-architecture-v2 /root/stage10-origin.git /root/stage10-next
@@ -196,6 +236,26 @@ openssl s_client -connect localhost:443 -servername localhost </dev/null 2>/dev/
 api "https://localhost/api/batches/$id" | python3 -c 'import json,sys;assert json.load(sys.stdin)["display_name"]=="STAGE10_REBOOT_SENTINEL"'
 sha256sum -c /root/stage10-photo.sha
 echo STAGE10_REAL_SYSTEMD_API_UPDATE_OK
+# Force only a diagnostic sample (no retention, pruning or recovery).
+python3 /usr/local/lib/map-updater/host_logs.py /opt/Sorter/storage --sample-only --force-check
+api https://localhost/api/storage/usage > /root/stage10-control-sample.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+report=json.load(open("/root/stage10-control-sample.json"))["host"]
+tree=report["tree_check"]
+disk=report["disk_check"]
+assert tree["allocated_bytes"]>0 and tree["directory_bytes"]>0,tree
+assert disk["allocated_bytes"]>0 and disk["capacity_after"]["used_bytes"]>0,disk
+assert report["tree_history"][-1]["finished_at"]==tree["finished_at"]
+assert report["disk_history"][-1]["finished_at"]==disk["finished_at"]
+path=Path("/root/stage10-control-first.txt")
+if path.exists():
+    assert any(r["finished_at"]==path.read_text().strip() for r in report["tree_history"]),"history lost after reboot/update"
+else:
+    path.write_text(tree["finished_at"])
+print("PHYSICAL_CONTROL_INSTALLED_HISTORY_OK",tree["finished_at"],"comparable",tree["comparable"],"root_comparable",disk["comparable"])
+PY
 GUEST
 # SCP over the same isolated forwarded SSH connection.
 scp -i "$vm/key" -P 2222 -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$vm/before.sh" "$vm/after.sh" "$health_probe" ci@127.0.0.1:/home/ci/

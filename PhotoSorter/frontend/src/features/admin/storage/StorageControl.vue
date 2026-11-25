@@ -8,7 +8,7 @@ const disk=computed(()=>props.usage?.host?.disk_check)
 const history=computed(()=>[...(props.usage?.host?.tree_history||[])].reverse())
 const diskHistory=computed(()=>[...(props.usage?.host?.disk_history||[])].reverse())
 const stale=computed(()=>!!props.usage?.host?.stale)
-const complete=computed(()=>!stale.value&&!!tree.value?.comparable&&tree.value.absolute_discrepancy_bytes!=null)
+const complete=computed(()=>!stale.value&&!tree.value?.stale&&!!tree.value?.comparable&&tree.value.absolute_discrepancy_bytes!=null)
 const old=computed(()=>history.value.find(r=>r.finished_at!==tree.value?.finished_at&&r.comparable&&r.absolute_discrepancy_bytes!=null))
 const growth=computed(()=>complete.value&&old.value?.absolute_discrepancy_bytes!=null?tree.value!.absolute_discrepancy_bytes!-old.value.absolute_discrepancy_bytes:null)
 const exact=(n?:number|null)=>n==null||!Number.isFinite(n)?'—':new Intl.NumberFormat('ru-RU',{maximumFractionDigits:0}).format(n)+' Б'
@@ -29,6 +29,7 @@ const diskRows=computed(()=>Object.entries(names).flatMap(([key,label])=>{
         <p v-if="!complete" class="alert warning" role="status">Нет сопоставимого актуального замера. Нули и 100% не подставляются.</p>
         <p v-else-if="tree.absolute_discrepancy_bytes!==0" class="alert warning" role="status">Обнаружено расхождение физических байтов.</p>
         <p v-else class="meta" role="status">Последний сопоставимый замер: расхождение 0 байт.</p>
+        <p v-if="complete&&tree.absolute_discrepancy_bytes===0" class="meta">100% совпадение физических байтов по этому замеру.</p>
         <div class="metrics">
           <div><span class="meta">Независимый размер дерева</span><strong>{{exact(tree.allocated_bytes)}}</strong><span class="meta">{{bytes(tree.allocated_bytes)}}</span></div>
           <div><span class="meta">Учтено с блоками каталогов</span><strong>{{exact(mapped)}}</strong><span class="meta">Реестр + хостовые файлы + каталоги</span></div>
@@ -49,7 +50,7 @@ const diskRows=computed(()=>Object.entries(names).flatMap(([key,label])=>{
       <p class="meta">Отдельный замер раз в 6 часов; неполный повторяется через час. Только видимые пути на устройстве корня; другие файловые системы и смонтированные представления контейнеров не обходятся. Виртуальные размеры образов Docker не прибавляются повторно.</p>
       <p v-if="!disk" class="meta">Ожидаем первый замер корневой ФС.</p>
       <template v-else>
-        <p v-if="!disk.comparable||stale" class="alert warning">Замер неполный или диск изменялся. Разбивка предварительная.</p>
+        <p v-if="!disk.comparable||stale||disk.stale" class="alert warning">Замер неполный или диск изменялся. Разбивка предварительная.</p>
         <div v-for="row in diskRows" :key="row.key" class="row between wrap"><span>{{row.label}}<small v-if="disk.paths?.[row.key]" class="meta path">{{disk.paths[row.key]}}</small></span><strong>{{exact(row.amount)}}</strong></div>
         <div class="row between wrap"><span>Всего видимых выделенных блоков</span><strong>{{exact(disk.allocated_bytes)}}</strong></div>
         <div class="row between wrap"><span>Удалённые открытые файлы (нижняя оценка)</span><strong>{{exact(disk.deleted_open?.allocated_bytes)}}</strong></div>

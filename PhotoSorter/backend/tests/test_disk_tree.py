@@ -21,7 +21,8 @@ def test_root_tree_disjoint_categories_and_mount_boundary(tmp_path):
     assert result["excluded_mounts"]==1
     for key in ("map_storage","docker_engine","containerd_default","system_logs"):
         row=result[key]
-        assert row["file_bytes"]==8192
+        actual=(Path(result["paths"][key])/"data").stat().st_blocks*512
+        assert row["file_bytes"]==actual
     expected=int(subprocess.check_output(["du","-x","-B1","-s",str(root)],text=True).split()[0])
     hidden=int(subprocess.check_output(["du","-x","-B1","-s",str(root/"hidden")],text=True).split()[0])
     assert result["allocated_bytes"]==expected-hidden
