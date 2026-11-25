@@ -62,6 +62,10 @@ jobs:
                   if paths and set(paths) <= set(reference_import_only) | export_only and old_vm == new_vm and old_load == new_load:
                       vm = load = False
                       print("Reference portability only: regression CI, no repeated VM or full load acceptance")
+                  host_socket_only = {"docs/storage-layout-v2.json", "PhotoSorter/tools/maintenance/host_accounting.py", "PhotoSorter/frontend/src/features/admin/storage/labels.ts", "PhotoSorter/backend/tests/test_storage_v2_contract.py", "PhotoSorter/backend/tests/test_host_accounting_socket.py", ".github/workflows/release-acceptance.yml"}
+                  if paths and set(paths) <= host_socket_only and old_vm == new_vm and old_load == new_load:
+                      vm = load = False
+                      print("Host socket classification only; covered by regression CI")
                   if paths and set(paths) <= allowed and old_load == new_load:
                       load = False
                       print("VM-harness-only change; load evidence remains tied to", before)

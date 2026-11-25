@@ -696,6 +696,24 @@
       "runtime_usage": "See producer, consumer, lifecycle and acceptance evidence in STORAGE_V2_PROGRESS.md."
     },
     {
+      "id": "updater_rpc_socket",
+      "scope": "host_private",
+      "path": "system/updater/rpc/control.sock",
+      "node_type": "socket",
+      "owner": "host",
+      "producer": "map-updater.service",
+      "publication": "Unix domain socket bind by host updater",
+      "cleanup": "only updater-owned socket lifecycle; never storage GC",
+      "recovery": "updater recreates socket on service startup",
+      "stage": 6,
+      "coordination": "host updater RPC; exact path and socket type",
+      "accounting": "count node once; actual stat size and blocks; no personal charge",
+      "verification": "host accounting regression with real AF_UNIX socket and wrong-type negative controls",
+      "growth": "one endpoint, no persistent payload",
+      "consumer": "authorized API updater RPC client",
+      "runtime_usage": "Live updater endpoint, not a regular file or unknown data."
+    },
+    {
       "id": "installation_state",
       "scope": "host_private",
       "path": "system/state/",

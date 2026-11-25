@@ -15,7 +15,7 @@ def _rules(contract):
         if template.startswith(("app/","@")):continue
         pattern="".join(re.escape(lit)+("[^/]+" if field else "") for lit,field,_,_ in Formatter().parse(template.rstrip("/")))
         if template.endswith("/"):pattern+="/.+"
-        rows.append((len(template),spec["id"],re.compile(pattern)))
+        rows.append((len(template),spec["id"],re.compile(pattern),spec.get("node_type","file")))
     return sorted(rows,key=lambda r:-r[0])
 def _docker(*args):
     return subprocess.check_output(["docker",*args],text=True,timeout=8,stderr=subprocess.DEVNULL).strip()
@@ -112,13 +112,16 @@ def measure(storage,contract,*,limit=100000,seconds=4,engine=None,include_engine
     fs(storage/"app")
     def account(key,st):
         nonlocal wal
-        category=next((name for _,name,p in rules if p.fullmatch(key)),"unknown")
+        category,node_type=next(((name,kind) for _,name,p,kind in rules if p.fullmatch(key)),("unknown","file"))
         service=None
         if key.startswith("logs/"):
             service=key.split("/")[1]
             if service=="caddy":service="/".join(key.split("/")[1:3])
         if category=="service_log" and service not in budgets:category="unknown"
-        if not stat.S_ISREG(st.st_mode):category="unknown"
+        # Only the contract-declared socket at its exact path is expected.
+        # Do not accept regular files, symlinks, FIFOs or arbitrary sockets there.
+        matches_type=stat.S_ISSOCK(st.st_mode) if node_type=="socket" else stat.S_ISREG(st.st_mode)
+        if not matches_type:category="unknown"
         ident=(st.st_dev,st.st_ino);duplicate=ident in seen;seen.add(ident)
         for row in (categories.setdefault(category,counters()),devices.setdefault(str(st.st_dev),counters())):
             row["files"]+=1;row["logical_bytes"]+=st.st_size;row["allocated_bytes"]+=0 if duplicate else st.st_blocks*512;row["hardlink_paths"]+=int(duplicate)

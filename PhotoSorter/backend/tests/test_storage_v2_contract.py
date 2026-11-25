@@ -31,6 +31,9 @@ def test_storage_v2_target_contract():
         assert by_id[name]["path"].startswith("app/temporary/")
     assert by_id["reference_embedding"]["scope"] == "shared"
     assert by_id["unknown"]["cleanup"] == "never automatic deletion"
+    assert by_id["updater_rpc_socket"]["path"] == "system/updater/rpc/control.sock"
+    assert by_id["updater_rpc_socket"]["node_type"] == "socket"
+    assert by_id["updater_rpc_socket"]["scope"] == "host_private"
 
 
 def test_stage_one_site_review_coverage():
