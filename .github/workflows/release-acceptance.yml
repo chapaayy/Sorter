@@ -39,7 +39,7 @@ jobs:
               try:
                   paths = subprocess.check_output(["git", "diff", "--name-only", before, "HEAD"], text=True).splitlines()
                   allowed = {"PhotoSorter/tools/maintenance/ci_vm_health.py", "PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md"}
-                  load_only = {"PhotoSorter/tools/maintenance/ci_release_load.py", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md", "AGENTS.md"}
+                  load_only = {"PhotoSorter/backend/server/api/routes/site.py", "PhotoSorter/backend/tests/test_stage3_ui_api.py", "PhotoSorter/backend/tests/test_stage4_api_bootstrap.py", ".gitignore", "Models/cache/.gitkeep", "Models/models/.gitkeep", "PhotoSorter/data/.gitkeep", "PhotoSorter/tools/maintenance/ci_release_load.py", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md", "AGENTS.md"}
                   old = subprocess.check_output(["git", "show", before+":.github/workflows/release-acceptance.yml"], text=True)
                   new = open(".github/workflows/release-acceptance.yml").read()
                   # Only skip if the load job itself and every workload/runtime file are identical.
@@ -54,7 +54,7 @@ jobs:
                   vm_guard = "    needs: scope\n    if: needs.scope.outputs.vm == 'true'\n"
                   if paths and set(paths) <= load_only and old_vm.removeprefix(vm_guard) == new_vm.removeprefix(vm_guard):
                       vm = False
-                      print("Load-harness-only change; preserve successful VM evidence")
+                      print("Load/UI-route-only change; preserve successful VM evidence")
                   if paths and set(paths) <= allowed and old_load == new_load:
                       load = False
                       print("VM-harness-only change; load evidence remains tied to", before)

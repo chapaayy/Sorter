@@ -222,7 +222,8 @@ def physical():
 
 def storage_snapshot(s,label):
     data=settle(s)
-    row={"label":label,"at":time.time(),"host_storage_allocated_bytes":physical(),"disk":data["disk"],"registry":data["registry"],"limits":obj(s,"GET","/api/storage/limits")}
+    host_children={child.name:int(subprocess.check_output(["du","-s","-B1",str(child)],text=True).split()[0]) for child in STORAGE.iterdir() if child.is_dir()}
+    row={"label":label,"at":time.time(),"host_storage_children_bytes":host_children,"host_storage_allocated_bytes":physical(),"disk":data["disk"],"registry":data["registry"],"limits":obj(s,"GET","/api/storage/limits")}
     print("STAGE10_STORAGE_SNAPSHOT",json.dumps(row,ensure_ascii=False,separators=(",",":")),flush=True)
     return row
 
@@ -250,15 +251,25 @@ def browser_probe(stop,samples):
         browser=p.chromium.launch(headless=True,args=["--no-sandbox"])
         context=browser.new_context(ignore_https_errors=True)
         page=context.new_page()
-        page.goto(BASE+"/admin",wait_until="domcontentloaded")
-        page.get_by_label("Электронная почта или логин").fill("admin")
-        page.get_by_label("Пароль",exact=True).fill(PASSWORD)
-        page.get_by_role("button",name="Продолжить").click()
-        page.get_by_role("region",name="Хранилище").wait_for(timeout=60000)
+        errors=[]
+        page.on("pageerror",lambda exc:errors.append(str(exc)[:300]))
+        page.on("requestfailed",lambda request:errors.append(f"{request.url}: {request.failure}"[:300]))
+        try:
+            response=page.goto(BASE+"/admin",wait_until="domcontentloaded")
+            assert response and response.status==200,("admin deep link",response.status if response else None)
+            page.get_by_label("Электронная почта или логин").fill("admin",timeout=60000)
+            page.get_by_label("Пароль",exact=True).fill(PASSWORD)
+            page.get_by_role("button",name="Продолжить").click()
+            page.get_by_role("region",name="Хранилище").wait_for(timeout=60000)
+        except Exception as exc:
+            samples.append({"browser_error":str(exc)[:500],"url":page.url,"page_errors":errors[-10:]})
+            browser.close()
+            return
         while not stop.is_set():
             try:
                 start=time.monotonic()
-                page.goto(BASE+"/admin",wait_until="domcontentloaded",timeout=60000)
+                response=page.goto(BASE+"/admin",wait_until="domcontentloaded",timeout=60000)
+                assert response and response.status==200
                 page.get_by_role("heading",name="Объём хранилища").wait_for(timeout=60000)
                 samples.append({"at":time.time(),"browser_storage_seconds":time.monotonic()-start})
             except Exception as exc:samples.append({"at":time.time(),"browser_error":str(exc)[:250]})
@@ -415,16 +426,33 @@ def main():
         # no artificial age change in production and no forced protected purge.
         app_python("from server.services.reference_gc import collect;print(collect(limit=100,history_grace=0,grace_seconds=0))")
         app_python("from server.services.reference_gc import collect;print(collect(limit=100,history_grace=0,grace_seconds=0))")
+        # Reference thumbnails become unowned only after history/object collection.
+        # Use the real grace-aware collector, not manual file deletion.
+        def previews_released():
+            app_python("from server.services.thumbnails import gc_unowned;print(gc_unowned(limit=2000,grace_seconds=0))")
+            return not any((STORAGE/"app/shared/references/thumbnails").rglob("*.webp"))
+        wait(previews_released,timeout=120,period=3,description="unowned reference thumbnails")
+        # ZIP locks have their own mtime and are retained safely until the
+        # production TTL. Accelerate age only in this isolated fixture.
+        archive_root=STORAGE/"app/temporary/archives"
+        for lock in archive_root.rglob("*.lock"):
+            assert not lock.with_suffix(".zip").exists()
+            os.utime(lock,(time.time()-3700,time.time()-3700))
+        wait(lambda:not any(archive_root.rglob("*.lock")),timeout=120,period=3,description="expired ZIP locks")
         final=storage_snapshot(s,"final_after_reference_cleanup")
+        assert final["registry"]["temporary"]["files"]==0,final["registry"]["temporary"]
+        assert not final["registry"]["issues"],final["registry"]["issues"]
         assert sql("SELECT count(*) FROM reference_cache")=="0"
         assert sql("SELECT count(*) FROM reference_physical_objects")=="0"
         assert final["limits"]["disk"]["reserved_bytes"]==0
         assert obj(s,"GET","/api/storage/accounts")["total"]>=2
         for path in ("/api/storage/operations","/api/storage/accounting/issues","/api/storage/maintenance","/api/storage/breakdown"):
             obj(s,"GET",path)
-        assert not (ROOT/"PhotoSorter/data").exists() and not (ROOT/"Models").exists()
+        legacy=[str(path) for path in (ROOT/"PhotoSorter/data",ROOT/"Models") if path.exists() or path.is_symlink()]
+        assert not legacy,("unexpected legacy storage roots",legacy)
         assert samples and any("stats" in x for x in samples)
         assert any("browser_storage_seconds" in x for x in browser_samples),browser_samples
+        assert not any("browser_error" in x for x in browser_samples),browser_samples
         print("STAGE10_REAL_LOAD_COMPLETE",flush=True)
     finally:
         stop.set();thread.join(timeout=150);browser_thread.join(timeout=150)
