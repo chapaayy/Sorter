@@ -87,3 +87,5 @@ PostgreSQL and API have Docker-native healthchecks. Caddy needs an actual HTTPS 
 See [installation](docs/DEPLOYMENT.md), [lifecycle](docs/DATA_LIFECYCLE.md), [backup/restore](docs/BACKUP_RESTORE.md), [operations](docs/OPERATIONS.md), [architecture](docs/STORAGE_ARCHITECTURE_V2.md) and [progress](docs/STORAGE_V2_PROGRESS.md).
 
 - Independent host storage-tree check: `host_logs.py → storage_tree.py → storage-host.json → /api/storage/usage`; physical directory blocks and signed comparison separate from quota ledger. FO chunk append and receipt use a per-part kernel lease, observed nonblocking by registry.
+
+- Root-device physical census: `disk_tree.py` reuses the bounded tree walker, excludes mountpoints, measures visible Docker/default containerd/system paths, and samples unlinked FDs. `storage_check_history.py` preserves bounded measurement history in the existing host report; Vue `StorageControl.vue` renders observations and incomplete states.

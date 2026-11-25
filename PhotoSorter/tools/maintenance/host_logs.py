@@ -60,14 +60,14 @@ def _prune_postgres(storage,*,budget=None):
         path.unlink(missing_ok=True);total-=size;removed+=1
     return removed
 
-def publish_usage(storage):
+def publish_usage(storage,*,force_check=False):
     """The protected-host sample also supplies journal-budget usage."""
     storage=Path(storage)
     with (storage/"system/updater/private/host-sample.lock").open("a") as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
-        return _publish_usage(storage)
+        return _publish_usage(storage,force_check=force_check)
 
-def _publish_usage(storage):
+def _publish_usage(storage,*,force_check=False):
     contract=json.loads((storage/"system/state/log-policy.json").read_text())
     from host_accounting import measure
     from map_updater import atomic_json
@@ -99,7 +99,25 @@ def _publish_usage(storage):
         age=(datetime.now(timezone.utc)-datetime.fromisoformat(previous_tree["finished_at"])).total_seconds()
     except (KeyError,ValueError,TypeError):age=float("inf")
     interval=3600 if previous_tree.get("comparable") else 300
-    report["tree_check"]=previous_tree if 0<=age<interval else compare(storage,report)
+    report["tree_check"]=previous_tree if not force_check and 0<=age<interval else compare(storage,report)
+    from disk_tree import measure_disk
+    from storage_check_history import tree_history,disk_history
+    old_disk=previous.get("disk_check") or {}
+    try:
+        disk_age=(datetime.now(timezone.utc)-datetime.fromisoformat(old_disk["finished_at"])).total_seconds()
+    except (KeyError,ValueError,TypeError):disk_age=float("inf")
+    # Root filesystem scan is separate and less frequent than the MAP tree.
+    # A failed/partial census never replaces the live capacity counter.
+    disk_interval=21600 if old_disk.get("comparable") else 3600
+    if not force_check and 0<=disk_age<disk_interval:
+        report["disk_check"]=old_disk
+    else:
+        try:report["disk_check"]=measure_disk(storage,report["docker"])
+        except (OSError,ValueError,TypeError):
+            report["disk_check"]={"finished_at":datetime.now(timezone.utc).isoformat(),
+                                  "partial":True,"comparable":False,"errors":1}
+    report["tree_history"]=tree_history(previous,report["tree_check"])
+    report["disk_history"]=disk_history(previous,report["disk_check"])
     rows=report.pop("journals")
     atomic_json(control/"storage-host.json",report)
     atomic_json(control/"log-usage.json",{"at":report["at"],"services":rows})
@@ -119,5 +137,12 @@ def maintenance(storage):
     publish_usage(storage)
 
 if __name__=="__main__":
-    import sys
-    maintenance(Path(sys.argv[1]))
+    import argparse
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("storage",type=Path)
+    parser.add_argument("--sample-only",action="store_true",help="Collect statistics without retention/cleanup")
+    parser.add_argument("--force-check",action="store_true",help="Refresh both independent censuses")
+    args=parser.parse_args()
+    if args.force_check and not args.sample_only:parser.error("--force-check requires --sample-only")
+    if args.sample_only:publish_usage(args.storage,force_check=args.force_check)
+    else:maintenance(args.storage)

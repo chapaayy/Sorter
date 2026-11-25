@@ -141,3 +141,7 @@ Current source index for `feature/storage-architecture-v2`. Entries are actual s
 
 - `PhotoSorter/tools/maintenance/storage_tree.py`: independent bounded physical tree census and comparison, including directories.
 - `PhotoSorter/backend/server/storage/upload_part_lock.py`: per-part kernel lease around FO append and receipt, nonblocking diagnostic probe.
+
+- `PhotoSorter/tools/maintenance/disk_tree.py`: independent root-device physical census and lower-bound deleted-open FD observations.
+- `PhotoSorter/tools/maintenance/storage_check_history.py`: bounded host measurement history.
+- `PhotoSorter/frontend/src/features/admin/storage/StorageControl.vue`: byte-level control, residuals, unknown objects and history; no request-time disk scan.

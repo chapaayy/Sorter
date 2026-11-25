@@ -15,6 +15,8 @@ install -m 0644 "$ROOT/PhotoSorter/tools/maintenance/map_build.py" /usr/local/li
 install -m 0644 "$ROOT/PhotoSorter/tools/maintenance/host_logs.py" /usr/local/lib/map-updater/host_logs.py
 install -m 0644 "$ROOT/PhotoSorter/tools/maintenance/host_accounting.py" /usr/local/lib/map-updater/host_accounting.py
 install -m 0644 "$ROOT/PhotoSorter/tools/maintenance/storage_tree.py" /usr/local/lib/map-updater/storage_tree.py
+install -m 0644 "$ROOT/PhotoSorter/tools/maintenance/disk_tree.py" /usr/local/lib/map-updater/disk_tree.py
+install -m 0644 "$ROOT/PhotoSorter/tools/maintenance/storage_check_history.py" /usr/local/lib/map-updater/storage_check_history.py
 cat > /etc/systemd/system/map-updater.service <<EOF
 [Unit]
 Description=MAP restricted host updater
@@ -37,10 +39,13 @@ WantedBy=multi-user.target
 EOF
 cat > /etc/systemd/system/map-log-maintenance.service <<EOF
 [Unit]
-Description=Bounded MAP PostgreSQL journal cleanup
+Description=Bounded MAP host accounting and journal cleanup
 [Service]
 Type=oneshot
 User=root
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
 ExecStart=/usr/bin/python3 /usr/local/lib/map-updater/host_logs.py $STORAGE
 EOF
 cat > /etc/systemd/system/map-log-maintenance.timer <<EOF

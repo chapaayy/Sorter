@@ -2086,3 +2086,23 @@ test('storage quotas are opt-in and owner edits exact GiB limits',async({page})=
   expect(policy.temporary_limit_bytes).toBeNull()
   expect(await storage.evaluate(el=>el.scrollWidth<=el.clientWidth+2)).toBeTruthy()
 })
+
+
+test('storage control shows exact independent bytes and never claims incomplete samples match',async({page})=>{
+  const stamp='2026-11-25T00:00:00Z'
+  let incomplete=false
+  await page.route('**/api/storage/usage',route=>{
+    const data=storageFixture()
+    return respond(route,{...data,host:{...data.host,tree_check:{finished_at:stamp,allocated_bytes:8192,registry_file_bytes:4096,host_file_bytes:0,directory_bytes:4096,partial:incomplete,comparable:!incomplete,errors:0,absolute_discrepancy_bytes:incomplete?null:0,unknown_files:0,unknown_bytes:0},tree_history:[{finished_at:stamp,allocated_bytes:8192,comparable:!incomplete,absolute_discrepancy_bytes:incomplete?null:0}]}})
+  })
+  await page.goto('/admin')
+  const storage=page.getByRole('region',{name:'Хранилище'})
+  await storage.getByRole('button',{name:'Контроль',exact:true}).click()
+  await expect(storage.getByRole('heading',{name:'Побайтовый контроль MAP'})).toBeVisible()
+  await expect(storage.getByText('Последний сопоставимый замер: расхождение 0 байт.')).toBeVisible()
+  incomplete=true
+  await storage.getByRole('button',{name:'Обновить показатели'}).click()
+  await expect(storage.getByText('Нет сопоставимого актуального замера. Нули и 100% не подставляются.')).toBeVisible()
+  await expect(storage.getByText('Последний сопоставимый замер: расхождение 0 байт.')).toHaveCount(0)
+  expect(await storage.evaluate(el=>el.scrollWidth<=el.clientWidth+2)).toBeTruthy()
+})

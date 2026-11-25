@@ -121,10 +121,32 @@ export interface StorageRegistry {
   unfinished_fo?:{files:number;remaining_bytes:number};unfinished_references?:{files:number;remaining_bytes:number}
   temporary_operations?:{rows:Array<{operation_key:string;category:string;owner_id:number|null;batch_id:string|null;run_id:string|null;files:number;logical_bytes:number;allocated_bytes:number}>;total_groups:number;partial:boolean}
 }
+export interface PhysicalTreeBucket {file_bytes:number;directory_bytes:number;files:number;directories:number;hardlink_paths:number}
+export interface PhysicalTreeSample {
+  finished_at:string;started_at?:string;device?:string;allocated_bytes?:number;directory_bytes?:number
+  partial:boolean;comparable:boolean;errors:number;entries?:number;changed_directories?:number
+  limit_reached?:boolean;cross_scope_links?:number;other_devices?:number;excluded_mounts?:number
+  registry_file_bytes?:number|null;host_file_bytes?:number|null;app_delta_bytes?:number|null;host_delta_bytes?:number|null
+  unexplained_bytes?:number|null;absolute_discrepancy_bytes?:number|null;unknown_bytes?:number|null;unknown_files?:number|null
+}
+export type RootDiskSample=PhysicalTreeSample & {
+  filesystem?:string|null;scopes?:string[];paths?:Record<string,string>
+  map_storage?:PhysicalTreeBucket;docker_engine?:PhysicalTreeBucket;containerd_default?:PhysicalTreeBucket
+  system_logs?:PhysicalTreeBucket;other_visible?:PhysicalTreeBucket
+  residual_bytes?:number|null;capacity_before?:StorageCapacity;capacity_after?:StorageCapacity
+  mount_table_changed?:boolean;deleted_open?:{allocated_bytes:number;files:number;partial:boolean;errors:number;limit_reached:boolean}
+}
+export interface StorageCheckHistoryRow {
+  finished_at:string;allocated_bytes?:number|null;directory_bytes?:number|null;comparable:boolean
+  unexplained_bytes?:number|null;absolute_discrepancy_bytes?:number|null;unknown_bytes?:number|null;unknown_files?:number|null
+  residual_bytes?:number|null;device?:string|null
+}
 export interface StorageHost {
   at:string;partial:boolean;stale:boolean;errors:number;engine_sampled_at?:string
   categories:Record<string,StorageCounter>;devices:Record<string,StorageCounter>
   unknown_sample?:Array<{path:string;reason:string;logical_bytes:number}>
+  tree_check?:PhysicalTreeSample;disk_check?:RootDiskSample
+  tree_history?:StorageCheckHistoryRow[];disk_history?:StorageCheckHistoryRow[]
   postgres_wal_subset_bytes?:number;postgres_wal_delta_bytes?:number|null
   docker?:{available:boolean;shared_engine_totals:Array<{Type?:string;Size?:string;Reclaimable?:string;TotalCount?:string|number;Active?:string|number}>;map_revision_images:Array<{ID:string;Tag:string;Size:string}>;limitations:string[]}
   tmpfs?:{available:boolean;partial:boolean;devices:Record<string,StorageCapacity>;mounts:Array<{service:string;mount:string;device:string}>}|null

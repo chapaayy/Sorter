@@ -24,3 +24,7 @@ sudo bash -c 'set -e; apt-get update; apt-get install -y git ca-certificates; gi
 - [Прогресс и фактические проверки](docs/STORAGE_V2_PROGRESS.md)
 
 Исторические документы ранних этапов не являются инструкцией для установки V2.
+
+### Storage control
+
+Administration → Storage → Control exposes independent physical tree measurements, directory overhead, unresolved residuals and bounded history. Root-filesystem measurements are separate from personal quotas and Docker virtual image sizes. See [operations](docs/OPERATIONS.md) for limitations and the manual diagnostic command.

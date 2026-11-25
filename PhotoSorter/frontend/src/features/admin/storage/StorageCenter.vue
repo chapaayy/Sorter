@@ -7,12 +7,13 @@ import type {StorageUsage} from '../../../types/api'
 import UiButton from '../../../components/ui/UiButton.vue'
 import LoadingSkeleton from '../../../components/ui/LoadingSkeleton.vue'
 import StorageOverview from './StorageOverview.vue'
+import StorageControl from './StorageControl.vue'
 import StorageAccounts from './StorageAccounts.vue'
 import StorageTemporary from './StorageTemporary.vue'
 import StorageDiagnostics from './StorageDiagnostics.vue'
 import StorageMaintenance from './StorageMaintenance.vue'
 import StorageLimits from './StorageLimits.vue'
-const tabs=[['overview','Обзор'],['accounts','По аккаунтам'],['temporary','Временные данные'],['limits','Лимиты'],['diagnostics','Диагностика'],['maintenance','Обслуживание']] as const
+const tabs=[['overview','Обзор'],['control','Контроль'],['accounts','По аккаунтам'],['temporary','Временные данные'],['limits','Лимиты'],['diagnostics','Диагностика'],['maintenance','Обслуживание']] as const
 const active=ref<(typeof tabs)[number][0]>('overview')
 const usage=ref<StorageUsage|null>(null),loading=ref(false),error=ref('')
 async function refresh(){
@@ -47,6 +48,7 @@ usePolling(refresh,15000)
       <LoadingSkeleton v-else-if="loading" variant="lines" label="Загружаем показатели хранилища"/>
       <p v-else class="meta">Показатели пока недоступны.</p>
     </template>
+    <StorageControl v-else-if="active==='control'" :usage="usage"/>
     <StorageAccounts v-else-if="active==='accounts'"/>
     <StorageTemporary v-else-if="active==='temporary'" :registry="usage?.registry"/>
     <StorageLimits v-else-if="active==='limits'" @refresh="refresh"/>
