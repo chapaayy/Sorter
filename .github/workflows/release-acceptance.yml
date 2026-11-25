@@ -55,6 +55,10 @@ jobs:
                   if paths and set(paths) <= load_only and old_vm.removeprefix(vm_guard) == new_vm.removeprefix(vm_guard):
                       vm = False
                       print("Load/UI-route-only change; preserve successful VM evidence")
+                  export_only = {"PhotoSorter/backend/server/services/reference_archives.py", "PhotoSorter/backend/tests/test_reference_archives.py", "PhotoSorter/tools/maintenance/ci_release_load.py", ".github/workflows/release-acceptance.yml", "docs/REFERENCE_IMPORT.md"}
+                  if paths and set(paths) <= export_only and old_vm == new_vm and old_load == new_load:
+                      vm = load = False
+                      print("Reference ZIP presentation only: regression CI, no repeated VM or full load acceptance")
                   if paths and set(paths) <= allowed and old_load == new_load:
                       load = False
                       print("VM-harness-only change; load evidence remains tied to", before)

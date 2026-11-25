@@ -411,7 +411,9 @@ def main():
                 names,size=zip_download(s,"/api/download/"+rid,folder/"download.zip",len(paths),True)
                 sam=next(r["assigned_sam"] for r in rows if r["assigned_sam"] and not r["assigned_sam"].startswith("_"))
                 zip_download(s,"/api/download/"+rid+"?sam="+quote(sam,safe=""),folder/"construction.zip",sum(r["assigned_sam"]==sam for r in rows),True)
-                zip_download(s,"/api/references/export",folder/"references.zip",len(refs))
+                ref_names,_=zip_download(s,"/api/references/export",folder/"references.zip",len(refs)+1)
+                assert "manifest.json" in ref_names
+                assert all(n=="manifest.json" or n.count("/")==2 for n in ref_names)
             else:names,size=zip_download(s,"/api/download/"+rid,folder/"download.zip",len(paths),True)
             zipped=storage_snapshot(s,f"cycle_{cycle}_zipped")
             expiry=expire(s)

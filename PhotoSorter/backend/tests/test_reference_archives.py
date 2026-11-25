@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import zipfile
+import json
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -23,8 +25,14 @@ def test_all_references_zip_preserves_original_bytes_and_names(system, tmp_path,
     archive = reference_archives.prepare(plan)
     assert archive == reference_archives.prepare(plan)
     with zipfile.ZipFile(archive) as zipped:
-        assert zipped.namelist() == ["SAM 0001 — Гагарина 64/one.jpg"]
+        assert zipped.namelist() == ["SAM 0001 — Гагарина 64/Неназначенные/one.jpg","manifest.json"]
         assert zipped.read(zipped.namelist()[0]) == original.read_bytes()
+        manifest=json.loads(zipped.read("manifest.json"))
+        assert manifest["schema"]=="map-reference-library-v1"
+        assert manifest["photos"]==[{"path":zipped.namelist()[0],"sam":"SAM 0001",
+            "filename":"one.jpg","sha256":hashlib.sha256(original.read_bytes()).hexdigest(),
+            "size":original.stat().st_size,"side":None}]
+        assert manifest["constructions"][0]["address"]=="Гагарина 64"
     assert str(key) not in zipped.namelist()[0]
 
     app = Starlette(routes=[Route("/archive", lambda request: FileResponse(archive))])
@@ -69,3 +77,38 @@ def test_viewers_cannot_export_reference_library():
         authorize({"username": "viewer", "access_role": "viewer"},
                   "GET", "/api/references/export")
     assert error.value.status_code == 403
+
+def test_side_changes_invalidate_zip_without_changing_library_or_object(system):
+    from server.services import reference_sides
+    key,original=add_published_reference(system)
+    first=reference_archives.current_plan()
+    old=reference_archives.prepare(first)
+    inode=original.stat().st_ino
+    reference_sides.assign("SAM 0001",[key],"B2")
+    second=reference_archives.current_plan()
+    assert second.version==first.version
+    assert second.key!=first.key
+    new=reference_archives.prepare(second)
+    assert old!=new and old.is_file()
+    assert original.stat().st_ino==inode
+    with zipfile.ZipFile(new) as z:
+        manifest=json.loads(z.read("manifest.json"))
+        photo=manifest["photos"][0]
+        assert photo["side"]=="B2"
+        assert photo["path"]=="SAM 0001 — Победы 12/B2/one.jpg"
+        assert z.read(photo["path"])==original.read_bytes()
+    reference_sides.assign("SAM 0001",[key],None)
+    assert reference_archives.current_plan().key==first.key
+
+
+def test_historical_side_and_custom_catalog_manifest_are_lossless(system):
+    from server.database import connect
+    key,original=add_published_reference(system)
+    with connect() as db:
+        db.execute("INSERT INTO reference_photo_sides(reference_id,sam,side) VALUES (%s,%s,%s)",
+                   (key,"SAM 0001","Старая/сторона"))
+    plan=reference_archives.current_plan()
+    manifest=json.loads(plan.manifest)
+    assert manifest["photos"][0]["side"]=="Старая/сторона"
+    assert manifest["photos"][0]["path"].count("/")==2
+    assert "Историческая сторона" in manifest["photos"][0]["path"]
