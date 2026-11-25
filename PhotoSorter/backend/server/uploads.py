@@ -20,6 +20,7 @@ from .storage.batch_cleanup import discard_uncommitted_upload
 from app.storage.filesystem import parent_fd,safe_read,safe_unlink
 from app.storage.changes import changed
 from .storage.registry import note
+from .storage.upload_part_lock import writing_part
 from app.storage.paths import app_key
 from app.storage.categories import Category
 from app import config
@@ -179,6 +180,15 @@ def _record_chunk(upload_id: uuid.UUID, received: int) -> None:
             note([part_path(row['batch_id'],upload_id)],db=db)
 
 
+def _write_and_record_chunk(path,upload_id,offset,data,declared_size):
+    # Hold a per-file kernel lease across both the append and durable receipt.
+    # The registry probes it without waiting while holding admission's DB lock.
+    with writing_part(config.APP_STORAGE_ROOT,path):
+        confirmed=_append_chunk(path,offset,data,declared_size)
+        _record_chunk(upload_id,confirmed)
+        return confirmed
+
+
 @router.patch('/uploads/{upload_id}')
 async def upload_chunk(upload_id: str, request: Request):
     try:
@@ -212,8 +222,7 @@ async def upload_chunk(upload_id: str, request: Request):
             if not await asyncio.to_thread(path.is_file):
                 raise HTTPException(409, 'Временный файл отсутствует')
             confirmed = await asyncio.to_thread(
-                _append_chunk, path, offset, payload, row['declared_size'])
-            await asyncio.to_thread(_record_chunk, row['id'], confirmed)
+                _write_and_record_chunk, path, row['id'], offset, payload, row['declared_size'])
             return {'offset': confirmed}
         finally:
             if token: await asyncio.to_thread(operations.finish, token)
@@ -383,16 +392,14 @@ async def direct_upload(
                 buffered.extend(data)
                 if len(buffered)>=write_batch_bytes:
                     offset=await asyncio.to_thread(
-                        _append_chunk,path,offset,bytes(buffered),size)
+                        _write_and_record_chunk,path,row['id'],offset,bytes(buffered),size)
                     buffered.clear()
-                    await asyncio.to_thread(_record_chunk,row['id'],offset)
                 if token and asyncio.get_running_loop().time()-last_heartbeat>5:
                     await asyncio.to_thread(operations.heartbeat,token)
                     last_heartbeat=asyncio.get_running_loop().time()
             if buffered:
                 offset=await asyncio.to_thread(
-                    _append_chunk,path,offset,bytes(buffered),size)
-                await asyncio.to_thread(_record_chunk,row['id'],offset)
+                    _write_and_record_chunk,path,row['id'],offset,bytes(buffered),size)
             if offset!=size:
                 raise HTTPException(409,'Файл загружен не полностью')
             return await asyncio.to_thread(_finalize_sync,upload_id)

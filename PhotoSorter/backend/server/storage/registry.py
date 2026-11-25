@@ -157,7 +157,10 @@ def observe(db,root,keys,generation=None,onerror=lambda:None):
             if not row or str(row["batch_id"])!=batch:issue=issue or "orphan_upload"
             elif category=="fo_upload_part":
                 if row["finalized"]:issue=issue or "leftover_finalized_part"
-                elif st.st_size!=row["received"]:issue=issue or "part_receipt_size_mismatch"
+                elif st.st_size!=row["received"]:
+                    from .upload_part_lock import plausible_inflight_append
+                    if not plausible_inflight_append(root,key,st,row["received"],row["declared_size"]):
+                        issue=issue or "part_receipt_size_mismatch"
             else:
                 expected=row["target_path"] if category=="fo_original" else row["media_output_path"]
                 if not row["finalized"]:issue=issue or "incomplete_publication"

@@ -138,3 +138,6 @@ Current source index for `feature/storage-architecture-v2`. Entries are actual s
 ## Operations
 
 [Deployment](docs/DEPLOYMENT.md), [backup/restore](docs/BACKUP_RESTORE.md), [rollback](docs/ROLLBACK.md), [operations](docs/OPERATIONS.md), [data lifecycle](docs/DATA_LIFECYCLE.md), [reference pipeline](docs/REFERENCE_PIPELINE.md), [contract](docs/STORAGE_ARCHITECTURE_V2.md).
+
+- `PhotoSorter/tools/maintenance/storage_tree.py`: independent bounded physical tree census and comparison, including directories.
+- `PhotoSorter/backend/server/storage/upload_part_lock.py`: per-part kernel lease around FO append and receipt, nonblocking diagnostic probe.

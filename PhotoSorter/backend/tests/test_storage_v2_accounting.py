@@ -245,3 +245,30 @@ def test_mismatched_owner_and_incomplete_part_are_diagnostic_only(system):
     assert evidence["charged_bytes"]==0 and str(other) not in data["owners"]
     assert exact(part)["issue"]=="leftover_finalized_part"
     assert wrong.exists() and part.exists() and original.exists()
+
+
+def test_active_append_is_not_a_corrupt_receipt(system):
+    from server.storage.upload_part_lock import writing_part
+    from server.storage.accounting import refresh
+    raw=_jpg()
+    batch=_batch(system,with_photo=False)
+    item=File(uuid.uuid4(),"active.jpg",len(raw))
+    upload_manifest.register(batch,[item])
+    uploads._create_upload(uploads.BeginUpload(kind="fo",filename=item.filename,batch_id=str(batch),size=len(raw)),item.upload_id)
+    path=uploads.part_path(batch,item.upload_id)
+    with writing_part(config.APP_STORAGE_ROOT,path):
+        end=uploads._append_chunk(path,0,raw[:len(raw)//2],len(raw))
+        data=settle()
+        assert exact(path)["issue"] is None
+        assert exact(path)["logical_bytes"]==end
+    # Simulate crash before the durable receipt: do not hide the same mismatch.
+    data=settle()
+    assert exact(path)["issue"]=="part_receipt_size_mismatch"
+    uploads._record_chunk(item.upload_id,end)
+    data=settle()
+    assert exact(path)["issue"] is None
+    # A genuinely truncated part remains an issue even with a writer lease.
+    with writing_part(config.APP_STORAGE_ROOT,path):
+        with path.open("r+b") as stream:stream.truncate(end-1)
+        data=settle()
+        assert exact(path)["issue"]=="part_receipt_size_mismatch"

@@ -91,6 +91,15 @@ def _publish_usage(storage):
         if isinstance(old_wal,int):
             report["postgres_wal_delta_bytes"]=report["postgres_wal_subset_bytes"]-old_wal
             report["previous_host_sample_at"]=previous.get("at")
+    # Independent full tree walk at most once per hour; retry incomplete samples
+    # after five minutes. Ordinary one-minute journal samples remain bounded.
+    from storage_tree import compare
+    previous_tree=previous.get("tree_check") or {}
+    try:
+        age=(datetime.now(timezone.utc)-datetime.fromisoformat(previous_tree["finished_at"])).total_seconds()
+    except (KeyError,ValueError,TypeError):age=float("inf")
+    interval=3600 if previous_tree.get("comparable") else 300
+    report["tree_check"]=previous_tree if 0<=age<interval else compare(storage,report)
     rows=report.pop("journals")
     atomic_json(control/"storage-host.json",report)
     atomic_json(control/"log-usage.json",{"at":report["at"],"services":rows})

@@ -85,3 +85,5 @@ The gallery is a DB projection; no second physical reference gallery. FO embeddi
 PostgreSQL and API have Docker-native healthchecks. Caddy needs an actual HTTPS request; worker, thumbnail and cleanup need fresh DB heartbeats. `docker compose ps` alone does not prove functional health. Systemd starts Docker, updater and log timer; Docker restart policies recover containers. VM acceptance verifies changed boot ID, per-service health, new advancing heartbeat instances and data hashes after reboot and update.
 
 See [installation](docs/DEPLOYMENT.md), [lifecycle](docs/DATA_LIFECYCLE.md), [backup/restore](docs/BACKUP_RESTORE.md), [operations](docs/OPERATIONS.md), [architecture](docs/STORAGE_ARCHITECTURE_V2.md) and [progress](docs/STORAGE_V2_PROGRESS.md).
+
+- Independent host storage-tree check: `host_logs.py → storage_tree.py → storage-host.json → /api/storage/usage`; physical directory blocks and signed comparison separate from quota ledger. FO chunk append and receipt use a per-part kernel lease, observed nonblocking by registry.
