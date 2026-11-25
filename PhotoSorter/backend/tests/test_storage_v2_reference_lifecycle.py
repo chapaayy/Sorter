@@ -1,5 +1,6 @@
 """Stage 4 integration against disposable PostgreSQL and actual storage bytes."""
 import hashlib
+import json
 import os
 import uuid
 import zipfile
@@ -85,8 +86,12 @@ def test_reference_lifecycle_shared_bytes_pins_and_cache_reuse(system,monkeypatc
         archive=reference_archives.prepare(plan)
         assert reference_gc.collect(history_grace=0,grace_seconds=0)["blocked"]
     with zipfile.ZipFile(archive) as z:
-        assert len(z.namelist())==3
-        assert all(z.read(n)==raw for n in z.namelist())
+        manifest=json.loads(z.read("manifest.json"))
+        photos=manifest["photos"]
+        assert len(photos)==3
+        assert {p["side"] for p in photos}=={"A1","B2",None}
+        assert set(z.namelist())=={"manifest.json",*(p["path"] for p in photos)}
+        assert all(z.read(p["path"])==raw and p["sha256"]==digest for p in photos)
     from .accounting_checks import settle,exact,observed
     data=settle()
     for path,category in ((target,'reference_object'),(embedding,'reference_embedding'),(preview,'reference_thumbnail'),(archive,'zip_references')):
