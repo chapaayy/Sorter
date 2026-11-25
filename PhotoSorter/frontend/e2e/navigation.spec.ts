@@ -121,6 +121,35 @@ function holdTransfer(){
   return {waiting,release}
 }
 test.beforeEach(async({page})=>{await mock(page)})
+test('unauthenticated owner returns to the requested admin deep link after login',async({page})=>{
+  let loggedIn=false
+  await page.route('**/api/auth/me',route=>loggedIn?respond(route,{username:'admin'}):route.fulfill({status:401,json:{detail:'Необходим вход'}}))
+  await page.route('**/api/auth/login',route=>{loggedIn=true;return respond(route,{username:'admin'})})
+  await page.goto('/admin?source=deep-link')
+  await expect(page.getByRole('heading',{name:'Войти в MAP'})).toBeVisible()
+  expect(new URL(page.url()).searchParams.get('next')).toBe('/admin?source=deep-link')
+  await page.getByLabel('Электронная почта или логин').fill('admin')
+  await page.locator('input[autocomplete="current-password"]').fill('example-only-passphrase')
+  await page.getByRole('button',{name:'Продолжить',exact:true}).click()
+  await expect(page).toHaveURL(/\/admin\?source=deep-link$/)
+  await expect(page.getByRole('heading',{name:'Администрирование'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'Объём хранилища'})).toBeVisible()
+  await page.reload()
+  await expect(page).toHaveURL(/\/admin\?source=deep-link$/)
+  await expect(page.getByRole('heading',{name:'Объём хранилища'})).toBeVisible()
+})
+test('viewer cannot use login next to open an owner-only page',async({page})=>{
+  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{detail:'Необходим вход'}}))
+  await page.route('**/api/auth/login',route=>respond(route,{username:'viewer@example.test'}))
+  await page.route('**/api/results/catalog**',route=>respond(route,{items:[],has_more:false}))
+  await page.goto('/admin')
+  await expect(page.getByRole('heading',{name:'Войти в MAP'})).toBeVisible()
+  await page.getByLabel('Электронная почта или логин').fill('viewer@example.test')
+  await page.locator('input[autocomplete="current-password"]').fill('example-only-passphrase')
+  await page.getByRole('button',{name:'Продолжить',exact:true}).click()
+  await expect(page).toHaveURL(/\/results$/)
+  await expect(page.getByRole('heading',{name:'Администрирование'})).toHaveCount(0)
+})
 test('six navigation sections and real data bindings',async({page})=>{
   await page.goto('/fo')
   await expect(page.getByRole('heading',{name:'Фотоотчёты'})).toBeVisible()

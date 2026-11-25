@@ -12,4 +12,8 @@ import './styles/reference-layout.css'
 import './styles/reference-sides.css'
 import './styles/settings-layout.css'
 import './styles/skeleton.css'
-createApp(App).use(createPinia()).use(router).mount('#app')
+const app=createApp(App).use(createPinia()).use(router)
+// Resolve the initial lazy route before App restores the session. Otherwise
+// a fast unauthenticated response can redirect from the START_LOCATION '/'
+// and discard the actual requested deep link.
+void router.isReady().then(()=>app.mount('#app'))
