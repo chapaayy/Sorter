@@ -45,7 +45,11 @@ jobs:
           done
           bash PhotoSorter/tools/maintenance/test_install_prerequisites.sh
           docker compose config --quiet
-      - name: Backend regression tests
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - name: Backend regression tests including real ZIP portability round-trip
+        env:
+          MAP_PORTABLE_ROUNDTRIP: "1"
         run: python -m pytest -q PhotoSorter/backend/tests
       - name: Validate Caddy syntax without real TLS or deployment
         run: docker run --rm -e DOMAIN=stage4.example.test -v "$PWD/PhotoSorter/docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
