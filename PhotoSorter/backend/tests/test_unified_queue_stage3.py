@@ -483,7 +483,7 @@ def test_imported_side_survives_staging_and_is_published_with_photo(system):
     from server.api.routes.reference_imports import ComparisonFile
     result=reference_imports.compare([ComparisonFile(sam="SAM 0004",sha256=digest,size=path.stat().st_size,side="A")])
     assert result["duplicates"]==[True]
-    assert result["side_conflicts"]==[{"index":0,"existing_side":"B2","requested_side":"A"}]
+    assert result["side_conflicts"]==[{"index":0,"reference_id":str(uid),"existing_side":"B2","requested_side":"A"}]
 
 
 def test_duplicate_side_conflict_rejects_manifest_without_mutating_existing(system):
@@ -501,3 +501,33 @@ def test_duplicate_side_conflict_rejects_manifest_without_mutating_existing(syst
     assert error.value.status_code==409
     with database.connect() as db:
         assert db.execute("SELECT side FROM reference_photo_sides WHERE reference_id=%s",(key,)).fetchone()["side"]=="A"
+
+
+def test_confirmed_side_changes_are_atomic_idempotent_and_metadata_only(system):
+    from server.services import reference_import_sides,reference_sides
+    from server.api.routes.reference_imports import SideResolution
+    first,path=add_published_reference(system)
+    digest=hashlib.sha256(path.read_bytes()).hexdigest()
+    inode=path.stat().st_ino
+    with database.connect() as db:
+        version=reference_versions.current(db)["id"]
+        before=db.execute("SELECT count(*) AS n FROM work_queue").fetchone()["n"]
+    item=SideResolution(reference_id=first,sam="SAM 0001",sha256=digest,
+        size=path.stat().st_size,existing_side=None,requested_side="A2")
+    missing=item.model_copy(update={"reference_id":uuid.uuid4()})
+    with pytest.raises(HTTPException) as error:
+        reference_import_sides.resolve_conflicts([item,missing])
+    assert error.value.status_code==409
+    with database.connect() as db:
+        assert not db.execute("SELECT 1 FROM reference_photo_sides WHERE reference_id=%s",(first,)).fetchone()
+    assert reference_import_sides.resolve_conflicts([item])=={"confirmed":1,"updated":1}
+    assert reference_import_sides.resolve_conflicts([item])=={"confirmed":1,"updated":0}
+    reference_sides.assign("SAM 0001",[first],"B")
+    with pytest.raises(HTTPException):
+        reference_import_sides.resolve_conflicts([item])
+    with database.connect() as db:
+        assert reference_versions.current(db)["id"]==version
+        assert db.execute("SELECT count(*) AS n FROM work_queue").fetchone()["n"]==before
+        assert db.execute("SELECT side FROM reference_photo_sides WHERE reference_id=%s",(first,)).fetchone()["side"]=="B"
+    assert path.stat().st_ino==inode
+    assert hashlib.sha256(path.read_bytes()).hexdigest()==digest

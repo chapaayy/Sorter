@@ -77,7 +77,7 @@ def matching_published(db,sam,digest,size):
 
 def compare_published(db,sams,digests,sizes):
     return db.execute("""
-        SELECT DISTINCT m.sam,m.source_hash,m.declared_size,m.target_path,p.side
+        SELECT DISTINCT m.sam,m.source_hash,m.declared_size,m.target_path,p.side,m.reference_id
         FROM unnest(%s::text[],%s::text[],%s::bigint[]) AS selected(sam,digest,size)
         JOIN reference_version_members m
           ON (m.sam,m.source_hash,m.declared_size)=(selected.sam,selected.digest,selected.size)

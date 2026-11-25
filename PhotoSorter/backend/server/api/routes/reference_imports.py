@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter,HTTPException,Request
 from pydantic import BaseModel,Field
 
-from ...services import reference_imports,reference_uploads
+from ...services import reference_imports,reference_uploads,reference_import_sides
 from ...storage.reference_objects import CHUNK_LIMIT
 
 router=APIRouter(prefix="/api/reference-imports",tags=["reference-imports"])
@@ -39,6 +39,21 @@ class ComparisonFile(BaseModel):
 
 class Comparison(BaseModel):
     files:list[ComparisonFile]=Field(min_length=1,max_length=reference_imports.MAX_FILES)
+
+class SideResolution(BaseModel):
+    reference_id:uuid.UUID
+    sam:str=Field(min_length=1,max_length=80)
+    sha256:str=Field(pattern=r"^[0-9a-f]{64}$")
+    size:int=Field(gt=0,le=60*1024*1024)
+    existing_side:str|None=Field(max_length=60)
+    requested_side:str=Field(min_length=1,max_length=60)
+
+class SideResolutions(BaseModel):
+    changes:list[SideResolution]=Field(min_length=1,max_length=reference_imports.MAX_FILES)
+
+@router.post("/resolve-sides")
+def resolve_sides(data:SideResolutions):
+    return reference_import_sides.resolve_conflicts(data.changes)
 
 @router.post("/compare")
 def compare(data:Comparison):

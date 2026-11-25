@@ -80,10 +80,11 @@ async function upload(){
   await transfer.inspect(tasks)
 }
 
-function accept(){
+function accept(updated=0){
   const review=transfer.review.value
   if(!review)return
-  if(!review.newFiles.length){emit('noChanges',ALL_DUPLICATES);return}
+  if(updated)uploadCenter.complete({})
+  if(!review.newFiles.length){emit('noChanges',updated?'Стороны обновлены: '+updated+'. Повторной загрузки и подготовки нет.':ALL_DUPLICATES);return}
   const name=review.newFiles[0]!.entry.relative.split('/')[0]||'Библиотека'
   uploadCenter.enqueue({kind:'references',name,review,success:'Образцы загружены. Подготовка поставлена в общую очередь.'})
 }
@@ -91,7 +92,7 @@ function accept(){
 
 <template>
 <ReferenceImportReview v-if="transfer.review.value" :review="transfer.review.value"
-  @confirm="accept" @cancel="transfer.reset()"/>
+  @confirm="accept" @cancel="transfer.reset()" @checking="value=>emit('checking',value)"/>
 <div v-else class="stack">
   <p class="meta">Выберите общую папку. Внутри — папки конструкций строго вида
     <strong>SAM 0004 — Гагарина 64</strong> или <strong>TLT 3245 — Южное шоссе 10</strong>.

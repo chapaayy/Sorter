@@ -1183,6 +1183,51 @@ test('reference folder with only duplicates never starts transfer or creates a j
   }finally{await rm(folder,{recursive:true,force:true})}
 })
 
+test('side conflicts require explicit selection and update only metadata',async({page})=>{
+  let writes=0
+  const id='11111111-1111-4111-8111-111111111111'
+  await page.route('**/api/references/import/preview',route=>respond(route,{
+    errors:[],new_regions:[],entries:[{sam:'SAM 0004',folder:'SAM 0004 — Гагарина 64',existing:true}]
+  }))
+  await page.route('**/api/reference-imports{,/**}',route=>{
+    const path=new URL(route.request().url()).pathname
+    if(path.endsWith('/compare')){
+      const {files}=route.request().postDataJSON()
+      expect(files[0].side).toBe('B2')
+      return respond(route,{duplicates:[true],side_conflicts:[{index:0,reference_id:id,existing_side:'A',requested_side:'B2'}]})
+    }
+    if(path.endsWith('/resolve-sides')){
+      writes++
+      expect(route.request().postDataJSON().changes).toEqual([{reference_id:id,sam:'SAM 0004',
+        sha256:expect.stringMatching(/^[0-9a-f]{64}$/),size:6,existing_side:'A',requested_side:'B2'}])
+      return respond(route,{confirmed:1,updated:1})
+    }
+    throw new Error('Unexpected transfer: '+path)
+  })
+  const folder=await mkdtemp(join(tmpdir(),'map-side-conflict-'))
+  try{
+    const side=join(folder,'SAM 0004 — Гагарина 64','B2')
+    await mkdir(side,{recursive:true})
+    await writeFile(join(side,'copy.jpg'),'sample')
+    await page.goto('/references')
+    await page.getByRole('button',{name:'+ Создать конструкцию'}).click()
+    const dialog=page.getByRole('dialog',{name:'Создать конструкцию'})
+    await dialog.getByRole('tab',{name:'Импорт папки'}).click()
+    await dialog.locator('input[webkitdirectory]').setInputFiles(folder)
+    await dialog.getByRole('button',{name:'Загрузить и подготовить'}).click()
+    await expect(dialog.getByText('Конфликты сторон — 1')).toBeVisible()
+    await expect(dialog.getByRole('checkbox')).not.toBeChecked()
+    await dialog.getByRole('button',{name:'Отмена'}).click()
+    expect(writes).toBe(0)
+    await dialog.getByRole('button',{name:'Загрузить и подготовить'}).click()
+    await dialog.getByRole('button',{name:'Принять все стороны'}).click()
+    await dialog.getByRole('button',{name:'ОК',exact:true}).click()
+    await expect(dialog).toBeHidden()
+    await expect(page.getByText('Стороны обновлены: 1. Повторной загрузки и подготовки нет.')).toBeVisible()
+    expect(writes).toBe(1)
+  }finally{await rm(folder,{recursive:true,force:true})}
+})
+
 test('reference review cancels without changes and uploads only confirmed new photos',async({page})=>{
   const requests:string[]=[]
   const gate=holdTransfer()

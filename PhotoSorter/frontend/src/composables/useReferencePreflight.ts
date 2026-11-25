@@ -28,15 +28,18 @@ export function useReferencePreflight(){
       signal.throwIfAborted()
       phase.value='Сравниваем с библиотекой образцов…'
       const result=await referenceImportsApi.compare(checked.map(({sam,sha256,entry,side})=>
-        ({sam,sha256,size:entry.file.size,side:side||null})),signal)
+        ({sam,sha256,size:entry.file.size,...(side?{side}:{})})),signal)
       signal.throwIfAborted()
-      if(result.side_conflicts?.length){
-        const details=result.side_conflicts.slice(0,10).map(conflict=>
-          (checked[conflict.index]?.entry.relative||'Образец')+': '+
-          (conflict.existing_side||'Без стороны')+' → '+conflict.requested_side)
-        throw new Error('Конфликт сторон ('+result.side_conflicts.length+'). Существующие стороны не изменены. '+details.join('; '))
+      const next=reviewReferences(checked,result.duplicates)
+      const conflicts=new Map<string,NonNullable<ReferenceReview['sideConflicts']>[number]>()
+      for(const conflict of result.side_conflicts||[]){
+        const file=checked[conflict.index]
+        if(!file||!result.duplicates[conflict.index]||file.side!==conflict.requested_side||!conflict.reference_id)
+          throw new Error('Некорректный результат проверки сторон')
+        conflicts.set(conflict.reference_id,{...conflict,file})
       }
-      review.value=reviewReferences(checked,result.duplicates)
+      if(conflicts.size)next.sideConflicts=[...conflicts.values()]
+      review.value=next
       phase.value=''
     }catch(e){
       phase.value=''

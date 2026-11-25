@@ -38,17 +38,18 @@ async function upload(){
   await transfer.inspect(current)
 }
 
-function accept(){
+function accept(updated=0){
   const review=transfer.review.value
   if(!review)return
-  if(!review.newFiles.length){emit('noChanges',ALL_DUPLICATES);return}
+  if(updated)uploadCenter.complete({})
+  if(!review.newFiles.length){emit('noChanges',updated?'Стороны обновлены: '+updated+'. Повторной загрузки и подготовки нет.':ALL_DUPLICATES);return}
   uploadCenter.enqueue({kind:'references',name:props.label,review,success:'Файлы приняты. Подготовка образцов поставлена в очередь.'})
 }
 </script>
 
 <template>
 <ReferenceImportReview v-if="transfer.review.value" :review="transfer.review.value"
-  @confirm="accept" @cancel="transfer.reset()"/>
+  @confirm="accept" @cancel="transfer.reset()" @checking="value=>emit('checking',value)"/>
 <div v-else class="stack">
   <p class="meta">Добавление фотографий в уже выбранную конструкцию. Названия самих файлов свободные.
     Существующие образцы сохраняются, одинаковые по содержимому фото не дублируются.</p>

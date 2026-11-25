@@ -128,14 +128,15 @@ def compare(files):
             storage.verify_object(row["target_path"],key[2],digest=key[1])
         except (OSError,TypeError,ValueError):
             continue
-        matches[key]=row["side"]
+        matches[key]=row
     result={"duplicates":[key in matches for key in keys]}
     # Preserve the old response for legacy clients without side metadata.
     requested=[normalize_side(getattr(item,"side",None)) for item in files]
     if any(requested):
-        result["side_conflicts"]=[{"index":i,"existing_side":matches[key],"requested_side":side}
+        result["side_conflicts"]=[{"index":i,"reference_id":str(matches[key]["reference_id"]),
+             "existing_side":matches[key]["side"],"requested_side":side}
             for i,(key,side) in enumerate(zip(keys,requested))
-            if side is not None and key in matches and matches[key]!=side]
+            if side is not None and key in matches and matches[key]["side"]!=side]
     return result
 
 def register_manifest(session_id,files):
