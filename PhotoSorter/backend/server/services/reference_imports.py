@@ -13,7 +13,7 @@ from app.photos.labels import check_label
 from ..database import connect
 from ..db.repositories import reference_imports as repository
 from ..storage import reference_objects as storage
-from .reference_sides import normalize_side
+from .reference_import_sides import normalize_import_side
 from .reference_import_sides import desired_sides, validate_existing_sides
 
 MAX_FILES=20000
@@ -70,7 +70,7 @@ def _manifest(files):
             raise HTTPException(422,"Повтор UUID или пути в манифесте")
         unique_ids.add(uid)
         unique_paths.add(relative)
-        side=normalize_side(getattr(item,'side',None))
+        side=normalize_import_side(getattr(item,'side',None),getattr(item,'portable',False))
         valid.append((uid,sam,address,relative,filename,item.size,item.sha256,side))
     # Reject a manifest assigning two different sides to identical content.
     desired_sides({'sam':row[1],'checksum':row[6],'side':row[7]} for row in valid)
@@ -131,7 +131,7 @@ def compare(files):
         matches[key]=row
     result={"duplicates":[key in matches for key in keys]}
     # Preserve the old response for legacy clients without side metadata.
-    requested=[normalize_side(getattr(item,"side",None)) for item in files]
+    requested=[normalize_import_side(getattr(item,"side",None),getattr(item,"portable",False)) for item in files]
     if any(requested):
         result["side_conflicts"]=[{"index":i,"reference_id":str(matches[key]["reference_id"]),
              "existing_side":matches[key]["side"],"requested_side":side}

@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter,HTTPException,Request
 from pydantic import BaseModel,Field
 
-from ...services import reference_imports,reference_uploads,reference_import_sides
+from ...services import reference_imports,reference_uploads,reference_import_sides,reference_portable_catalog
 from ...storage.reference_objects import CHUNK_LIMIT
 
 router=APIRouter(prefix="/api/reference-imports",tags=["reference-imports"])
@@ -24,6 +24,7 @@ class ImportFile(BaseModel):
     size:int=Field(gt=0,le=60*1024*1024)
     sha256:str|None=None
     side:str|None=Field(default=None,max_length=60)
+    portable:bool=False
 
 class Manifest(BaseModel):
     files:list[ImportFile]=Field(min_length=1,max_length=20000)
@@ -36,6 +37,7 @@ class ComparisonFile(BaseModel):
     sha256:str=Field(pattern=r"^[0-9a-f]{64}$")
     size:int=Field(gt=0,le=60*1024*1024)
     side:str|None=Field(default=None,max_length=60)
+    portable:bool=False
 
 class Comparison(BaseModel):
     files:list[ComparisonFile]=Field(min_length=1,max_length=reference_imports.MAX_FILES)
@@ -47,9 +49,28 @@ class SideResolution(BaseModel):
     size:int=Field(gt=0,le=60*1024*1024)
     existing_side:str|None=Field(max_length=60)
     requested_side:str=Field(min_length=1,max_length=60)
+    portable:bool=False
 
 class SideResolutions(BaseModel):
     changes:list[SideResolution]=Field(min_length=1,max_length=reference_imports.MAX_FILES)
+
+class PortableConstruction(BaseModel):
+    sam:str=Field(min_length=1,max_length=80)
+    kind:str
+    city_code:str|None=None
+    number:str|None=None
+    address:str|None=None
+
+class PortableCatalog(BaseModel):
+    constructions:list[PortableConstruction]=Field(min_length=1,max_length=5000)
+
+@router.post("/portable-preview")
+def portable_preview(data:PortableCatalog):
+    return reference_portable_catalog.inspect(data.constructions)
+
+@router.post("/portable-catalog")
+def portable_catalog(data:PortableCatalog):
+    return reference_portable_catalog.inspect(data.constructions,create=True)
 
 @router.post("/resolve-sides")
 def resolve_sides(data:SideResolutions):

@@ -3,7 +3,9 @@ import {computed,onUnmounted,ref,watch} from 'vue'
 import {referenceApi} from '../../api/references'
 import {regionApi} from '../../api/regions'
 import type {ImportPlan,ImportPlanEntry} from '../../api/references'
-import {inspectReferenceDirectory} from '../../utils/referenceSelection'
+import {inspectPortableSelection} from '../../utils/referencePortable'
+import {readReferenceZip} from '../../utils/referenceZip'
+import {referenceImportsApi} from '../../api/referenceImports'
 import type {ReferenceSelection} from '../../utils/referenceSelection'
 import {useReferencePreflight} from '../../composables/useReferencePreflight'
 import {useUploadCenterStore} from '../../stores/uploadCenter'
@@ -18,7 +20,9 @@ const uploadCenter=useUploadCenterStore(),transfer=useReferencePreflight()
 const selection=ref<ReferenceSelection|null>(null),plan=ref<ImportPlan|null>(null)
 const checking=ref(false),starting=ref(false),registeringRegions=ref(false),error=ref('')
 let revision=0
-onUnmounted(()=>{revision++})
+let zipController:AbortController|null=null
+const archiveName=ref(''),archivePhase=ref(''),catalogCreated=ref(0)
+onUnmounted(()=>{revision++;zipController?.abort()})
 const errors=computed(()=>[
   ...(selection.value?.errors||[]),
   ...(plan.value?.errors||[]).map(issue=>({path:issue.folder,reason:issue.reason}))
@@ -26,30 +30,49 @@ const errors=computed(()=>[
 const planById=computed<Record<string,ImportPlanEntry>>(()=>
   Object.fromEntries((plan.value?.entries||[]).map(entry=>[entry.sam,entry])))
 const existingCount=computed(()=>plan.value?.entries.filter(entry=>entry.existing).length||0)
-watch([starting,transfer.busy],()=>emit('checking',starting.value||transfer.busy.value),{immediate:true})
+watch([starting,checking,transfer.busy],()=>emit('checking',starting.value||checking.value||transfer.busy.value),{immediate:true})
 const ready=computed(()=>!checking.value&&!transfer.busy.value&&
-  !!selection.value?.tasks.length&&!!plan.value&&!errors.value.length&&
+  !!(selection.value?.tasks.length||selection.value?.catalog?.length)&&!!plan.value&&!errors.value.length&&
   !plan.value.new_regions.length&&!registeringRegions.value)
 
-async function choose(event:Event){
+async function previewSelection(value:ReferenceSelection){
+  return value.catalog?referenceImportsApi.portablePreview(value.catalog):
+    referenceApi.importPreview(value.folders.map(folder=>folder.folder))
+}
+async function choose(event:Event,zip=false){
   const input=event.target as HTMLInputElement
   const files=Array.from(input.files||[])
   input.value=''
   const current=++revision
+  zipController?.abort()
+  const controller=new AbortController()
+  zipController=controller
   transfer.reset()
-  selection.value=files.length?inspectReferenceDirectory(files):null
-  plan.value=null;error.value=''
-  if(!selection.value)return
-  if(!selection.value.folders.length){
-    error.value='Нет ни одной папки с корректным названием. Проверьте ошибки ниже.'
-    return
-  }
+  selection.value=null;plan.value=null;error.value='';catalogCreated.value=0
+  archiveName.value=zip?files[0]?.name||'':''
+  if(!files.length)return
   checking.value=true
   try{
-    const checked=await referenceApi.importPreview(selection.value.folders.map(folder=>folder.folder))
+    const chosen=zip?await readReferenceZip(files[0]!,controller.signal,(done,total)=>{
+      archivePhase.value='Проверка ZIP · '+done+' из '+total
+    }):files
+    const value=await inspectPortableSelection(chosen,controller.signal)
+    if(revision!==current)return
+    selection.value=value
+    if(!value.folders.length){error.value='Нет корректных папок конструкций';return}
+    if(value.errors.length)return
+    const checked=await previewSelection(value)
     if(revision===current)plan.value=checked
-  }catch(err){if(revision===current)error.value='Не удалось проверить библиотеку на сервере: '+errorText(err)}
-  finally{if(revision===current)checking.value=false}
+  }catch(err){if(revision===current)error.value=errorText(err)}
+  finally{if(revision===current){checking.value=false;archivePhase.value='';zipController=null}}
+}
+
+async function restoreCatalog(){
+  const catalog=selection.value?.catalog
+  if(catalog){
+    const result=await referenceImportsApi.portableCatalog(catalog)
+    catalogCreated.value+=result.created
+  }
 }
 
 async function createUnknownRegions(){
@@ -58,7 +81,7 @@ async function createUnknownRegions(){
   registeringRegions.value=true;error.value=''
   try{
     for(const code of missing)await regionApi.create(code)
-    plan.value=await referenceApi.importPreview(selection.value.folders.map(f=>f.folder))
+    plan.value=await previewSelection(selection.value)
   }catch(e){error.value='Не удалось создать регионы: '+errorText(e)}
   finally{registeringRegions.value=false}
 }
@@ -71,27 +94,34 @@ async function upload(){
   const current=revision
   const {folders,tasks}=selection.value
   try{
-    const checked=await referenceApi.importPreview(folders.map(folder=>folder.folder))
+    const checked=await previewSelection(selection.value)
     if(current!==revision)return
     plan.value=checked
-    if(checked.errors.length)return
+    if(checked.errors.length||checked.new_regions.length)return
   }catch(err){error.value='Повторная проверка не удалась: '+errorText(err);return}
   finally{checking.value=false;starting.value=false}
+  if(!tasks.length&&selection.value?.catalog){
+    // A metadata-only archive may restore empty constructions.
+    starting.value=true
+    try{await restoreCatalog();uploadCenter.complete({});emit('noChanges','Восстановлено конструкций: '+catalogCreated.value)}
+    catch(e){error.value=errorText(e)}finally{starting.value=false}
+    return
+  }
   await transfer.inspect(tasks)
 }
 
 function accept(updated=0){
   const review=transfer.review.value
   if(!review)return
-  if(updated)uploadCenter.complete({})
-  if(!review.newFiles.length){emit('noChanges',updated?'Стороны обновлены: '+updated+'. Повторной загрузки и подготовки нет.':ALL_DUPLICATES);return}
+  if(updated||catalogCreated.value)uploadCenter.complete({})
+  if(!review.newFiles.length){emit('noChanges',updated?'Стороны обновлены: '+updated+'. Повторной загрузки и подготовки нет.':catalogCreated.value?'Восстановлено конструкций: '+catalogCreated.value:ALL_DUPLICATES);return}
   const name=review.newFiles[0]!.entry.relative.split('/')[0]||'Библиотека'
   uploadCenter.enqueue({kind:'references',name,review,success:'Образцы загружены. Подготовка поставлена в общую очередь.'})
 }
 </script>
 
 <template>
-<ReferenceImportReview v-if="transfer.review.value" :review="transfer.review.value"
+<ReferenceImportReview v-if="transfer.review.value" :review="transfer.review.value" :before-confirm="selection?.catalog?restoreCatalog:undefined"
   @confirm="accept" @cancel="transfer.reset()" @checking="value=>emit('checking',value)"/>
 <div v-else class="stack">
   <p class="meta">Выберите общую папку. Внутри — папки конструкций строго вида
@@ -100,16 +130,27 @@ function accept(updated=0){
     Фото без папки стороны остаются неназначенными. Существующие фото не заменяются и не удаляются.</p>
   <label class="upload-drop" :style="{opacity:transfer.busy.value?'.5':'1'}">
     <input type="file" webkitdirectory directory multiple
-      :disabled="transfer.busy.value||checking" @change="choose"/>
+      :disabled="transfer.busy.value||checking" @change="choose($event)"/>
     <strong>Выбрать папку библиотеки</strong>
     <div class="meta">Сначала проверим все выбранные файлы и названия папок</div>
   </label>
+  <label class="upload-drop" :style="{opacity:checking?'.5':'1'}">
+    <input type="file" accept=".zip,application/zip" :disabled="checking||transfer.busy.value" @change="choose($event,true)"/>
+    <strong>Выбрать ZIP образцов</strong>
+    <div class="meta">Распаковка в браузере. На сервер передаются только новые фотографии.</div>
+  </label>
+  <div v-if="archiveName" class="meta">{{archiveName}}</div>
+  <div v-if="archivePhase" role="status" class="row between wrap">
+    <span>{{archivePhase}}</span><UiButton small @click="zipController?.abort()">Остановить</UiButton>
+  </div>
+  <div v-if="error&&!selection" class="alert error" role="alert">{{error}}</div>
   <div v-if="selection" class="stack">
     <div class="grid3">
       <div><strong>{{selection.scanned}}</strong><div class="meta">Всего файлов выбрано</div></div>
       <div><strong>{{selection.tasks.length}}</strong><div class="meta">Подходящих изображений</div></div>
       <div><strong>{{selection.folders.length}}</strong><div class="meta">Конструкций</div></div>
     </div>
+    <p v-if="selection.catalog" class="meta">Манифест найден. Проверим SHA-256 и восстановим каталог конструкций (включая пустые) после подтверждения. Уже существующие адреса не перезаписываются.</p>
     <div v-if="selection.skipped.length" class="alert" role="status">
       <strong>Пропущено служебных файлов: {{selection.skipped.length}}</strong>
       <p class="meta" style="margin:6px 0">Эти файлы Windows/macOS не являются фотографиями и не будут загружены.</p>

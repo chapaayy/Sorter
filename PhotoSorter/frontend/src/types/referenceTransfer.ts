@@ -5,6 +5,8 @@ export interface ReferenceTransferItem {
   sam:string
   address?:string
   side?:string|null
+  portable?:boolean
+  expectedSha256?:string
   entry:UploadEntry
 }
 

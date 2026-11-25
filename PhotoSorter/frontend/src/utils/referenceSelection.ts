@@ -14,9 +14,11 @@ export interface ConstructionFolder{
 }
 export interface ReferenceUploadTask{
   sam:string
-  address:string
+  address?:string
   entry:UploadEntry
   side?:string|null
+  portable?:boolean
+  expectedSha256?:string
 }
 export interface ReferenceSelectionError{path:string;reason:string}
 export interface ReferenceSelectionSkipped{path:string;reason:string}
@@ -27,6 +29,10 @@ export interface ReferenceSelection{
   skipped:ReferenceSelectionSkipped[]
   scanned:number
   totalBytes:number
+  catalog?:PortableConstruction[]
+}
+export interface PortableConstruction{
+  sam:string;kind:'standard'|'custom';city_code:string|null;number:string|null;address:string|null
 }
 
 const NAME=/^([A-Z]{2,5}) ([0-9]{1,8}) — (.+)$/

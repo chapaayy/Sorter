@@ -1,5 +1,7 @@
 /** Typed preflight and staging API for reference imports. */
 import {api,post,query} from './client'
+import type {PortableConstruction} from '../utils/referenceSelection'
+import type {ImportPlan} from './references'
 
 export type ImportFileState='pending'|'finalized'|'duplicate'|'missing_saved'
 export type ImportUploadState='uploading'|'complete'|'cancelled'
@@ -39,6 +41,7 @@ export interface ManifestFile{
   size:number
   sha256?:string|null
   side?:string|null
+  portable?:boolean
 }
 export interface TransferOffset{
   upload_id:string
@@ -51,7 +54,7 @@ export type Completion={session_id:string}&(
   {preparation_job_id:string;queue_seq:number;state:'queued'}|
   {preparation_job_id:null;queue_seq:null;state:'unchanged'}
 )
-export type ComparisonFile=Required<Pick<ManifestFile,'sam'|'size'>>&{sha256:string;side?:string|null}
+export type ComparisonFile=Required<Pick<ManifestFile,'sam'|'size'>>&{sha256:string;side?:string|null;portable?:boolean}
 export interface SideResolution{
   reference_id:string
   sam:string
@@ -59,6 +62,7 @@ export interface SideResolution{
   size:number
   existing_side:string|null
   requested_side:string
+  portable?:boolean
 }
 export interface ImportSessionSummary{
   id:string
@@ -79,6 +83,8 @@ export interface ImportSessionSummary{
 export const referenceImportsApi={
   compare:(files:ComparisonFile[],signal:AbortSignal)=>api<{duplicates:boolean[];side_conflicts?:{index:number;reference_id:string;existing_side:string|null;requested_side:string}[]}>('/reference-imports/compare',
     {method:'POST',body:JSON.stringify({files}),signal}),
+  portablePreview:(constructions:PortableConstruction[])=>post<ImportPlan>('/reference-imports/portable-preview',{constructions}),
+  portableCatalog:(constructions:PortableConstruction[])=>post<{created:number}>('/reference-imports/portable-catalog',{constructions}),
   resolveSides:(changes:SideResolution[])=>post<{confirmed:number;updated:number}>('/reference-imports/resolve-sides',{changes}),
   list:(limit=25,offset=0)=>api<{sessions:ImportSessionSummary[];total:number}>(
     '/reference-imports'+query({limit,offset})),

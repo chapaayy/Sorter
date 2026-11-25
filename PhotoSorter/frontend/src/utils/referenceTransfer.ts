@@ -74,7 +74,7 @@ export async function transferReferences(confirmed:ReferenceReview,success:strin
         filename:item.entry.file.name,
         size:item.entry.file.size,
         sha256:item.sha256,
-        ...(item.side?{side:item.side}:{})
+        ...(item.side?{side:item.side}:{}),...(item.portable?{portable:true}:{})
       }))
       phase='Регистрация полного списка образцов…';publish()
       await request(()=>referenceImportsApi.create(sid))

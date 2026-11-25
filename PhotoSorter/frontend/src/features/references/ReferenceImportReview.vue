@@ -5,7 +5,7 @@ import type {ReferenceReview} from '../../types/referenceTransfer'
 import {bytes,errorText} from '../../utils/format'
 import {referenceImportsApi} from '../../api/referenceImports'
 
-const props=defineProps<{review:ReferenceReview}>()
+const props=defineProps<{review:ReferenceReview;beforeConfirm?:()=>Promise<void>}>()
 const emit=defineEmits<{(e:'confirm',updated:number):void;(e:'cancel'):void;(e:'checking',busy:boolean):void}>()
 const selected=ref<string[]>([]),busy=ref(false),error=ref('')
 const conflicts=computed(()=>props.review.sideConflicts||[])
@@ -14,12 +14,13 @@ async function confirm(){
   if(busy.value)return
   const changes=conflicts.value.filter(c=>selected.value.includes(c.reference_id)).map(c=>({
     reference_id:c.reference_id,sam:c.file.sam,sha256:c.file.sha256,size:c.file.entry.file.size,
-    existing_side:c.existing_side,requested_side:c.requested_side
+    existing_side:c.existing_side,requested_side:c.requested_side,...(c.file.portable?{portable:true}:{})
   }))
-  if(!changes.length){emit('confirm',0);return}
+  if(!changes.length&&!props.beforeConfirm){emit('confirm',0);return}
   busy.value=true;error.value='';emit('checking',true)
   try{
-    const result=await referenceImportsApi.resolveSides(changes)
+    if(props.beforeConfirm)await props.beforeConfirm()
+    const result=changes.length?await referenceImportsApi.resolveSides(changes):{confirmed:0}
     if(result.confirmed!==changes.length)throw new Error('Неполное подтверждение изменения сторон')
     emit('confirm',result.confirmed)
   }catch(e){error.value=errorText(e)}

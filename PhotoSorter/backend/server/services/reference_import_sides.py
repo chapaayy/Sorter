@@ -6,6 +6,17 @@ storage operation, version rewrite, or model invocation is performed here.
 from fastapi import HTTPException
 
 
+def normalize_import_side(value,portable=False):
+    from .reference_sides import normalize_side
+    # Portable manifests can preserve exact historical labels. These are SQL
+    # metadata only and never interpreted as filesystem paths.
+    if portable and value is not None:
+        if not 1<=len(value)<=60 or not value.strip() or any(ord(c)<32 or 127<=ord(c)<=159 for c in value):
+            raise HTTPException(422,"Некорректная историческая сторона")
+        return value
+    return normalize_side(value)
+
+
 def desired_sides(entries):
     requested={}
     for entry in entries:
@@ -59,10 +70,9 @@ def resolve_conflicts(changes):
     """
     from ..database import connect
     from ..storage import reference_objects
-    from .reference_sides import normalize_side
     unique={}
     for change in changes:
-        side=normalize_side(change.requested_side)
+        side=normalize_import_side(change.requested_side,getattr(change,'portable',False))
         if side is None:
             raise HTTPException(422,"Выберите назначаемую сторону")
         value=(change.sam,change.sha256,change.size,change.existing_side,side)
