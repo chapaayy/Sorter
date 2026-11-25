@@ -38,8 +38,16 @@ def test_tree_includes_directories_and_deduplicates_hardlinks(tmp_path):
         assert report["app"]["file_bytes"]==source.stat().st_blocks*512+(app/"symlink").lstat().st_blocks*512
     assert tree.measure_tree(tmp_path,limit=1)["partial"]
     os.link(source,host/"cross")
+    os.link(source,host/"cross2")
     assert tree.measure_tree(tmp_path)["cross_scope_links"]==1
     assert tree.measure_tree(tmp_path)["partial"]
+    # Multiple aliases in either scope must count as a single conflicting inode.
+    another=app/"another"
+    another.write_bytes(b"second inode")
+    os.link(another,host/"second-cross")
+    result=tree.measure_tree(tmp_path)
+    assert result["cross_scope_links"]==2
+    assert result["allocated_bytes"]==int(subprocess.check_output(["du","-x","-B1","-s",str(tmp_path)],text=True).split()[0])
 
 def test_comparison_does_not_hide_unexplained_file(tmp_path):
     (tmp_path/"app").mkdir()

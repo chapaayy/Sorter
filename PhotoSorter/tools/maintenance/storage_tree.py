@@ -22,7 +22,7 @@ def measure_tree(storage,*,limit=1000000,seconds=45,scope_roots=None,default_sco
     report={"started_at":utcnow(),"finished_at":None,**buckets,
             "errors":0,"changed_directories":0,"other_devices":0,"cross_scope_links":0,
             "limit_reached":False,"entries":0,"excluded_mounts":0,"partial":True}
-    seen={};deadline=time.monotonic()+seconds
+    seen={};cross_scope_inodes=set();deadline=time.monotonic()+seconds
     flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC
     def allowed():
         if report["entries"]>=limit or time.monotonic()>=deadline:
@@ -38,7 +38,7 @@ def measure_tree(storage,*,limit=1000000,seconds=45,scope_roots=None,default_sco
             ident=(st.st_dev,st.st_ino)
             if ident in seen:
                 row["hardlink_paths"]+=1
-                if scope!=seen[ident]:report["cross_scope_links"]+=1
+                if scope!=seen[ident]:cross_scope_inodes.add(ident)
                 return False
             seen[ident]=scope
         row["directory_bytes" if isdir else "file_bytes"]+=st.st_blocks*512
@@ -90,6 +90,8 @@ def measure_tree(storage,*,limit=1000000,seconds=45,scope_roots=None,default_sco
     report["directory_bytes"]=sum(row["directory_bytes"] for row in buckets.values())
     report["allocated_bytes"]=sum(row["file_bytes"]+row["directory_bytes"] for row in buckets.values())
     report["scopes"]=sorted(buckets)
+    # Count distinct conflicting inodes, not paths in whichever scope was visited second.
+    report["cross_scope_links"]=len(cross_scope_inodes)
     report["partial"]=bool(report["errors"] or report["limit_reached"] or report["changed_directories"] or report["other_devices"] or report["cross_scope_links"])
     report["finished_at"]=utcnow()
     return report
