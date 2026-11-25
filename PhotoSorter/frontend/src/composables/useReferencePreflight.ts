@@ -27,9 +27,15 @@ export function useReferencePreflight(){
       }
       signal.throwIfAborted()
       phase.value='Сравниваем с библиотекой образцов…'
-      const result=await referenceImportsApi.compare(checked.map(({sam,sha256,entry})=>
-        ({sam,sha256,size:entry.file.size})),signal)
+      const result=await referenceImportsApi.compare(checked.map(({sam,sha256,entry,side})=>
+        ({sam,sha256,size:entry.file.size,side:side||null})),signal)
       signal.throwIfAborted()
+      if(result.side_conflicts?.length){
+        const details=result.side_conflicts.slice(0,10).map(conflict=>
+          (checked[conflict.index]?.entry.relative||'Образец')+': '+
+          (conflict.existing_side||'Без стороны')+' → '+conflict.requested_side)
+        throw new Error('Конфликт сторон ('+result.side_conflicts.length+'). Существующие стороны не изменены. '+details.join('; '))
+      }
       review.value=reviewReferences(checked,result.duplicates)
       phase.value=''
     }catch(e){

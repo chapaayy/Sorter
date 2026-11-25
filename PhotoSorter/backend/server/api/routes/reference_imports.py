@@ -23,6 +23,7 @@ class ImportFile(BaseModel):
     filename:str=Field(min_length=1,max_length=200)
     size:int=Field(gt=0,le=60*1024*1024)
     sha256:str|None=None
+    side:str|None=Field(default=None,max_length=60)
 
 class Manifest(BaseModel):
     files:list[ImportFile]=Field(min_length=1,max_length=20000)
@@ -34,6 +35,7 @@ class ComparisonFile(BaseModel):
     sam:str=Field(min_length=1,max_length=80)
     sha256:str=Field(pattern=r"^[0-9a-f]{64}$")
     size:int=Field(gt=0,le=60*1024*1024)
+    side:str|None=Field(default=None,max_length=60)
 
 class Comparison(BaseModel):
     files:list[ComparisonFile]=Field(min_length=1,max_length=reference_imports.MAX_FILES)

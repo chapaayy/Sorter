@@ -91,15 +91,15 @@ def add_fo():
              (uuid.uuid4(),batch))
     return jobs.enqueue(jobs.NewRun(batch_id=batch))["id"]
 
-def prepare_import(root):
+def prepare_import(root,side=None):
     raw=_jpg(exif=True)
     fid=uuid.uuid4()
     sid=uuid.uuid4()
     reference_imports.create(sid)
     from server.api.routes.reference_imports import ImportFile
     entry=ImportFile(upload_id=fid,sam="SAM 0004",address="Гагарина 64",
-         relative_path="SAM 0004 — Гагарина 64/new.jpg",
-         filename="new.jpg",size=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+         relative_path="SAM 0004 — Гагарина 64/"+(side+"/" if side else "")+"new.jpg",
+         filename="new.jpg",size=len(raw),sha256=hashlib.sha256(raw).hexdigest(),side=side)
     reference_imports.register_manifest(sid,[entry])
     assert reference_imports.status(sid)["state"]=="uploading"
     reference_uploads.append(sid,fid,0,raw)
@@ -468,3 +468,36 @@ def test_legacy_interrupted_zip_stage_is_not_automatically_queued(system):
     with database.connect() as db:
         assert db.execute("SELECT status FROM jobs WHERE id=%s",(run_id,)).fetchone()["status"]=="interrupted"
         assert db.execute("SELECT to_regclass('archive_retries') AS t").fetchone()["t"] is None
+
+def test_imported_side_survives_staging_and_is_published_with_photo(system):
+    sid,uid,path,digest,pid=prepare_import(system,"B2")
+    assert reference_imports.status(sid)["files"][0]["side"]=="B2"
+    with database.connect() as db:
+        assert not db.execute("SELECT 1 FROM reference_photo_sides WHERE reference_id=%s",(uid,)).fetchone()
+        task=work_queue.claim_next(db)
+    cache_vector(system,digest)
+    reference_prepare.run(task["id"])
+    with database.connect() as db:
+        assert db.execute("SELECT side FROM reference_photo_sides WHERE reference_id=%s",(uid,)).fetchone()["side"]=="B2"
+        assert path.is_file()
+    from server.api.routes.reference_imports import ComparisonFile
+    result=reference_imports.compare([ComparisonFile(sam="SAM 0004",sha256=digest,size=path.stat().st_size,side="A")])
+    assert result["duplicates"]==[True]
+    assert result["side_conflicts"]==[{"index":0,"existing_side":"B2","requested_side":"A"}]
+
+
+def test_duplicate_side_conflict_rejects_manifest_without_mutating_existing(system):
+    key,path=add_published_reference(system)
+    from server.services import reference_sides
+    from server.api.routes.reference_imports import ImportFile
+    reference_sides.assign("SAM 0001",[key],"A")
+    sid=uuid.uuid4()
+    reference_imports.create(sid)
+    entry=ImportFile(upload_id=uuid.uuid4(),sam="SAM 0001",filename="one.jpg",
+        relative_path="SAM 0001 — Победы 12/B/one.jpg",size=path.stat().st_size,
+        sha256=hashlib.sha256(path.read_bytes()).hexdigest(),side="B")
+    with pytest.raises(HTTPException) as error:
+        reference_imports.register_manifest(sid,[entry])
+    assert error.value.status_code==409
+    with database.connect() as db:
+        assert db.execute("SELECT side FROM reference_photo_sides WHERE reference_id=%s",(key,)).fetchone()["side"]=="A"

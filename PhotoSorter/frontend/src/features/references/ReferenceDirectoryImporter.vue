@@ -95,7 +95,8 @@ function accept(){
 <div v-else class="stack">
   <p class="meta">Выберите общую папку. Внутри — папки конструкций строго вида
     <strong>SAM 0004 — Гагарина 64</strong> или <strong>TLT 3245 — Южное шоссе 10</strong>.
-    Существующие конструкции дополняются, новые создаются. Фото не заменяются и не удаляются.</p>
+    Внутри конструкции можно разместить папки A, A1–A3, B, B1–B3 и Неназначенные.
+    Фото без папки стороны остаются неназначенными. Существующие фото не заменяются и не удаляются.</p>
   <label class="upload-drop" :style="{opacity:transfer.busy.value?'.5':'1'}">
     <input type="file" webkitdirectory directory multiple
       :disabled="transfer.busy.value||checking" @change="choose"/>
@@ -136,6 +137,7 @@ function accept(){
           <div>
             <strong>{{folder.folder}}</strong>
             <div class="meta">{{planById[folder.sam]?.existing?'Уже в библиотеке':'Новая конструкция'}}</div>
+            <div class="meta">Со стороной: {{selection.tasks.filter(t=>t.sam===folder.sam&&t.side).length}}</div>
           </div>
           <span class="meta">{{folder.count}} фото</span>
         </div>

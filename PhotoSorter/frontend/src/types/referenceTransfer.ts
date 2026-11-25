@@ -4,6 +4,7 @@ import type {UploadEntry} from '../utils/upload'
 export interface ReferenceTransferItem {
   sam:string
   address?:string
+  side?:string|null
   entry:UploadEntry
 }
 

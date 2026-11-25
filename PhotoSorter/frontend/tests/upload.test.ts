@@ -250,6 +250,17 @@ describe('strict construction library imports',()=>{
     expect(result.errors).toHaveLength(3)
     expect(result.skipped).toHaveLength(0)
   })
+  it('accepts side folders at both selection depths and rejects unknown sides',()=>{
+    const result=inspectReferenceDirectory([
+      file('Образцы/SAM 0004 — Гагарина 64/B2/a.jpg','a.jpg'),
+      file('SAM 0004 — Гагарина 64/A1/b.jpg','b.jpg'),
+      file('Образцы/SAM 0004 — Гагарина 64/Неназначенные/c.jpg','c.jpg'),
+      file('Образцы/SAM 0004 — Гагарина 64/d.jpg','d.jpg'),
+      file('Образцы/SAM 0004 — Гагарина 64/P/e.jpg','e.jpg')
+    ])
+    expect(result.tasks.map(t=>t.side||null)).toEqual(['B2','A1',null,null])
+    expect(result.errors).toHaveLength(1)
+  })
   it('rejects conflicting addresses for the same city and construction number',()=>{
     const result=inspectReferenceDirectory([
       file('Образцы/SAM 003 — Полевая 10/a.jpg','a.jpg'),
@@ -273,6 +284,12 @@ describe('reference duplicate detection before transfer',()=>{
       .toEqual([['renamed.jpg','library'],['copy.jpg','selection']])
     expect(review.totalBytes).toBe(10)
     expect(()=>reviewReferences(files,[true])).toThrow('неполный результат')
+  })
+  it('prefers explicit sides and refuses contradictory duplicate sides',()=>{
+    const photo=(side?:string)=>({sam:'SAM 0004',side,sha256:'a'.repeat(64),entry:{file:new File(['photo'],'x.jpg'),relative:'x.jpg'}})
+    const assigned=photo('A1')
+    expect(reviewReferences([photo(),assigned],[false,false]).newFiles).toEqual([assigned])
+    expect(()=>reviewReferences([photo('A'),photo('B')],[false,false])).toThrow('разных сторонах')
   })
   it('hashes actual file bytes with SHA-256 when browser crypto is available',async()=>{
     const digest=await fileSha256(new File(['abc'],'new.jpg'))

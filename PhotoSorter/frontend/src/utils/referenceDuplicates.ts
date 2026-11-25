@@ -6,8 +6,19 @@ export function reviewReferences(files:readonly CheckedReference[],published:boo
     throw new Error('Сервер вернул неполный результат проверки образцов')
   const review:ReferenceReview={newFiles:[],duplicates:[],totalBytes:0}
   const seen=new Set<string>()
-  for(const [index,file] of files.entries()){
-    const key=JSON.stringify([file.sam,file.sha256,file.entry.file.size])
+  const keyOf=(file:CheckedReference)=>JSON.stringify([file.sam,file.sha256,file.entry.file.size])
+  const requested=new Map<string,string>()
+  for(const file of files){
+    const key=keyOf(file)
+    if(!file.side)continue
+    const previous=requested.get(key)
+    if(previous&&previous!==file.side)throw new Error('Одинаковая фотография в разных сторонах: '+file.entry.relative+' ('+previous+' / '+file.side+')')
+    requested.set(key,file.side)
+  }
+  // Prefer an explicitly assigned copy when a plain copy is also selected.
+  const ordered=files.map((file,index)=>({file,index})).sort((a,b)=>Number(!!b.file.side)-Number(!!a.file.side))
+  for(const {index,file} of ordered){
+    const key=keyOf(file)
     if(published[index]||seen.has(key)){
       review.duplicates.push({...file,reason:published[index]?'library':'selection'})
     }else{

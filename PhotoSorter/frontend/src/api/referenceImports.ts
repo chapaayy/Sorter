@@ -13,6 +13,7 @@ export interface ReferenceImportFile{
   state:ImportFileState
   received:number
   sha256:string|null
+  side?:string|null
 }
 export interface ReferenceImportStatus{
   id:string
@@ -37,6 +38,7 @@ export interface ManifestFile{
   filename:string
   size:number
   sha256?:string|null
+  side?:string|null
 }
 export interface TransferOffset{
   upload_id:string
@@ -49,7 +51,7 @@ export type Completion={session_id:string}&(
   {preparation_job_id:string;queue_seq:number;state:'queued'}|
   {preparation_job_id:null;queue_seq:null;state:'unchanged'}
 )
-export type ComparisonFile=Required<Pick<ManifestFile,'sam'|'size'>>&{sha256:string}
+export type ComparisonFile=Required<Pick<ManifestFile,'sam'|'size'>>&{sha256:string;side?:string|null}
 export interface ImportSessionSummary{
   id:string
   state:ImportUploadState
@@ -67,7 +69,7 @@ export interface ImportSessionSummary{
   error:string|null
 }
 export const referenceImportsApi={
-  compare:(files:ComparisonFile[],signal:AbortSignal)=>api<{duplicates:boolean[]}>('/reference-imports/compare',
+  compare:(files:ComparisonFile[],signal:AbortSignal)=>api<{duplicates:boolean[];side_conflicts?:{index:number;existing_side:string|null;requested_side:string}[]}>('/reference-imports/compare',
     {method:'POST',body:JSON.stringify({files}),signal}),
   list:(limit=25,offset=0)=>api<{sessions:ImportSessionSummary[];total:number}>(
     '/reference-imports'+query({limit,offset})),

@@ -16,6 +16,7 @@ export interface ReferenceUploadTask{
   sam:string
   address:string
   entry:UploadEntry
+  side?:string|null
 }
 export interface ReferenceSelectionError{path:string;reason:string}
 export interface ReferenceSelectionSkipped{path:string;reason:string}
@@ -31,6 +32,8 @@ export interface ReferenceSelection{
 const NAME=/^([A-Z]{2,5}) ([0-9]{1,8}) — (.+)$/
 const INVALID_ADDRESS=/[<>:"|?*\\\x00-\x1f]/
 // Strict allowlist: only OS-generated metadata, not arbitrary unsupported files.
+const SIDE=/^[AB][1-3]?$/
+const UNASSIGNED='Неназначенные'
 const OS_METADATA=new Set(['thumbs.db','ehthumbs.db','desktop.ini','.ds_store'])
 
 export function parseConstructionFolder(name:string):ConstructionFolder|null{
@@ -51,24 +54,30 @@ export function inspectReferenceDirectory(files:Iterable<File>):ReferenceSelecti
     scanned++
     const relative=file.webkitRelativePath||file.name
     const parts=relative.replace(/\\/g,'/').split('/')
-    // The root may be either a named library or a single construction folder.
-    // No silently ignored nested folders or loose files.
-    const folderName=parts.length===3?parts[1]:parts.length===2?parts[0]:null
-    if(!folderName||parts.some(part=>!part||part==='.'||part==='..')){
-      errors.push({path:relative,reason:'Нужна папка конструкции непосредственно внутри выбранной библиотеки'})
-      continue
-    }
-    // Windows/macOS leave metadata alongside photos, sometimes at library root.
-    // Account for it explicitly, but do not bypass invalid nested directories.
+    // Root is either the whole library or a single construction. Exactly one
+    // optional side level is supported; arbitrary nesting remains an error.
     const metadata=OS_METADATA.has(file.name.toLowerCase()) &&
       parts[parts.length-1]?.toLowerCase()===file.name.toLowerCase()
-    if(metadata && (parts.length===2 || (parts.length===3 && parseConstructionFolder(folderName)))){
+    const unsafe=parts.some(part=>!part||part==='.'||part==='..')
+    if(!unsafe&&metadata&&parts.length===2){
       skipped.push({path:relative,reason:'Служебный файл операционной системы'})
       continue
     }
-    const construction=parseConstructionFolder(folderName)
-    if(!construction){
-      errors.push({path:relative,reason:'Неправильное имя папки. Пример: SAM 0004 — Гагарина 64'})
+    const index=parts.length>=2&&parseConstructionFolder(parts[0]!)?0:1
+    const construction=parts[index]?parseConstructionFolder(parts[index]!):null
+    const depth=parts.length-index-2
+    if(unsafe||!construction||depth<0||depth>1){
+      errors.push({path:relative,reason:'Нужна папка конструкции: SAM 0004 — Гагарина 64, с папкой стороны или без неё'})
+      continue
+    }
+    const sideFolder=depth===1?parts[index+1]!:null
+    const side=sideFolder===UNASSIGNED?null:sideFolder
+    if(side!==null&&!SIDE.test(side)){
+      errors.push({path:relative,reason:'Неизвестная сторона: '+sideFolder+'. Допустимы A, A1–A3, B, B1–B3, Неназначенные'})
+      continue
+    }
+    if(metadata){
+      skipped.push({path:relative,reason:'Служебный файл операционной системы'})
       continue
     }
     const existing=folders.get(construction.sam)
@@ -93,7 +102,7 @@ export function inspectReferenceDirectory(files:Iterable<File>):ReferenceSelecti
     folders.set(group.sam,group)
     totalBytes+=file.size
     tasks.push({sam:construction.sam,address:construction.address,
-      entry:{file,relative}})
+      ...(side?{side}:{}),entry:{file,relative}})
   }
   return {tasks,folders:[...folders.values()],errors,skipped,scanned,totalBytes}
 }

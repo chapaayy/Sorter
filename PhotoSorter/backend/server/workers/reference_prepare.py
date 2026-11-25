@@ -11,6 +11,7 @@ from ..reference_cache import ReferenceCachedMegaLoc,cached_feature
 from ..storage import reference_objects
 from ..services import reference_publication
 from ..services.reference_gallery import index_published
+from ..services.reference_import_sides import desired_sides, validate_existing_sides, assign_new_sides
 
 CHUNK=24
 
@@ -47,7 +48,7 @@ def _progress(job_id,done,total):
 def _source_files(db,job_id):
     return db.execute("""
         SELECT f.upload_id,f.sam,f.address,f.filename,f.declared_size,
-               f.checksum,f.stored_path,f.state
+               f.checksum,f.stored_path,f.state,f.side
         FROM reference_import_files f JOIN reference_preparation_jobs p
           ON p.session_id=f.session_id WHERE p.id=%s
         ORDER BY f.relative_path,f.upload_id
@@ -159,7 +160,10 @@ def run(job_id,*,warm_megaloc=None):
             raise RuntimeError("Нет опубликованной базы образцов")
         from ..db.repositories import reference_versions as version_repo
         members=[dict(m) for m in version_repo.members(db,state["current_version_id"])]
+        requested=desired_sides(items)
+        validate_existing_sides(db,requested)
         seen={(m["sam"],m["source_hash"]) for m in members}
+        new_members=[]
         for item in actual:
             key=item["sam"],item["checksum"]
             if key in seen:
@@ -167,10 +171,12 @@ def run(job_id,*,warm_megaloc=None):
             seen.add(key)
             # Add the source, but do not expose anything to FO until all
             # input features and catalog entries are verified.
-            members.append({"reference_id":item["upload_id"],"sam":item["sam"],
+            member={"reference_id":item["upload_id"],"sam":item["sam"],
                 "filename":item["filename"],"source_hash":item["checksum"],
                 "target_path":item["stored_path"],
-                "declared_size":item["declared_size"],"source_kind":"staged"})
+                "declared_size":item["declared_size"],"source_kind":"staged"}
+            members.append(member)
+            new_members.append(member)
         # No new construction metadata is visible until this transaction.
         from app.photos.construction import parse_key
         for item in actual:
@@ -193,6 +199,7 @@ def run(job_id,*,warm_megaloc=None):
             if not db.execute("SELECT 1 FROM uploads WHERE kind='reference' AND finalized AND sam=%s AND checksum=%s LIMIT 1",
                               (item["sam"],item["checksum"])).fetchone():
                 index_published(db,item)
+        assign_new_sides(db,new_members,requested)
         db.execute("""
             UPDATE reference_preparation_jobs SET state='completed',
                 completed_count=total_count,model_signature=%s,error=NULL,

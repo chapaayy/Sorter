@@ -31,7 +31,7 @@ onMounted(()=>heading.value?.focus())
       <ul v-if="review.newFiles.length" class="review-list">
         <li v-for="(file,i) in review.newFiles" :key="i">
           <span>{{file.entry.relative}}</span>
-          <span class="meta">{{file.sam}}</span>
+          <span class="meta">{{file.sam}} · {{file.side?'Сторона '+file.side:'Без стороны'}}</span>
         </li>
       </ul>
       <p v-else class="meta">Новых фото нет.</p>
