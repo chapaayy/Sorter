@@ -249,7 +249,6 @@ def test_mismatched_owner_and_incomplete_part_are_diagnostic_only(system):
 
 def test_active_append_is_not_a_corrupt_receipt(system):
     from server.storage.upload_part_lock import writing_part
-    from server.storage.accounting import refresh
     raw=_jpg()
     batch=_batch(system,with_photo=False)
     item=File(uuid.uuid4(),"active.jpg",len(raw))

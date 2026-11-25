@@ -21,7 +21,8 @@ def test_typed_keys():
         app_key(Category.REFERENCE_OBJECT, prefix="bb", sha256="a"*64)
     with pytest.raises(ValueError):
         AppKey(Category.FO_ORIGINAL, relative_key("shared/references/secret"))
-    assert len(CATEGORIES) == 51
+    assert len(CATEGORIES) == 52
+    assert CATEGORIES[Category.UPDATER_RPC_SOCKET]['node_type'] == 'socket'
 
 @pytest.mark.parametrize("key", ["../x", "/etc/passwd", "a/../b", "a//b", "a/./b", "a\\b", "a/"])
 def test_traversal(key):

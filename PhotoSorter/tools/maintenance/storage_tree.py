@@ -119,5 +119,7 @@ def compare(storage,host,*,sample=registry_sample,scan=measure_tree):
     comparable=stable and not tree["partial"] and not host.get("partial",True) and isinstance(protected,int)
     tree["comparable"]=bool(comparable)
     tree["unexplained_bytes"]=tree["allocated_bytes"]-app-protected-tree["directory_bytes"] if comparable else None
+    # Opposite residuals in independent domains must never cancel a discrepancy.
+    tree["absolute_discrepancy_bytes"]=abs(tree["app_delta_bytes"])+abs(tree["host_delta_bytes"]) if comparable else None
     tree["basis"]="independent_st_blocks_tree_walk_plus_measured_directory_blocks; non_atomic"
     return tree

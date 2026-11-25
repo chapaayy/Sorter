@@ -50,6 +50,11 @@ def test_comparison_does_not_hide_unexplained_file(tmp_path):
     report=tree.compare(tmp_path,host,sample=lambda:dict(row))
     assert report["comparable"]
     assert report["unexplained_bytes"]==(tmp_path/"app"/"unseen").stat().st_blocks*512
+    assert report["absolute_discrepancy_bytes"]==report["unexplained_bytes"]
+    host["devices"][str(tmp_path.stat().st_dev)]["allocated_bytes"]=report["unexplained_bytes"]
+    cancelled=tree.compare(tmp_path,host,sample=lambda:dict(row))
+    assert cancelled["unexplained_bytes"]==0 and cancelled["absolute_discrepancy_bytes"]>0
+    host["devices"][str(tmp_path.stat().st_dev)]["allocated_bytes"]=0
     row["allocated_bytes"]=report["app"]["file_bytes"]
     assert tree.compare(tmp_path,host,sample=lambda:dict(row))["unexplained_bytes"]==0
     row["partial"]=True
