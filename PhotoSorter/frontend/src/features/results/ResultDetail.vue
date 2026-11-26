@@ -67,7 +67,9 @@ onMounted(async()=>{
   try{
     if(!session.isOwner){
       published.value=await resultApi.published(id)
-      const [s,g]=await Promise.all([resultApi.sam(id),resultApi.groups(id)])
+      const [s,g,refs]=await Promise.all([resultApi.sam(id),resultApi.groups(id),
+        session.can('references.view')?referenceApi.list().catch(()=>null):Promise.resolve(null)])
+      referenceNames.value=Object.fromEntries((refs?.sam||[]).map(item=>[item.sam,item.display_name||item.sam]))
       sams.value=s;groups.value=g;selected.value=list.value[0]?.id||''
       if(published.value.batch_id&&session.can('photos.view',published.value.owner_id)){
         batch.value=await batchApi.one(published.value.batch_id)
