@@ -87,6 +87,7 @@ async function mock(page:Page){
       return respond(route,defaults)
     }
     if(p==='/api/models')return respond(route,{models:[{id:'megaloc',title:'MegaLoc',available:true,downloadable:true}],device:'cpu'})
+    if(p==='/api/results/catalog'&&method==='GET')return respond(route,{items:[{id:rid,batch_id:bid,display_name:batch.display_name,status:run.status,photo_count:2,groups:1,can_open:true,can_zip:true,can_history:true}],has_more:false})
     if(p==='/api/results/'+rid)return respond(route,run)
     if(p==='/api/results/'+rid+'/sam')return respond(route,{'SAM-0001':1,'_Неопределено':1})
     if(p==='/api/results/'+rid+'/groups')return respond(route,{'G0001':2})
@@ -173,11 +174,12 @@ test('main sections share header sizing and use plain text when empty',async({pa
   await page.route('**/api/batches?*',route=>respond(route,{batches:[],total:0}))
   await page.route('**/api/references',route=>respond(route,{sam:[],total:0}))
   await page.route('**/api/runs?*',route=>respond(route,{runs:[],total:0}))
+  await page.route('**/api/results/catalog?*',route=>respond(route,{items:[],has_more:false}))
   const screens=[
     ['/fo','Пока нет фотоотчётов'],
     ['/references','Пока нет образцов'],
     ['/queue','Нет активных заданий'],
-    ['/results','Пока нет результатов'],
+    ['/results','Пока нет доступных результатов'],
     ['/logs','Пока нет запусков'],
     ['/settings',null]
   ] as const
@@ -854,7 +856,7 @@ test('FO progress animates between confirmed values and never advances on its ow
   await expect(label).toHaveText('100%')
 })
 
-test('idle FIFO starts directly and uses the same card columns as a completed report',async({page,isMobile})=>{
+test('idle FIFO remains queued until the worker starts and uses the same card columns as a completed report',async({page,isMobile})=>{
   if(!isMobile)await page.setViewportSize({width:1440,height:900})
   const ready={...run,status:'queued',queue_position:1}
   const draft={...batch,batch_id:bid+'1',display_name:'Новый выезд',runs:0,latest_run:null as typeof ready|null}
@@ -869,8 +871,9 @@ test('idle FIFO starts directly and uses the same card columns as a completed re
   const card=page.getByRole('article',{name:'Фотоотчёт Новый выезд'})
   await card.getByRole('button',{name:'Обработать',exact:true}).click()
   await confirmRegionStart(page)
-  await expect(card.locator('.task-card-status')).toHaveText('Запуск обработки')
-  await expect(card.getByText('Ожидает своей очереди')).toHaveCount(0)
+  await expect(card.locator('.task-card-status')).toHaveText('В очереди №1')
+  await expect(card.getByText('Ожидает своей очереди')).toBeVisible()
+  await expect(card).not.toHaveClass(/task-card-active/)
   if(!isMobile){
     const starts=await page.locator('.task-card-progress-track').evaluateAll(nodes=>
       nodes.map(node=>node.getBoundingClientRect().x))
@@ -976,7 +979,7 @@ test('unified queue shows all work, cancel action and a separate history view',a
   let stops=0
   await page.route(/^https?:\/\/[^/]+\/api\/work-queue(?:\?.*)?$/,route=>{
     const scope=new URL(route.request().url()).searchParams.get('scope')
-    return respond(route,{tasks:scope==='history'?[]:work,
+    return respond(route,{tasks:scope==='history'?[]:work.map((item,index)=>({...item,queue_position:index+1,blocked_ahead:false})),
       total:scope==='history'?0:work.length})
   })
   await page.route('**/api/runs/'+first+'/stop',route=>{
@@ -1372,6 +1375,9 @@ test('deletion shows server stages and progress instead of MegaLoc metrics',asyn
   await page.route('**/api/batches/'+bid+'/deletion',route=>respond(route,{
     batch_id:bid,delete_state:state,task:{progress}
   }))
+  await page.route('**/api/results/catalog?*',route=>respond(route,{items:state==='deleted'?[]:[{
+    id:rid,batch_id:bid,display_name:batch.display_name,status:'completed',delete_state:state,
+    deletion_progress:progress,can_open:false,can_zip:false,can_history:false}],has_more:false}))
   await page.goto('/fo')
   let card=page.getByRole('article',{name:'Фотоотчёт Выезд Самара 05.11'})
   await expect(card).toHaveClass(/task-card-deleting/)
@@ -2222,4 +2228,26 @@ test('personal favicon survives navigation and restores the logo on logout',asyn
   await expect(page.getByRole('heading',{name:'Войти в MAP'})).toBeVisible()
   await expect(icon).toHaveAttribute('href','/assets/logo.webp')
   await expect(icon).toHaveAttribute('type','image/webp')
+})
+
+test('employee queue uses global position even when preceding jobs are invisible',async({page})=>{
+  await page.route('**/api/auth/me',route=>respond(route,{id:2,username:'employee@example.test',permissions:{'queue.view':'own','queue.detail':'own','queue.stop':'own'}}))
+  let position=2
+  await page.route(/^https?:\/\/[^/]+\/api\/work-queue(?:\?.*)?$/,route=>{
+    const scope=new URL(route.request().url()).searchParams.get('scope')
+    return respond(route,{tasks:scope==='history'?[]:[{seq:42,queue_position:position,blocked_ahead:false,
+      kind:'fo_processing',state:'queued',fo_run_id:rid,owner_id:'2',batch_id:bid,batch_name:'Свой отчёт',
+      created_at:'2026-11-26T12:00:00Z',fo_photo_count:10}],total:scope==='history'?0:1})
+  })
+  await page.goto('/queue')
+  const card=page.locator('.queue-task-row')
+  await expect(card).toHaveCount(1)
+  await expect(card.locator('.task-card-number')).toHaveText('2')
+  await expect(card.locator('.task-card-status')).toHaveText('В очереди №2')
+  await expect(card).toContainText('Одна задача впереди')
+  await expect(card).toContainText('Время уточняется')
+  await expect(card).not.toHaveClass(/task-card-active/)
+  position=1
+  await expect(card.locator('.task-card-status')).toHaveText('В очереди №1')
+  await expect(card).not.toHaveClass(/task-card-active/)
 })

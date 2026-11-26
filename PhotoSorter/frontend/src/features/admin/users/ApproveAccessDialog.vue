@@ -31,7 +31,7 @@ async function load(){
     const data=await resultApi.catalog(30,offset.value)
     offset.value+=data.items.length
     const existing=new Set(items.value.map(item=>item.id))
-    items.value.push(...data.items.filter(item=>!existing.has(item.id)));more.value=data.has_more
+    items.value.push(...data.items.filter(item=>item.can_open!==false&&!existing.has(item.id)));more.value=data.has_more
     initialized.value=true
   }catch(e){error.value=errorText(e)}finally{loading.value=false}
 }

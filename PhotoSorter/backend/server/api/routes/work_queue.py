@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from fastapi import APIRouter,HTTPException,Request
 from ...security.access_policy import current_user,is_owner
-from ...security.roles import has
+from ...security.roles import has,level
 from ...security.route_permissions import owner_filter
 from pydantic import BaseModel
 from ...database import connect
@@ -69,7 +69,9 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active",request:Reques
             (*args,limit,offset)).fetchall()
     for task in entries:
         thumb=task.pop("fo_thumbnail_id")
-        task["fo_thumbnail_url"]="/api/thumbnails/"+str(thumb) if thumb and (not user or is_owner(user) or (has(user,"photos.view") and has(user,"photos.media"))) else None
+        own=bool(user and str(user["id"])==task["owner_id"])
+        permitted=not user or is_owner(user) or all(level(user,key)=="all" or (level(user,key)=="own" and own) for key in ("photos.view","photos.media"))
+        task["fo_thumbnail_url"]="/api/thumbnails/"+str(thumb) if thumb and permitted else None
     return {"tasks":entries,"total":total}
 
 @router.get("/work-queue/own-status")

@@ -82,7 +82,7 @@ const time=computed(()=>queueTime(props.task,props.estimate))
 const count=computed(()=>preparing.value||media.value?props.task.total_count:props.task.fo_photo_count)
 </script>
 <template>
-<CompactTaskCard :number="position??task.seq" class="queue-task-row"
+<CompactTaskCard :number="position??'—'" class="queue-task-row"
   :title="preparing?'Подготовка образцов':media?'Перекодирование файлов':
     removingRef?'Удаление образца'+(task.deletion_sam?' · '+task.deletion_sam:''):task.batch_name||'Фотоотчёт'"
   :thumbnail-url="preparing?null:task.fo_thumbnail_url"

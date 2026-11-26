@@ -230,7 +230,7 @@ test('owner creates a viewer directly and can revoke its selected reports',async
   await page.route('**/api/admin/accounts?**',route=>route.fulfill({json:{items:created?[{...user,username:email,display_name:'',role_id:'observer',role_name:'Наблюдатель',blocked:false}]:[],has_more:false,stats:{total:created?1:0,active:created?1:0,blocked:0}}}))
   await page.route(/\/api\/admin\/users(?:\?.*)?$/,route=>{
     if(route.request().method()==='POST'){
-      expect(route.request().postDataJSON()).toEqual({email,password,confirmation:password,run_ids:[run]})
+      expect(route.request().postDataJSON()).toEqual({email,password,confirmation:password,run_ids:[run],storage_limit_bytes:20*1024**3})
       created=true
       return route.fulfill({status:201,json:user})
     }
@@ -248,6 +248,7 @@ test('owner creates a viewer directly and can revoke its selected reports',async
   await page.getByRole('button',{name:'Создать пользователя'}).click()
   const create=page.getByRole('dialog',{name:'Создать пользователя'})
   await create.getByLabel('Электронная почта').fill(email)
+  await create.getByLabel(/Личная квота, ГиБ/).fill('20')
   await create.getByLabel('Начальный пароль').fill(password)
   await create.getByLabel('Повторите пароль').fill(password+'-typo')
   await create.getByRole('checkbox',{name:/Готовый отчёт/}).check()

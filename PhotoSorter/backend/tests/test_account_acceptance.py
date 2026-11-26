@@ -358,3 +358,96 @@ def test_extended_personal_activity_is_actor_scoped(system,monkeypatch):
         with track({'id':alice},'results'):
             raise RuntimeError('test failure')
     assert any(x['kind']=='zip' and x['state']=='failed' for x in a.get(endpoint).json()['tasks'])
+
+
+def test_global_queue_positions_survive_scoping_and_pagination(system,monkeypatch):
+    from server.db.repositories import work_queue
+    admin=clients(monkeypatch)
+    alice,a=create_user(admin,'queue-alice@example.test')
+    bob,b=create_user(admin,'queue-bob@example.test')
+    batches=[create_batch(admin,'Private admin'),create_batch(b,'Private Bob'),
+             create_batch(a,'Alice first'),create_batch(a,'Alice second')]
+    runs=['20261126T180000-'+uuid.uuid4().hex[:12] for _ in batches]
+    with database.connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(%s)",(work_queue.LOCK,))
+        for batch,run in zip(batches,runs):
+            db.execute("INSERT INTO jobs(id,batch_id,status,snapshot) VALUES(%s,%s,'queued',%s)",
+                       (run,batch,Jsonb({'id':run,'status':'queued'})))
+            work_queue.insert_fo(db,run)
+        db.execute("UPDATE jobs SET status='running',started_at=now() WHERE id=%s",(runs[0],))
+        db.execute("UPDATE work_queue SET state='running',started_at=now() WHERE fo_run_id=%s",(runs[0],))
+    response=a.get('/api/work-queue')
+    assert response.status_code==200,response.text
+    assert [item['fo_run_id'] for item in response.json()['tasks']]==runs[2:]
+    assert [item['queue_position'] for item in response.json()['tasks']]==[3,4]
+    assert runs[0] not in response.text and runs[1] not in response.text
+    assert 'Private admin' not in response.text and 'Private Bob' not in response.text
+    assert a.get('/api/work-queue?limit=1&offset=1').json()['tasks'][0]['queue_position']==4
+    assert b.get('/api/work-queue').json()['tasks'][0]['queue_position']==2
+    assert [item['queue_position'] for item in admin.get('/api/work-queue').json()['tasks']]==[1,2,3,4]
+    assert a.post('/api/runs/'+runs[1]+'/stop').status_code==404
+    with database.connect() as db:
+        db.execute("UPDATE jobs SET status='completed',finished_at=now() WHERE id=%s",(runs[0],))
+        db.execute("UPDATE work_queue SET state='completed',finished_at=now() WHERE fo_run_id=%s",(runs[0],))
+    assert [item['queue_position'] for item in a.get('/api/work-queue').json()['tasks']]==[2,3]
+    assert b.post('/api/runs/'+runs[1]+'/stop').status_code==200
+    assert [item['queue_position'] for item in a.get('/api/work-queue').json()['tasks']]==[1,2]
+
+
+def test_result_catalog_metadata_scoped_to_result_permissions(system,monkeypatch):
+    admin=clients(monkeypatch)
+    alice,a=create_user(admin,'result-alice@example.test')
+    bob,b=create_user(admin,'result-bob@example.test')
+    observer,o=create_user(admin,'result-observer@example.test','observer')
+    batch=create_batch(a,'Alice result')
+    _,original,_=seed_photo(batch,alice)
+    run,_=seed_result(batch,alice,original)
+    with database.connect() as db:
+        db.execute("UPDATE jobs SET snapshot=snapshot || %s,started_at=now()-interval '66 seconds',finished_at=now() WHERE id=%s",
+                   (Jsonb({'models':{'megaloc':{'processed':188,'groups':27,'uncertain':0}},
+                           'progress':{'overall_percent':100}}),run))
+    own=a.get('/api/results/catalog')
+    assert own.status_code==200,own.text
+    card=own.json()['items'][0]
+    owner_card=admin.get('/api/results/catalog?search=Alice').json()['items'][0]
+    for key,value in {'photo_count':188,'groups':27,'uncertain':0,'overall_percent':100}.items():
+        assert card[key]==owner_card[key]==value
+    assert card['id']==run and card['can_open'] and card['can_zip'] and card['can_history']
+    assert b.get('/api/results/catalog').json()['items']==[]
+    assert b.get('/api/results/'+run).status_code==404
+    assert o.get('/api/results/catalog').json()['items']==[]
+    assert admin.put(f'/api/admin/users/{observer}/grants',json={'run_ids':[run]}).status_code==200
+    granted=o.get('/api/results/catalog').json()['items'][0]
+    assert granted['id']==run and granted['groups']==27
+    assert granted['thumbnail_url'] is None and not granted['can_history']
+    assert 'batch_id' not in granted and 'owner_id' not in granted
+    assert a.get('/api/results/catalog?search=nonexistent').json()['items']==[]
+    assert admin.put(f'/api/admin/accounts/{alice}',json={'display_name':'Alice','role_id':'employee',
+        'overrides':{'results.media':'none','results.zip':'none','queue.detail':'none'}}).status_code==200
+    denied=a.get('/api/results/catalog').json()['items'][0]
+    assert not denied['can_media'] and not denied['can_zip'] and not denied['can_history']
+    assert denied['thumbnail_url'] is None
+    assert a.get('/api/download/'+run).status_code in (403,404)
+
+
+def test_account_creation_quota_atomic_and_exact(system,monkeypatch):
+    from server.services import disk_guard
+    admin=clients(monkeypatch)
+    gib=1024**3
+    monkeypatch.setattr(disk_guard,'stat',lambda path:(100*gib,80*gib))
+    def create(name,quota):
+        return admin.post('/api/admin/users',json={'email':name,'password':PASSWORD,
+            'confirmation':PASSWORD,'role_id':'employee','run_ids':[],'storage_limit_bytes':quota})
+    for i,quota in enumerate((20*gib,gib//2,0,None)):
+        name=f'quota{i}@example.test'
+        response=create(name,quota)
+        assert response.status_code==201,response.text
+        with database.connect() as db:
+            assert db.execute("SELECT storage_limit_bytes FROM users WHERE username=%s",(name,)).fetchone()['storage_limit_bytes']==quota
+    for i,quota in enumerate((-1,0.5,'20',101*gib)):
+        name=f'badquota{i}@example.test'
+        response=create(name,quota)
+        assert response.status_code==422,response.text
+        with database.connect() as db:
+            assert db.execute("SELECT id FROM users WHERE username=%s",(name,)).fetchone() is None
+    assert create('quota0@example.test',gib).status_code==409

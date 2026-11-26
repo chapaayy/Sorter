@@ -13,8 +13,8 @@ export const STATE_RU:Record<QueueStatus,string>={
 export const isPrep=(item:QueueTask)=>item.kind==='reference_preparation'
 export const hasBlockingFailure=(item:QueueTask)=>isPrep(item)&&
   ['failed','interrupted','blocked'].includes(item.state)
-export function queuePosition(tasks:readonly QueueTask[],seq:number):number{
-  return [...tasks].sort((a,b)=>a.seq-b.seq).findIndex(t=>t.seq===seq)+1
+export function queuePosition(tasks:readonly QueueTask[],seq:number):number|null{
+  return tasks.find(t=>t.seq===seq)?.queue_position??null
 }
 export function duration(task:QueueTask,now=Date.now()):string{
   if(!task.started_at)return '—'

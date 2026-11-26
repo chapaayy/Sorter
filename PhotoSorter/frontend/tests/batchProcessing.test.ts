@@ -28,7 +28,7 @@ describe('true MegaLoc state on FO cards',()=>{
   })
   it('shows genuine queued position and stop action',()=>{
     const s=batchProcessing(batch({latest_run:run('queued',{queue_position:7}),runs:1}))
-    expect(s.label).toBe('В очереди')
+    expect(s.label).toBe('В очереди №7')
     expect(s.detail).toContain('7')
     expect(s.canStop).toBe(true)
     expect(s.canStart).toBe(false)

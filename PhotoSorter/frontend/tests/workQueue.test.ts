@@ -12,11 +12,11 @@ const task=(seq:number,kind:QueueTask['kind'],state:QueueTask['state']):QueueTas
 })
 describe('single FIFO queue presentation',()=>{
   it('positions tasks by database seq, never by task type',()=>{
-    const entries=[task(7,'fo_processing','queued'),
-      task(6,'reference_preparation','queued'),task(2,'fo_processing','queued')]
-    expect(queuePosition(entries,2)).toBe(1)
-    expect(queuePosition(entries,6)).toBe(2)
-    expect(queuePosition(entries,7)).toBe(3)
+    const entries=[{...task(7,'fo_processing','queued'),queue_position:5},
+      {...task(6,'reference_preparation','queued'),queue_position:4}]
+    expect(queuePosition(entries,2)).toBeNull()
+    expect(queuePosition(entries,6)).toBe(4)
+    expect(queuePosition(entries,7)).toBe(5)
   })
   it('failed preparation remains a blocking dependency, failed FO does not',()=>{
     expect(hasBlockingFailure(task(4,'reference_preparation','failed'))).toBe(true)
