@@ -168,6 +168,14 @@ def test_transfer_quota_and_recovery_then_delete(system,monkeypatch,operation,in
     assert admin.post(endpoint,json=body).status_code==202
     assert a.get('/api/auth/me').status_code==401
     assert admin.post(endpoint,json=body).status_code==409
+    from server.services.account_activity import lease
+    # A real queued transfer cannot start while an API reader is active.
+    with lease() as allowed:
+        assert allowed
+        account_lifecycle.run_pending()
+        assert original.is_file()
+        with database.connect() as db:
+            assert db.execute("SELECT plan FROM account_lifecycle WHERE source_id=%s",(source,)).fetchone()['plan'] is None
     if interrupt:
         real_move=account_lifecycle._move
         def fail_after_move(root,entry):
@@ -184,7 +192,17 @@ def test_transfer_quota_and_recovery_then_delete(system,monkeypatch,operation,in
         settle()
         monkeypatch.setattr(account_lifecycle,'_move',real_move)
         with database.connect() as db:db.execute("UPDATE account_lifecycle SET next_attempt=now() WHERE source_id=%s",(source,))
+    # Check the actual API during the physical rename and after publication.
+    real_move=account_lifecycle._move
+    checked=[]
+    def guarded_move(root,entry):
+        assert admin.get('/api/models').status_code==503
+        checked.append(entry)
+        real_move(root,entry)
+    monkeypatch.setattr(account_lifecycle,'_move',guarded_move)
     account_lifecycle.run_pending()
+    assert checked and admin.get('/api/models').status_code==200
+    monkeypatch.setattr(account_lifecycle,'_move',real_move)
     moved=original_path(batch,upload,'jpg',target)
     assert moved.is_file() and moved.stat().st_ino==inode and not original.exists()
     assert (result_media_dir(run)/copy.name).stat().st_ino==inode
@@ -267,3 +285,19 @@ def test_legacy_migration_preserves_user_grant_session_quota(tmp_path,monkeypatc
             assert login(legacy,'legacy@example.test',PASSWORD).status_code==200
             assert login(client(),'admin',OWNER).status_code==200
         finally:root.execute('DROP SCHEMA '+schema+' CASCADE')
+
+
+def test_idle_lifecycle_and_model_space_keep_real_api_available(system,monkeypatch):
+    from server.services import archive_cache
+    admin=clients(monkeypatch)
+    with database.connect() as db:
+        assert db.execute("SELECT count(*) AS n FROM account_lifecycle").fetchone()['n']==0
+    # The idle cleanup poll must not even acquire the exclusive account lease.
+    def forbidden(*args,**kwargs):
+        pytest.fail('idle lifecycle tried to lock API')
+    monkeypatch.setattr(account_lifecycle,'lease',forbidden)
+    account_lifecycle.run_pending()
+    with archive_cache.build_space(config.APP_STORAGE_ROOT,4096,kind='model_download'):
+        assert admin.get('/api/models').status_code==200
+        account_lifecycle.run_pending()
+        assert admin.get('/api/models').status_code==200

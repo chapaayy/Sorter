@@ -277,6 +277,11 @@ def run_pending():
     if not row:return
     with lease(exclusive=True) as allowed:
         if not allowed:return
+        # Another cleanup process may have completed the selected operation
+        # between selection and acquisition. Re-read before touching files.
+        with connect() as db:
+            row=db.execute("SELECT * FROM account_lifecycle WHERE source_id=%s AND state<>'completed' AND next_attempt<=now()",(row["source_id"],)).fetchone()
+        if not row:return
         try:
             if row["operation"]=="delete":_delete(row)
             else:_transfer(row)

@@ -4,6 +4,7 @@ import logging,os,signal,time
 from ..database import wait_and_initialize
 from ..services import heartbeat
 from ..services.update_gate import activity
+from ..services.account_activity import lease as account_activity
 from ..services import thumbnails
 RUN=True
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
@@ -25,12 +26,17 @@ def main():
                 time.sleep(2)
                 continue
             try:
-                task=thumbnails.claim()
-                if task:
-                    result=thumbnails.complete(task)
-                    if result=="error":logging.warning("Preview failed for upload %s",task["upload_id"])
-                else:
-                    time.sleep(2)
+                # A thumbnail may publish to the recipient's namespace.
+                # Hold a shared account lease from claim through completion;
+                # do not claim or consume retries during an exclusive move.
+                task=None
+                with account_activity() as safe:
+                    if safe:
+                        task=thumbnails.claim()
+                        if task:
+                            result=thumbnails.complete(task)
+                            if result=="error":logging.warning("Preview failed for upload %s",task["upload_id"])
+                if not task:time.sleep(2)
             except Exception:
                 logging.exception("Thumbnail worker failure")
                 time.sleep(3)

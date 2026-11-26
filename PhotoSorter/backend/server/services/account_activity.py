@@ -1,28 +1,40 @@
-"""Filesystem-inode shared/exclusive gate for account ownership moves.
+"""Kernel gate for account ownership changes, independent of disk admission.
 
-All API requests hold a shared lease until streaming finishes. The existing
-cleanup worker attempts an exclusive lease without waiting. No extra file,
-service, or DB connection is created. The app root is a shared bind mount.
+The root of the personal-data namespace is a stable, bootstrapped directory.
+Use its inode, NOT APP_STORAGE_ROOT: archive_cache.build_space holds an
+exclusive flock on the app root for ZIP builds and MegaLoc installation.
+No lock files or additional storage categories are needed.
 """
-import os,fcntl
-from contextlib import contextmanager
+import fcntl
+from contextlib import contextmanager, ExitStack
 from app import config
+from app.storage.categories import Category
+from app.storage.paths import category_prefix
+from app.storage.filesystem import directory_fd
 from starlette.responses import JSONResponse
 
+
 @contextmanager
-def lease(*,exclusive=False):
-    try:fd=os.open(config.APP_STORAGE_ROOT,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC)
-    except FileNotFoundError:
-        # A clean/test API without a data mount cannot move data.
-        yield not exclusive
-        return
-    try:
-        try:fcntl.flock(fd,(fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)|fcntl.LOCK_NB)
+def lease(*, exclusive=False):
+    # Every API process and the cleanup/thumbnail workers share this mount.
+    # Bootstrap already creates users/; lazily ensure it for test/dev roots.
+    # Never remove this namespace root, even when the last account is deleted.
+    with ExitStack() as stack:
+        try:
+            fd = stack.enter_context(directory_fd(
+                config.APP_STORAGE_ROOT, category_prefix(Category.FO_ORIGINAL),
+                create=True))
+        except FileNotFoundError:
+            # Preserve the clean/test API without a data mount; it cannot move.
+            yield not exclusive
+            return
+        try:
+            fcntl.flock(fd, (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB)
         except BlockingIOError:
             yield False
             return
         yield True
-    finally:os.close(fd)
+
 
 class AccountActivity:
     def __init__(self,app):self.app=app
