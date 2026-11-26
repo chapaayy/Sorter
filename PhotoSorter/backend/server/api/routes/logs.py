@@ -1,11 +1,23 @@
 """Bounded compatible log tail plus forward cursor pages for large journals."""
-from fastapi import APIRouter,HTTPException
+from fastapi import APIRouter,HTTPException,Request
+from ...database import connect
+from ...security.route_permissions import owner_filter
+from ...security.access_policy import current_user
 from app.results.repository import load_run
 from app.logging.events import read, page,tail,usage
 router=APIRouter(prefix="/api/logs",tags=["logs"])
 
 @router.get("/usage")
 def logs_usage():return usage()
+
+@router.get("/runs")
+def available_runs(request:Request):
+    owner=owner_filter(current_user(request),'logs.view')
+    with connect() as db:
+        rows=db.execute("""SELECT j.id,j.started_at FROM jobs j JOIN batches b ON b.id=j.batch_id
+            WHERE b.delete_state='active' AND (%s::bigint IS NULL OR b.owner_id=%s)
+            ORDER BY j.created_at DESC,j.id DESC LIMIT 200""",(owner,owner)).fetchall()
+    return {'runs':rows}
 
 @router.get("/{run_id}")
 def logs(run_id:str,model:str|None=None,level:str|None=None,

@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import {computed,ref} from 'vue'
+import {useSessionStore} from '../../../stores/session'
+const session=useSessionStore()
 import type {PermissionInfo,Permissions,Level} from '../../../api/accounts'
 const props=defineProps<{catalog:Record<string,PermissionInfo>;modelValue:Permissions;inherited?:Permissions;disabled?:boolean}>()
 const emit=defineEmits<{(e:'update:modelValue',value:Permissions):void}>()
 const search=ref('')
 const names:Record<Level,string>={none:'Нет',own:'Свои',all:'Все',granted:'Выданные отчёты'}
 const groups=computed(()=>Object.entries(props.catalog).filter(([,v])=>v.label.toLowerCase().includes(search.value.toLowerCase())).reduce((a,[k,v])=>{(a[v.group]??=[]).push([k,v]);return a},{} as Record<string,Array<[string,PermissionInfo]>>))
-const options=(key:string,info:PermissionInfo)=>info.scoped?(key.startsWith('results.')?['none','own','all','granted']:['none','own','all']):['none','all']
+const delegable=(key:string,value:string)=>session.isOwner||value==='none'||((!['accounts.','storage.','system.'].some(prefix=>key.startsWith(prefix))||['system.models','system.processing_view','system.performance_view'].includes(key))&&(session.level(key)==='all'||(session.level(key)===value&&value!=='granted')))
+const options=(key:string,info:PermissionInfo)=>(info.scoped?(key.startsWith('results.')?['none','own','all','granted']:['none','own','all']):['none','all']).filter(v=>delegable(key,v)||v===props.modelValue[key])
 const label=(key:string,value:Level)=>!props.catalog[key]?.scoped?(value==='none'?'Запретить':'Разрешить'):names[value]
 const resolved=(k:string)=>props.modelValue[k]??props.inherited?.[k]??'none'
 function change(key:string,value:string){const next={...props.modelValue};if(value==='inherit')delete next[key];else next[key]=value as Level;emit('update:modelValue',next)}
-function group(rows:Array<[string,PermissionInfo]>,value:Level|'inherit'){const next={...props.modelValue};for(const [key] of rows){if(value==='inherit')delete next[key];else next[key]=value}emit('update:modelValue',next)}
+function group(rows:Array<[string,PermissionInfo]>,value:Level|'inherit'){const next={...props.modelValue};for(const [key] of rows){if(value==='inherit')delete next[key];else if(value==='all'){const max=options(key,props.catalog[key]).filter(v=>delegable(key,v));next[key]=(max.includes('all')?'all':max.includes('own')?'own':'none')}else next[key]=value}emit('update:modelValue',next)}
 </script>
 <template><div class="stack"><input v-model="search" aria-label="Поиск разрешений" placeholder="Поиск разрешений"/>
 <details v-for="(rows,name) in groups" :key="name"><summary>{{name}} · {{rows.filter(([k])=>resolved(k)!=='none').length}} / {{rows.length}}</summary>

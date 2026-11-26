@@ -19,7 +19,7 @@ export const useSessionStore=defineStore('session',()=>{
     if(first==='/results')return canResults.value
     if(first==='/references')return can('references.view')
     if(first==='/queue')return can('queue.view')
-    if(first==='/logs')return can('logs.view')&&can('queue.view')
+    if(first==='/logs')return can('logs.view')
     if(first==='/admin')return [...accountSections,...systemSections,'storage.view','storage.limits','storage.maintenance'].some(k=>can(k))
     return false
   }

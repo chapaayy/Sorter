@@ -34,6 +34,7 @@ add("GET",f"reference-preparations/{U}","queue.shared")
 add("POST",f"reference-preparations/{U}/(?:retry|skip|stop)","queue.preparation")
 add("GET",f"logs/({R})(?:/page)?","logs.view","run")
 add("GET","logs/usage","logs.usage")
+add("GET","logs/runs","logs.view")
 for method,path,key in (
     ("GET",r"references(?:/files|/cache/status|/[^/]+/photos)?","view"),
     ("GET","references/export","export"),("POST","references/constructions","create"),

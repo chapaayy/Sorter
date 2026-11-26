@@ -2,6 +2,8 @@
 import {computed,onMounted,ref,watch,nextTick} from 'vue'
 import {useRoute} from 'vue-router'
 import {runApi} from '../../api/runs'
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
 import {logApi} from '../../api/logs'
 import {usePolling} from '../../composables/usePolling'
 import {bytes,date,errorText} from '../../utils/format'
@@ -13,7 +15,7 @@ import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import EmptyState from '../../components/ui/EmptyState.vue'
 import {useNoticeStore} from '../../stores/notice'
 const route=useRoute(),notice=useNoticeStore()
-const runs=ref<Run[]>([]),selected=ref(''),level=ref(''),source=ref(''),search=ref('')
+const runs=ref<{id:string;started_at?:string|null}[]>([]),selected=ref(''),level=ref(''),source=ref(''),search=ref('')
 const events=ref<LogEntry[]>([]),cursor=ref<string|null>(null),loading=ref(false),error=ref(''),following=ref(true),tailMode=ref(true),host=ref<HTMLElement|null>(null)
 const initialLoading=ref(true)
 let sequence=0,searchTimer:ReturnType<typeof setTimeout>|undefined
@@ -41,7 +43,7 @@ function reset(tail=true){
 }
 onMounted(async()=>{
   try{
-    const data=await runApi.list(200);runs.value=data.runs
+    const data=await (session.isOwner?runApi.list(200):logApi.runs());runs.value=data.runs
     const requested=typeof route.query.run==='string'?route.query.run:''
     selected.value=data.runs.some(r=>r.id===requested)?requested:data.runs[0]?.id||''
   }catch(e){error.value=errorText(e)}finally{initialLoading.value=false}

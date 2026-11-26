@@ -160,7 +160,7 @@ async function removeBatch(){
   <div class="row wrap fo-batch-actions">
     <UiButton v-if="allowed('photos.prepare')&&['failed','interrupted','completed_with_errors'].includes(batch.media_preparation?.state??'')&&!processing?.canStop"
       small :loading="busy" @click="retryMedia">Повторить перекодирование</UiButton>
-    <UiButton v-if="allowed('photos.process')&&!transfer&&processing?.canStart" kind="primary" small :loading="busy" @click="regionStart=true">{{(batch.runs??0)>0?'Повторить обработку':'Обработать'}}</UiButton>
+    <UiButton v-if="allowed((batch.runs??0)>0?'photos.reprocess':'photos.process')&&!transfer&&processing?.canStart" kind="primary" small :loading="busy" @click="regionStart=true">{{(batch.runs??0)>0?'Повторить обработку':'Обработать'}}</UiButton>
     <UiButton v-if="allowed('photos.auto')&&processing?.canCancelAuto" small :loading="busy" @click="cancelAuto">Отменить автозапуск</UiButton>
     <UiButton v-if="allowed('queue.stop')&&allowed('queue.view')&&processing?.canStop" small kind="danger" :loading="busy" @click="stopConfirm=true">
       {{processing?.run?.status==='queued'?'Убрать из очереди':'Остановить'}}

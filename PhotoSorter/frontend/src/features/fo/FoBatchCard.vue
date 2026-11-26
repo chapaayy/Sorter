@@ -125,7 +125,7 @@ const stage=computed(()=>{
     <RouterLink v-if="state.resultId&&session.canResults" :to="'/results/'+state.resultId">
       {{run?.id===state.resultId?'Открыть результаты':'Прошлые результаты'}}
     </RouterLink>
-    <button v-if="allowed('photos.process')&&state.canStart&&!transfer&&(batch.runs??0)>0" type="button" :disabled="busy"
+    <button v-if="allowed('photos.reprocess')&&state.canStart&&!transfer&&(batch.runs??0)>0" type="button" :disabled="busy"
       @click="emit('start',batch.batch_id,batchThreshold(batch))">Повторить обработку</button>
     <button v-if="allowed('photos.auto')&&state.canCancelAuto&&!transfer" type="button" :disabled="busy"
       @click="emit('cancelAuto',batch.batch_id)">Отменить автозапуск</button>
