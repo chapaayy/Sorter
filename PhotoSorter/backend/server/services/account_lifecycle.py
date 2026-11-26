@@ -48,7 +48,10 @@ def preview(owner):
 def request(actor,source,operation,recipient,confirmation):
     if confirmation is None:raise HTTPException(422,"Подтвердите логин аккаунта")
     with connect() as db:
-        _lock(db)
+        # Delete only schedules work; it needs the FIFO lock, not admission.
+        # File cleanup and reservation recovery keep their existing guards.
+        if operation=="delete":db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        else:_lock(db)
         acting=accounts.authority(db,actor,"accounts.delete" if operation!="transfer" else "accounts.transfer")
         if operation=="transfer_delete":accounts.require(acting,"accounts.transfer")
         if not accounts.is_owner(acting):
@@ -82,6 +85,11 @@ def request(actor,source,operation,recipient,confirmation):
         db.execute("DELETE FROM sessions WHERE user_id=%s",(source,))
         if operation!="delete":
             db.execute("UPDATE batches SET delete_state='transferring' WHERE owner_id=%s AND delete_state='active'",(source,))
+        else:
+            # Publish the cancellation atomically with blocking the account.
+            # An unrelated API reader may delay final removal, never this stop.
+            for batch in db.execute("SELECT id FROM batches WHERE owner_id=%s AND delete_state IN ('active','delete_failed') ORDER BY id",(source,)).fetchall():
+                cleanup.request_locked(db,batch["id"])
         accounts.audit(db,actor,source,"account_lifecycle_requested",{"operation":operation,"recipient":recipient})
     return {"state":"queued"}
 

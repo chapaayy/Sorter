@@ -54,16 +54,45 @@ def test_comparison_does_not_hide_unexplained_file(tmp_path):
     (tmp_path/"system").mkdir()
     (tmp_path/"app"/"unseen").write_bytes(b"x"*4096)
     row={"allocated_bytes":0,"partial":False,"pending_changes":0,"reserved_bytes":0}
-    host={"partial":False,"devices":{str(tmp_path.stat().st_dev):{"allocated_bytes":0}}}
-    report=tree.compare(tmp_path,host,sample=lambda:dict(row))
+    host={"partial":False,"physical_fingerprint":"fixture-stable","devices":{str(tmp_path.stat().st_dev):{"allocated_bytes":0}}}
+    report=tree.compare(tmp_path,lambda:host,sample=lambda:dict(row))
     assert report["comparable"]
     assert report["unexplained_bytes"]==(tmp_path/"app"/"unseen").stat().st_blocks*512
     assert report["absolute_discrepancy_bytes"]==report["unexplained_bytes"]
     host["devices"][str(tmp_path.stat().st_dev)]["allocated_bytes"]=report["unexplained_bytes"]
-    cancelled=tree.compare(tmp_path,host,sample=lambda:dict(row))
+    cancelled=tree.compare(tmp_path,lambda:host,sample=lambda:dict(row))
     assert cancelled["unexplained_bytes"]==0 and cancelled["absolute_discrepancy_bytes"]>0
     host["devices"][str(tmp_path.stat().st_dev)]["allocated_bytes"]=0
     row["allocated_bytes"]=report["app"]["file_bytes"]
-    assert tree.compare(tmp_path,host,sample=lambda:dict(row))["unexplained_bytes"]==0
+    assert tree.compare(tmp_path,lambda:host,sample=lambda:dict(row))["unexplained_bytes"]==0
     row["partial"]=True
-    assert tree.compare(tmp_path,host,sample=lambda:dict(row))["unexplained_bytes"] is None
+    assert tree.compare(tmp_path,lambda:host,sample=lambda:dict(row))["unexplained_bytes"] is None
+
+
+def test_infrastructure_growth_during_independent_walk_is_not_comparable(tmp_path):
+    (tmp_path/"app").mkdir()
+    system=tmp_path/"system"
+    system.mkdir()
+    log=system/"test.log"
+    log.write_bytes(b"x"*4096)
+    registry={"allocated_bytes":0,"partial":False,"pending_changes":0,"reserved_bytes":0}
+    def host():
+        st=log.stat()
+        return {"partial":False,"physical_fingerprint":str(st.st_blocks),
+                "devices":{str(st.st_dev):{"allocated_bytes":st.st_blocks*512}}}
+    def scan(path):
+        with log.open("ab") as stream:stream.write(b"x"*4096)
+        return tree.measure_tree(path)
+    changing=tree.compare(tmp_path,host,sample=lambda:registry,scan=scan)
+    assert changing["host_delta_bytes"]>0
+    assert not changing["host_stable"] and not changing["comparable"]
+    assert changing["absolute_discrepancy_bytes"] is None
+    stable=tree.compare(tmp_path,host,sample=lambda:registry)
+    assert stable["comparable"] and stable["absolute_discrepancy_bytes"]==0
+    # A real, repeatable undercount must still be reported without tolerance.
+    def wrong():
+        row=host()
+        row["devices"][str(log.stat().st_dev)]["allocated_bytes"]-=4096
+        return row
+    mismatch=tree.compare(tmp_path,wrong,sample=lambda:registry)
+    assert mismatch["comparable"] and mismatch["absolute_discrepancy_bytes"]==4096

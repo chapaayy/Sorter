@@ -1,5 +1,5 @@
 """Bounded protected-host metadata sample. Never scans Docker layers or app files."""
-import json,os,re,stat,subprocess,time
+import hashlib,json,os,re,stat,subprocess,time
 from pathlib import Path
 from datetime import datetime,timezone
 from string import Formatter
@@ -103,6 +103,7 @@ def measure(storage,contract,*,limit=100000,seconds=4,engine=None,include_engine
     categories={};devices={};filesystems={};unknown=[];seen=set()
     journals={name:{"bytes":0,"budget_bytes":n*1024*1024,"partial":False} for name,n in budgets.items()}
     errors=0;partial=False;count=0;wal=0
+    physical_fingerprint=0
     flags=os.O_DIRECTORY|os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC
     def fs(path):
         nonlocal errors
@@ -111,7 +112,11 @@ def measure(storage,contract,*,limit=100000,seconds=4,engine=None,include_engine
         except OSError:errors+=1
     fs(storage/"app")
     def account(key,st):
-        nonlocal wal
+        nonlocal wal,physical_fingerprint
+        # Order-independent evidence of paths, inode identity and allocated blocks.
+        # Same-size in-place writes do not invalidate a physical byte census.
+        item=os.fsencode(key)+b'\x00'+f'{st.st_dev}:{st.st_ino}:{st.st_blocks}:{stat.S_IFMT(st.st_mode)}'.encode('ascii')
+        physical_fingerprint=(physical_fingerprint+int.from_bytes(hashlib.sha256(item).digest(),'big'))%(1<<256)
         category,node_type=next(((name,kind) for _,name,p,kind in rules if p.fullmatch(key)),("unknown","file"))
         service=None
         if key.startswith("logs/"):
@@ -145,7 +150,7 @@ def measure(storage,contract,*,limit=100000,seconds=4,engine=None,include_engine
                                 visit(child,rel,deadline,max_entries,depth+1)
                             finally:os.close(child)
                         else:account(rel,st)
-                    except FileNotFoundError:continue
+                    except FileNotFoundError:partial=True
                     except OSError:errors+=1
         except OSError:errors+=1
     root=os.open(storage,flags)
@@ -175,4 +180,4 @@ def measure(storage,contract,*,limit=100000,seconds=4,engine=None,include_engine
     if engine is None:engine=engine_metrics() if include_engine else {"available":False}
     if engine.get("root"):fs(Path(engine["root"]))
     partial=partial or bool(errors)
-    return {"at":datetime.now(timezone.utc).isoformat(),"categories":categories,"devices":devices,"filesystems":filesystems,"unknown_sample":unknown,"partial":partial,"errors":errors,"postgres_wal_subset_bytes":wal,"docker":engine,"deleted_open":deleted_open(storage) if include_engine else None,"tmpfs":runtime_tmpfs() if include_engine else None,"journals":journals,"basis":"bounded_host_protected_inode_sample; app registry separate"}
+    return {"at":datetime.now(timezone.utc).isoformat(),"categories":categories,"devices":devices,"filesystems":filesystems,"unknown_sample":unknown,"partial":partial,"errors":errors,"physical_fingerprint":f"{physical_fingerprint:064x}","postgres_wal_subset_bytes":wal,"docker":engine,"deleted_open":deleted_open(storage) if include_engine else None,"tmpfs":runtime_tmpfs() if include_engine else None,"journals":journals,"basis":"bounded_host_protected_inode_sample; app registry separate"}

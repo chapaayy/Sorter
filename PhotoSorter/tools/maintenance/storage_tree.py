@@ -110,9 +110,11 @@ def registry_sample():
         return summary
     except (OSError,ValueError,TypeError,subprocess.SubprocessError):return None
 
-def compare(storage,host,*,sample=registry_sample,scan=measure_tree):
+def compare(storage,host_sample,*,sample=registry_sample,scan=measure_tree):
     before=sample()
+    host=host_sample()
     tree=scan(storage)
+    host_after=host_sample()
     after=sample()
     # Capacity from the same filesystem and measurement interval as the tree.
     try:
@@ -127,6 +129,17 @@ def compare(storage,host,*,sample=registry_sample,scan=measure_tree):
     tree["registry_before"]=before
     tree["registry_after"]=after
     tree["host_sampled_at"]=host.get("at")
+    def host_evidence(row):
+        return {"at":row.get("at"),"partial":row.get("partial",True),
+                "allocated_bytes":row.get("devices",{}).get(tree.get("device"),{}).get("allocated_bytes"),
+                "physical_fingerprint":row.get("physical_fingerprint")}
+    tree["host_before"]=host_evidence(host)
+    tree["host_after"]=host_evidence(host_after)
+    host_stable=bool(not host.get("partial",True) and not host_after.get("partial",True)
+                     and host.get("physical_fingerprint") is not None
+                     and host.get("physical_fingerprint")==host_after.get("physical_fingerprint")
+                     and host.get("devices")==host_after.get("devices"))
+    tree["host_stable"]=host_stable
     tree["registry_file_bytes"]=app
     tree["host_file_bytes"]=protected
     unknown=host.get("categories",{}).get("unknown",{})
@@ -135,11 +148,13 @@ def compare(storage,host,*,sample=registry_sample,scan=measure_tree):
     tree["app_delta_bytes"]=tree["app"]["file_bytes"]-app if isinstance(app,int) else None
     tree["host_delta_bytes"]=tree["host"]["file_bytes"]-protected if isinstance(protected,int) else None
     stable=bool(before and after and not before.get("partial",True) and not after.get("partial",True)
+                and not before.get("stale") and not after.get("stale")
+                and not before.get("errors") and not after.get("errors")
                 and isinstance(app,int) and before.get("allocated_bytes")==app
                 and not before.get("pending_changes") and not after.get("pending_changes")
                 and not before.get("reserved_bytes") and not after.get("reserved_bytes"))
     # Even stable snapshots are observational, not a filesystem-wide atomic snapshot.
-    comparable=stable and not tree["partial"] and not host.get("partial",True) and isinstance(protected,int)
+    comparable=stable and host_stable and not tree["partial"] and isinstance(protected,int)
     tree["comparable"]=bool(comparable)
     tree["unexplained_bytes"]=tree["allocated_bytes"]-app-protected-tree["directory_bytes"] if comparable else None
     # Opposite residuals in independent domains must never cancel a discrepancy.

@@ -21,38 +21,43 @@ def request(batch_id, *, only_if_due=False):
     with connect() as db:
         # Same queue gate as creating a job, and per-batch lock as uploading.
         db.execute("SELECT pg_advisory_xact_lock(723409133)")
-        batch=db.execute("SELECT delete_state,download_confirmed_at,delete_after_at FROM batches WHERE id=%s FOR UPDATE",
-                         (batch_id,)).fetchone()
-        if not batch: return {"batch_id":str(batch_id),"state":"not_found"}
-        if only_if_due:
-            # Recheck inside the queue lock: retention may have been disabled.
-            due=db.execute("""SELECT 1 FROM batches WHERE id=%s
-                AND delete_state='active' AND delete_after_at<=now()
-                AND EXISTS (SELECT 1 FROM retention_preferences
-                            WHERE id=1 AND enabled)""",(batch_id,)).fetchone()
-            if not due:return {"batch_id":str(batch_id),"state":"skipped"}
-        if batch["delete_state"]=="transferring":return {"batch_id":str(batch_id),"state":"transferring"}
-        if batch["delete_state"]=="deleted":
-            return {"batch_id":str(batch_id),"state":"deleted"}
-        if batch["delete_state"]=="deleting":
-            return {"batch_id":str(batch_id),"state":"deleting"}
-        db.execute("""UPDATE batches SET delete_state='deleting',
-            delete_after_at=NULL WHERE id=%s""",(batch_id,))
-        db.execute("""UPDATE jobs SET
-            stop_requested=true,
-            status=CASE WHEN status='queued' THEN 'stopped' ELSE 'stopping' END,
-            snapshot=jsonb_set(snapshot,'{status}',
-               to_jsonb(CASE WHEN status='queued' THEN 'stopped' ELSE 'stopping' END)),
-            updated_at=now()
-            WHERE batch_id=%s AND status IN ('queued','running','stopping')""",(batch_id,))
-        db.execute("""UPDATE work_queue w SET state='stopped',finished_at=now()
-            FROM jobs j WHERE w.fo_run_id=j.id AND j.batch_id=%s
-            AND w.state='queued' AND j.status='stopped'""",(batch_id,))
-        db.execute("""UPDATE work_queue SET state='stopped',finished_at=now()
-            WHERE media_batch_id=%s AND state='queued'""",(batch_id,))
-        db.execute("""INSERT INTO cleanup_tasks(batch_id,state,progress) VALUES (%s,'pending',%s)
-            ON CONFLICT(batch_id) DO UPDATE SET state='pending',error=NULL,
-            progress=EXCLUDED.progress,updated_at=now()""",(batch_id,_progress("queued")))
+        return request_locked(db,batch_id,only_if_due=only_if_due)
+
+def request_locked(db,batch_id,*,only_if_due=False):
+    """Caller holds the common FIFO transaction lock; never removes files."""
+    batch=db.execute("SELECT delete_state,download_confirmed_at,delete_after_at FROM batches WHERE id=%s FOR UPDATE",
+                     (batch_id,)).fetchone()
+    if not batch: return {"batch_id":str(batch_id),"state":"not_found"}
+    if only_if_due:
+        # Recheck inside the queue lock: retention may have been disabled.
+        due=db.execute("""SELECT 1 FROM batches WHERE id=%s
+            AND delete_state='active' AND delete_after_at<=now()
+            AND EXISTS (SELECT 1 FROM retention_preferences
+                        WHERE id=1 AND enabled)""",(batch_id,)).fetchone()
+        if not due:return {"batch_id":str(batch_id),"state":"skipped"}
+    if batch["delete_state"]=="transferring":return {"batch_id":str(batch_id),"state":"transferring"}
+    if batch["delete_state"]=="deleted":
+        return {"batch_id":str(batch_id),"state":"deleted"}
+    if batch["delete_state"]=="deleting":
+        return {"batch_id":str(batch_id),"state":"deleting"}
+    db.execute("""UPDATE batches SET delete_state='deleting',
+        delete_after_at=NULL,auto_process_state=CASE WHEN auto_process_state='waiting'
+            THEN 'cancelled' ELSE auto_process_state END WHERE id=%s""",(batch_id,))
+    db.execute("""UPDATE jobs SET
+        stop_requested=true,
+        status=CASE WHEN status='queued' THEN 'stopped' ELSE 'stopping' END,
+        snapshot=jsonb_set(snapshot,'{status}',
+           to_jsonb(CASE WHEN status='queued' THEN 'stopped' ELSE 'stopping' END)),
+        updated_at=now()
+        WHERE batch_id=%s AND status IN ('queued','running','stopping')""",(batch_id,))
+    db.execute("""UPDATE work_queue w SET state='stopped',finished_at=now()
+        FROM jobs j WHERE w.fo_run_id=j.id AND j.batch_id=%s
+        AND w.state='queued' AND j.status='stopped'""",(batch_id,))
+    db.execute("""UPDATE work_queue SET state='stopped',finished_at=now()
+        WHERE media_batch_id=%s AND state='queued'""",(batch_id,))
+    db.execute("""INSERT INTO cleanup_tasks(batch_id,state,progress) VALUES (%s,'pending',%s)
+        ON CONFLICT(batch_id) DO UPDATE SET state='pending',error=NULL,
+        progress=EXCLUDED.progress,updated_at=now()""",(batch_id,_progress("queued")))
     return {"batch_id":str(batch_id),"state":"deleting"}
 
 def get_status(batch_id):

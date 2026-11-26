@@ -193,8 +193,8 @@ def _publish_usage(storage,*,force_check=False):
             # Publishing the operational snapshot and request status can change
             # the protected host files themselves. Sample that same scope again
             # before comparison rather than measuring against our own old report.
-            evidence_host=measure(storage,contract,engine=report["docker"],include_engine=False)
-            report["tree_check"]=compare(storage,evidence_host)
+            report["tree_check"]=compare(storage,lambda:measure(
+                storage,contract,engine=report["docker"],include_engine=False))
         except Exception:
             report["tree_check"]={"finished_at":datetime.now(timezone.utc).isoformat(),"partial":True,"comparable":False,"errors":1}
         report["directory_sample"],report["discrepancy_sample"]=_baseline(previous,report["tree_check"])

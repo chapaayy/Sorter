@@ -451,3 +451,54 @@ def test_account_creation_quota_atomic_and_exact(system,monkeypatch):
         with database.connect() as db:
             assert db.execute("SELECT id FROM users WHERE username=%s",(name,)).fetchone() is None
     assert create('quota0@example.test',gib).status_code==409
+
+
+def test_delete_account_cancels_fifo_before_exclusive_lease_and_preserves_other_owner(system,monkeypatch):
+    from server.db.repositories import work_queue
+    from server.services import operations
+    from server.services.account_activity import lease
+    admin=clients(monkeypatch)
+    alice,a=create_user(admin,'delete-active@example.test')
+    bob,b=create_user(admin,'delete-other@example.test')
+    batches=[create_batch(a,'Running'),create_batch(a,'Queued'),create_batch(b,'Other')]
+    files=[seed_photo(batch,owner)[1] for batch,owner in zip(batches,(alice,alice,bob))]
+    runs=['20261126T180000-'+uuid.uuid4().hex[:12] for _ in batches]
+    with database.connect() as db:
+        db.execute("SELECT pg_advisory_xact_lock(%s)",(work_queue.LOCK,))
+        for batch,run in zip(batches,runs):
+            db.execute("INSERT INTO jobs(id,batch_id,status,snapshot) VALUES(%s,%s,'queued',%s)",
+                       (run,batch,Jsonb({'id':run,'status':'queued'})))
+            work_queue.insert_fo(db,run)
+        db.execute("UPDATE jobs SET status='running',started_at=now() WHERE id=%s",(runs[0],))
+        db.execute("UPDATE work_queue SET state='running',started_at=now() WHERE fo_run_id=%s",(runs[0],))
+    token=operations.start(batches[0],'download')
+    endpoint=f'/api/admin/accounts/{alice}/lifecycle'
+    with lease() as allowed:
+        assert allowed
+        reply=admin.post(endpoint,json={'operation':'delete','confirmation':'delete-active@example.test'})
+        assert reply.status_code==202,reply.text
+        account_lifecycle.run_pending()  # cannot acquire exclusive lease
+        assert a.get('/api/auth/me').status_code==401
+        with database.connect() as db:
+            states={r['id']:r['status'] for r in db.execute("SELECT id,status FROM jobs")}
+            assert states==dict(zip(runs,('stopping','stopped','queued')))
+            assert db.execute("SELECT state FROM work_queue WHERE fo_run_id=%s",(runs[1],)).fetchone()['state']=='stopped'
+        assert cleanup.cleanup_one(batches[0])=='waiting'
+        assert all(path.is_file() for path in files)
+    with database.connect() as db:
+        db.execute("UPDATE jobs SET status='stopped',finished_at=now() WHERE id=%s",(runs[0],))
+        work_queue.finish_fo(db,runs[0],'stopped')
+    assert cleanup.cleanup_one(batches[0])=='waiting'
+    operations.finish(token)
+    for batch in batches[:2]:assert cleanup.cleanup_one(batch)=='completed'
+    settle()
+    with database.connect() as db:db.execute("UPDATE account_lifecycle SET next_attempt=now() WHERE source_id=%s",(alice,))
+    account_lifecycle.run_pending()
+    assert admin.get(endpoint).status_code==404
+    assert not files[0].exists() and not files[1].exists() and files[2].is_file()
+    assert b.get('/api/batches/'+str(batches[2])).status_code==200
+    with database.connect() as db:
+        assert not db.execute("SELECT 1 FROM users WHERE id=%s",(alice,)).fetchone()
+        assert not db.execute("SELECT 1 FROM storage_files WHERE owner_id=%s",(alice,)).fetchone()
+        assert not db.execute("SELECT 1 FROM storage_reservations WHERE owner_id=%s",(alice,)).fetchone()
+        assert db.execute("SELECT state FROM work_queue WHERE fo_run_id=%s",(runs[2],)).fetchone()['state']=='queued'
