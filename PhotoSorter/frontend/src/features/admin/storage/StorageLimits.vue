@@ -11,7 +11,7 @@ import BudgetSummary from './BudgetSummary.vue'
 import {gibValue,parseGib} from './quotaUnits'
 const emit=defineEmits<{(e:'refresh'):void}>()
 const data=ref<StorageLimits|null>(null),loading=ref(false),saving=ref(false),error=ref(''),message=ref('')
-const personal=ref(false),temporary=ref(''),reserve=ref(''),dirty=ref(false)
+const personal=ref(false),temporary=ref<string|number>(''),reserve=ref<string|number>(''),dirty=ref(false)
 function apply(value:StorageLimits){data.value=value;personal.value=value.policy.personal_enabled;temporary.value=gibValue(value.policy.temporary_limit_bytes);reserve.value=gibValue(value.policy.disk_reserve_bytes);dirty.value=false}
 async function refresh(){
  if(loading.value||saving.value)return

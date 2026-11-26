@@ -14,7 +14,7 @@ const props=defineProps<{refreshKey?:number}>()
 const emit=defineEmits<{approved:[]}>()
 const tabs=[{id:'pending',label:'На рассмотрении'},{id:'approved',label:'Одобренные'},{id:'rejected',label:'Отклонённые'}] as const
 const tab=ref<RequestStatus>('pending'),items=ref<AccessRequest[]>([]),more=ref(false)
-const loading=ref(false),busy=ref(false),error=ref('')
+const loading=ref(false),busy=ref(false),error=ref(''),submitError=ref('')
 const selected=ref<{item:AccessRequest;approved:boolean;edit?:boolean}|null>(null)
 const notice=useNoticeStore()
 async function load(append=false){
@@ -34,7 +34,7 @@ function selectTab(status:RequestStatus){
 }
 async function decide(runIds:string[]=[],options:AccountOptions={}){
   if(busy.value||!selected.value)return
-  busy.value=true;error.value=''
+  busy.value=true;error.value='';submitError.value=''
   const {item,approved,edit}=selected.value
   try{
     if(edit)await accessRequests.save(item.id,runIds)
@@ -43,7 +43,7 @@ async function decide(runIds:string[]=[],options:AccountOptions={}){
     if(approved&&!edit)emit('approved')
     notice.add(edit?'Доступ обновлён':approved?'Заявка одобрена':'Заявка отклонена','ok')
     await load()
-  }catch(e){selected.value=null;error.value=errorText(e)}finally{busy.value=false}
+  }catch(e){if(approved)submitError.value=errorText(e);else error.value=errorText(e)}finally{busy.value=false}
 }
 onMounted(()=>{void load()})
 watch(()=>props.refreshKey,()=>{void load()})
@@ -73,8 +73,8 @@ watch(()=>props.refreshKey,()=>{void load()})
     <p v-else-if="!items.length&&!error" class="meta">Заявок пока нет.</p>
     <UiButton v-if="more" small :disabled="loading" @click="load(true)">Показать ещё</UiButton>
   </section>
-  <ApproveAccessDialog v-if="selected?.approved" :configure-account="!selected.edit" :email="selected.item.email" :busy="busy" :load-grants="selected.edit?()=>accessRequests.grants(selected!.item.id):undefined"
-    @approve="decide" @cancel="selected=null"/>
+  <ApproveAccessDialog v-if="selected?.approved" :configure-account="!selected.edit" :email="selected.item.email" :busy="busy" :submit-error="submitError" :load-grants="selected.edit?()=>accessRequests.grants(selected!.item.id):undefined"
+    @approve="decide" @cancel="selected=null;submitError=''"/>
   <ConfirmDialog v-else-if="selected" title="Отклонить заявку?"
     :message="selected.item.email+' не получит доступ к MAP.'"
     confirm-label="Отклонить" :busy="busy" danger @confirm="decide()" @cancel="selected=null"/>

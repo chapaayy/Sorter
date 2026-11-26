@@ -11,7 +11,7 @@ import CategoryTable from './CategoryTable.vue'
 import BudgetSummary from './BudgetSummary.vue'
 import {gibValue,parseGib} from './quotaUnits'
 const props=defineProps<{accountId?:string}>()
-const limit=ref(''),saving=ref(false),saved=ref('')
+const limit=ref<string|number>(''),saving=ref(false),saved=ref('')
 const page=ref<StorageAccountsPage|null>(null),detail=ref<StorageAccountDetail|null>(null),selected=ref(''),loading=ref(false),error=ref('')
 async function load(offset=0){
   if(loading.value)return

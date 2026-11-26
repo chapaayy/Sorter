@@ -12,7 +12,7 @@ import UiButton from '../../../components/ui/UiButton.vue'
 const props=defineProps<{email?:string;busy:boolean;loadGrants?:()=>Promise<{items:PublishedResult[]}>;creating?:boolean;submitError?:string;configureAccount?:boolean}>()
 const emit=defineEmits<{approve:[ids:string[],options?:AccountOptions];create:[payload:NewUser];cancel:[]}>()
 const email=ref(''),password=ref(''),confirmation=ref(''),formError=ref('')
-const roles=ref<Role[]>([]),catalog=ref<Record<string,PermissionInfo>>({}),roleId=ref('observer'),displayName=ref(''),quota=ref(''),overrides=ref<Permissions>({}),rolesReady=ref(false)
+const roles=ref<Role[]>([]),catalog=ref<Record<string,PermissionInfo>>({}),roleId=ref('observer'),displayName=ref(''),quota=ref<string|number>(''),overrides=ref<Permissions>({}),rolesReady=ref(false)
 async function loadRoles(){try{const data=await accountsApi.roles();roles.value=data.items.filter(r=>r.id!=='owner');catalog.value=data.catalog;rolesReady.value=true}catch(e){formError.value=errorText(e)}}
 const items=ref<PublishedResult[]>([]),chosen=ref<string[]>([]),loading=ref(false),more=ref(false),error=ref('')
 const initialized=ref(false),offset=ref(0)
@@ -41,7 +41,7 @@ function submit(){
   const options:AccountOptions={}
   if(props.creating||props.configureAccount){
     if(!rolesReady.value){formError.value='Сначала загрузите роли';return}
-    try{if(roleId.value!=='observer')options.role_id=roleId.value;if(displayName.value.trim())options.display_name=displayName.value.trim();if(quota.value.trim())options.storage_limit_bytes=parseGib(quota.value);if(Object.keys(overrides.value).length)options.overrides=overrides.value}catch(e){formError.value=errorText(e);return}
+    try{if(roleId.value!=='observer')options.role_id=roleId.value;if(displayName.value.trim())options.display_name=displayName.value.trim();const limit=parseGib(quota.value);if(limit!==null)options.storage_limit_bytes=limit;if(Object.keys(overrides.value).length)options.overrides=overrides.value}catch(e){formError.value=errorText(e);return}
   }
   if(!props.creating){emit('approve',chosen.value,options);return}
   if(password.value!==confirmation.value){formError.value='Пароли не совпадают.';return}

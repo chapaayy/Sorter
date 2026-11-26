@@ -15,7 +15,7 @@ const props=defineProps<{refreshKey:number}>()
 const emit=defineEmits<{created:[]}>()
 const creating=ref(false),grantUser=ref<Account|null>(null),submitError=ref('')
 function closeDialog(){creating.value=false;grantUser.value=null;submitError.value=''}
-async function create(payload:NewUser){busy.value=true;submitError.value='';try{await adminUsers.create(payload);closeDialog();emit('created');await load();message.value='Аккаунт создан'}catch(e){submitError.value=errorText(e)}finally{busy.value=false}}
+async function create(payload:NewUser){if(busy.value)return;busy.value=true;submitError.value='';try{await adminUsers.create(payload);closeDialog();emit('created');await load();message.value='Аккаунт создан'}catch(e){submitError.value=errorText(e)}finally{busy.value=false}}
 async function saveGrants(ids:string[]){if(!grantUser.value)return;busy.value=true;submitError.value='';try{await adminUsers.save(grantUser.value.id,ids);closeDialog();message.value='Доступ обновлён'}catch(e){submitError.value=errorText(e)}finally{busy.value=false}}
 const rows=ref<Account[]>([]),stats=ref<{total:number;active:number;blocked:number}|null>(null),more=ref(false),search=ref(''),loading=ref(false),busy=ref(false),error=ref(''),message=ref('')
 const detail=ref<AccountDetail|null>(null),roles=ref<Role[]>([]),catalog=ref<Record<string,PermissionInfo>>({}),name=ref(''),role=ref(''),overrides=ref<Permissions>({}),tab=ref('main'),password=ref('')
