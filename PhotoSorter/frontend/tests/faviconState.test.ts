@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest'
-import {FaviconState,type OwnTask,type OwnWorkStatus} from '../src/utils/faviconState'
+import {FaviconState,combineActivity,type OwnTask,type OwnWorkStatus} from '../src/utils/faviconState'
 const before='2026-11-26T18:00:00Z',after='2026-11-26T18:00:05Z'
 function task(state:OwnTask['state'],run_id='run-a',progress:number|null=null,finished_at:string|null=null):OwnTask{
   return {seq:1,run_id,state,progress,finished_at}
@@ -40,5 +40,21 @@ describe('personal favicon status',()=>{
   it('does not infer success when a run disappears',()=>{
     const f=new FaviconState();f.update(snapshot(task('running')))
     expect(f.update(snapshot())).toEqual({kind:'idle'})
+  })
+})
+
+describe('combined personal operations',()=>{
+  it('prioritizes active sorting over uploads and errors over waiting',()=>{
+    const running={kind:'running',run:'fo',progress:.5} as const
+    expect(combineActivity(running,{kind:'running',run:'upload',progress:.8})).toEqual(running)
+    expect(combineActivity({kind:'queued'},{kind:'error'})).toEqual({kind:'error'})
+    expect(combineActivity({kind:'queued'},{kind:'success'})).toEqual({kind:'queued'})
+  })
+  it('uses real overall progress for media and indeterminate progress for ZIP',()=>{
+    const f=new FaviconState()
+    const zip={...task('running','zip:1'),kind:'zip' as const}
+    const media={...task('running','media:1',40),kind:'media' as const}
+    expect(f.update(snapshot(zip,media))).toEqual({kind:'running',run:'media:1',progress:.4})
+    expect(f.update(snapshot(zip))).toEqual({kind:'running',run:'zip:1',progress:null})
   })
 })

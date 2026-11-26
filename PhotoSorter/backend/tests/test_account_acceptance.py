@@ -326,3 +326,35 @@ def test_personal_favicon_status_never_exposes_other_owners(system,monkeypatch):
     assert a.get(endpoint).json()['tasks'][0]['progress']==55
     assert admin.put(f'/api/admin/accounts/{alice}',json={'display_name':'Alice','role_id':'employee','overrides':{'queue.view':'none'}}).status_code==200
     assert a.get(endpoint).status_code==403
+
+
+def test_extended_personal_activity_is_actor_scoped(system,monkeypatch):
+    from server.services.archive_activity import track
+    admin=clients(monkeypatch)
+    alice,a=create_user(admin,'activity-alice@example.test',overrides={'references.import':'all'})
+    bob,b=create_user(admin,'activity-bob@example.test')
+    batch=create_batch(a,'Media and cleanup')
+    with database.connect() as db:
+        sid,pid=uuid.uuid4(),uuid.uuid4()
+        db.execute("INSERT INTO reference_import_sessions(id,requested_by) VALUES(%s,%s)",(sid,alice))
+        db.execute("INSERT INTO reference_preparation_jobs(id,session_id,total_count,completed_count) VALUES(%s,%s,10,3)",(pid,sid))
+        db.execute("INSERT INTO work_queue(kind,reference_job_id,state) VALUES('reference_preparation',%s,'queued')",(pid,))
+        db.execute("INSERT INTO work_queue(kind,media_batch_id,media_total_count,media_progress_percent,state) VALUES('media_preparation',%s,10,40,'running')",(batch,))
+        db.execute("INSERT INTO cleanup_tasks(batch_id,state) VALUES(%s,'pending')",(batch,))
+    endpoint='/api/activity/own'
+    assert client().get(endpoint).status_code==401
+    with track({'id':alice},'results'):
+        response=a.get(endpoint)
+        assert response.status_code==200,response.text
+        own=response.json()
+        assert own['username']=='activity-alice@example.test'
+        assert own['account_id']==str(alice)
+        assert {x['kind'] for x in own['tasks']}=={'reference','media','cleanup','zip'}
+        assert next(x for x in own['tasks'] if x['kind']=='zip')['state']=='running'
+        assert b.get(endpoint).json()['tasks']==[]
+        assert admin.get(endpoint).json()['tasks']==[]
+    assert next(x for x in a.get(endpoint).json()['tasks'] if x['kind']=='zip')['state']=='completed'
+    with pytest.raises(RuntimeError):
+        with track({'id':alice},'results'):
+            raise RuntimeError('test failure')
+    assert any(x['kind']=='zip' and x['state']=='failed' for x in a.get(endpoint).json()['tasks'])

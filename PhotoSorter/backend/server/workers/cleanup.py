@@ -51,6 +51,8 @@ def run_cycle():
     if removed:logging.info("Removed %s orphaned FO staging directories",len(removed))
     if time.monotonic()>=NEXT_GC:
         NEXT_GC=time.monotonic()+600
+        from ..services.archive_activity import collect_expired
+        collect_expired()
         abandoned=temp_cleanup.reclaim_abandoned(limit=50)+temp_cleanup.reclaim_finalized_parts(limit=50)
         if abandoned:logging.info("Reclaimed %s abandoned upload parts",abandoned)
         refs=reference_gc.collect(limit=50)

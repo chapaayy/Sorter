@@ -31,7 +31,13 @@ const filteredHistory=computed(()=>history.value.filter(item=>(
 // a click on the history button or a failed history request.
 watch([historyMode,filteredHistory],([opened,rows])=>{
   if(opened&&!document.hidden)window.dispatchEvent(new CustomEvent('map:queue-history-viewed',{
-    detail:rows.filter(task=>task.kind==='fo_processing'&&task.fo_run_id).map(task=>task.fo_run_id)
+    detail:rows.flatMap(task=>{
+      if(task.kind==='fo_processing'&&task.fo_run_id)return [task.fo_run_id]
+      if(task.kind==='media_preparation')return ['media:'+task.seq]
+      if(task.kind==='reference_preparation'&&task.reference_job_id)return ['reference:'+task.reference_job_id]
+      if(task.kind==='reference_deletion'&&task.reference_deletion_id)return ['reference-delete:'+task.reference_deletion_id]
+      return []
+    })
   }))
 },{flush:'post'})
 const blocking=computed(()=>active.value.find(hasBlockingFailure))

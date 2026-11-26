@@ -58,7 +58,7 @@ async function mock(page:Page){
       published_references:1,notice:false,pending_changes:0,notice_version_id:null
     })
     if(p==='/api/reference-library/events')return respond(route,{events:[]})
-    if(p==='/api/work-queue/own-status')return respond(route,{account_id:'1',sampled_at:new Date().toISOString(),tasks:[]})
+    if(p==='/api/work-queue/own-status'||p==='/api/activity/own')return respond(route,{account_id:'1',username:'admin',sampled_at:new Date().toISOString(),tasks:[]})
     if(p==='/api/work-queue')return respond(route,{tasks:[],total:0})
     if(p==='/api/references')return respond(route,{sam:[{sam:'SAM-0001',photos:1}],total:1})
     if(p==='/api/references/cache/status')return respond(route,{total:1,cached:1,current_signature:null})
@@ -2201,9 +2201,9 @@ test('login cannot publish a session before server confirms it',async({page})=>{
 test('personal favicon survives navigation and restores the logo on logout',async({page})=>{
   let loggedIn=true,completed=false
   const started='2026-11-26T18:00:00Z'
-  await page.route('**/api/auth/me',route=>loggedIn?respond(route,{id:'1',username:'admin'}):route.fulfill({status:401,json:{detail:'Необходим вход'}}))
+  await page.route('**/api/auth/me',route=>loggedIn?respond(route,{username:'admin'}):route.fulfill({status:401,json:{detail:'Необходим вход'}}))
   await page.route('**/api/auth/logout',route=>{loggedIn=false;return respond(route,{ok:true})})
-  await page.route('**/api/work-queue/own-status',route=>respond(route,{account_id:'1',sampled_at:started,tasks:[
+  await page.route('**/api/activity/own',route=>respond(route,{account_id:'1',username:'admin',sampled_at:started,tasks:[
     {seq:1,run_id:'personal-run',state:completed?'completed':'running',progress:completed?100:55,
       finished_at:completed?'2026-11-26T18:01:00Z':null}
   ]}))

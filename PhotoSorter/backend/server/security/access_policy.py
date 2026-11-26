@@ -22,7 +22,7 @@ def authorize(user, method, path):
     if user["access_role"] == "viewer" and method in ("GET", "HEAD") and VIEWER_READ_ROUTE.fullmatch(path):
         action="results.zip" if path.startswith("/api/download/") else "results.media" if path.startswith("/api/images/") or path.endswith("/photos") else "results.view"
         if level(user,"results.view")!="none" and level(user,action)!="none":return
-    if method=="GET" and path in ("/api/auth/storage","/api/auth/profile"):return
+    if method=="GET" and path in ("/api/auth/storage","/api/auth/profile","/api/activity/own"):return
     from .route_permissions import authorize_route
     return authorize_route(user,method,path)
 

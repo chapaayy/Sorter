@@ -111,10 +111,10 @@ def _signature(rows):
     return hashlib.sha256(json.dumps(payload,ensure_ascii=False,
         separators=(",",":")).encode("utf-8")).hexdigest()
 
-def create(session_id):
+def create(session_id,*,requested_by=None):
     session_id=_uid(session_id)
     with connect() as db:
-        repository.create_session(db,session_id)
+        repository.create_session(db,session_id,requested_by=requested_by)
     return status(session_id)
 
 def compare(files):

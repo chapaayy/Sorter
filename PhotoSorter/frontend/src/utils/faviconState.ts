@@ -1,6 +1,6 @@
 export type OwnTaskState='running'|'stopping'|'queued'|'blocked'|'completed'|'completed_with_errors'|'failed'|'interrupted'|'stopped'
-export interface OwnTask {seq:number;run_id:string;state:OwnTaskState;progress:number|null;finished_at:string|null}
-export interface OwnWorkStatus {account_id:string;sampled_at:string;tasks:OwnTask[]}
+export interface OwnTask {kind?:'fo'|'media'|'reference'|'reference-delete'|'cleanup'|'zip';seq:number;run_id:string;state:OwnTaskState;progress:number|null;finished_at:string|null}
+export interface OwnWorkStatus {account_id:string;username?:string;sampled_at:string;tasks:OwnTask[]}
 export type IconState=
   |{kind:'idle'|'queued'|'paused'|'success'|'error'}
   |{kind:'running';run:string;progress:number|null}
@@ -31,7 +31,7 @@ export class FaviconState {
     const newWork=next.some(task=>!this.observed.has(task.run_id))
     if(newWork){this.success=null;this.paused=null}
     for(const task of next)this.observed.add(task.run_id)
-    for(const task of snapshot.tasks){
+    for(const task of [...snapshot.tasks].sort((a,b)=>Date.parse(a.finished_at||'1970-01-01')-Date.parse(b.finished_at||'1970-01-01'))){
       const outcome=terminal(task)
       if(!outcome||!task.finished_at)continue
       const key=task.run_id+':'+task.state+':'+task.finished_at
@@ -46,7 +46,9 @@ export class FaviconState {
     return this.state()
   }
   state():IconState{
-    const running=this.active.find(task=>task.state==='running')
+    const priority=['fo','media','reference','reference-delete','cleanup','zip']
+    const running=this.active.filter(task=>task.state==='running')
+      .sort((a,b)=>priority.indexOf(a.kind||'fo')-priority.indexOf(b.kind||'fo')||a.seq-b.seq)[0]
     if(running)return {kind:'running',run:running.run_id,progress:progress(running.progress)}
     if(this.error)return {kind:'error'}
     if(this.active.some(task=>task.state==='queued'||task.state==='blocked'))return {kind:'queued'}
@@ -61,4 +63,11 @@ export class FaviconState {
     if(this.success?.run_id===run)this.success=null
     if(this.paused?.run_id===run)this.paused=null
   }
+}
+
+/** Server work takes precedence over browser-local transfers. Never hide active
+ * work with a previous success; an error remains higher priority than waiting. */
+export function combineActivity(server:IconState,local:IconState):IconState{
+  const rank:Record<IconState['kind'],number>={running:5,error:4,queued:3,paused:2,success:1,idle:0}
+  return rank[server.kind]>=rank[local.kind]?server:local
 }

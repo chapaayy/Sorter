@@ -1,8 +1,9 @@
 """SAM gallery cursor endpoints: refs are independent of batch ownership."""
 from __future__ import annotations
-from fastapi import APIRouter,HTTPException
+from fastapi import APIRouter,HTTPException,Request
 from ..file_response import LeasedFileResponse
-from ...services import reference_archives,reference_sides,archive_cache
+from ...services import reference_archives,reference_sides,archive_cache,archive_activity
+from ...security.access_policy import current_user
 from ...storage.reference_lifecycle import ReadPin
 from pydantic import BaseModel,Field
 import uuid
@@ -15,17 +16,19 @@ from ...db.repositories.pagination import page
 router=APIRouter(prefix="/api/references",tags=["references"])
 
 @router.get("/export")
-def export_all_references():
-    pin=archive_cache.pin(reference_archives.export_folder())
+def export_all_references(request:Request=None):
+    pin=None
     try:
-        with ReadPin():
-            plan=reference_archives.current_plan()
-            archive=reference_archives.prepare(plan)
+        with archive_activity.track(current_user(request),"references"):
+            pin=archive_cache.pin(reference_archives.export_folder())
+            with ReadPin():
+                plan=reference_archives.current_plan()
+                archive=reference_archives.prepare(plan)
         return LeasedFileResponse(archive,archive_pin=pin,media_type="application/zip",
             filename=f"Образцы — версия {plan.version}.zip",
             headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
     except BaseException:
-        pin.close()
+        if pin is not None:pin.close()
         raise
 
 class PreviewImport(BaseModel):
@@ -112,9 +115,11 @@ def cache_status():
     return reference_service.cache_status()
 
 @router.delete("/files/{reference_id}")
-def delete_photo(reference_id:str):
-    return reference_service.delete_photo(reference_id)
+def delete_photo(reference_id:str,request:Request=None):
+    user=current_user(request)
+    return reference_service.delete_photo(reference_id,requested_by=user["id"] if user else None)
 
 @router.delete("/sam/{sam}")
-def delete_sam(sam:str):
-    return reference_service.delete(sam)
+def delete_sam(sam:str,request:Request=None):
+    user=current_user(request)
+    return reference_service.delete(sam,requested_by=user["id"] if user else None)

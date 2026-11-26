@@ -81,8 +81,10 @@ def compare(data:Comparison):
     return reference_imports.compare(data.files)
 
 @router.post("",status_code=201)
-def create(data:NewSession):
-    return reference_imports.create(data.client_session_id)
+def create(data:NewSession,request:Request=None):
+    from ...security.access_policy import current_user
+    user=current_user(request)
+    return reference_imports.create(data.client_session_id,requested_by=user["id"] if user else None)
 
 @router.put("/{session_id}/manifest")
 def register(session_id:uuid.UUID,data:Manifest,request:Request=None):

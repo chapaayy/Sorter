@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import uuid
 
-def create_session(db, session_id):
+def create_session(db, session_id, *, requested_by=None):
     db.execute("""
-        INSERT INTO reference_import_sessions(id)
-        VALUES (%s) ON CONFLICT(id) DO NOTHING
-    """,(session_id,))
+        INSERT INTO reference_import_sessions(id,requested_by)
+        VALUES (%s,%s) ON CONFLICT(id) DO NOTHING
+    """,(session_id,requested_by))
 
 def session(db, session_id, *, lock=False):
     return db.execute("""

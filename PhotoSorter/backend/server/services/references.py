@@ -66,7 +66,7 @@ def _has_busy_queue(db):
         LIMIT 1""").fetchone())
 
 
-def _enqueue_delete(db,*,reference_id=None,sam=None):
+def _enqueue_delete(db,*,reference_id=None,sam=None,requested_by=None):
     # Validate against current library now, not only at eventual execution.
     if reference_id is not None:
         exists=db.execute("""SELECT 1 FROM reference_version_members m
@@ -85,30 +85,30 @@ def _enqueue_delete(db,*,reference_id=None,sam=None):
     if duplicate:
         return {"queued":True,"task_id":str(duplicate['id'])}
     task_id=uuid.uuid4()
-    db.execute("""INSERT INTO reference_deletion_tasks(id,reference_id,sam)
-        VALUES (%s,%s,%s)""",(task_id,reference_id,sam))
+    db.execute("""INSERT INTO reference_deletion_tasks(id,reference_id,sam,requested_by)
+        VALUES (%s,%s,%s,%s)""",(task_id,reference_id,sam,requested_by))
     db.execute("""INSERT INTO work_queue(kind,reference_deletion_id,state)
         VALUES ('reference_deletion',%s,'queued')""",(task_id,))
     return {"queued":True,"task_id":str(task_id)}
 
 
-def delete_photo(reference_id):
+def delete_photo(reference_id,*,requested_by=None):
     try:uid=uuid.UUID(str(reference_id))
     except ValueError as exc:raise HTTPException(422,"Неверный ID образца") from exc
     with connect() as db:
         db.execute("SELECT pg_advisory_xact_lock(723409133)")
         if _has_busy_queue(db):
-            return _enqueue_delete(db,reference_id=uid)
+            return _enqueue_delete(db,reference_id=uid,requested_by=requested_by)
         version,count=_edit(db,reference_id=uid)
     return {"deleted":True,"version":version["version_number"],"photos":count}
 
 
-def delete(source):
+def delete(source,*,requested_by=None):
     source=_sam(source)
     with connect() as db:
         db.execute("SELECT pg_advisory_xact_lock(723409133)")
         if _has_busy_queue(db):
-            return _enqueue_delete(db,sam=source)
+            return _enqueue_delete(db,sam=source,requested_by=requested_by)
         version,count=_edit(db,sam=source)
     return {"deleted":True,"sam":source,"photos":count,
             "version":version["version_number"]}

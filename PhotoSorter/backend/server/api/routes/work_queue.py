@@ -73,35 +73,19 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active",request:Reques
 
 @router.get("/work-queue/own-status")
 def own_work_status(request:Request):
-    """Compact favicon snapshot, strictly personal even for an administrator."""
     user=current_user(request)
     if not user:raise HTTPException(401,"Необходим вход")
     from ...security.route_permissions import require
     require(user,"queue.view")
-    with connect() as db:
-        # One statement / snapshot. Only current personal FO runs, never shared
-        # reference tasks or other owners. No file scans, counts or thumbnails.
-        rows=db.execute("""
-            WITH own AS (
-                SELECT w.seq,w.fo_run_id AS run_id,w.finished_at,
-                       CASE WHEN w.state='running' AND j.status='stopping'
-                            THEN 'stopping' ELSE w.state END AS state,
-                       j.snapshot->'progress'->'overall_percent' AS progress,
-                       CASE WHEN w.state IN ('failed','interrupted','completed_with_errors')
-                            THEN 'error' ELSE w.state END AS bucket
-                FROM batches b JOIN jobs j ON j.batch_id=b.id
-                JOIN work_queue w ON w.fo_run_id=j.id
-                WHERE b.owner_id=%s AND b.delete_state='active' AND w.kind='fo_processing'
-                  AND (w.state IN ('running','queued','blocked')
-                       OR w.finished_at >= now()-interval '24 hours')
-            ), latest AS (
-                SELECT DISTINCT ON (bucket) seq,run_id,state,progress,finished_at,bucket
-                FROM own ORDER BY bucket,finished_at DESC NULLS LAST,seq DESC
-            )
-            SELECT statement_timestamp() AS sampled_at,
-                   coalesce((SELECT jsonb_agg(to_jsonb(latest)) FROM latest),'[]'::jsonb) AS tasks
-        """,(user["id"],)).fetchone()
-    return {"account_id":str(user["id"]),"sampled_at":rows["sampled_at"],"tasks":rows["tasks"]}
+    from ...services.personal_activity import snapshot
+    return snapshot(user)
+
+@router.get("/activity/own")
+def own_activity(request:Request):
+    user=current_user(request)
+    if not user:raise HTTPException(401,"Необходим вход")
+    from ...services.personal_activity import snapshot
+    return snapshot(user)
 
 @router.get("/reference-preparations/{job_id}")
 def get_preparation(job_id:uuid.UUID):
