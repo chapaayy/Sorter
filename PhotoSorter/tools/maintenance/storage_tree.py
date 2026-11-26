@@ -104,7 +104,7 @@ def registry_sample():
         if len(ids)!=1 or not re.fullmatch(r"[a-f0-9]{12,64}",ids[0]):return None
         command="import json;from server.storage.accounting import snapshot;print(json.dumps(snapshot()))"
         result=json.loads(subprocess.check_output(["docker","exec",ids[0],"python","-c",command],text=True,timeout=8))
-        summary={k:result.get(k) for k in ("sampled_at","allocated_bytes","partial","pending_changes","reserved_bytes","issues","missing_expected")}
+        summary={k:result.get(k) for k in ("sampled_at","reconciled_at","stale","errors","allocated_bytes","partial","pending_changes","reserved_bytes","issues","missing_expected")}
         unknown=(result.get("categories") or {}).get("unknown",{})
         summary.update(unknown_bytes=unknown.get("allocated_bytes",0),unknown_files=unknown.get("files",0))
         return summary

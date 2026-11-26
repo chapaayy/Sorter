@@ -16,6 +16,7 @@ def _host(name):
 
 def usage():
     data=snapshot();capacity=disk()
+    capacity['sampled_at']=datetime.now(timezone.utc).isoformat()
     groups={key:0 for key in ("photos","results","incoming","thumbnails","reference_thumbnails","references","reference_cache","reference_uploads","models","logs","runs","other")}
     mapping={"originals":"photos","normalized":"photos","results_files":"results","results_zip":"results",
              "results_temporary":"results","references_zip":"results","reference_objects":"references","reference_gallery":"references",
@@ -37,6 +38,7 @@ def usage():
             except (KeyError,TypeError,ValueError):sample_age=None
             sample["sample_age_seconds"]=sample_age
             sample["stale"]=sample_age is None or sample_age>period+600 or sample_age< -60
+    check=_host("storage-check.json")
     journal=_host("log-usage.json")
     journals={"at":journal.get("at"),"services":{name:{"bytes":journal.get("services",{}).get(name,{}).get("bytes"),
                   "budget_bytes":n*1024*1024,"partial":journal.get("services",{}).get(name,{}).get("partial",True)}
@@ -65,7 +67,7 @@ def usage():
         fs["map_allocated_bytes"]=app_bytes+host_bytes if data.get("sampled_at") or host.get("at") else None
         fs["outside_map_or_unexplained_bytes"]=fs["used_bytes"]-fs["map_allocated_bytes"] if fs["map_allocated_bytes"] is not None else None
     groups["logs"]=sum(v.get("allocated_bytes",0) for k,v in host.get("categories",{}).items() if k in ("service_log","run_log","access_log","audit_event"))
-    return {"disk_overview":disk_overview(capacity,host),"journals":journals,"disk":capacity,"filesystems":devices,"categories_bytes":groups,
+    return {"disk_overview":disk_overview(capacity,host,data),"independent_check":check or None,"journals":journals,"disk":capacity,"filesystems":devices,"categories_bytes":groups,
       "registry":data,"host":host or None,"database_estimated_bytes":db_size,"postgres_diagnostics":pg,
       "not_scanned":["Docker shared layers and system files not assigned to MAP","Directory/filesystem metadata","Unlinked-open files are sampled separately"],
       "counting":"registry_physical_inode_deduplicated"}

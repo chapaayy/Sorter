@@ -47,7 +47,7 @@ def test_non_owner_cannot_reach_host_socket(monkeypatch):
         raise AssertionError("A viewer must not open the socket")
     monkeypatch.setattr(api.socket,"socket",blocked)
     request=SimpleNamespace(state=SimpleNamespace(user={"username":"viewer","access_role":"viewer"}))
-    for command in ("status","check","update","storage-cache","storage-logs"):
+    for command in ("status","check","update","storage-cache","storage-logs","storage-check"):
         with pytest.raises(HTTPException) as error:
             api.request_host(request,command)
         assert error.value.status_code==403

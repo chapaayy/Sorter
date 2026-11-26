@@ -41,7 +41,7 @@ usePolling(refresh,15000)
         <button class="btn secondary diagnostics-toggle" :aria-expanded="diagnostics" @click="diagnostics=!diagnostics">Диагностика хранилища <span aria-hidden="true">{{diagnostics?'−':'+'}}</span></button>
         <template v-if="diagnostics">
           <div class="row wrap meta"><span>Измерение: {{date(usage?.registry?.sampled_at)}}</span></div>
-          <StorageControl :usage="usage" :failed="!!error"/>
+          <StorageControl :usage="usage" :failed="!!error" @refresh="refresh"/>
           <StorageTechnical v-if="usage" :usage="usage"/>
           <StorageDiagnostics :usage="usage" @refresh="refresh"/>
         </template>

@@ -12,6 +12,7 @@ export const systemApi={
   storageAccount:(id:string,offset=0)=>api<StorageAccountDetail>('/storage/accounts/'+encodeURIComponent(id)+'?offset='+offset),
   storageOperations:()=>api<StorageOperations>('/storage/operations'),
   storageIssues:(offset=0)=>api<StorageIssues>('/storage/accounting/issues?limit=50&offset='+offset),
+  independentCheck:()=>post<NonNullable<StorageUsage['independent_check']>>('/storage/independent-check',{}),
   reconcile:()=>post<{requested_at:string}>('/storage/reconcile',{}),
   maintenance:()=>api<StorageMaintenance[]>('/storage/maintenance'),
   maintenancePreview:(kind:MaintenanceKind)=>api<StoragePreview>('/storage/maintenance/'+kind+'/preview'),

@@ -205,6 +205,7 @@ if [[ "$(id -u)" == 0 && "${CI:-}" != true && "${GITHUB_ACTIONS:-}" != true ]] &
     python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)" --storage-root "$MAP_STORAGE_ROOT"
   fi
   "${COMPOSE[@]}" up -d --no-build --wait --wait-timeout 180
+  python3 /usr/local/lib/map-updater/host_logs.py "$MAP_STORAGE_ROOT" --request-check
   if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
     systemctl restart map-updater.service
   fi

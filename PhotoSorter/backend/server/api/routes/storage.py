@@ -97,6 +97,12 @@ def host_maintenance_start(request:Request,kind:str,payload:MaintenanceConfirmat
     from .updater import request_host
     return request_host(request,kind)
 
+@router.post("/independent-check",status_code=202)
+def independent_check(request:Request):
+    require_owner(request)
+    from .updater import request_host
+    return request_host(request,"storage-check")
+
 @router.get("/usage")
 def storage_usage():return usage()
 

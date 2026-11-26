@@ -1,8 +1,20 @@
 <script setup lang="ts">
-import {computed} from 'vue'
+import {computed,ref,watch} from 'vue'
+import {systemApi} from '../../../api/system'
+import {errorText} from '../../../utils/format'
+import UiButton from '../../../components/ui/UiButton.vue'
 import {bytes,date} from '../../../utils/format'
 import type {StorageUsage,PhysicalTreeBucket,RootDiskSample} from '../../../types/api'
 const props=defineProps<{usage:StorageUsage|null;failed?:boolean}>()
+const emit=defineEmits<{(e:'refresh'):void}>()
+const requesting=ref(false),requestError=ref(''),accepted=ref(false)
+const checking=computed(()=>['queued','running','retry'].includes(props.usage?.independent_check?.state||''))
+watch(()=>props.usage?.independent_check?.state,state=>{if(state)accepted.value=false})
+async function check(){
+  requesting.value=true;requestError.value='';accepted.value=false
+  try{await systemApi.independentCheck();accepted.value=true;emit('refresh')}
+  catch(e){requestError.value=errorText(e)}finally{requesting.value=false}
+}
 const tree=computed(()=>props.usage?.host?.tree_check)
 const disk=computed(()=>props.usage?.host?.disk_check)
 const history=computed(()=>[...(props.usage?.host?.tree_history||[])].reverse())
@@ -22,11 +34,14 @@ const diskRows=computed(()=>Object.entries(names).flatMap(([key,label])=>{
 <template>
   <div class="stack control">
     <section class="panel stack">
-      <h2>Побайтовый контроль MAP</h2>
+      <div class="row between wrap"><h2>Побайтовый контроль MAP</h2><UiButton :loading="requesting" :disabled="checking" @click="check">Проверить учёт</UiButton></div>
+      <p v-if="checking" class="meta" role="status">{{usage?.independent_check?.state==='retry'?usage.independent_check.detail:'Проверка учёта…'}}</p>
+      <p v-else-if="accepted" class="meta" role="status">Запрос принят фоновой службой.</p>
+      <p v-if="requestError" class="alert error" role="alert">{{requestError}}</p>
       <p class="meta">Независимый обход storage/ с физическими блоками каталогов. Замер раз в час; неполный повторяется через 5 минут. Это не атомарный снимок работающей файловой системы.</p>
       <p v-if="!tree" class="meta">Ожидаем первый независимый замер.</p>
       <template v-else>
-        <p v-if="!complete" class="alert warning" role="status">Нет сопоставимого актуального замера. Нули и 100% не подставляются.</p>
+        <p v-if="!complete" :class="checking&&!tree.errors?'meta':'alert warning'" role="status">Нет сопоставимого актуального замера. Нули и 100% не подставляются.</p>
         <p v-else-if="tree.absolute_discrepancy_bytes!==0" class="alert warning" role="status">Обнаружено расхождение физических байтов.</p>
         <p v-else class="meta" role="status">Последний сопоставимый замер: расхождение 0 байт.</p>
         <p v-if="complete&&tree.absolute_discrepancy_bytes===0" class="meta">100% совпадение физических байтов по этому замеру.</p>

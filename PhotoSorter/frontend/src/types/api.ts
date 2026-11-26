@@ -156,10 +156,13 @@ export interface StorageHost {
 export interface DiskOverview {
   total_bytes:number;used_bytes:number;available_bytes:number;free_bytes:number
   map_bytes:number|null;system_bytes:number|null;sampled_at:string|null
+  directory_bytes?:number|null;directory_sampled_at?:string|null;adjustment_bytes?:number|null;adjustment_sampled_at?:string|null
+  registry_sampled_at?:string|null;host_sampled_at?:string|null;estimated?:boolean;preliminary?:boolean
   system_details?:{sampled_at:string;system_bytes:number|null;categories:Record<string,number|null>;remaining_bytes:number|null;partial:boolean}|null
 }
 export interface StorageUsage {
   disk_overview?:DiskOverview
+  independent_check?:{state:string;requested_at?:string;started_at?:string;finished_at?:string;detail?:string|null}|null
   disk:StorageCapacity & {device?:number;used_fraction:number;reserved_bytes?:number;operation_reserved_bytes?:number;allocatable_bytes?:number;warning?:'warning'|'critical'|null}
   filesystems?:Record<string,StorageCapacity>;categories_bytes:Record<string,number>
   registry?:StorageRegistry;host?:StorageHost|null;database_estimated_bytes?:number|null

@@ -9,8 +9,11 @@ const registry=computed(()=>props.usage.registry)
 const host=computed(()=>props.usage.host)
 const tree=computed(()=>host.value?.tree_check)
 const disk=computed(()=>props.usage.disk_overview??{...props.usage.disk,free_bytes:props.usage.disk.total_bytes-props.usage.disk.used_bytes,map_bytes:null,system_bytes:null,sampled_at:null,system_details:null})
-const split=computed(()=>!props.failed&&disk.value.map_bytes!==null&&disk.value.system_bytes!==null)
-const verified=computed(()=>split.value&&!host.value?.partial&&!host.value?.stale&&!tree.value?.partial&&!tree.value?.stale&&tree.value?.comparable&&tree.value.absolute_discrepancy_bytes===0&&!registry.value?.stale&&!registry.value?.partial&&!registry.value?.pending_changes&&!registry.value?.errors&&!registry.value?.missing_expected&&!registry.value?.cross_owner_inode_conflicts&&!tree.value?.unknown_files&&!Object.values(registry.value?.issues||{}).some(n=>n>0))
+const split=computed(()=>disk.value.map_bytes!==null&&disk.value.system_bytes!==null)
+const checking=computed(()=>['queued','running'].includes(props.usage.independent_check?.state||''))
+const lastComparable=computed(()=>tree.value?.comparable?tree.value:[...(host.value?.tree_history||[])].reverse().find(r=>r.comparable))
+const discrepancy=computed(()=>lastComparable.value?.absolute_discrepancy_bytes)
+const realIssue=computed(()=>!!discrepancy.value||!!registry.value?.errors||!!registry.value?.missing_expected||!!registry.value?.cross_owner_inode_conflicts||!!tree.value?.unknown_files||!!host.value?.unknown_sample?.length||Object.values(registry.value?.issues||{}).some(n=>n>0))
 const categories=computed(()=>{
   const all:Record<string,StorageCounter>={...registry.value?.categories}
   for(const [key,row] of Object.entries(host.value?.categories||{})){
@@ -19,11 +22,11 @@ const categories=computed(()=>{
   }
   return all
 })
-const categoryReady=computed(()=>!!registry.value?.sampled_at&&!registry.value.partial&&!registry.value.stale&&!!host.value?.at&&!host.value.partial&&!host.value.stale&&Object.keys(registry.value.devices||{}).every(k=>k===String(props.usage.disk.device))&&Object.keys(host.value.devices||{}).every(k=>k===String(props.usage.disk.device)))
+const categoryReady=computed(()=>!!registry.value?.sampled_at&&!registry.value.stale&&!!host.value?.at&&!host.value.partial&&!host.value.stale&&Object.keys(registry.value.devices||{}).every(k=>k===String(props.usage.disk.device))&&Object.keys(host.value.devices||{}).every(k=>k===String(props.usage.disk.device)))
 const groupTotals=computed(()=>groups.map(g=>({...g,value:g.keys.reduce((n,k)=>n+(categories.value[k]?.allocated_bytes||0),0)})))
 const remainder=computed(()=>Object.keys(categories.value).filter(k=>!groups.some(g=>g.keys.includes(k))))
-const categoryTotal=computed(()=>Object.values(categories.value).reduce((n,r)=>n+r.allocated_bytes,0))
-const difference=computed(()=>split.value&&categoryReady.value&&tree.value?.directory_bytes!=null?disk.value.map_bytes!-categoryTotal.value-tree.value.directory_bytes:null)
+const adjustment=computed(()=>props.usage.disk_overview?.adjustment_bytes)
+const directories=computed(()=>props.usage.disk_overview?.directory_bytes)
 const pct=(n:number)=>disk.value.total_bytes>0?Math.max(0,Math.min(100,n/disk.value.total_bytes*100)):0
 const signed=(n:number)=> (n<0?'−':'+')+bytes(Math.abs(n))
 const systemNames:Record<string,string>={docker_engine:'Docker',containerd_default:'containerd',system_logs:'Системные журналы'}
@@ -44,10 +47,10 @@ const systemNames:Record<string,string>={docker_engine:'Docker',containerd_defau
       <span v-else class="seg unknown" :style="{width:pct(disk.used_bytes)+'%'}"/>
       <span class="seg free" :style="{width:pct(disk.free_bytes)+'%'}"/>
     </div>
-    <p class="meta">{{disk.sampled_at?'Замер диска и MAP: '+date(disk.sampled_at)+' (не атомарный снимок).':'Текущий счётчик диска; согласованная разбивка пока недоступна.'}}</p>
-    <p v-if="!verified" class="alert warning" role="status">{{registry?.stale?'Данные устарели. ':''}}{{tree?.absolute_discrepancy_bytes? 'Расхождение учёта MAP по последней сверке: '+bytes(tree.absolute_discrepancy_bytes)+'.':'Учёт MAP не подтверждён актуальной полной сверкой.'}}<template v-if="!split"> Занятая область пока не разделена на систему и MAP.</template></p>
-    <p v-else class="meta" role="status">Учёт MAP: расхождение 0 байт по последней сверке.</p>
-    <p v-if="difference!==null&&difference!==0" class="alert warning" role="status">Категории MAP не совпадают с независимым замером: {{signed(difference)}}.</p>
+    <p class="meta">Оперативные показатели: {{date(disk.sampled_at)}}<template v-if="split"> · оценка</template><template v-if="failed||registry?.stale||host?.stale"> · данные устарели</template><template v-if="!split"> · разбивка пока недоступна</template></p>
+    <p class="meta" role="status">Последняя независимая сверка: {{date(tree?.finished_at)}}<template v-if="tree?.comparable&&tree.absolute_discrepancy_bytes!=null"> · расхождение {{bytes(tree.absolute_discrepancy_bytes)}}</template><template v-else-if="tree?.finished_at"> · неполный замер</template><template v-if="checking"> · Проверка учёта…</template></p>
+    <p v-if="realIssue" class="alert warning" role="status">{{discrepancy?'Расхождение учёта MAP по последней сопоставимой сверке: '+bytes(discrepancy)+'.':'Обнаружены проблемы учёта MAP. Подробности в диагностике.'}}</p>
+    <p v-if="usage.independent_check?.state==='retry'" :class="tree?.errors?'alert warning':'meta'" role="status">{{usage.independent_check.detail||'Проверка будет повторена автоматически.'}}</p>
     <p v-if="usage.disk.warning" class="alert warning" role="status">Мало свободного места на диске.</p>
     <details class="category">
       <summary><span><i class="system"/>Система</span><strong>{{bytes(split?disk.system_bytes:null)}}</strong></summary>
@@ -68,9 +71,10 @@ const systemNames:Record<string,string>={docker_engine:'Docker',containerd_defau
         <CategoryTable :categories="categories" :keys="g.keys" :unavailable="!categoryReady"/>
       </details>
       <details v-if="remainder.length" class="sub"><summary><span>Прочие и неизвестные категории</span><strong>{{bytes(remainder.reduce((n,k)=>n+(categories[k]?.allocated_bytes||0),0))}}</strong></summary><CategoryTable :categories="categories" :keys="remainder"/></details>
-      <div class="row between wrap"><span>Блоки каталогов</span><strong>{{bytes(split?tree?.directory_bytes:null)}}</strong></div>
-      <div v-if="difference!==null&&difference!==0" class="row between wrap"><span>Разница между замерами и категориями</span><strong>{{signed(difference)}}</strong></div>
-      <p v-if="difference===null" class="meta">Сумма категорий не подтверждена независимым замером.</p>
+      <div class="row between wrap"><span>Блоки каталогов</span><strong>{{bytes(directories)}}</strong></div>
+      <p class="meta">Блоки каталогов — последний измеренный объём: {{date(usage.disk_overview?.directory_sampled_at)}}.</p>
+      <div v-if="adjustment!=null&&adjustment!==0" class="row between wrap"><span>Поправка по последней независимой сверке</span><strong>{{signed(adjustment)}}</strong></div>
+      <p v-if="usage.disk_overview?.preliminary" class="meta">Оперативная оценка может измениться после сверки. Неизмеренные блоки каталогов не подставляются выдуманным значением.</p>
       <p v-if="tree?.absolute_discrepancy_bytes" class="alert warning">Расхождение независимой сверки: {{bytes(tree.absolute_discrepancy_bytes)}}. Не входит в систему.</p>
     </details>
     <details class="category">

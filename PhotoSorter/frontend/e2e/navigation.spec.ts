@@ -1944,7 +1944,7 @@ test('storage center uses registry, drills into accounts and paginates reports',
   let storage=page.getByRole('region',{name:'Хранилище'})
   await expect(storage.getByRole('heading',{name:'Объём хранилища'})).toBeVisible()
   await expect(storage.getByRole('img',{name:'Распределение места на диске'})).toBeVisible()
-  await expect(storage.getByText('Учёт MAP: расхождение 0 байт по последней сверке.')).toBeVisible()
+  await expect(storage.getByText(/Последняя независимая сверка:.*расхождение 0 Б/)).toBeVisible()
   await expect(storage.getByRole('button',{name:/Диагностика хранилища/})).toHaveAttribute('aria-expanded','false')
   await storage.locator('summary').filter({hasText:/^MAP/}).click()
   await storage.getByRole('button',{name:/Диагностика хранилища/}).click()
@@ -2006,7 +2006,7 @@ test('storage empty and unmeasured states never fabricate capacity or history',a
   await page.route('**/api/storage/usage',route=>respond(route,{...storageFixture(),disk_overview:undefined,registry:{sampled_at:null,reconciled_at:null,partial:true,stale:true,pending_changes:0,errors:0},host:null}))
   await page.goto('/admin')
   let storage=page.getByRole('region',{name:'Хранилище'})
-  await expect(storage.getByText(/согласованная разбивка пока недоступна/)).toBeVisible()
+  await expect(storage.getByText(/разбивка пока недоступна/)).toBeVisible()
   await expect(storage.locator('.disk-bar .map')).toHaveCount(0)
   await storage.getByRole('button',{name:/Диагностика хранилища/}).click()
   await expect(storage.getByText('Сведения Docker пока недоступны.')).toBeVisible()
@@ -2122,4 +2122,32 @@ test('storage control shows exact independent bytes and never claims incomplete 
   await expect(storage.getByText('Нет сопоставимого актуального замера. Нули и 100% не подставляются.')).toBeVisible()
   await expect(storage.getByText('Последний сопоставимый замер: расхождение 0 байт.')).toHaveCount(0)
   expect(await storage.evaluate(el=>el.scrollWidth<=el.clientWidth+2)).toBeTruthy()
+})
+
+test('independent storage check is distinct from live refresh and preserves the bar',async({page})=>{
+  let requested=0,reads=0
+  const stamp='2026-11-25T00:00:00Z'
+  await page.route('**/api/storage/usage',route=>{
+    reads++
+    const data=storageFixture()
+    const delta=reads>1?50000000:0
+    return respond(route,{...data,disk_overview:{...data.disk_overview,map_bytes:350000000+delta,
+      used_bytes:4000000000+delta,free_bytes:6000000000-delta,sampled_at:stamp},
+      independent_check:requested?{state:'running',started_at:stamp}:null})
+  })
+  await page.route('**/api/storage/independent-check',route=>{requested++;return respond(route,{state:'queued',requested_at:stamp})})
+  await page.goto('/admin')
+  const storage=page.getByRole('region',{name:'Хранилище'})
+  const map=storage.locator('.disk-bar .map')
+  await expect(map).toBeVisible()
+  await storage.getByRole('button',{name:'Обновить показатели'}).click()
+  await expect(map).toHaveAttribute('style',/width: 4%/)
+  expect(requested).toBe(0)
+  await storage.getByRole('button',{name:/Диагностика хранилища/}).click()
+  const check=storage.getByRole('button',{name:'Проверить учёт'})
+  await check.click()
+  await expect(check).toBeDisabled()
+  await expect(storage.getByText(/Проверка учёта…/).first()).toBeVisible()
+  await expect(map).toBeVisible()
+  expect(requested).toBe(1)
 })

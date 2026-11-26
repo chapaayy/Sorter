@@ -324,6 +324,9 @@ class Updater:
         with self.mutex:
             if self.state.get("busy") or MARKER.exists():
                 return {"rejected":True,"detail":"Обновление уже выполняется или требуется восстановление"}
+            if command=="storage-check":
+                from host_logs import request_check
+                return request_check(STORAGE)
             if command in ("storage-cache","storage-logs"):
                 self.state.update(busy=True,storage_action={"kind":command,"state":"running","started_at":now()},
                                   updated_at=now())
@@ -607,7 +610,7 @@ class Handler(socketserver.StreamRequestHandler):
             return
         try:
             line=self.rfile.readline(32)
-            if line not in (b"status\n",b"check\n",b"update\n",b"storage-cache\n",b"storage-logs\n"):
+            if line not in (b"status\n",b"check\n",b"update\n",b"storage-cache\n",b"storage-logs\n",b"storage-check\n"):
                 return
             result=self.server.updater.dispatch(line.decode().strip())
             self.wfile.write((json.dumps(result,ensure_ascii=False)+"\n").encode())
