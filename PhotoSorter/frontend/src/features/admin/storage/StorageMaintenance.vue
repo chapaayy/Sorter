@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../../stores/session'
+const session=useSessionStore()
 import {computed,onMounted,ref} from 'vue'
 import {systemApi} from '../../../api/system'
 import {bytes,date,errorText} from '../../../utils/format'
@@ -31,7 +33,7 @@ const message=computed(()=>{
  return estimate+' Снимок: '+date(row.sampled_at)+(row.partial?' (неполный).':'.')+' Это предварительная оценка, не обещание освободить указанное место. '+(row.kind==='storage-cache'?'Приложение будет временно остановлено. При активной работе или отсутствии необходимых гарантий очистка отменится.':'Перед удалением повторно проверяются правила и блокировки.')
 })
 async function refresh(){
- if(loading.value||busy.value)return
+ if(loading.value||busy.value||!session.can('storage.maintenance'))return
  loading.value=true
  try{
   const previous=statuses.value
@@ -41,6 +43,7 @@ async function refresh(){
  }catch(e){error.value=errorText(e)}
  try{
   const previous=host.value?.storage_action
+  if(!session.can('system.update_status'))return
   host.value=await systemApi.updateStatus()
   hostError.value=''
   if(host.value.storage_action?.state==='completed'&&previous?.finished_at!==host.value.storage_action.finished_at)emit('refresh')
@@ -66,7 +69,7 @@ usePolling(refresh,5000)
 </script>
 <template>
 <div class="stack">
- <section class="panel stack">
+ <section v-if="session.can('storage.maintenance')" class="panel stack">
   <div class="row between wrap"><h2>Безопасное обслуживание</h2><UiButton :loading="loading" @click="refresh">Обновить состояние</UiButton></div>
   <p class="meta">Операции идут по действующим правилам. Перед удалением проверяются зависимости и блокировки. Неизвестные файлы, оригиналы, постоянные эмбеддинги и рабочая модель защищены.</p>
   <p v-if="error" role="alert" class="alert error">{{error}}</p>
@@ -75,7 +78,7 @@ usePolling(refresh,5000)
    <p class="meta">{{action.description}}</p>
    <p v-if="state(action.kind)" role="status" class="meta">{{names[state(action.kind)!.state]}} · {{date(state(action.kind)?.finished_at||state(action.kind)?.requested_at)}}<template v-if="state(action.kind)?.removed!=null"> · обработано объектов: {{state(action.kind)?.removed}}</template><template v-if="state(action.kind)?.available_delta_bytes!=null"> · изменение свободного места: {{signed(state(action.kind)!.available_delta_bytes!)}}</template></p>
   </div>
-  <details><summary>Технический кэш и закрытые журналы</summary>
+  <details v-if="session.can('system.update_status')"><summary>Технический кэш и закрытые журналы</summary>
    <p v-if="!hostReady" class="meta">{{hostError?'Хостовая служба временно недоступна.':host?.busy?'Хостовая операция выполняется.':host?.phase==='recovery_required'?'Требуется восстановление сервисов.':'Хостовое обслуживание недоступно.'}}</p>
    <div v-for="action in hostActions" :key="action.kind" class="stack action">
     <div class="row between wrap"><h3>{{action.title}}</h3><UiButton :disabled="!hostReady||busy||loading" @click="inspect(action.kind)">Предпросмотр: {{action.title}}</UiButton></div>
@@ -85,7 +88,7 @@ usePolling(refresh,5000)
   </details>
   <p class="meta">Изменение свободного места — наблюдение до/после, включая параллельные записи, а не гарантированно освобождённые байты.</p>
  </section>
- <StorageSettings/>
+ <StorageSettings v-if="session.can('system.retention_view')"/>
  <ConfirmDialog v-if="preview" title="Подтвердить безопасную очистку" :message="message" confirm-label="Запустить очистку" :busy="busy" @cancel="preview=null" @confirm="execute"/>
 </div>
 </template>

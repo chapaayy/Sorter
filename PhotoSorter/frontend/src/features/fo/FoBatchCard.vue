@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
 import {computed} from 'vue'
 import type {Batch} from '../../types/api'
 import type {TaskEstimate} from '../../utils/queueEstimates'
@@ -17,6 +18,8 @@ const emit=defineEmits<{
   (e:'cancelAuto',batchId:string):void
   (e:'showUploads'):void
 }>()
+const session=useSessionStore()
+const allowed=(key:string)=>session.can(key,props.batch.owner_id)
 const state=computed(()=>batchProcessing(props.batch))
 const run=computed(()=>state.value.run)
 const timing=computed(()=>{
@@ -84,7 +87,7 @@ const stage=computed(()=>{
 <template>
 <CompactTaskCard :number="position" :title="batch.display_name"
   :aria-label="'Фотоотчёт '+batch.display_name"
-  :thumbnail-url="batch.cover_thumbnail_url"
+  :thumbnail-url="allowed('photos.media')?batch.cover_thumbnail_url:undefined"
   :status="removal.failed?'Ошибка удаления':removal.deleting?'Удаляется':transfer?uploadStatusLabel(transfer.status):state.label"
   :tone="statusTone" :progress="progress" :stage="stage" :indeterminate="removal.inProgress"
   :progress-motion-key="!transfer&&!removal.deleting&&!removal.failed&&run?.status==='running'?run.id:null"
@@ -104,27 +107,27 @@ const stage=computed(()=>{
   </template>
   <template #actions>
     <button v-if="transfer" type="button" class="task-card-action" @click="emit('showUploads')">Ход загрузки</button>
-    <button v-else-if="state.canStop&&run" type="button" class="task-card-action"
+    <button v-else-if="state.canStop&&run&&allowed('queue.stop')&&allowed('queue.view')" type="button" class="task-card-action"
       :disabled="busy" :title="run.status==='queued'?'Убрать из очереди':'Остановить обработку'"
       :aria-label="run.status==='queued'?'Убрать из очереди':'Остановить обработку'"
       @click="emit('stop',run.id)">■</button>
-    <button v-else-if="state.canStart&&(batch.runs??0)===0" type="button" class="task-card-action task-card-action-primary"
+    <button v-else-if="state.canStart&&(batch.runs??0)===0&&allowed('photos.process')" type="button" class="task-card-action task-card-action-primary"
       :disabled="busy" @click="emit('start',batch.batch_id,batchThreshold(batch))">
       Обработать
     </button>
-    <RouterLink v-else-if="state.resultId" class="task-card-action task-card-action-primary"
+    <RouterLink v-else-if="state.resultId&&session.canResults" class="task-card-action task-card-action-primary"
       :to="'/results/'+state.resultId">Результат</RouterLink>
     <RouterLink v-else class="task-card-action" :to="'/fo/'+batch.batch_id">Открыть</RouterLink>
   </template>
   <template #menu>
     <RouterLink :to="'/fo/'+batch.batch_id">Открыть фотографии</RouterLink>
-    <RouterLink v-if="run" :to="'/queue/runs/'+run.id">Ход обработки</RouterLink>
-    <RouterLink v-if="state.resultId" :to="'/results/'+state.resultId">
+    <RouterLink v-if="run&&allowed('queue.detail')&&allowed('queue.view')" :to="'/queue/runs/'+run.id">Ход обработки</RouterLink>
+    <RouterLink v-if="state.resultId&&session.canResults" :to="'/results/'+state.resultId">
       {{run?.id===state.resultId?'Открыть результаты':'Прошлые результаты'}}
     </RouterLink>
-    <button v-if="state.canStart&&!transfer&&(batch.runs??0)>0" type="button" :disabled="busy"
+    <button v-if="allowed('photos.process')&&state.canStart&&!transfer&&(batch.runs??0)>0" type="button" :disabled="busy"
       @click="emit('start',batch.batch_id,batchThreshold(batch))">Повторить обработку</button>
-    <button v-if="state.canCancelAuto&&!transfer" type="button" :disabled="busy"
+    <button v-if="allowed('photos.auto')&&state.canCancelAuto&&!transfer" type="button" :disabled="busy"
       @click="emit('cancelAuto',batch.batch_id)">Отменить автозапуск</button>
   </template>
 </CompactTaskCard>

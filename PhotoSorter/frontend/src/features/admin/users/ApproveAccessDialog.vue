@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../../stores/session'
+const session=useSessionStore()
 import {onMounted,onUnmounted,ref} from 'vue'
 import {resultApi,type PublishedResult} from '../../../api/results'
 import type { NewUser,AccountOptions } from '../../../api/adminUsers'
@@ -25,6 +27,7 @@ async function load(){
       chosen.value=data.items.map(item=>item.id)
       items.value=data.items
     }
+    if(!session.can('accounts.grants')||!session.can('results.view')){initialized.value=true;return}
     const data=await resultApi.catalog(30,offset.value)
     offset.value+=data.items.length
     const existing=new Set(items.value.map(item=>item.id))
@@ -78,8 +81,8 @@ onUnmounted(()=>{
       <div v-if="(creating||configureAccount)&&rolesReady" class="stack">
         <label class="field">Имя<input v-model="displayName" maxlength="120" :disabled="busy"/></label>
         <label class="field">Роль<select v-model="roleId" :disabled="busy"><option v-for="r in roles" :key="r.id" :value="r.id">{{r.name}}</option></select></label>
-        <label class="field">Личная квота, ГиБ (пусто — без ограничения)<input v-model="quota" type="number" min="0" step="any" :disabled="busy"/></label>
-        <details><summary>Индивидуальные разрешения</summary><PermissionEditor v-model="overrides" :catalog="catalog" :inherited="roles.find(r=>r.id===roleId)?.permissions||{}" :disabled="busy"/></details>
+        <label v-if="session.can('accounts.quota')" class="field">Личная квота, ГиБ (пусто — без ограничения)<input v-model="quota" type="number" min="0" step="any" :disabled="busy"/></label>
+        <details v-if="session.can('accounts.overrides')"><summary>Индивидуальные разрешения</summary><PermissionEditor v-model="overrides" :catalog="catalog" :inherited="roles.find(r=>r.id===roleId)?.permissions||{}" :disabled="busy"/></details>
       </div>
       <button v-else-if="creating||configureAccount" type="button" class="btn small" @click="loadRoles">Загрузить роли</button>
       <p v-if="submitError||formError" class="alert error" role="alert">{{formError||submitError}}</p>

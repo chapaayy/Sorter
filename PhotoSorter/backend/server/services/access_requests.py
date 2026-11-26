@@ -53,10 +53,13 @@ def available_results(db, run_ids):
     return chosen
 
 
-def decide(request_id, approved, run_ids=(), *, role_id='observer',display_name='',storage_limit_bytes=None,overrides=None):
+def decide(request_id, approved, run_ids=(), *, role_id='observer',display_name='',storage_limit_bytes=None,overrides=None,actor='admin'):
     from . import accounts
     with connect() as db:
         accounts.lock(db)
+        acting=accounts.authority(db,actor,'accounts.approve')
+        if run_ids:accounts.require(acting,'accounts.grants')
+        if run_ids and not accounts.is_owner(acting) and not all(acting['permissions'].get(k)=='all' for k in ('results.view','results.media','results.zip')):raise HTTPException(403,'Нельзя выдавать чужие отчёты')
         application = repository.pending_for_update(db, request_id)
         if application is None:
             raise HTTPException(404, "Заявка не найдена")
@@ -68,22 +71,27 @@ def decide(request_id, approved, run_ids=(), *, role_id='observer',display_name=
                                             application["password_salt"], application["password_hash"])
             if user is None:
                 raise HTTPException(409, "Аккаунт с этой почтой уже существует")
-            accounts.configure_new(db,user['id'],role_id,display_name,storage_limit_bytes,overrides or {})
+            accounts.configure_new(db,user['id'],role_id,display_name,storage_limit_bytes,overrides or {},acting=acting)
             if chosen:
                 repository.grant_results(db, user["id"], chosen)
-        accounts.audit(db,'admin',request_id,'application_approved' if approved else 'application_rejected',{'role':role_id} if approved else {})
+        accounts.audit(db,actor,request_id,'application_approved' if approved else 'application_rejected',{'role':role_id} if approved else {})
         return repository.decide(db, request_id, "approved" if approved else "rejected")
 
 
-def grants(request_id, run_ids=None):
+def grants(request_id, run_ids=None,*,actor='admin'):
     from . import accounts
     with connect() as db:
-        if run_ids is not None:accounts.lock(db)
+        accounts.lock(db)
+        acting=accounts.authority(db,actor,'accounts.grants')
+        if not accounts.is_owner(acting) and not all(acting['permissions'].get(k)=='all' for k in ('results.view','results.media','results.zip')):raise HTTPException(403,'Недостаточно прав на результаты')
         application = repository.pending_for_update(db, request_id)
         if application is None or application["status"] != "approved":
             raise HTTPException(404, "Одобренная заявка не найдена")
         email = application["email"]
+        user=db.execute('SELECT id FROM users WHERE username=%s',(email,)).fetchone()
+        if not user:raise HTTPException(404,'Аккаунт не найден')
+        accounts.target(db,user['id'],acting)
         if run_ids is not None and not repository.replace_grants(db, email, available_results(db, run_ids)):
             raise HTTPException(404, "Аккаунт не найден")
-        if run_ids is not None:accounts.audit(db,"admin",request_id,"result_grants_changed",{"count":len(run_ids)})
+        if run_ids is not None:accounts.audit(db,actor,request_id,"result_grants_changed",{"count":len(run_ids)})
         return {"items": repository.list_grants(db, email)}

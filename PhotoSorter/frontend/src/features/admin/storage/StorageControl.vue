@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../../stores/session'
+const session=useSessionStore()
 import {computed,ref,watch} from 'vue'
 import {systemApi} from '../../../api/system'
 import {errorText} from '../../../utils/format'
@@ -34,7 +36,7 @@ const diskRows=computed(()=>Object.entries(names).flatMap(([key,label])=>{
 <template>
   <div class="stack control">
     <section class="panel stack">
-      <div class="row between wrap"><h2>Побайтовый контроль MAP</h2><UiButton :loading="requesting" :disabled="checking" @click="check">Проверить учёт</UiButton></div>
+      <div class="row between wrap"><h2>Побайтовый контроль MAP</h2><UiButton v-if="session.can('storage.check')" :loading="requesting" :disabled="checking" @click="check">Проверить учёт</UiButton></div>
       <p v-if="checking" class="meta" role="status">{{usage?.independent_check?.state==='retry'?usage.independent_check.detail:'Проверка учёта…'}}</p>
       <p v-else-if="accepted" class="meta" role="status">Запрос принят фоновой службой.</p>
       <p v-if="requestError" class="alert error" role="alert">{{requestError}}</p>

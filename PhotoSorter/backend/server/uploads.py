@@ -113,7 +113,10 @@ def re_full_sha(digest):
 
 
 @router.post('/uploads')
-def create_upload(payload:BeginUpload):
+def create_upload(payload:BeginUpload,request:Request=None):
+    from .security.route_permissions import batch_access
+    from .security.access_policy import current_user
+    with connect() as db:batch_access(db,current_user(request),payload.batch_id,'photos.upload')
     # The browser persists its UUID before sending. If a VPN cut hides the
     # creation response, re-POSTing the same UUID must not orphan an upload.
     if payload.client_upload_id is None:
@@ -368,6 +371,11 @@ async def direct_upload(
     except ValueError:raise HTTPException(404,'Загрузка не найдена')
     if not 0<size<=MAX_FILE_BYTES:
         raise HTTPException(413,'Для больших файлов используйте загрузку по частям')
+    from .security.route_permissions import batch_access
+    from .security.access_policy import current_user
+    def check():
+        with connect() as db:batch_access(db,current_user(request),batch_id,'photos.upload')
+    await asyncio.to_thread(check)
     payload=BeginUpload(kind=kind,filename=filename,size=size,
                         batch_id=batch_id or None)
     async with lock_for(upload_id):

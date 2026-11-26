@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
 import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import {computed,onMounted,ref} from 'vue'
 import {runApi} from '../../api/runs'
@@ -32,7 +34,7 @@ async function save(){
  <section v-if="data" class="panel stack gap24" aria-label="Распределение CPU">
   <div class="row between wrap">
    <div><h2>Производительность</h2><p class="meta">{{data.total_cpus}} доступных vCPU · единая очередь MegaLoc</p></div>
-   <UiButton small :loading="busy" @click="save">Сохранить</UiButton>
+   <UiButton v-if="session.can('system.performance')" small :loading="busy" @click="save">Сохранить</UiButton>
   </div>
   <div class="cpu-budget-track" role="img" :aria-label="'Модель '+model+' CPU, системный резерв '+system+' CPU'">
    <span class="cpu-budget-model" :style="{width:percent+'%'}"/><span class="cpu-budget-system" :style="{width:(100-percent)+'%'}"/>
@@ -40,11 +42,11 @@ async function save(){
   <div class="grid2">
    <label class="field"><strong>Модель · {{model}} CPU</strong>
     <span class="meta">Группировка и сопоставление ФО или подготовка Образцов — по очереди</span>
-    <input v-model.number="model" type="range" min="1" :max="data.max_model_cpus" step="1" aria-label="CPU модели"/>
+    <input v-model.number="model" type="range" :disabled="!session.can('system.performance')" min="1" :max="data.max_model_cpus" step="1" aria-label="CPU модели"/>
    </label>
    <label class="field"><strong>Система · {{system}} CPU</strong>
     <span class="meta">Резерв свободных от модели ядер для сайта, базы, миниатюр и очистки</span>
-    <input v-model.number="system" type="range" :min="data.total_cpus-data.max_model_cpus" :max="data.total_cpus-1" step="1" aria-label="Резерв CPU системы"/>
+    <input v-model.number="system" type="range" :disabled="!session.can('system.performance')" :min="data.total_cpus-data.max_model_cpus" :max="data.total_cpus-1" step="1" aria-label="Резерв CPU системы"/>
    </label>
   </div>
   <p class="meta">Модель ограничивается количеством потоков и набором допустимых CPU при начале следующего задания. Система не запирается в резерве: при свободной модели другие службы могут использовать все доступные ядра.</p>

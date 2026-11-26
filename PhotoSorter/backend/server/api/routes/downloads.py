@@ -16,9 +16,10 @@ def download_results(run_id:str,sam:str|None=None,request:Request=None):
     with connect() as db:
         if is_viewer(request):
             require_published(db,run_id,current_user(request)["id"],current_user(request),"results.zip")
-        row=db.execute("""SELECT j.batch_id,j.status,b.display_name
+        row=db.execute("""SELECT j.batch_id,j.status,b.display_name,b.delete_state
             FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE j.id=%s""",(run_id,)).fetchone()
     if not row:raise HTTPException(404,"Запуск не найден")
+    if row["delete_state"]!="active":raise HTTPException(409,"Фотоотчёт недоступен")
     if row["status"] not in ("completed","completed_with_errors"):
         raise HTTPException(409,"Сортировка ещё не завершена")
     lease=operations.start(row["batch_id"],"download")

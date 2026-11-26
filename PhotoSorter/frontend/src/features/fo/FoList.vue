@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
 import {computed,onMounted,ref,watch} from 'vue'
 import {batchApi} from '../../api/batches'
 import {runApi} from '../../api/runs'
@@ -19,6 +20,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog.vue'
 import FoBatchCard from './FoBatchCard.vue'
 import StartRegionsDialog from './StartRegionsDialog.vue'
 
+const session=useSessionStore()
 const notice=useNoticeStore(),uploader=useUploadCenterStore(),deletion=useDeletionStore()
 const batches=ref<Batch[]>([]),search=ref('')
 const queueTasks=ref<QueueTask[]>([]),queueHistory=ref<QueueTask[]>([])
@@ -32,6 +34,7 @@ function runEstimate(id?:string){
   return row?estimates.value.get(row.seq):undefined
 }
 async function refreshQueue(){
+  if(!session.can("queue.view"))return
   try{
     const [active,history]=await Promise.all([
       workQueueApi.list('active',200),workQueueApi.list('history',100)
@@ -168,7 +171,7 @@ async function stop(){
 <template>
 <PageHeader eyebrow="БИБЛИОТЕКА ФО" title="Фотоотчёты">
   <template #actions>
-    <UiButton kind="primary" @click="uploader.launch('fo')">+ Загрузить папку</UiButton>
+    <UiButton v-if="session.can('photos.create')&&session.can('photos.upload')" kind="primary" @click="uploader.launch('fo')">+ Загрузить папку</UiButton>
   </template>
 </PageHeader>
 <div class="toolbar">

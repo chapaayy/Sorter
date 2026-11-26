@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../../stores/session'
+const session=useSessionStore()
 import {onMounted,ref} from 'vue'
 import {systemApi} from '../../../api/system'
 import {bytes,errorText} from '../../../utils/format'
@@ -37,13 +39,13 @@ usePolling(refresh,15000)
   <template v-if="data">
    <p v-if="!data.registry_ready" class="alert warning" role="status">Реестр ещё не готов. Включение новых ограничений доступно после полной фоновой сверки.</p>
    <form class="stack" @submit.prevent="save" @input="dirty=true">
-    <label class="row wrap"><input v-model="personal" type="checkbox" aria-label="Включить личные квоты" :disabled="saving"/>Включить личные квоты</label>
+    <label class="row wrap"><input v-model="personal" type="checkbox" aria-label="Включить личные квоты" :disabled="saving||!session.can('storage.configure')"/>Включить личные квоты</label>
     <p class="meta">Индивидуальные значения настраиваются во вкладке «Аккаунты». Без значения аккаунт не ограничен личной квотой. Образцы, постоянные эмбеддинги, модели, ZIP, временные файлы и инфраструктура не относятся к личному объёму.</p>
-    <label class="stack meta">Лимит временного пула, ГиБ (пусто — выключено)<input v-model="temporary" aria-label="Лимит временного пула, ГиБ" type="number" min="0" step="any" :disabled="saving"/></label>
-    <label class="stack meta">Минимальное свободное место, ГиБ (пусто — штатный резерв)<input v-model="reserve" aria-label="Минимальное свободное место, ГиБ" type="number" min="0" step="any" :disabled="saving"/></label>
+    <label class="stack meta">Лимит временного пула, ГиБ (пусто — выключено)<input v-model="temporary" aria-label="Лимит временного пула, ГиБ" type="number" min="0" step="any" :disabled="saving||!session.can('storage.configure')"/></label>
+    <label class="stack meta">Минимальное свободное место, ГиБ (пусто — штатный резерв)<input v-model="reserve" aria-label="Минимальное свободное место, ГиБ" type="number" min="0" step="any" :disabled="saving||!session.can('storage.configure')"/></label>
     <p class="meta">1 ГиБ = 1024³ байт. Ёмкость диска: {{bytes(data.total_bytes)}}. Штатный минимум: {{bytes(data.disk.baseline_bytes)}}. Для обновлятора дополнительно действует минимум 8 ГиБ. Меньшее значение не ослабляет существующую защиту.</p>
     <p class="meta">Изменение лимита не удаляет данные и не отзывает ранее принятые резервы. Обработка и новые загрузки проверяют доступный бюджет до записи.</p>
-    <UiButton kind="primary" type="submit" :loading="saving">Сохранить настройки лимитов</UiButton>
+    <UiButton v-if="session.can('storage.configure')" kind="primary" type="submit" :loading="saving">Сохранить настройки лимитов</UiButton>
    </form>
   </template>
   <p v-else class="meta">{{loading?'Загружаем лимиты…':'Настройки недоступны.'}}</p>

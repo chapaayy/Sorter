@@ -1,7 +1,10 @@
 """Unified read-only queue and explicit, idempotent preparation recovery."""
 from __future__ import annotations
 import uuid
-from fastapi import APIRouter,HTTPException
+from fastapi import APIRouter,HTTPException,Request
+from ...security.access_policy import current_user,is_owner
+from ...security.roles import has
+from ...security.route_permissions import owner_filter
 from pydantic import BaseModel
 from ...database import connect
 from ...db.repositories import work_queue
@@ -11,7 +14,7 @@ class PreparationAction(BaseModel):
     idempotency_key:uuid.UUID
 
 @router.get("/work-queue")
-def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
+def list_work_queue(limit:int=100,offset:int=0,scope:str="active",request:Request=None):
     if not 1<=limit<=200 or offset<0 or scope not in ("active","history","all"):
         raise HTTPException(422,"Неверная выборка очереди")
     where={
@@ -22,9 +25,15 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
                   AND w.state IN ('failed','interrupted'))""",
         "all":""
     }[scope]
+    user=current_user(request)
+    owner=owner_filter(user,"queue.view")
+    shared=not user or is_owner(user) or has(user,"queue.shared")
+    clause="((coalesce(j.batch_id,w.media_batch_id) IS NOT NULL AND (%s::bigint IS NULL OR b.owner_id=%s)) OR (%s AND coalesce(j.batch_id,w.media_batch_id) IS NULL))"
+    where=(" WHERE ("+where.removeprefix(" WHERE ")+") AND "+clause) if where else " WHERE "+clause
+    args=(owner,owner,shared)
     direction="ASC" if scope=="active" else "DESC"
     with connect() as db:
-        total=db.execute("SELECT count(*) AS n FROM work_queue w"+where).fetchone()["n"]
+        total=db.execute("SELECT count(*) AS n FROM work_queue w LEFT JOIN jobs j ON j.id=w.fo_run_id LEFT JOIN batches b ON b.id=coalesce(j.batch_id,w.media_batch_id)"+where,args).fetchone()["n"]
         entries=db.execute("""
             SELECT w.seq,w.kind,w.fo_run_id,w.reference_job_id,w.media_batch_id,w.reference_deletion_id,
                    d.sam AS deletion_sam,d.reference_id AS deletion_photo_id,w.state,
@@ -36,7 +45,7 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
                    coalesce(j.batch_id,w.media_batch_id) AS batch_id,j.snapshot->>'source' AS fo_source,
                    j.snapshot->'progress' AS fo_progress,j.snapshot->'selected_regions' AS fo_selected_regions,
                    w.media_progress_percent,w.media_eta_seconds,w.media_current_file,
-                   b.display_name AS batch_name,b.delete_state AS batch_delete_state,
+                   b.owner_id::text AS owner_id,b.display_name AS batch_name,b.delete_state AS batch_delete_state,
                    c.progress AS batch_deletion_progress,
                    (SELECT count(*)::integer FROM uploads photos
                      WHERE photos.batch_id=j.batch_id AND photos.kind='fo'
@@ -56,10 +65,10 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active"):
                 ORDER BY u.created_at,u.id LIMIT 1
             ) cover ON true
             """+where+" ORDER BY w.seq "+direction+" LIMIT %s OFFSET %s",
-            (limit,offset)).fetchall()
+            (*args,limit,offset)).fetchall()
     for task in entries:
         thumb=task.pop("fo_thumbnail_id")
-        task["fo_thumbnail_url"]="/api/thumbnails/"+str(thumb) if thumb else None
+        task["fo_thumbnail_url"]="/api/thumbnails/"+str(thumb) if thumb and (not user or is_owner(user) or (has(user,"photos.view") and has(user,"photos.media"))) else None
     return {"tasks":entries,"total":total}
 
 @router.get("/reference-preparations/{job_id}")

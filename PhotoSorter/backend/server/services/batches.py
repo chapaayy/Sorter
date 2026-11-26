@@ -64,7 +64,7 @@ def _serialize(row,counters=None):
             "upload_manifest_state","upload_manifest_completed_at",
             "auto_process_state","auto_process_threshold","auto_process_run_id","auto_process_error",
             "delete_after_at","deleted_at")
-    data={"batch_id":str(row["id"])}
+    data={"batch_id":str(row["id"]),"owner_id":str(row["owner_id"])}
     for field in fields:data[field]=row[field]
     data["media_image_format"]=row.get("media_image_format")
     data["media_video_format"]=row.get("media_video_format")
@@ -95,9 +95,9 @@ def get(batch_id):
         counters["last_result_run_id"]=batch_runs.last_results(db,[batch_id]).get(batch_id)
     return _serialize(row,counters)
 
-def list_all(limit=100,offset=0):
+def list_all(limit=100,offset=0,*,owner_id=None):
     with connect() as db:
-        rows,total=repository.list_rows(db,limit,offset)
+        rows,total=repository.list_rows(db,limit,offset,owner_id=owner_id)
         identifiers=[row["id"] for row in rows]
         aggregates={}
         if identifiers:

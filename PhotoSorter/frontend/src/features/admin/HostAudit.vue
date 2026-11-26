@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
 import {computed,onMounted,ref} from 'vue'
 import {systemApi} from '../../api/system'
 import {bytes,errorText} from '../../utils/format'
@@ -81,15 +83,15 @@ onMounted(()=>{void refresh()})
         Подключённые представления контейнеров не суммируются повторно.
         Исключено таких представлений: {{report.container_root_mounts_excluded??0}}.</p>
       <div class="row wrap">
-        <a v-if="report.csv_available" class="btn secondary"
+        <a v-if="session.can('storage.report')&&report.csv_available" class="btn secondary"
           href="/api/storage/host-audit/report.csv" download="map-full-host-file-audit.csv">
           Скачать полный аудит сервера CSV
         </a>
-        <a v-if="report.csv_available" class="btn secondary"
+        <a v-if="session.can('storage.report')&&report.csv_available" class="btn secondary"
           href="/api/storage/host-audit/report.json" download="map-full-host-audit-summary.json">
           Скачать сводку и ошибки JSON
         </a>
-        <a v-if="report.write_sites_available" class="btn secondary"
+        <a v-if="session.can('storage.report')&&report.write_sites_available" class="btn secondary"
           href="/api/storage/host-audit/write-sites.csv" download="map-file-write-sites.csv">
           Скачать карту записей файлов в коде
         </a>
@@ -154,7 +156,7 @@ onMounted(()=>{void refresh()})
           Повторных закрытий общей памяти PostgreSQL: {{(live.postgres_shm_close_writes_aggregated||0).toLocaleString('ru-RU')}}.
           Последний сигнал: {{live.heartbeat_at||'неизвестно'}}.
         </p>
-        <a v-if="live.download_available" class="btn secondary"
+        <a v-if="session.can('storage.report')&&live.download_available" class="btn secondary"
           href="/api/storage/host-audit/live-events.jsonl"
           download="map-file-live-events.jsonl">Скачать события последнего сеанса JSONL</a>
         <details v-if="live.warnings?.length">

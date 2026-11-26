@@ -104,6 +104,8 @@ def _ready(db):
 
 def admit(db,requested,*,temporary=0,owner=None,personal=0,path=None):
     """Caller holds LOCK before creating a receipt or transient reservation."""
+    if owner is not None and personal and db.execute("SELECT 1 FROM account_lifecycle WHERE recipient_id=%s AND plan IS NOT NULL AND state<>'completed'",(owner,)).fetchone():
+        raise HTTPException(409,"Получателю передаются данные; повторите после завершения")
     settings=policy(db)
     values=counters(db)
     # Sample free after allocation credits: active append-only producers may
@@ -178,6 +180,10 @@ def set_account(owner,limit,*,actor=None):
         lock(db)
         total,_=disk_guard.stat(config.APP_STORAGE_ROOT)
         if limit is not None and not 0<=limit<=total:raise HTTPException(422,"Лимит должен быть в пределах ёмкости диска")
+        if actor is not None:
+            from ..services.accounts import authority,target,is_owner
+            acting=authority(db,actor,"accounts.quota")
+            if not is_owner(acting):target(db,owner,acting)
         if not db.execute("UPDATE users SET storage_limit_bytes=%s WHERE id=%s RETURNING id",(limit,owner)).fetchone():
             raise HTTPException(404,"Аккаунт не найден")
         if actor is not None:

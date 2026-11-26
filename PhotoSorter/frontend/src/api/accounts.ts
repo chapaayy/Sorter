@@ -2,7 +2,7 @@ import {api,post,query} from './client'
 import type {StorageCounter,StorageBudget} from '../types/api'
 export type Level='none'|'own'|'all'|'granted'
 export type Permissions=Record<string,Level>
-export interface PermissionInfo{label:string;group:string;requires?:string}
+export interface PermissionInfo{label:string;group:string;requires?:string;scoped?:boolean}
 export interface Role{id:string;name:string;description:string;permissions:Permissions;users:number}
 export interface Account{id:number;username:string;display_name:string;role_id:string;role_name:string;blocked:boolean;created_at:string;last_login_at:string|null;storage_limit_bytes?:number|null;usage?:StorageCounter|null;quota?:StorageBudget}
 export interface AccountDetail extends Account{permission_overrides:Permissions;role_permissions:Permissions;permissions:Permissions;sessions:Array<{session_id:string;created_at:string|null;expires_at:string}>}
@@ -17,5 +17,7 @@ export const accountsApi={
  security:(id:number,action:string,password?:string,session_id?:string)=>post('/admin/accounts/'+id+'/security',{action,confirmed:true,password,session_id}),
  registration:()=>api<{enabled:boolean;pending:number}>('/admin/accounts/registration'),
  setRegistration:(enabled:boolean)=>api<{enabled:boolean;pending:number}>('/admin/accounts/registration',{method:'PUT',body:JSON.stringify({enabled})}),
+ lifecyclePreview:(id:number)=>api<{username:string;batches:number;quota:StorageBudget;active_operations:boolean;operation:{operation:string;state:string;detail?:string|null;recipient_id?:number}|null}>('/admin/accounts/'+id+'/lifecycle'),
+ lifecycle:(id:number,operation:string,recipient_id:number|null,confirmation:string)=>post('/admin/accounts/'+id+'/lifecycle',{operation,recipient_id,confirmation}),
  events:()=>api<{items:Array<{id:number;at:string;actor:string;target:string;action:string}>}>('/admin/accounts/events')
 }

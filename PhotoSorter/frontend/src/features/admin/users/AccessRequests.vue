@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../../stores/session'
 import LoadingSkeleton from '../../../components/ui/LoadingSkeleton.vue'
 import {onMounted,ref,watch} from 'vue'
 import {accessRequests,type AccessRequest,type RequestStatus} from '../../../api/accessRequests'
@@ -8,6 +9,7 @@ import UiButton from '../../../components/ui/UiButton.vue'
 import ConfirmDialog from '../../../components/ui/ConfirmDialog.vue'
 import ApproveAccessDialog from './ApproveAccessDialog.vue'
 import {useNoticeStore} from '../../../stores/notice'
+const session=useSessionStore()
 const props=defineProps<{refreshKey?:number}>()
 const emit=defineEmits<{approved:[]}>()
 const tabs=[{id:'pending',label:'На рассмотрении'},{id:'approved',label:'Одобренные'},{id:'rejected',label:'Отклонённые'}] as const
@@ -61,11 +63,11 @@ watch(()=>props.refreshKey,()=>{void load()})
     <article v-for="item in items" :key="item.id" class="access-request">
       <div class="row between wrap"><strong>{{item.email}}</strong><time class="meta" :datetime="item.created_at">{{date(item.created_at)}}</time></div>
       <p class="access-comment">{{item.comment}}</p>
-      <div v-if="item.status==='pending'" class="row wrap">
+      <div v-if="item.status==='pending'&&session.can('accounts.approve')" class="row wrap">
         <UiButton small kind="primary" @click="selected={item,approved:true}">Одобрить</UiButton>
         <UiButton small @click="selected={item,approved:false}">Отклонить</UiButton>
       </div>
-      <UiButton v-else-if="item.status==='approved'" small @click="selected={item,approved:true,edit:true}">Изменить доступ</UiButton>
+      <UiButton v-else-if="item.status==='approved'&&session.can('accounts.grants')" small @click="selected={item,approved:true,edit:true}">Изменить доступ</UiButton>
     </article>
     <LoadingSkeleton v-if="loading&&!items.length" variant="lines" :count="2" label="Загружаем заявки"/>
     <p v-else-if="!items.length&&!error" class="meta">Заявок пока нет.</p>

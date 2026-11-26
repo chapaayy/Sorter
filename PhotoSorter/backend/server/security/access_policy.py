@@ -23,7 +23,8 @@ def authorize(user, method, path):
         action="results.zip" if path.startswith("/api/download/") else "results.media" if path.startswith("/api/images/") or path.endswith("/photos") else "results.view"
         if level(user,"results.view")!="none" and level(user,action)!="none":return
     if method=="GET" and path in ("/api/auth/storage","/api/auth/profile"):return
-    raise HTTPException(403, "Недостаточно прав")
+    from .route_permissions import authorize_route
+    return authorize_route(user,method,path)
 
 
 def is_viewer(request):

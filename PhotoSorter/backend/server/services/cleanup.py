@@ -31,6 +31,7 @@ def request(batch_id, *, only_if_due=False):
                 AND EXISTS (SELECT 1 FROM retention_preferences
                             WHERE id=1 AND enabled)""",(batch_id,)).fetchone()
             if not due:return {"batch_id":str(batch_id),"state":"skipped"}
+        if batch["delete_state"]=="transferring":return {"batch_id":str(batch_id),"state":"transferring"}
         if batch["delete_state"]=="deleted":
             return {"batch_id":str(batch_id),"state":"deleted"}
         if batch["delete_state"]=="deleting":

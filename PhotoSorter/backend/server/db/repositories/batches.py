@@ -40,13 +40,13 @@ def count_photos_and_runs(db,batch_id):
     runs=db.execute("SELECT count(*) AS runs FROM jobs WHERE batch_id=%s",(batch_id,)).fetchone()
     return {**counter,**runs}
 
-def list_rows(db,limit,offset):
+def list_rows(db,limit,offset,*,owner_id=None):
     rows=db.execute("""SELECT b.*,c.progress AS deletion_progress FROM batches b
-        LEFT JOIN cleanup_tasks c ON c.batch_id=b.id WHERE b.delete_state <> 'deleted'
+        LEFT JOIN cleanup_tasks c ON c.batch_id=b.id WHERE b.delete_state <> 'deleted' AND (%s::bigint IS NULL OR b.owner_id=%s)
         ORDER BY b.created_at DESC,b.id DESC LIMIT %s OFFSET %s""",
-        (limit,offset)).fetchall()
+        (owner_id,owner_id,limit,offset)).fetchall()
     total=db.execute("""SELECT count(*) AS c FROM batches
-        WHERE delete_state <> 'deleted'""").fetchone()["c"]
+        WHERE delete_state <> 'deleted' AND (%s::bigint IS NULL OR owner_id=%s)""",(owner_id,owner_id)).fetchone()["c"]
     return rows,total
 
 def set_name(db,batch_id,name):

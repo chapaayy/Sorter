@@ -1,5 +1,5 @@
 export type ThemeChoice = 'system' | 'dark' | 'light'
-export interface User { username: string; display_name?:string; role_id?:string; permissions?:Record<string,string> }
+export interface User { username: string; id?:string; display_name?:string; role_id?:string; permissions?:Record<string,string> }
 export interface DeletionProgress {
   phase:'queued'|'stopping_jobs'|'waiting_operations'|'scanning'|'files'|'database'|'completed'
   done:number
@@ -11,7 +11,7 @@ export interface MediaPreparation {
   total_count:number;completed_count:number;failed_count:number;error?:string|null
   progress_percent?:number|null;eta_seconds?:number|null;current_file?:string|null
 }
-export interface Batch {
+export interface Batch { owner_id?:string;
   batch_id: string; display_name: string; created_at: string; report_date_mode?:'manual'|'processing';report_date?:string|null; upload_state: string
   thumbnail_state: string; delete_state: string; deleted_at?: string | null
   deletion_progress?:DeletionProgress|null
@@ -68,7 +68,7 @@ export interface RunProgress {
   elapsed_seconds?: number; stage_items_per_second?: number
   estimated_remaining_seconds?: number | null; overall_percent?: number | null; eta_status?: string
 }
-export interface Run {
+export interface Run { owner_id?:string;
   id: string; batch_id: string; status: string; selected_regions?:string[]|null; created_at?: string
   started_at?: string
   actual_started_at?: string; finished_at?: string; actual_finished_at?: string

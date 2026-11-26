@@ -19,7 +19,7 @@ router=APIRouter(prefix="/api/images",tags=["images"])
 def file_allowed(file:Path, run_id=None, kind=None):
     if run_id is not None:
         with connect() as db:
-            row=db.execute("SELECT batch_id FROM jobs WHERE id=%s",(run_id,)).fetchone()
+            row=db.execute("SELECT j.batch_id FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE j.id=%s AND b.delete_state='active'",(run_id,)).fetchone()
         if not row:raise HTTPException(404,"Запуск не найден")
         roots=([batch_root(row["batch_id"])] if kind=="query" else
                [result_media_dir(run_id)] if kind=="copy" else

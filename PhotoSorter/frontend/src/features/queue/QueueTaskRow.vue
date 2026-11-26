@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
 import {computed} from 'vue'
 import type {QueueTask} from '../../types/workQueue'
 import type {TaskEstimate} from '../../utils/queueEstimates'
@@ -96,24 +98,24 @@ const count=computed(()=>preparing.value||media.value?props.task.total_count:pro
     <span v-if="task.state!=='queued'&&task.state!=='running'">{{date(task.created_at)}}</span>
   </template>
   <template #actions>
-    <button v-if="task.state==='running'&&canStop" type="button" class="task-card-action"
+    <button v-if="task.state==='running'&&canStop&&session.can(preparing?'queue.preparation':'queue.stop',task.owner_id)" type="button" class="task-card-action"
       :disabled="busy||!!task.stop_requested" aria-label="Остановить задачу"
       title="Остановить задачу" @click="emit('action',task,'stop')">■</button>
-    <button v-if="preparing" type="button" class="task-card-action"
+    <button v-if="preparing&&session.can('queue.shared')" type="button" class="task-card-action"
       @click="emit('details',task)">Подробности</button>
     <RouterLink v-else-if="media&&task.batch_id" :to="'/fo/'+task.batch_id" class="task-card-action">Открыть ФО</RouterLink>
     <RouterLink v-else-if="task.fo_run_id" :to="'/queue/runs/'+task.fo_run_id"
       class="task-card-action">Обработка</RouterLink>
   </template>
   <template #menu>
-    <button v-if="preparing" type="button" @click="emit('details',task)">Открыть подробности</button>
+    <button v-if="preparing&&session.can('queue.shared')" type="button" @click="emit('details',task)">Открыть подробности</button>
     <RouterLink v-else-if="media&&task.batch_id" :to="'/fo/'+task.batch_id" class="task-card-action">Открыть ФО</RouterLink>
     <RouterLink v-else-if="task.fo_run_id" :to="'/queue/runs/'+task.fo_run_id">Ход обработки</RouterLink>
-    <button v-if="hasBlockingFailure(task)" type="button" :disabled="busy"
+    <button v-if="hasBlockingFailure(task)&&session.can('queue.preparation')" type="button" :disabled="busy"
       @click="emit('action',task,'retry')">Повторить подготовку</button>
-    <button v-if="preparing&&hasBlockingFailure(task)" type="button" class="is-danger"
+    <button v-if="preparing&&hasBlockingFailure(task)&&session.can('queue.preparation')" type="button" class="is-danger"
       :disabled="busy" @click="emit('action',task,'skip')">Пропустить обновление</button>
-    <button v-if="task.state==='queued'&&canStop" type="button" class="is-danger"
+    <button v-if="task.state==='queued'&&canStop&&session.can(preparing?'queue.preparation':'queue.stop',task.owner_id)" type="button" class="is-danger"
       :disabled="busy" @click="emit('action',task,preparing?'skip':'stop')">Убрать из очереди</button>
   </template>
 </CompactTaskCard>

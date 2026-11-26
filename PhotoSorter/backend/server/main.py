@@ -47,7 +47,7 @@ async def private_api(request:Request,call_next):
         try:
             check_origin(request)
             request.state.user = await asyncio.to_thread(authenticate, request)
-            authorize(request.state.user, request.method, path)
+            await asyncio.to_thread(authorize,request.state.user,request.method,path)
         except HTTPException as exc:
             return JSONResponse({"detail":exc.detail},status_code=exc.status_code)
     try:
@@ -58,6 +58,8 @@ async def private_api(request:Request,call_next):
 @app.get("/api/health")
 def health():return {"status":"ok","version":"0.1.0-beta.1"}
 
+from .services.account_activity import AccountActivity
+app.add_middleware(AccountActivity)
 app.add_middleware(UpdateGate)
 
 for router in (updater.router,auth.router,access_requests.router,admin_users.router,accounts.router,batches.router,uploads_router,reference_imports_router,work_queue_router,library_notices_router,jobs_router,

@@ -5,6 +5,7 @@ import uuid
 from typing import Literal
 from fastapi import APIRouter,HTTPException,Request
 from ...security.access_policy import current_user,is_owner
+from ...security.route_permissions import require,owner_filter
 from pydantic import BaseModel,Field,model_validator
 from ...services import batches,cleanup,retention,upload_manifest,auto_processing,batch_runs
 from ...database import connect
@@ -46,18 +47,23 @@ class BatchManifest(BaseModel):
 @router.post("")
 def create(request:Request,payload:NewBatch|None=None):
     user=current_user(request)
-    if user is None or not is_owner(user):
-        raise HTTPException(403,"Недостаточно прав")
+    if user is None:raise HTTPException(403,"Недостаточно прав")
+    require(user,'photos.create')
     return batches.create(payload.display_name,payload.creation_request_id,
         payload.report_date_mode,payload.report_date,owner_id=user["id"]) if payload else batches.create(owner_id=user["id"])
 
 @router.get("")
-def list_batches(limit:int=100,offset:int=0):
+def list_batches(limit:int=100,offset:int=0,request:Request=None):
     if not 1<=limit<=200 or offset<0:raise HTTPException(422,"Неверная пагинация")
-    return batches.list_all(limit,offset)
+    return batches.list_all(limit,offset,owner_id=owner_filter(current_user(request),'photos.view'))
 
 @router.put("/{batch_id}/upload-manifest")
-def register_manifest(batch_id:str,payload:BatchManifest):
+def register_manifest(batch_id:str,payload:BatchManifest,request:Request):
+    if payload.auto_process:
+        from ...security.route_permissions import batch_access
+        with connect() as db:
+            batch_access(db,current_user(request),batch_id,'photos.auto')
+            batch_access(db,current_user(request),batch_id,'photos.process')
     if (payload.image_format is None) != (payload.video_format is None):
         raise HTTPException(422,"Выберите форматы для фото и видео")
     return upload_manifest.register(batch_id,payload.files,

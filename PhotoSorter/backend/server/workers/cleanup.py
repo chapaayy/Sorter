@@ -26,6 +26,8 @@ def run_deletions(stopped):
         with activity() as allowed:
             if allowed:
                 try:
+                    from ..services.account_lifecycle import run_pending as account_pending
+                    account_pending()
                     for batch_id,result in cleanup.process_pending():
                         if result not in ("busy","waiting","skipped"):
                             logging.info("Batch cleanup %s: %s",batch_id,result)

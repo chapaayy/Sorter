@@ -4,13 +4,14 @@ from uuid import UUID
 from fastapi import APIRouter,HTTPException,Request,Query,Path
 from pydantic import BaseModel,Field,SecretStr,StrictBool
 from ...security.access_policy import is_owner
+from ...security.roles import has
 from ...services import accounts
 
 router=APIRouter(prefix="/api/admin/accounts",tags=["accounts"])
 
 def actor(request):
     user=getattr(request.state,"user",None)
-    if not user or not is_owner(user):raise HTTPException(403,"Недостаточно прав")
+    if not user:raise HTTPException(403,"Недостаточно прав")
     return user["username"]
 
 class Role(BaseModel):
@@ -39,7 +40,7 @@ class DeleteRole(BaseModel):
 @router.get("")
 def list_accounts(request:Request,search:str=Query("",max_length=120),limit:int=Query(30,ge=1,le=100),offset:int=Query(0,ge=0)):
     actor(request)
-    return accounts.list_accounts(search,limit,offset)
+    return accounts.list_accounts(search,limit,offset,include_storage=has(request.state.user,"accounts.storage"))
 
 @router.get("/roles")
 def roles(request:Request):
@@ -73,7 +74,7 @@ def events(request:Request,offset:int=Query(0,ge=0)):
 
 @router.get("/{user_id}")
 def detail(request:Request,user_id:Annotated[int,Path(gt=0,le=2**63-1)]):
-    actor(request);return accounts.detail(user_id)
+    actor(request);return accounts.detail(user_id,include_sessions=has(request.state.user,"accounts.sessions"))
 
 @router.put("/{user_id}")
 def edit(request:Request,user_id:Annotated[int,Path(gt=0,le=2**63-1)],payload:Edit):
@@ -84,3 +85,21 @@ def security(request:Request,user_id:Annotated[int,Path(gt=0,le=2**63-1)],payloa
     who=actor(request)
     if not payload.confirmed:raise HTTPException(422,"Требуется подтверждение")
     return accounts.security(who,user_id,payload.action,payload.password.get_secret_value() if payload.password else None,payload.session_id)
+
+class Lifecycle(BaseModel):
+    operation:Literal["transfer","transfer_delete","delete"]
+    recipient_id:Annotated[int,Field(gt=0,le=2**63-1)]|None=None
+    confirmation:str=Field(min_length=1,max_length=254)
+
+@router.get("/{user_id}/lifecycle")
+def lifecycle_preview(request:Request,user_id:Annotated[int,Path(gt=0,le=2**63-1)]):
+    actor(request)
+    from ...security.route_permissions import require
+    require(request.state.user,"accounts.storage")
+    from ...services import account_lifecycle
+    return account_lifecycle.preview(user_id)
+
+@router.post("/{user_id}/lifecycle",status_code=202)
+def lifecycle(request:Request,user_id:Annotated[int,Path(gt=0,le=2**63-1)],payload:Lifecycle):
+    from ...services import account_lifecycle
+    return account_lifecycle.request(actor(request),user_id,payload.operation,payload.recipient_id,payload.confirmation)

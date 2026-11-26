@@ -2,6 +2,7 @@ import type {DeletionProgress,RunProgress} from './api'
 export type QueueKind='fo_processing'|'reference_preparation'|'media_preparation'|'reference_deletion'
 export type QueueStatus='queued'|'running'|'blocked'|'completed'|'completed_with_errors'|'stopped'|'failed'|'interrupted'
 export interface QueueTask {
+  owner_id?:string;
   seq:number
   kind:QueueKind
   fo_run_id:string|null

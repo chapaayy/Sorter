@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../../stores/session'
+const session=useSessionStore()
 import {onMounted,ref} from 'vue'
 import {systemApi} from '../../../api/system'
 import {bytes,date,errorText} from '../../../utils/format'
@@ -35,7 +37,7 @@ const issues:Record<string,string>={unclassified_path:'Неизвестный п
       </div>
       <p class="meta">Сверка выполняется в фоне, не удаляет файлы и не блокирует страницу. Ошибок обхода: {{usage?.registry?.errors??'—'}}. Конфликтов inode между владельцами: {{usage?.registry?.cross_owner_inode_conflicts??'—'}}.</p>
       <div class="row wrap">
-        <UiButton :loading="requesting" :disabled="usage?.registry?.reconciliation_requested" @click="reconcile">Запустить сверку</UiButton>
+        <UiButton v-if="session.can('storage.check')" :loading="requesting" :disabled="usage?.registry?.reconciliation_requested" @click="reconcile">Запустить сверку</UiButton>
         <UiButton :loading="loading" @click="load(0)">Обновить расхождения</UiButton>
       </div>
       <p v-if="message" role="status" class="meta">{{message}}</p>
@@ -52,7 +54,7 @@ const issues:Record<string,string>={unclassified_path:'Неизвестный п
       <p class="meta">Неизвестные файлы не удаляются автоматически.</p>
     </section>
     <section class="panel stack"><h2>Подробные отчёты</h2><p class="meta">Снимок реестра и исторический диагностический аудит; не дополнительные источники итоговых размеров.</p>
-      <UiButton @click="inventory=!inventory">{{inventory?'Скрыть реестр файлов':'Открыть реестр файлов'}}</UiButton>
+      <UiButton v-if="session.can('storage.check')" @click="inventory=!inventory">{{inventory?'Скрыть реестр файлов':'Открыть реестр файлов'}}</UiButton>
       <UiButton @click="host=!host">{{host?'Скрыть отчёт хоста':'Открыть отчёт хоста'}}</UiButton>
     </section>
     <StorageInventory v-if="inventory"/>

@@ -30,7 +30,7 @@ def sign_out(request:Request):
 def me(request:Request):
     user=request.state.user
     # Existing observer API clients retain their original response shape.
-    return {"username":user["username"],"permissions":user["permissions"],"role_id":user["role_id"]} if user.get("role_id") not in (None,"observer","owner") or (user.get("role_id")=="observer" and user.get("permissions")!={k:"granted" for k in ("results.view","results.media","results.zip")}) else {"username":user["username"]}
+    return {"username":user["username"],"permissions":user["permissions"],"role_id":user["role_id"],"id":str(user["id"])} if user.get("role_id") not in (None,"observer","owner") or (user.get("role_id")=="observer" and any(v!=("granted" if k in ("results.view","results.media","results.zip") else "none") for k,v in user.get("permissions",{}).items())) else {"username":user["username"]}
 
 @router.get("/profile")
 def profile(request:Request):

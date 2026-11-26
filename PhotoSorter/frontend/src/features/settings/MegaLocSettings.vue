@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
 import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import {onMounted,ref} from 'vue'
 import {runApi} from '../../api/runs'
@@ -14,9 +16,9 @@ const initialLoading=ref(true)
 const model=ref<ModelInfo|null>(null),modelBusy=ref(false),error=ref('')
 async function refresh(){
   try{
-    const [a,m]=await Promise.all([runApi.autoSettings(),runApi.models()])
-    if(!autoBusy.value){autoEnabled.value=a.auto_process_new_batches;threshold.value=a.grouping_threshold;minScore.value=a.min_match_score}
-    model.value=m;autoReady.value=true;error.value=''
+    const [a,m]=await Promise.all([session.can('system.processing_view')?runApi.autoSettings():Promise.resolve(null),session.can('system.models')?runApi.models():Promise.resolve(null)])
+    if(a&&!autoBusy.value){autoEnabled.value=a.auto_process_new_batches;threshold.value=a.grouping_threshold;minScore.value=a.min_match_score}
+    model.value=m;autoReady.value=!!a;error.value=''
   }catch(e){error.value=errorText(e)}finally{initialLoading.value=false}
 }
 onMounted(()=>void refresh())
@@ -43,7 +45,7 @@ async function install(){
 <template>
 <div class="stack gap24">
   <div v-if="error" class="alert error" role="alert">{{error}}</div>
-  <section class="panel stack">
+  <section v-if="session.can('system.models')" class="panel stack">
     <div class="panel-header"><h2>MegaLoc</h2>
       <span v-if="model" class="status" :class="model?.models[0]?.available?'ok':'danger'">
         {{model?.models[0]?.available?'Модель установлена':'Модель не найдена'}}
@@ -51,25 +53,25 @@ async function install(){
     </div>
     <LoadingSkeleton v-if="initialLoading" variant="lines" :count="2" label="Проверяем MegaLoc"/>
     <div v-else-if="model" class="row between wrap"><div><strong>Устройство: CPU</strong><div class="meta">Единственная модель сортировки</div></div>
-      <UiButton v-if="model&&!model.models[0]?.available" :loading="modelBusy" @click="install">Установить MegaLoc</UiButton>
+      <UiButton v-if="session.can('system.download_model')&&model&&!model.models[0]?.available" :loading="modelBusy" @click="install">Установить MegaLoc</UiButton>
     </div>
   </section>
-  <section class="panel stack">
+  <section v-if="session.can('system.processing_view')" class="panel stack">
     <h2>Автоматическая обработка</h2>
     <LoadingSkeleton v-if="initialLoading" variant="lines" :count="2" label="Загружаем параметры MegaLoc"/>
     <template v-else-if="autoReady">
     <label class="row" style="gap:10px">
-      <input v-model="autoEnabled" type="checkbox" :disabled="!autoReady||autoBusy" @change="saveAuto"/>
+      <input v-model="autoEnabled" type="checkbox" :disabled="!session.can('system.processing')||!autoReady||autoBusy" @change="saveAuto"/>
       <strong>Автоматически обрабатывать загруженные ФО</strong>
     </label>
     <label class="field" style="max-width:380px">Порог группировки: {{threshold.toFixed(2)}}
       <input v-model.number="threshold" type="range" min=".50" max=".99" step=".01"
-        :disabled="!autoReady||autoBusy" @change="saveAuto"/>
+        :disabled="!session.can('system.processing')||!autoReady||autoBusy" @change="saveAuto"/>
     </label>
     <p class="meta">Порог группировки влияет только на связь ФО между собой. Для автоматических новых партий он берётся из этих настроек.</p>
     </template>
   </section>
-  <section class="panel stack">
+  <section v-if="session.can('system.processing_view')" class="panel stack">
     <h2>Минимальное сходство с образцами</h2>
     <LoadingSkeleton v-if="initialLoading" variant="lines" :count="2" label="Загружаем настройки качества"/>
     <template v-else-if="autoReady">
@@ -80,11 +82,11 @@ async function install(){
         </div>
         <label class="field" style="width:130px">Значение
           <input v-model.number="minScore" type="number" min="0" max="1" step="0.001"
-            :disabled="autoBusy" @change="saveAuto" aria-label="Минимальное сходство с образцами"/>
+            :disabled="!session.can('system.processing')||autoBusy" @change="saveAuto" aria-label="Минимальное сходство с образцами"/>
         </label>
       </div>
       <input v-model.number="minScore" type="range" min="0" max="1" step=".001"
-        :disabled="autoBusy" @change="saveAuto" aria-label="Настроить порог сходства с образцами"/>
+        :disabled="!session.can('system.processing')||autoBusy" @change="saveAuto" aria-label="Настроить порог сходства с образцами"/>
       <p class="meta">Например, при 0.200 фотография с оценкой 0.097 попадёт в «Неопределено»,
         а с оценкой 0.234 — останется. Проверяется каждая ФО отдельно, даже внутри одной группы.</p>
       <p class="meta">Порог действует на новые ручные и автоматические запуски. Уже обрабатываемые и готовые результаты не меняются.

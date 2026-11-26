@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
 import {computed,onMounted,ref} from 'vue'
 import {useRoute,useRouter} from 'vue-router'
 import {batchApi} from '../../api/batches'
@@ -27,6 +28,8 @@ const route=useRoute(),router=useRouter(),notice=useNoticeStore(),deletion=useDe
 const id=String(route.params.batchId)
 const uploader=useUploadCenterStore()
 const transfer=computed(()=>uploader.rows.find(row=>row.batchId===id))
+const session=useSessionStore()
+const allowed=(key:string)=>session.can(key,batch.value?.owner_id)
 const batch=ref<Batch|null>(null),count=ref<{total:number;ready:number;failed:number}|null>(null)
 const rename=ref(false),newName=ref(''),busy=ref(false),error=ref('')
 const deleteWhole=ref(false),deletePhoto=ref<string|null>(null),viewer=ref<number|null>(null)
@@ -64,11 +67,11 @@ async function retryMedia(){
 const initialGallery=ref(true)
 const readyPercent=computed(()=>count.value?.total?Math.round(count.value.ready/count.value.total*100):0)
 async function refresh(){
-  try{batch.value=await batchApi.one(id);count.value=await batchApi.thumbs(id)}
+  try{batch.value=await batchApi.one(id);if(allowed("photos.media"))count.value=await batchApi.thumbs(id)}
   catch(e){error.value=errorText(e)}
 }
 usePolling(async()=>{
-  if(!batch.value||batch.value.delete_state!=='active')return
+  if(!batch.value||batch.value.delete_state!=='active'||!allowed("photos.media"))return
   const prior=count.value?.ready||0
   count.value=await batchApi.thumbs(id)
   if(count.value.ready>prior && items.value.length){
@@ -82,14 +85,14 @@ usePolling(async()=>{
     const media=batch.value.media_preparation
     batch.value=await batchApi.one(id)
     const nextMedia=batch.value.media_preparation
-    if((media?.state!==nextMedia?.state||media?.completed_count!==nextMedia?.completed_count)&&batch.value.media_image_format){
+    if((media?.state!==nextMedia?.state||media?.completed_count!==nextMedia?.completed_count)&&batch.value.media_image_format&&allowed("photos.media")){
       const next=await batchApi.gallery(id,undefined,Math.min(200,Math.max(60,items.value.length)))
       const changed=new Map(next.photos.map(p=>[p.id,p]))
       items.value=items.value.map(p=>changed.get(p.id)||p)
     }
   }
 },()=>isActive(batch.value?.latest_run?.status)||['queued','running'].includes(batch.value?.media_preparation?.state??'')?1000:4500)
-onMounted(async()=>{try{await Promise.all([refresh(),reset()])}finally{initialGallery.value=false}})
+onMounted(async()=>{try{await refresh();if(allowed("photos.media"))await reset()}finally{initialGallery.value=false}})
 async function onPendingChanged(){await Promise.all([refresh(),reset()])}
 async function saveName(){
   if(!newName.value.trim())return
@@ -140,7 +143,7 @@ async function removeBatch(){
 <template>
 <div class="row" style="margin-bottom:22px"><RouterLink to="/fo" class="meta">← Все фотоотчёты</RouterLink></div>
 <PageHeader :title="batch?.display_name||'Галерея партии'" :subtitle="batch?date(batch.created_at)+' · '+(batch.photos??'—')+' фото'+(batch.videos?' · '+batch.videos+' видео':'')+(batch.media_files?' · '+batch.media_files+(batch.media_image_format?' ошибок подготовки':' без сортировки'):'')+' · '+bytes(batch.size_bytes):'Загрузка…'" eyebrow="ФО / ПАРТИЯ">
-  <template #actions><UiButton @click="newName=batch?.display_name||'';rename=true">Переименовать</UiButton><UiButton kind="danger" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
+  <template #actions><UiButton v-if="batch&&allowed('photos.rename')" @click="newName=batch?.display_name||'';rename=true">Переименовать</UiButton><UiButton v-if="batch&&allowed('photos.delete')" kind="danger" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert">{{error}}</div>
 <section v-if="batch" class="panel stack" :class="{'deletion-panel':deletion.pending(id)||batch.delete_state==='deleting'}" style="margin-bottom:19px" aria-label="Обработка MegaLoc для партии">
@@ -155,32 +158,35 @@ async function removeBatch(){
     <li v-for="file in mediaErrors" :key="file.id">{{file.filename}} — {{file.media_error}}</li>
   </ul>
   <div class="row wrap fo-batch-actions">
-    <UiButton v-if="['failed','interrupted','completed_with_errors'].includes(batch.media_preparation?.state??'')&&!processing?.canStop"
+    <UiButton v-if="allowed('photos.prepare')&&['failed','interrupted','completed_with_errors'].includes(batch.media_preparation?.state??'')&&!processing?.canStop"
       small :loading="busy" @click="retryMedia">Повторить перекодирование</UiButton>
-    <UiButton v-if="!transfer&&processing?.canStart" kind="primary" small :loading="busy" @click="regionStart=true">{{(batch.runs??0)>0?'Повторить обработку':'Обработать'}}</UiButton>
-    <UiButton v-if="processing?.canCancelAuto" small :loading="busy" @click="cancelAuto">Отменить автозапуск</UiButton>
-    <UiButton v-if="processing?.canStop" small kind="danger" :loading="busy" @click="stopConfirm=true">
+    <UiButton v-if="allowed('photos.process')&&!transfer&&processing?.canStart" kind="primary" small :loading="busy" @click="regionStart=true">{{(batch.runs??0)>0?'Повторить обработку':'Обработать'}}</UiButton>
+    <UiButton v-if="allowed('photos.auto')&&processing?.canCancelAuto" small :loading="busy" @click="cancelAuto">Отменить автозапуск</UiButton>
+    <UiButton v-if="allowed('queue.stop')&&allowed('queue.view')&&processing?.canStop" small kind="danger" :loading="busy" @click="stopConfirm=true">
       {{processing?.run?.status==='queued'?'Убрать из очереди':'Остановить'}}
     </UiButton>
-    <RouterLink v-if="processing?.run" :to="'/queue/runs/'+processing.run.id" class="btn small">Подробности запуска</RouterLink>
-    <RouterLink v-if="processing?.resultId" :to="'/results/'+processing.resultId" class="btn small">{{processing.run?.id===processing.resultId?'Результаты':'Прошлые результаты'}}</RouterLink>
+    <RouterLink v-if="allowed('queue.detail')&&allowed('queue.view')&&processing?.run" :to="'/queue/runs/'+processing.run.id" class="btn small">Подробности запуска</RouterLink>
+    <RouterLink v-if="session.canResults&&processing?.resultId" :to="'/results/'+processing.resultId" class="btn small">{{processing.run?.id===processing.resultId?'Результаты':'Прошлые результаты'}}</RouterLink>
     <UiButton v-if="(batch.runs??0)>0" small @click="showHistory=!showHistory">{{showHistory?'Скрыть историю':'История запусков ('+batch.runs+')'}}</UiButton>
   </div>
 </section>
 <BatchRunHistory v-if="showHistory&&batch&&(batch.runs??0)>0" :key="id+'-'+historyKey" :batch-id="id" style="margin-bottom:19px"/>
-<PendingUploads v-if="batch?.delete_state==='active'" :batch-id="id" :batch-name="batch.display_name" :disabled="!!batch.runs" @changed="onPendingChanged"/>
+<PendingUploads v-if="allowed('photos.upload')&&batch?.delete_state==='active'" :batch-id="id" :batch-name="batch.display_name" :disabled="!!batch.runs" @changed="onPendingChanged"/>
 <section v-if="count&&(count.total||!batch?.media_files)" class="panel stack-sm" style="margin-bottom:19px">
   <div class="row between"><span>{{transfer?'Миниатюры сохранённых файлов':'Подготовка миниатюр'}}</span><span class="meta">{{count.ready}} / {{count.total}} · {{readyPercent}}%</span></div>
   <div class="progress-track" role="progressbar" :aria-valuenow="readyPercent" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill" :style="{width:readyPercent+'%'}"/></div>
   <div class="meta">{{count.failed?'Не удалось создать '+count.failed+' миниатюр.':''}} Оригиналы доступны независимо от превью.</div>
 </section>
 <div v-if="batch&&batch.runs" class="alert" style="margin-bottom:20px">Эта партия уже обрабатывалась. Удаление отдельного ФО заблокировано, чтобы не нарушить существующие результаты.</div>
+<p v-if="batch&&!allowed('photos.media')" class="meta">Просмотр фотографий не разрешён.</p>
+<template v-else>
 <div v-if="galleryError" class="alert error">{{galleryError}}</div>
 <VirtualThumbnailGrid v-if="items.length" :items="items.map(p=>({...p,label:p.name}))"
-  :can-delete="!batch?.runs&&batch?.delete_state==='active'&&!['queued','running','failed','interrupted'].includes(batch.media_preparation?.state??'')" @open="i=>viewer=i" @remove="pid=>deletePhoto=pid"/>
+  :can-delete="allowed('photos.delete_file')&&!batch?.runs&&batch?.delete_state==='active'&&!['queued','running','failed','interrupted'].includes(batch.media_preparation?.state??'')" @open="i=>viewer=i" @remove="pid=>deletePhoto=pid"/>
 <LoadingSkeleton v-else-if="loading||initialGallery" variant="gallery" label="Загружаем фотографии"/>
 <EmptyState v-else-if="!galleryError" title="В этой партии пока нет фото"/>
 <div v-if="cursor" class="pagination"><UiButton :loading="loading" @click="load()">Показать ещё фотографии</UiButton></div>
+</template>
 <StartRegionsDialog v-if="regionStart" :busy="busy" @confirm="startRun" @cancel="regionStart=false"/>
 <ImageViewer v-if="viewer!==null" :items="preview" :initial="viewer" @close="viewer=null"/>
 <div v-if="rename" class="modal-overlay" @click.self="rename=false">

@@ -35,7 +35,7 @@ def thumbnail(photo_id:str):
         file=cache.safe_location(cache.location(row["checksum"],row["version"],owner_id=row["owner_id"]))
         if not file.is_file():raise HTTPException(202,"Миниатюра готовится")
         return LeasedFileResponse(file,lease=token,archive_pin=pin,media_type="image/webp",
-                            headers={"Cache-Control":"private, max-age=3600"})
+                            headers={"Cache-Control":"private, no-store"})
     except BaseException:
         pin.close()
         if token:operations.finish(token)

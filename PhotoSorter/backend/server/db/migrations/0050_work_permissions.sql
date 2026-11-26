@@ -1,0 +1,4 @@
+-- Existing explicitly assigned roles retain their permissions. Seed expanded
+-- employee defaults only when the role has never been assigned or edited.
+UPDATE account_roles SET permissions=permissions || '{"photos.view":"own","photos.create":"all","photos.upload":"own","photos.rename":"own","photos.media":"own","photos.download":"own","photos.delete_file":"own","photos.delete":"own","photos.process":"own","photos.reprocess":"own","photos.auto":"own","photos.retention":"own","photos.prepare":"own","references.view":"all","queue.view":"own","queue.detail":"own","queue.stop":"own","logs.view":"own","system.models":"all"}'::jsonb
+WHERE id='employee' AND permissions='{"results.view":"own","results.media":"own","results.zip":"own"}'::jsonb AND NOT EXISTS(SELECT 1 FROM users WHERE role_id='employee');

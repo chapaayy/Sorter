@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../../stores/session'
+const session=useSessionStore()
 import {onMounted,ref} from 'vue'
 import {systemApi} from '../../../api/system'
 import {bytes,date,errorText} from '../../../utils/format'
@@ -17,6 +19,7 @@ defineProps<{mode:'storage'|'limits'}>()
 const diagnostics=ref(false)
 const usage=ref<StorageUsage|null>(null),loading=ref(false),error=ref('')
 async function refresh(){
+  if(!session.can('storage.view'))return
   if(loading.value)return
   loading.value=true
   try{usage.value=await systemApi.usage();error.value=''}
@@ -38,8 +41,8 @@ usePolling(refresh,15000)
         <p v-else class="meta">Показатели пока недоступны.</p>
       </section>
       <section class="panel stack">
-        <button class="btn secondary diagnostics-toggle" :aria-expanded="diagnostics" @click="diagnostics=!diagnostics">Диагностика хранилища <span aria-hidden="true">{{diagnostics?'−':'+'}}</span></button>
-        <template v-if="diagnostics">
+        <button v-if="session.can('storage.diagnostics')" class="btn secondary diagnostics-toggle" :aria-expanded="diagnostics" @click="diagnostics=!diagnostics">Диагностика хранилища <span aria-hidden="true">{{diagnostics?'−':'+'}}</span></button>
+        <template v-if="diagnostics&&session.can('storage.diagnostics')">
           <div class="row wrap meta"><span>Измерение: {{date(usage?.registry?.sampled_at)}}</span></div>
           <StorageControl :usage="usage" :failed="!!error" @refresh="refresh"/>
           <StorageTechnical v-if="usage" :usage="usage"/>
@@ -48,14 +51,14 @@ usePolling(refresh,15000)
       </section>
     </template>
     <template v-else>
-      <StorageLimits @refresh="refresh"/>
-      <section class="panel stack">
+      <StorageLimits v-if="session.can('storage.limits')" @refresh="refresh"/>
+      <section v-if="session.can('logs.usage')&&session.can('storage.view')" class="panel stack">
         <h2>Лимиты журналов MAP</h2>
         <div v-for="(row,name) in usage?.journals?.services||{}" :key="name" class="row between wrap"><span>{{name}}</span><strong>{{bytes(row.bytes)}} / {{bytes(row.budget_bytes)}}{{row.partial?' (частично)':''}}</strong></div>
         <p v-if="!usage?.journals" class="meta">Сведения пока недоступны.</p>
       </section>
-      <StorageTemporary :registry="usage?.registry"/>
-      <StorageMaintenance @refresh="refresh"/>
+      <StorageTemporary v-if="session.can('storage.diagnostics')" :registry="usage?.registry"/>
+      <StorageMaintenance v-if="session.can('storage.maintenance')||session.can('system.retention_view')" @refresh="refresh"/>
     </template>
   </div>
 </template>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
 import {computed,nextTick,onBeforeUnmount,onMounted,ref,watch} from 'vue'
 import {referenceApi,type UpdatedConstruction} from '../../api/references'
 import {regionApi,type Region} from '../../api/regions'
@@ -198,13 +200,13 @@ async function removeSam(){
 <div class="reference-library-view">
 <PageHeader eyebrow="БИБЛИОТЕКА КОНСТРУКЦИЙ" title="Образцы">
   <template #actions>
-  <UiButton :disabled="listLoading||!list.some(s=>s.photos>0)" @click="downloadAll">↓ Скачать все образцы ZIP</UiButton>
-  <UiButton kind="primary" @click="uploader.launch('construction')">+ Создать конструкцию</UiButton>
+  <UiButton v-if="session.can('references.export')" :disabled="listLoading||!list.some(s=>s.photos>0)" @click="downloadAll">↓ Скачать все образцы ZIP</UiButton>
+  <UiButton v-if="session.can('references.create')&&session.can('references.import')" kind="primary" @click="uploader.launch('construction')">+ Создать конструкцию</UiButton>
 </template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
 <div class="toolbar row wrap between">
-  <RegionPicker v-model="regionChosen" :regions="regionRows" allow-all allow-custom
+  <RegionPicker v-model="regionChosen" :regions="regionRows" allow-all :allow-custom="session.can('references.region')"
     label="Выбрать регион" @created="loadRegions"/>
   <span class="meta">Всего {{list.length}} конструкций · {{list.reduce((n,s)=>n+s.photos,0)}} эталонных фото</span>
 </div>
@@ -214,12 +216,12 @@ async function removeSam(){
     <div class="panel-header reference-detail-header"><div><h2>{{selectedEntry?.display_name||selected}}</h2>
       <span class="meta">{{selectedEntry?.photos||0}} образцов</span></div>
       <div class="row wrap">
-        <UiButton small class="reference-select-mode-toggle" :kind="selectionMode?'primary':'secondary'"
+        <UiButton v-if="session.can('references.sides')" small class="reference-select-mode-toggle" :kind="selectionMode?'primary':'secondary'"
           :disabled="busy||selectingAll" :aria-pressed="selectionMode"
           @click="toggleSelectionMode">{{selectionMode?'Готово':'Выделить'}}</UiButton>
-        <UiButton small @click="openUpload('single')">+ Добавить фото</UiButton>
-        <UiButton small @click="editing=true">Изменить конструкцию</UiButton>
-        <UiButton kind="danger" small  @click="deleteSam=true">Удалить конструкцию</UiButton>
+        <UiButton v-if="session.can('references.import')" small @click="openUpload('single')">+ Добавить фото</UiButton>
+        <UiButton v-if="session.can('references.edit')" small @click="editing=true">Изменить конструкцию</UiButton>
+        <UiButton v-if="session.can('references.delete')" kind="danger" small  @click="deleteSam=true">Удалить конструкцию</UiButton>
       </div>
     </div>
     <div ref="galleryScroll" class="reference-library-gallery-scroll"
@@ -236,8 +238,8 @@ async function removeSam(){
               id:p.id,label:p.name,side:p.side,thumbnail_status:p.thumbnail_status,
               thumbnail_url:p.thumbnail_url,original_url:p.original_url}))"
             :selected-ids="chosenSet" :selectable="selectionMode" :show-side-status="true"
-            :can-delete="!selectionMode"
-            @open="i=>openGroup(group.photos,i)" @remove="id=>deletePhoto=id" @toggle="togglePhoto"/>
+            :can-delete="!selectionMode&&session.can('references.delete_file')"
+            @open="i=>session.can('references.download')&&openGroup(group.photos,i)" @remove="id=>deletePhoto=id" @toggle="togglePhoto"/>
         </section>
       </template>
       <LoadingSkeleton v-else-if="loading" variant="gallery" label="Загружаем образцы"/>

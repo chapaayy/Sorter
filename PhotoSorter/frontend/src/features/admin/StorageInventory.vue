@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
 import {computed,ref} from 'vue'
 import UiButton from '../../components/ui/UiButton.vue'
 import {systemApi} from '../../api/system'
@@ -69,7 +71,7 @@ function applyFilters(){
           Только чтение — без удаления, лимитов и изменений в обработке.</p>
       </div>
       <div class="row wrap">
-        <a v-if="summary&&!scanning" class="btn secondary" :href="reportUrl" :download="reportFilename"
+        <a v-if="session.can('storage.report')&&summary&&!scanning" class="btn secondary" :href="reportUrl" :download="reportFilename"
           title="Скачать все файлы из последней проверки, без ограничения в 100 строк">
           Скачать полный отчёт CSV
         </a>

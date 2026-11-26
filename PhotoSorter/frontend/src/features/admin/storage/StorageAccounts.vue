@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue'
+import {useSessionStore} from '../../../stores/session'
+const session=useSessionStore()
 import {systemApi} from '../../../api/system'
 import {bytes,date,errorText} from '../../../utils/format'
 import type {StorageAccountsPage,StorageAccountDetail,StorageCounter} from '../../../types/api'
@@ -58,7 +60,7 @@ onMounted(()=>{if(props.accountId)void select(props.accountId);else void load()}
       <p class="meta">Текущие записи реестра; последнее агрегированное измерение: {{date(detail.sampled_at)}}. Hardlink учитывается глобально, поэтому повторная обработка может занимать 0 дополнительных блоков.</p>
       <template v-if="detail.account.quota">
         <BudgetSummary :budget="detail.account.quota" title="Личная квота"/>
-        <form class="stack" @submit.prevent="saveLimit">
+        <form v-if="session.can('accounts.quota')" class="stack" @submit.prevent="saveLimit">
           <label class="stack meta">Индивидуальный лимит, ГиБ (пусто — без ограничения)<input v-model="limit" aria-label="Индивидуальный лимит, ГиБ" type="number" min="0" step="any" :disabled="saving"/></label>
           <p class="meta">Уменьшение лимита не удаляет файлы. Принятые загрузки могут завершиться.</p>
           <div class="row wrap"><UiButton type="submit" kind="primary" :loading="saving">Сохранить лимит</UiButton><UiButton :disabled="saving" @click="limit=''">Без ограничения</UiButton></div>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
 import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import {computed,onMounted,ref} from 'vue'
 import {batchApi} from '../../api/batches'
@@ -14,6 +16,7 @@ const batches=ref<Batch[]>([]),retentionPrefs=ref<RetentionPreference|null>(null
 const due=computed(()=>batches.value.filter(b=>b.delete_state==='active'&&b.delete_after_at)
   .sort((a,b)=>(a.delete_after_at||'').localeCompare(b.delete_after_at||'')))
 async function refresh(){
+  if(!session.can("photos.view")){loading.value=false;return}
   loading.value=true
   try{batches.value=(await batchApi.list(200)).batches}
   catch(e){error.value=errorText(e)}finally{loading.value=false}
@@ -42,23 +45,23 @@ async function extend(id:string){
   <section class="panel stack">
     <div class="row between wrap">
       <div><h2>Автоматическое удаление</h2><p class="meta">Действующая политика хранения фотоотчётов.</p></div>
-      <UiButton :disabled="!retentionPrefs" :loading="savingRetention" @click="saveRetention">Сохранить</UiButton>
+      <UiButton v-if="session.can('system.retention')" :disabled="!retentionPrefs" :loading="savingRetention" @click="saveRetention">Сохранить</UiButton>
     </div>
     <LoadingSkeleton v-if="retentionLoading" variant="lines" :count="2" label="Загружаем срок хранения"/>
     <label v-if="retentionPrefs" class="row" style="gap:10px">
-      <input v-model="retentionPrefs.enabled" type="checkbox"/>
+      <input v-model="retentionPrefs.enabled" :disabled="!session.can('system.retention')" type="checkbox"/>
       <strong>Удалять старые фотоотчёты автоматически</strong>
     </label>
     <div v-if="retentionPrefs?.enabled" class="row wrap" style="gap:12px;align-items:end">
       <label class="field" style="max-width:180px;flex:1">Удалять через
-        <input v-model.number="retentionPrefs.value" type="number" min="1"
+        <input v-model.number="retentionPrefs.value" :disabled="!session.can('system.retention')" type="number" min="1"
           :max="retentionPrefs.unit==='months'?120:525600" step="1"/>
       </label>
       <div style="min-width:165px;flex:1;max-width:220px">
         <UiSelect label="Единицы срока хранения" :model-value="retentionPrefs.unit"
           :options="[{value:'minutes',label:'Минут'},{value:'hours',label:'Часов'},
                      {value:'days',label:'Дней'},{value:'months',label:'Месяцев'}]"
-          @update:model-value="retentionPrefs.unit=$event as RetentionPreference['unit']"/>
+          @update:model-value="session.can('system.retention')&&(retentionPrefs.unit=$event as RetentionPreference['unit'])"/>
       </div>
     </div>
     <p class="meta">Срок назначается после успешной обработки по действующей политике; подтверждение скачивания не сбрасывает уже назначенный срок. Новый срок действует для следующих обработок; существующие сроки сохраняются. При выключении автоудаление приостанавливается для всех партий. После повторного включения просроченные партии получат новый срок.</p>
@@ -67,7 +70,7 @@ async function extend(id:string){
       style="border-bottom:1px solid var(--border-subtle);padding:10px 0">
       <div><RouterLink :to="'/fo/'+batch.batch_id"><strong>{{batch.display_name}}</strong></RouterLink>
         <div class="meta">Удаление: {{date(batch.delete_after_at)}}</div></div>
-      <UiButton small :loading="busy" @click="extend(batch.batch_id)">Продлить</UiButton>
+      <UiButton v-if="session.can('photos.retention',batch.owner_id)" small :loading="busy" @click="extend(batch.batch_id)">Продлить</UiButton>
     </div>
     <p v-if="!loading&&!due.length" class="meta">Пока нет партий с назначенным сроком удаления.</p>
   </section>

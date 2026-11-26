@@ -8,9 +8,11 @@ def require_creator(db, owner_id):
         identifier = int(user_key(owner_id))
     except ValueError:
         raise HTTPException(403, "Недостаточно прав")
-    row = db.execute("SELECT id,username,access_role FROM users WHERE id=%s FOR KEY SHARE",
+    row = db.execute("SELECT u.id,u.username,u.access_role,u.blocked,u.permission_overrides,r.permissions AS role_permissions FROM users u JOIN account_roles r ON r.id=u.role_id WHERE u.id=%s FOR SHARE OF u",
                      (identifier,)).fetchone()
-    if row is None or not is_owner(row):
+    from ..security.roles import effective,has
+    if row is not None:row['permissions']=effective(row['role_permissions'],row['permission_overrides'])
+    if row is None or row['blocked'] or not has(row,'photos.create'):
         raise HTTPException(403, "Недостаточно прав")
     return identifier
 

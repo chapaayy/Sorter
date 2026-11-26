@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
 import {computed,onMounted,onUnmounted,ref} from 'vue'
 import {systemApi} from '../../api/system'
 import {bytes,errorText} from '../../utils/format'
@@ -51,8 +53,8 @@ onUnmounted(()=>{if(timer)clearInterval(timer)})
       <p v-for="warning in state.warnings||[]" :key="warning" class="meta">{{warning}}</p>
       <p class="meta">Кэш собственной сборки удаляется автоматически. ФО, образцы, результаты, данные PostgreSQL/Caddy и общий старый кэш Docker не очищаются.</p>
       <div class="row wrap">
-        <UiButton :disabled="busy||loading||state.phase==='recovery_required'" @click="run(true)">Проверить обновления</UiButton>
-        <UiButton :disabled="busy||loading||!state.update_available||state.phase==='recovery_required'" @click="run(false)">Обновить MAP</UiButton>
+        <UiButton v-if="session.can('system.update')" :disabled="busy||loading||state.phase==='recovery_required'" @click="run(true)">Проверить обновления</UiButton>
+        <UiButton v-if="session.can('system.update')" :disabled="busy||loading||!state.update_available||state.phase==='recovery_required'" @click="run(false)">Обновить MAP</UiButton>
       </div>
     </template>
     <p v-else class="meta">{{state?.detail||'Проверка службы обновления…'}}</p>

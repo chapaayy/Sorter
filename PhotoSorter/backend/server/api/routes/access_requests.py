@@ -52,16 +52,16 @@ def inbox(status: Literal["pending", "approved", "rejected"] = "pending",
 
 
 @router.post("/admin/access-requests/{request_id}/decision")
-def moderate(request_id: UUID, decision: Decision):
+def moderate(request_id: UUID, decision: Decision,request:Request):
     return access_requests.decide(request_id, decision.approved, decision.run_ids,role_id=decision.role_id,display_name=decision.display_name,
-                                  storage_limit_bytes=decision.storage_limit_bytes,overrides=decision.overrides)
+                                  storage_limit_bytes=decision.storage_limit_bytes,overrides=decision.overrides,actor=request.state.user['username'])
 
 
 @router.get("/admin/access-requests/{request_id}/grants")
-def read_grants(request_id: UUID):
-    return access_requests.grants(request_id)
+def read_grants(request_id: UUID,request:Request):
+    return access_requests.grants(request_id,actor=request.state.user['username'])
 
 
 @router.put("/admin/access-requests/{request_id}/grants")
-def update_grants(request_id: UUID, payload: Grants):
-    return access_requests.grants(request_id, payload.run_ids)
+def update_grants(request_id: UUID, payload: Grants,request:Request):
+    return access_requests.grants(request_id, payload.run_ids,actor=request.state.user['username'])

@@ -3,16 +3,16 @@ import json
 import socket
 from fastapi import APIRouter,HTTPException,Request
 from ...security.access_policy import is_owner
+from ...security.route_permissions import require
 
 router=APIRouter(prefix="/api/system/update",tags=["update"])
 SOCKET="/run/map-updater-rpc/control.sock"
 
 def request_host(request,command):
     user=getattr(request.state,"user",None)
-    if not user or not is_owner(user):
-        raise HTTPException(403,"Недостаточно прав")
-    if command not in ("status","check","update","storage-cache","storage-logs","storage-check"):
-        raise ValueError("Unknown updater command")
+    permission={"status":"system.update_status","check":"system.update","update":"system.update","storage-cache":"storage.maintenance","storage-logs":"storage.maintenance","storage-check":"storage.check"}.get(command)
+    if not permission:raise ValueError("Unknown updater command")
+    require(user,permission)
     try:
         with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as sock:
             sock.settimeout(4)

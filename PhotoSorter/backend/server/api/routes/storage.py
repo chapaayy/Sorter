@@ -14,12 +14,13 @@ from app.config import DATA_DIR
 from pydantic import BaseModel,StrictBool,StrictInt,Field
 from ...storage import admission
 from ...security.access_policy import is_owner
+from ...security.route_permissions import require
+from ...security.roles import has
 from ...services import storage_admin,storage_maintenance
 router=APIRouter(prefix="/api/storage",tags=["storage"])
 
-def require_owner(request:Request):
-    user=getattr(request.state,"user",None)
-    if not user or not is_owner(user):raise HTTPException(403,"Недостаточно прав")
+def require_permission(request:Request,key):
+    require(getattr(request.state,'user',None),key)
 
 class StorageLimits(BaseModel):
     personal_enabled:StrictBool
@@ -31,49 +32,49 @@ class AccountLimit(BaseModel):
 
 @router.get("/limits")
 def limits(request:Request):
-    require_owner(request)
+    require_permission(request,"storage.limits")
     return admission.status()
 
 @router.patch("/limits")
 def save_limits(request:Request,payload:StorageLimits):
-    require_owner(request)
+    require_permission(request,"storage.configure")
     return admission.configure(payload.model_dump())
 
 @router.patch("/accounts/{owner_id}/limit")
 def save_account_limit(request:Request,owner_id:int,payload:AccountLimit):
-    require_owner(request)
+    require_permission(request,"accounts.quota")
     if not 0<owner_id<2**63:raise HTTPException(422,"Неверный аккаунт")
     return admission.set_account(owner_id,payload.limit_bytes,actor=request.state.user['username'])
 
 @router.get("/accounts")
 def storage_accounts(request:Request,offset:int=Query(0,ge=0),limit:int=Query(25,ge=1,le=100)):
-    require_owner(request)
+    require_permission(request,"accounts.storage")
     return storage_admin.accounts(offset,limit)
 
 @router.get("/accounts/{owner_id}")
 def storage_account(request:Request,owner_id:int,offset:int=Query(0,ge=0),limit:int=Query(25,ge=1,le=100)):
-    require_owner(request)
+    require_permission(request,"accounts.storage")
     if not 0<owner_id<2**63:raise HTTPException(422,"Неверный аккаунт")
     return storage_admin.account_detail(owner_id,offset,limit)
 
 @router.get("/operations")
 def storage_operations(request:Request):
-    require_owner(request)
+    require_permission(request,"storage.diagnostics")
     return storage_admin.operational()
 
 @router.post("/reconcile",status_code=202)
 def reconcile_storage(request:Request):
-    require_owner(request)
+    require_permission(request,"storage.check")
     return storage_admin.request_reconciliation()
 
 @router.get("/maintenance")
 def maintenance_status(request:Request):
-    require_owner(request)
+    require_permission(request,"storage.maintenance")
     return storage_maintenance.status()
 
 @router.get("/maintenance/{kind}/preview")
 def maintenance_preview(request:Request,kind:str):
-    require_owner(request)
+    require_permission(request,"storage.maintenance")
     return storage_maintenance.preview(kind)
 
 class MaintenanceConfirmation(BaseModel):
@@ -81,17 +82,17 @@ class MaintenanceConfirmation(BaseModel):
 
 @router.post("/maintenance/{kind}",status_code=202)
 def maintenance_start(request:Request,kind:str,payload:MaintenanceConfirmation):
-    require_owner(request)
+    require_permission(request,"storage.maintenance")
     return storage_maintenance.enqueue(kind,payload.confirmed)
 
 @router.get("/host-maintenance/{kind}/preview")
 def host_maintenance_preview(request:Request,kind:str):
-    require_owner(request)
+    require_permission(request,"storage.maintenance")
     return storage_maintenance.host_preview(kind)
 
 @router.post("/host-maintenance/{kind}",status_code=202)
 def host_maintenance_start(request:Request,kind:str,payload:MaintenanceConfirmation):
-    require_owner(request)
+    require_permission(request,"storage.maintenance")
     if kind not in ("storage-cache","storage-logs") or payload.confirmed is not True:
         raise HTTPException(422,"Требуется подтверждение разрешённой операции")
     from .updater import request_host
@@ -99,19 +100,36 @@ def host_maintenance_start(request:Request,kind:str,payload:MaintenanceConfirmat
 
 @router.post("/independent-check",status_code=202)
 def independent_check(request:Request):
-    require_owner(request)
+    require_permission(request,"storage.check")
     from .updater import request_host
     return request_host(request,"storage-check")
 
 @router.get("/usage")
-def storage_usage():return usage()
+def storage_usage(request:Request):
+    data=usage()
+    user=request.state.user
+    if not has(user,"storage.diagnostics"):
+        reg=data.get("registry") or {};host=data.get("host") or {}
+        data["registry"]={k:v for k,v in reg.items() if k in ("sampled_at","stale","partial","categories","devices","errors","missing_expected","cross_owner_inode_conflicts","issues")}
+        if has(user,"accounts.storage") and "owners" in reg:data["registry"]["owners"]=reg["owners"]
+        data["host"]={k:v for k,v in host.items() if k in ("at","stale","partial","categories","devices","tree_check")}
+        host=data["host"]
+        if data.get("disk_overview"):data["disk_overview"]["system_details"]=None
+        if isinstance(host.get("tree_check"),dict):
+            host["tree_check"]={k:v for k,v in host["tree_check"].items() if k in ("finished_at","comparable","partial","stale","absolute_discrepancy_bytes","directory_bytes","unknown_files","errors","cross_scope_links")}
+        data["postgres_diagnostics"]=None
+    if not has(user,"accounts.storage"):(data.get("registry") or {}).pop("owners",None)
+    if not has(user,"logs.usage"):data["journals"]=None
+    return data
 
 @router.get("/accounting/issues")
 def accounting_issues(offset:int=Query(0,ge=0),limit:int=Query(100,ge=1,le=200)):
     return issues(limit,offset)
 
 @router.get("/breakdown")
-def storage_breakdown():return breakdown()
+def storage_breakdown(request:Request):
+    require_permission(request,"storage.diagnostics")
+    return breakdown()
 
 @router.post("/inventory/scan")
 def scan_inventory():

@@ -13,12 +13,12 @@ const route=useRoute(),router=useRouter()
 async function gate(){
   if(!session.checked)return
   if(!session.user && !route.meta.public)await router.replace({name:'login',query:{next:route.fullPath}})
-  if(session.user && (route.meta.public || (!session.isOwner && (!route.meta.viewer||(!session.canResults&&route.path.startsWith('/results'))))))await router.replace(session.home)
+  if(session.user && (route.meta.public || !session.canPath(route.path)))await router.replace(session.home)
 }
 async function restoreSession(){await session.check();await gate()}
 onMounted(restoreSession)
 watch(()=>route.fullPath,()=>{void gate()})
-watch(()=>session.canResults,()=>{void gate()})
+watch(()=>session.user?.permissions,()=>{void gate()})
 usePolling(session.refreshPermissions,15000)
 </script>
 <template>
@@ -30,6 +30,6 @@ usePolling(session.refreshPermissions,15000)
   </main>
   <div v-else-if="!session.checked" class="auth-loading" role="status" aria-label="Проверяем сессию">MAP</div>
   <RouterView v-else-if="route.meta.public&&!session.user"/>
-  <Shell v-else-if="!route.meta.public&&session.user&&(session.isOwner||route.meta.viewer)"><RouterView/></Shell>
+  <Shell v-else-if="!route.meta.public&&session.user&&session.canPath(route.path)"><RouterView/></Shell>
   <ToastStack/>
 </template>

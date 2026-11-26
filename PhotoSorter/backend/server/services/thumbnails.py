@@ -39,7 +39,7 @@ def claim():
                  u.media_action,u.original_media_type,b.owner_id
           FROM thumbnail_tasks t JOIN uploads u ON u.id=t.upload_id
           LEFT JOIN batches b ON b.id=u.batch_id
-          WHERE u.finalized AND (t.state='queued' OR
+          WHERE u.finalized AND (b.id IS NULL OR b.delete_state='active') AND (t.state='queued' OR
             (t.state='running' AND t.lease_until<now()))
             AND t.attempts<%s
           ORDER BY t.created_at,t.upload_id FOR UPDATE OF t SKIP LOCKED LIMIT 1""",
@@ -101,6 +101,10 @@ def complete(task):
     try:
         if task["batch_id"]:
             token=operations.start(task["batch_id"],"thumbnail")
+            with connect() as db:
+                current=db.execute("SELECT b.owner_id,u.target_path FROM uploads u JOIN batches b ON b.id=u.batch_id WHERE u.id=%s",(task["upload_id"],)).fetchone()
+                if not current or current["owner_id"]!=task["owner_id"] or current["target_path"]!=task["target_path"]:
+                    raise ValueError("Thumbnail ownership changed")
         pin=ReadPin()
         if task["kind"]=="fo" and task["owner_id"] is None:raise ValueError("Missing thumbnail owner")
         output=cache.safe_location(cache.location(task["checksum"],task["version"],owner_id=task["owner_id"]))
@@ -182,6 +186,7 @@ def gc_unowned(limit=100,grace_seconds=86400):
                 if time.time()-path.stat().st_mtime<grace_seconds:continue
                 with connect() as db:
                     if not try_collect(db):return removed
+                    if owner is not None and db.execute("SELECT 1 FROM account_lifecycle WHERE state<>'completed' AND (source_id=%s OR recipient_id=%s)",(owner,owner)).fetchone():continue
                     scope="shared" if owner is None else str(owner)
                     params=(scope,path.stem,cache.VERSION)
                     if _has_owner(db,path.stem,owner):

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
 import {onMounted,ref} from 'vue'
 import {useRoute} from 'vue-router'
 import {runApi} from '../../api/runs'
@@ -32,9 +34,9 @@ async function stop(){
 <div class="row" style="margin-bottom:22px"><RouterLink to="/queue?view=history" class="meta">← История очереди</RouterLink></div>
 <PageHeader eyebrow="ОЧЕРЕДЬ / ПОДРОБНОСТИ" :title="batch?.display_name||'Запуск '+id" :subtitle="'MegaLoc · '+date(run?.started_at)+' · '+(run?runLabel(run):'Загрузка…')">
   <template #actions>
-    <UiButton v-if="run&&(run.status==='queued'||run.status==='running')" kind="danger" :loading="busy" @click="confirmStop=true">{{run.status==='queued'?'Убрать из очереди':'Остановить'}}</UiButton>
-    <RouterLink v-if="run&&!isActive(run.status)" :to="'/fo/'+run.batch_id" class="btn">Обработать повторно в ФО</RouterLink>
-    <RouterLink v-if="run&&isComplete(run.status)" class="btn primary" :to="'/results/'+id">Результаты →</RouterLink>
+    <UiButton v-if="run&&session.can('queue.stop',run?.owner_id??batch?.owner_id)&& (run.status==='queued'||run.status==='running')" kind="danger" :loading="busy" @click="confirmStop=true">{{run.status==='queued'?'Убрать из очереди':'Остановить'}}</UiButton>
+    <RouterLink v-if="run&&session.can('photos.view',batch?.owner_id)&&session.can('photos.reprocess',run?.owner_id??batch?.owner_id)&&!isActive(run.status)" :to="'/fo/'+run.batch_id" class="btn">Обработать повторно в ФО</RouterLink>
+    <RouterLink v-if="run&&session.can('results.view',batch?.owner_id)&&isComplete(run.status)" class="btn primary" :to="'/results/'+id">Результаты →</RouterLink>
   </template>
 </PageHeader>
 <div v-if="error" class="alert error">{{error}}</div>

@@ -2,7 +2,9 @@
 from __future__ import annotations
 import copy,time,uuid
 from datetime import datetime,timezone
-from fastapi import APIRouter,HTTPException
+from fastapi import APIRouter,HTTPException,Request
+from .security.route_permissions import owner_filter,batch_access
+from .security.access_policy import current_user
 from pydantic import BaseModel,Field
 from psycopg.types.json import Jsonb
 from app.config import DATA_DIR
@@ -21,7 +23,7 @@ class NewRun(BaseModel):
     regions:list[str]|None=None
 
 @router.get("")
-def list_jobs(limit:int=100,offset:int=0,scope:str|None=None):
+def list_jobs(limit:int=100,offset:int=0,scope:str|None=None,request:Request=None):
     """Optional filtered views for the monitoring dashboard.
 
     Absence of scope retains the original all-jobs contract. The SQL filter
@@ -35,19 +37,24 @@ def list_jobs(limit:int=100,offset:int=0,scope:str|None=None):
         "active":" WHERE status IN ('queued','running','stopping')",
         "history":" WHERE status IN ('completed','completed_with_errors','failed','stopped','interrupted')"
     }[scope]
+    owner=owner_filter(current_user(request),"queue.view")
+    if owner is not None:where+=(" AND " if where else " WHERE ")+"batch_id IN (SELECT id FROM batches WHERE owner_id=%s)"
+    args=(owner,) if owner is not None else ()
     with connect() as db:
-        rows=db.execute("""SELECT id,snapshot,status,created_at,started_at,finished_at
+        rows=db.execute("""SELECT id,snapshot,status,created_at,started_at,finished_at,(SELECT owner_id::text FROM batches WHERE id=jobs.batch_id) AS owner_id
             FROM jobs"""+where+""" ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s""",
-            (limit,offset)).fetchall()
-        total=db.execute("SELECT count(*) AS n FROM jobs"+where).fetchone()["n"]
-        result=[job_status.decorated(db,row) for row in rows]
+            (*args,limit,offset)).fetchall()
+        total=db.execute("SELECT count(*) AS n FROM jobs"+where,args).fetchone()["n"]
+        result=[{**job_status.decorated(db,row),"owner_id":row.get("owner_id")} for row in rows]
     return {"runs":result,"total":total}
 
 @router.post("",status_code=202)
-def enqueue(data:NewRun):
+def enqueue(data:NewRun,request:Request=None):
     with connect() as db:
         # Shared with deletion, reference edits and auto scheduling.
         db.execute("SELECT pg_advisory_xact_lock(723409133)")
+        repeat=db.execute("SELECT 1 FROM jobs WHERE batch_id=%s LIMIT 1",(data.batch_id,)).fetchone()
+        batch_access(db,current_user(request),data.batch_id,"photos.reprocess" if repeat else "photos.process",lock=True)
         return _enqueue_locked(db,data,source="manual")
 
 
@@ -140,10 +147,10 @@ def _enqueue_locked(db, data:NewRun, *, source:str, locked_batch=None):
 @router.get("/{run_id}")
 def get_job(run_id:str):
     with connect() as db:
-        row=db.execute("""SELECT id,snapshot,status,created_at,started_at,finished_at
+        row=db.execute("""SELECT id,snapshot,status,created_at,started_at,finished_at,(SELECT owner_id::text FROM batches WHERE id=jobs.batch_id) AS owner_id
             FROM jobs WHERE id=%s""",(run_id,)).fetchone()
         if not row:raise HTTPException(404,"Задание не найдено")
-        return job_status.decorated(db,row)
+        return {**job_status.decorated(db,row),"owner_id":row.get("owner_id")}
 
 @router.post("/{run_id}/stop")
 def stop(run_id:str):

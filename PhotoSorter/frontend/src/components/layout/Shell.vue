@@ -38,7 +38,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
       </div>
       <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav class="nav-links" aria-label="Разделы">
-        <RouterLink v-for="link in links.filter(item=>session.isOwner?!['/settings','/admin'].includes(item.to):item.to==='/results'&&session.canResults)" :key="link.to" :to="link.to"
+        <RouterLink v-for="link in links.filter(item=>!['/settings','/admin'].includes(item.to)&&session.canPath(item.to))" :key="link.to" :to="link.to"
           class="nav-link" :aria-label="link.label"
           :title="sidebar.collapsed?link.label:undefined">
           <span class="nav-icon" aria-hidden="true"><UiIcon :name="link.icon"/></span>
@@ -46,12 +46,12 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
         </RouterLink>
       </nav>
       <div class="sidebar-bottom">
-        <nav v-if="session.isOwner" class="nav-links" aria-label="Управление">
-          <RouterLink to="/admin" class="nav-link" aria-label="Администрирование" :title="sidebar.collapsed?'Администрирование':undefined">
+        <nav v-if="session.canPath('/admin')||session.isOwner" class="nav-links" aria-label="Управление">
+          <RouterLink v-if="session.canPath('/admin')" to="/admin" class="nav-link" aria-label="Администрирование" :title="sidebar.collapsed?'Администрирование':undefined">
             <span class="nav-icon" aria-hidden="true"><UiIcon name="users"/></span>
             <span class="nav-text">Администрирование</span>
           </RouterLink>
-          <RouterLink to="/settings" class="nav-link" aria-label="Настройки"
+          <RouterLink v-if="session.isOwner" to="/settings" class="nav-link" aria-label="Настройки"
             :title="sidebar.collapsed?'Настройки':undefined">
             <span class="nav-icon" aria-hidden="true"><UiIcon name="settings"/></span>
             <span class="nav-text">Настройки</span>
@@ -79,6 +79,6 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
       </header>
       <main class="content"><slot/></main>
     </section>
-    <UploadCenter v-if="session.isOwner"/>
+    <UploadCenter v-if="session.can('photos.create')||session.can('photos.upload')||session.can('references.import')||session.can('references.create')"/>
   </div>
 </template>

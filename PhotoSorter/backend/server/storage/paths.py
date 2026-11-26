@@ -49,7 +49,7 @@ def run_identity(run_id,db=None):
         with connect() as conn:
             return run_identity(run_id,conn)
     row=db.execute("""SELECT j.batch_id,b.owner_id FROM jobs j
-        JOIN batches b ON b.id=j.batch_id WHERE j.id=%s""",(run_id,)).fetchone()
+        JOIN batches b ON b.id=j.batch_id WHERE j.id=%s AND b.delete_state<>'transferring'""",(run_id,)).fetchone()
     if not row:raise FileNotFoundError("Unknown run")
     return row["batch_id"],row["owner_id"]
 
