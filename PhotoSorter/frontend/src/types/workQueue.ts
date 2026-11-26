@@ -4,6 +4,8 @@ export type QueueStatus='queued'|'running'|'blocked'|'completed'|'completed_with
 export interface QueueTask {
   owner_id?:string;
   seq:number
+  queue_position?:number|null
+  blocked_ahead?:boolean|null
   kind:QueueKind
   fo_run_id:string|null
   reference_job_id:string|null

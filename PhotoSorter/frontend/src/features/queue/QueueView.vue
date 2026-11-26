@@ -118,8 +118,8 @@ function message(){
 </div>
 <template v-if="!historyMode">
   <div v-if="active.length" class="stack" aria-label="Текущие задания">
-    <QueueTaskRow v-for="(task,index) in active" :key="task.seq"
-      :task="task" :position="index+1" :estimate="estimates.get(task.seq)" :starting="index===0&&task.state==='queued'"
+    <QueueTaskRow v-for="task in active" :key="task.seq"
+      :task="task" :position="task.queue_position??undefined" :estimate="estimates.get(task.seq)"
       :busy="busy===task.reference_job_id||busy===task.fo_run_id"
       @action="(t,action)=>confirm={task:t,action}"
       @details="t=>detail=t.reference_job_id"/>

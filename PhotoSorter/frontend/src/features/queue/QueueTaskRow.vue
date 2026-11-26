@@ -11,7 +11,7 @@ import {deletionProgress} from '../../utils/deletionProgress'
 import {useDeletionStore} from '../../stores/deletion'
 import CompactTaskCard from '../../components/ui/CompactTaskCard.vue'
 
-const props=defineProps<{task:QueueTask;position?:number;estimate?:TaskEstimate;busy?:boolean;starting?:boolean}>()
+const props=defineProps<{task:QueueTask;position?:number;estimate?:TaskEstimate;busy?:boolean}>()
 const emit=defineEmits<{
  (e:'action',task:QueueTask,kind:'stop'|'retry'|'skip'):void
  (e:'details',task:QueueTask):void
@@ -52,7 +52,11 @@ const stage=computed(()=>{
     return props.task.error||'Удаление образца завершено'
   }
   if(hasBlockingFailure(props.task))return 'Ожидает повторения или пропуска'
-  if(props.task.state==='queued')return props.starting?'Подготовка к запуску MegaLoc':'Ожидает предыдущие задачи'
+  if(props.task.state==='queued'){
+    if(props.task.blocked_ahead)return 'Очередь ожидает решения'
+    const ahead=props.task.queue_position==null?null:props.task.queue_position-1
+    return ahead===1?'Одна задача впереди':ahead!==null&&ahead>1?'Задач впереди: '+ahead:'Ожидает запуска'
+  }
   if(props.task.state==='running'){
     if(props.task.stop_requested)return 'Запрошена остановка'
     if(preparing.value)return 'MegaLoc · подготовка образцов'
@@ -71,7 +75,7 @@ const tone=computed(()=>{
   if(props.task.state==='completed')return 'success'
   if(props.task.state==='completed_with_errors')return 'warning'
   if(props.task.state==='running')return 'running'
-  if(props.task.state==='queued')return props.starting?'running':'queued'
+  if(props.task.state==='queued')return 'queued'
   return 'neutral'
 })
 const time=computed(()=>queueTime(props.task,props.estimate))
@@ -83,7 +87,7 @@ const count=computed(()=>preparing.value||media.value?props.task.total_count:pro
     removingRef?'Удаление образца'+(task.deletion_sam?' · '+task.deletion_sam:''):task.batch_name||'Фотоотчёт'"
   :thumbnail-url="preparing?null:task.fo_thumbnail_url"
   :icon="preparing||removingRef?'references':'photos'"
-  :status="removal.deleting?'Удаляется':removal.failed?'Ошибка удаления':task.stop_requested&&task.state==='running'?'Остановка':starting?'Запуск обработки':STATE_RU[task.state]"
+  :status="removal.deleting?'Удаляется':removal.failed?'Ошибка удаления':task.stop_requested&&task.state==='running'?'Остановка':task.state==='queued'&&task.queue_position!=null?'В очереди №'+task.queue_position:STATE_RU[task.state]"
   :tone="tone" :progress="progress" :stage="stage" :indeterminate="removal.inProgress"
   :progress-motion-key="task.state==='running'&&!task.stop_requested&&!removal.deleting&&!removal.failed?String(task.seq):null"
   :time-label="removal.deleting||removal.failed?undefined:time.label"

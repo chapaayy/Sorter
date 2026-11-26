@@ -21,8 +21,10 @@ def queued_fo_count(db):
 
 # Both the snapshot and batch list describe the same FIFO. A running task
 # (including reference preparation) also keeps a newly queued FO waiting.
-QUEUE_ORDER_SQL="""SELECT fo_run_id,
-    row_number() OVER (ORDER BY seq)::integer AS queue_position
+QUEUE_ORDER_SQL="""SELECT seq,fo_run_id,
+    row_number() OVER (ORDER BY seq)::integer AS queue_position,
+    coalesce(bool_or(kind='reference_preparation' AND state IN ('failed','interrupted','blocked'))
+      OVER (ORDER BY seq ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),false) AS blocked_ahead
     FROM work_queue WHERE state IN ('queued','running') OR
       (kind='reference_preparation' AND state IN ('failed','interrupted','blocked'))"""
 

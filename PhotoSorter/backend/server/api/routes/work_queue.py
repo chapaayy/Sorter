@@ -35,7 +35,7 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active",request:Reques
     with connect() as db:
         total=db.execute("SELECT count(*) AS n FROM work_queue w LEFT JOIN jobs j ON j.id=w.fo_run_id LEFT JOIN batches b ON b.id=coalesce(j.batch_id,w.media_batch_id)"+where,args).fetchone()["n"]
         entries=db.execute("""
-            SELECT w.seq,w.kind,w.fo_run_id,w.reference_job_id,w.media_batch_id,w.reference_deletion_id,
+            SELECT w.seq,q.queue_position,q.blocked_ahead,w.kind,w.fo_run_id,w.reference_job_id,w.media_batch_id,w.reference_deletion_id,
                    d.sam AS deletion_sam,d.reference_id AS deletion_photo_id,w.state,
                    w.created_at,w.started_at,w.finished_at,
                    p.session_id,coalesce(w.media_total_count,p.total_count) AS total_count,
@@ -51,7 +51,8 @@ def list_work_queue(limit:int=100,offset:int=0,scope:str="active",request:Reques
                      WHERE photos.batch_id=j.batch_id AND photos.kind='fo'
                        AND photos.finalized AND (photos.original_media_type IS NULL OR photos.media_action IS NOT NULL)) AS fo_photo_count,
                    cover.thumbnail_id AS fo_thumbnail_id
-            FROM work_queue w LEFT JOIN reference_preparation_jobs p
+            FROM work_queue w LEFT JOIN ("""+work_queue.QUEUE_ORDER_SQL+""") q ON q.seq=w.seq
+            LEFT JOIN reference_preparation_jobs p
                  ON p.id=w.reference_job_id
             LEFT JOIN reference_deletion_tasks d ON d.id=w.reference_deletion_id
             LEFT JOIN jobs j ON j.id=w.fo_run_id

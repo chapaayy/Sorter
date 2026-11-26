@@ -107,7 +107,14 @@ export function estimateQueue(active:readonly QueueTask[],history:readonly Queue
   const rates=historicalRates(history)
   const result=new Map<number,TaskEstimate>()
   let cursor:number|null=0
+  let expectedPosition=1
   for(const task of [...active].sort((a,b)=>a.seq-b.seq)){
+    if(task.queue_position!=null){
+      if(task.queue_position!==expectedPosition||task.blocked_ahead)cursor=null
+      expectedPosition=task.queue_position+1
+    }else{
+      expectedPosition++
+    }
     if(task.state==='running'){
       const estimate=liveRemaining(task,rates,now)
       const full=estimate.basis!=='stage'?estimate.seconds:null
