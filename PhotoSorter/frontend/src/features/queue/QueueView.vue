@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue'
+import {computed,onMounted,ref,watch} from 'vue'
 import {useRoute} from 'vue-router'
 import {workQueueApi} from '../../api/workQueue'
 import {runApi} from '../../api/runs'
@@ -27,6 +27,13 @@ const active=computed(()=>[...tasks.value].sort((a,b)=>a.seq-b.seq))
 const filteredHistory=computed(()=>history.value.filter(item=>(
   (item.batch_name||'')+' '+item.seq+' '+(item.kind==='reference_preparation'?'образцы':item.kind==='media_preparation'?'перекодирование файлов':'фотографии')
 ).toLowerCase().includes(search.value.toLowerCase())))
+// Only acknowledge outcomes actually present in the opened history, not merely
+// a click on the history button or a failed history request.
+watch([historyMode,filteredHistory],([opened,rows])=>{
+  if(opened&&!document.hidden)window.dispatchEvent(new CustomEvent('map:queue-history-viewed',{
+    detail:rows.filter(task=>task.kind==='fo_processing'&&task.fo_run_id).map(task=>task.fo_run_id)
+  }))
+},{flush:'post'})
 const blocking=computed(()=>active.value.find(hasBlockingFailure))
 const clock=ref(Date.now()),loadingMore=ref(false),initialLoading=ref(true)
 const estimates=computed(()=>estimateQueue(active.value,history.value,clock.value))

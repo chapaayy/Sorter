@@ -65,7 +65,7 @@ export class FaviconRenderer {
     g.beginPath();g.arc(20,20,18,0,Math.PI*2);g.stroke()
     if(p===null||p>0){
       const start=-Math.PI/2+(p===null?angle:0)
-      g.beginPath();g.arc(20,20,18,start,start+Math.PI*2*(p===null?.23:p))
+      g.beginPath();g.arc(20,20,18,start,start+Math.PI*2*(p===null ? .23 : p))
       g.strokeStyle=color;g.stroke()
     }
     g.restore();this.publish()

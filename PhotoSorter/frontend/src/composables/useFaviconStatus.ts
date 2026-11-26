@@ -64,9 +64,14 @@ export function useFaviconStatus(){
     if(!request){if(timer!==undefined){window.clearTimeout(timer);timer=undefined}void poll()}
   }
   function visited(){
-    if(route.path==='/queue'&&route.query.view==='history')tracker.acknowledgeHistory()
-    else if(route.path.startsWith('/queue/runs/'))tracker.acknowledgeRun(route.path.split('/')[3]||'')
+    if(route.path.startsWith('/queue/runs/'))tracker.acknowledgeRun(route.path.split('/')[3]||'')
     else if(route.path==='/results'||route.path.startsWith('/results/'))tracker.acknowledgeSuccess()
+    display()
+  }
+  function historyViewed(event:Event){
+    if(account===null||document.hidden)return
+    const runs=(event as CustomEvent<unknown>).detail
+    if(Array.isArray(runs))for(const run of runs)if(typeof run==='string')tracker.acknowledgeRun(run)
     display()
   }
   watch(eligible,()=>{if(renderer)changeAccount()},{flush:'sync'})
@@ -74,10 +79,12 @@ export function useFaviconStatus(){
   onMounted(()=>{
     renderer=new FaviconRenderer()
     document.addEventListener('visibilitychange',visible)
+    window.addEventListener('map:queue-history-viewed',historyViewed)
     changeAccount()
   })
   onBeforeUnmount(()=>{
     cancel();account=null;renderer?.dispose();renderer=undefined
     document.removeEventListener('visibilitychange',visible)
+    window.removeEventListener('map:queue-history-viewed',historyViewed)
   })
 }
