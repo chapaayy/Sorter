@@ -58,6 +58,7 @@ async function mock(page:Page){
       published_references:1,notice:false,pending_changes:0,notice_version_id:null
     })
     if(p==='/api/reference-library/events')return respond(route,{events:[]})
+    if(p==='/api/work-queue/own-status')return respond(route,{account_id:'1',sampled_at:new Date().toISOString(),tasks:[]})
     if(p==='/api/work-queue')return respond(route,{tasks:[],total:0})
     if(p==='/api/references')return respond(route,{sam:[{sam:'SAM-0001',photos:1}],total:1})
     if(p==='/api/references/cache/status')return respond(route,{total:1,cached:1,current_signature:null})
@@ -2195,4 +2196,30 @@ test('login cannot publish a session before server confirms it',async({page})=>{
   await expect(page.getByRole('alert').filter({hasText:'Сессия истекла'})).toBeVisible()
   await expect(page).toHaveURL(/\/login\?next=/)
   await expect(page.getByRole('heading',{name:'Администрирование'})).toHaveCount(0)
+})
+
+test('personal favicon survives navigation and restores the logo on logout',async({page})=>{
+  let loggedIn=true,completed=false
+  const started='2026-11-26T18:00:00Z'
+  await page.route('**/api/auth/me',route=>loggedIn?respond(route,{id:'1',username:'admin'}):route.fulfill({status:401,json:{detail:'Необходим вход'}}))
+  await page.route('**/api/auth/logout',route=>{loggedIn=false;return respond(route,{ok:true})})
+  await page.route('**/api/work-queue/own-status',route=>respond(route,{account_id:'1',sampled_at:started,tasks:[
+    {seq:1,run_id:'personal-run',state:completed?'completed':'running',progress:completed?100:55,
+      finished_at:completed?'2026-11-26T18:01:00Z':null}
+  ]}))
+  await page.goto('/fo')
+  const icon=page.locator('link[rel="icon"]')
+  await expect(icon).toHaveAttribute('href',/^data:image\/png;base64,/,{timeout:15000})
+  await page.waitForTimeout(650)
+  const running=await icon.getAttribute('href')
+  await openQueue(page)
+  await expect(icon).toHaveAttribute('href',running!)
+  completed=true
+  await expect.poll(()=>icon.getAttribute('href'),{timeout:12000}).not.toBe(running)
+  await page.waitForTimeout(1300)
+  await expect(icon).toHaveAttribute('href',/^data:image\/png;base64,/)
+  await page.getByRole('button',{name:'Выйти',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'Войти в MAP'})).toBeVisible()
+  await expect(icon).toHaveAttribute('href','/assets/logo.webp')
+  await expect(icon).toHaveAttribute('type','image/webp')
 })

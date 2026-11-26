@@ -301,3 +301,28 @@ def test_idle_lifecycle_and_model_space_keep_real_api_available(system,monkeypat
         assert admin.get('/api/models').status_code==200
         account_lifecycle.run_pending()
         assert admin.get('/api/models').status_code==200
+
+
+def test_personal_favicon_status_never_exposes_other_owners(system,monkeypatch):
+    admin=clients(monkeypatch)
+    alice,a=create_user(admin,'favicon-alice@example.test',overrides={'queue.view':'all'})
+    bob,b=create_user(admin,'favicon-bob@example.test')
+    own=create_batch(a,'Alice favicon')
+    foreign=create_batch(b,'Bob favicon')
+    with database.connect() as db:
+        for batch,state,pct in ((own,'running',55),(foreign,'queued',0)):
+            run='20261126T180000-'+uuid.uuid4().hex[:12]
+            db.execute("INSERT INTO jobs(id,batch_id,status,snapshot) VALUES(%s,%s,%s,%s)",
+                       (run,batch,state,Jsonb({'progress':{'overall_percent':pct}})))
+            db.execute("INSERT INTO work_queue(kind,fo_run_id,state) VALUES('fo_processing',%s,%s)",(run,state))
+    endpoint='/api/work-queue/own-status'
+    for browser,account,expected in ((a,alice,'running'),(b,bob,'queued')):
+        reply=browser.get(endpoint)
+        assert reply.status_code==200,reply.text
+        data=reply.json()
+        assert data['account_id']==str(account)
+        assert len(data['tasks'])==1 and data['tasks'][0]['state']==expected
+    assert admin.get(endpoint).json()['tasks']==[]
+    assert a.get(endpoint).json()['tasks'][0]['progress']==55
+    assert admin.put(f'/api/admin/accounts/{alice}',json={'display_name':'Alice','role_id':'employee','overrides':{'queue.view':'none'}}).status_code==200
+    assert a.get(endpoint).status_code==403

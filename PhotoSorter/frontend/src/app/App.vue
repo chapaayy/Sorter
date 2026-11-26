@@ -7,6 +7,7 @@ import Shell from '../components/layout/Shell.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import ToastStack from '../components/ui/ToastStack.vue'
 import {usePolling} from '../composables/usePolling'
+import {useFaviconStatus} from '../composables/useFaviconStatus'
 const session=useSessionStore()
 useThemeStore()
 const route=useRoute(),router=useRouter()
@@ -20,6 +21,7 @@ onMounted(restoreSession)
 watch(()=>route.fullPath,()=>{void gate()})
 watch(()=>session.user?.permissions,()=>{void gate()})
 usePolling(session.refreshPermissions,15000)
+useFaviconStatus()
 </script>
 <template>
   <main v-if="session.checkFailed" class="auth-loading">
