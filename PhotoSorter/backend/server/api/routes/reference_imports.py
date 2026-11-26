@@ -9,6 +9,7 @@ from pydantic import BaseModel,Field
 
 from ...services import reference_imports,reference_uploads,reference_import_sides,reference_portable_catalog
 from ...storage.reference_objects import CHUNK_LIMIT
+from ...security.access_policy import current_user
 
 router=APIRouter(prefix="/api/reference-imports",tags=["reference-imports"])
 
@@ -82,29 +83,29 @@ def compare(data:Comparison):
 
 @router.post("",status_code=201)
 def create(data:NewSession,request:Request=None):
-    from ...security.access_policy import current_user
     user=current_user(request)
-    return reference_imports.create(data.client_session_id,requested_by=user["id"] if user else None)
+    return reference_imports.create(data.client_session_id,requested_by=user["id"] if user else None,user=user)
 
 @router.put("/{session_id}/manifest")
 def register(session_id:uuid.UUID,data:Manifest,request:Request=None):
-    from ...security.access_policy import current_user
     return reference_imports.register_manifest(session_id,data.files,user=current_user(request))
 
 @router.get("")
-def list_sessions(limit:int=25,offset:int=0):
-    return reference_imports.list_sessions(limit,offset)
+def list_sessions(limit:int=25,offset:int=0,request:Request=None):
+    return reference_imports.list_sessions(limit,offset,user=current_user(request))
 
 @router.get("/{session_id}")
-def get_session(session_id:uuid.UUID):
-    return reference_imports.status(session_id)
+def get_session(session_id:uuid.UUID,request:Request=None):
+    return reference_imports.status(session_id,user=current_user(request))
 
 @router.get("/{session_id}/files/{upload_id}")
-def get_file(session_id:uuid.UUID,upload_id:uuid.UUID):
+def get_file(session_id:uuid.UUID,upload_id:uuid.UUID,request:Request=None):
+    reference_imports.require_session_actor(session_id,current_user(request))
     return reference_imports.file_status(session_id,upload_id)
 
 @router.patch("/{session_id}/files/{upload_id}")
 async def chunk(session_id:uuid.UUID,upload_id:uuid.UUID,request:Request):
+    await asyncio.to_thread(reference_imports.require_session_actor,session_id,current_user(request))
     try:
         offset=int(request.headers.get("upload-offset","-1"))
     except ValueError as exc:
@@ -125,14 +126,17 @@ async def chunk(session_id:uuid.UUID,upload_id:uuid.UUID,request:Request):
                                    offset,b"".join(pieces))
 
 @router.post("/{session_id}/files/{upload_id}/finish")
-async def finish(session_id:uuid.UUID,upload_id:uuid.UUID):
+async def finish(session_id:uuid.UUID,upload_id:uuid.UUID,request:Request=None):
+    await asyncio.to_thread(reference_imports.require_session_actor,session_id,current_user(request))
     return await asyncio.to_thread(reference_uploads.finish,session_id,upload_id)
 
 @router.post("/{session_id}/files/{upload_id}/duplicate")
-async def duplicate(session_id:uuid.UUID,upload_id:uuid.UUID,data:DuplicateConfirmation):
+async def duplicate(session_id:uuid.UUID,upload_id:uuid.UUID,data:DuplicateConfirmation,request:Request=None):
+    await asyncio.to_thread(reference_imports.require_session_actor,session_id,current_user(request))
     return await asyncio.to_thread(reference_uploads.confirm_duplicate,
                                    session_id,upload_id,data.sha256)
 
 @router.post("/{session_id}/complete")
-async def complete(session_id:uuid.UUID):
+async def complete(session_id:uuid.UUID,request:Request=None):
+    await asyncio.to_thread(reference_imports.require_session_actor,session_id,current_user(request))
     return await asyncio.to_thread(reference_imports.complete,session_id)

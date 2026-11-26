@@ -502,3 +502,38 @@ def test_delete_account_cancels_fifo_before_exclusive_lease_and_preserves_other_
         assert not db.execute("SELECT 1 FROM storage_files WHERE owner_id=%s",(alice,)).fetchone()
         assert not db.execute("SELECT 1 FROM storage_reservations WHERE owner_id=%s",(alice,)).fetchone()
         assert db.execute("SELECT state FROM work_queue WHERE fo_run_id=%s",(runs[2],)).fetchone()['state']=='queued'
+
+
+def test_reference_import_sessions_are_not_shared_by_client_uuid(system,monkeypatch):
+    from .test_unified_queue_stage3 import add_published_reference
+    import hashlib
+    add_published_reference(system)
+    admin=clients(monkeypatch)
+    alice,a=create_user(admin,'import-alice@example.test',overrides={'references.import':'all'})
+    bob,b=create_user(admin,'import-bob@example.test',overrides={'references.import':'all'})
+    session=str(uuid.uuid4());file_id=str(uuid.uuid4())
+    path='/api/reference-imports';url=path+'/'+session
+    assert a.post(path,json={'client_session_id':session}).status_code==201
+    assert a.post(path,json={'client_session_id':session}).status_code==201
+    raw=_jpg()
+    manifest={'files':[{'upload_id':file_id,'sam':'SAM 0001','relative_path':'SAM 0001/private-name.jpg',
+        'filename':'private-name.jpg','size':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}]}
+    response=a.put(url+'/manifest',json=manifest)
+    assert response.status_code==200,response.text
+    assert a.get(url).status_code==200
+    assert 'private-name.jpg' in a.get(url).text
+    assert b.get(path).json()=={'sessions':[],'total':0}
+    assert admin.get(path).json()['total']==1
+    assert b.post(path,json={'client_session_id':session}).status_code==404
+    assert b.get(url).status_code==404
+    assert b.put(url+'/manifest',json=manifest).status_code==404
+    file=url+'/files/'+file_id
+    assert b.get(file).status_code==404
+    assert b.patch(file,content=raw,headers={'Upload-Offset':'0'}).status_code==404
+    assert b.post(file+'/finish').status_code==404
+    assert b.post(file+'/duplicate',json={'sha256':hashlib.sha256(raw).hexdigest()}).status_code==404
+    assert b.post(url+'/complete').status_code==404
+    assert a.get(file).json()['received']==0
+    assert b.get('/api/references').status_code==200
+    with database.connect() as db:
+        assert db.execute("SELECT requested_by FROM reference_import_sessions WHERE id=%s",(session,)).fetchone()['requested_by']==alice

@@ -111,11 +111,25 @@ def _signature(rows):
     return hashlib.sha256(json.dumps(payload,ensure_ascii=False,
         separators=(",",":")).encode("utf-8")).hexdigest()
 
-def create(session_id,*,requested_by=None):
+def _require_session_actor(db,session_id,user):
+    # Published references are shared; an unfinished import is actor-specific.
+    from ..security.access_policy import is_owner
+    if user is None or is_owner(user):return
+    row=db.execute("SELECT requested_by FROM reference_import_sessions WHERE id=%s",(session_id,)).fetchone()
+    if not row or row["requested_by"]!=user["id"]:
+        raise HTTPException(404,"Сессия загрузки образцов не найдена")
+
+def require_session_actor(session_id,user):
+    with connect() as db:_require_session_actor(db,_uid(session_id),user)
+
+def create(session_id,*,requested_by=None,user=None):
     session_id=_uid(session_id)
     with connect() as db:
         repository.create_session(db,session_id,requested_by=requested_by)
-    return status(session_id)
+        # Check after INSERT ON CONFLICT, in the same transaction: a client
+        # cannot adopt another actor's existing idempotency identifier.
+        _require_session_actor(db,session_id,user)
+    return status(session_id,user=user)
 
 def compare(files):
     """Read-only comparison with the currently published library."""
@@ -151,6 +165,7 @@ def register_manifest(session_id,files,*,user=None):
         # Serialize manifest registration with catalog relabels and FIFO claims.
         db.execute("SELECT pg_advisory_xact_lock(723409133)")
         session=repository.session(db,session_id,lock=True)
+        _require_session_actor(db,session_id,user)
         if not session:
             raise HTTPException(404,"Сессия загрузки образцов не найдена")
         if session["manifest_digest"] is not None:
@@ -163,7 +178,7 @@ def register_manifest(session_id,files,*,user=None):
             validate_existing_sides(db,desired_sides(
                 {'sam':row[1],'checksum':row[6],'side':row[7]} for row in expected))
             repository.register(db,session_id,expected,signature)
-    return status(session_id)
+    return status(session_id,user=user)
 
 def _file_state(db,session_id,upload_id,*,lock=False):
     session=repository.session(db,session_id)
@@ -232,9 +247,10 @@ def complete(session_id):
             raise HTTPException(409,"Не все файлы завершены и проверены")
         return result
     
-def status(session_id):
+def status(session_id,*,user=None):
     session_id=_uid(session_id)
     with connect() as db:
+        _require_session_actor(db,session_id,user)
         session=repository.session(db,session_id)
         if not session:
             raise HTTPException(404,"Сессия загрузки образцов не найдена")
@@ -278,11 +294,13 @@ def status(session_id):
             "queue_seq":job["seq"] if job else None,
             "files":items}
 
-def list_sessions(limit=25,offset=0):
+def list_sessions(limit=25,offset=0,*,user=None):
     if not 1<=limit<=100 or offset<0:
         raise HTTPException(422,"Неверная пагинация")
+    from ..security.access_policy import is_owner
+    actor=user["id"] if user is not None and not is_owner(user) else None
     with connect() as db:
-        total=db.execute("SELECT count(*) AS n FROM reference_import_sessions").fetchone()["n"]
+        total=db.execute("SELECT count(*) AS n FROM reference_import_sessions WHERE %s::bigint IS NULL OR requested_by=%s",(actor,actor)).fetchone()["n"]
         rows=db.execute("""
             SELECT s.id,s.upload_state AS state,s.preparation_state,s.expected_count,
                    s.created_at,s.completed_at,
@@ -294,7 +312,8 @@ def list_sessions(limit=25,offset=0):
             LEFT JOIN reference_import_files f ON f.session_id=s.id
             LEFT JOIN reference_preparation_jobs p ON p.session_id=s.id
             LEFT JOIN work_queue w ON w.reference_job_id=p.id
+            WHERE %s::bigint IS NULL OR s.requested_by=%s
             GROUP BY s.id,p.id,w.seq
             ORDER BY s.created_at DESC,s.id DESC LIMIT %s OFFSET %s
-        """,(limit,offset)).fetchall()
+        """,(actor,actor,limit,offset)).fetchall()
     return {"sessions":rows,"total":total}
