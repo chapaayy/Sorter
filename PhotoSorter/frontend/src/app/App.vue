@@ -6,17 +6,20 @@ import {useThemeStore} from '../stores/theme'
 import Shell from '../components/layout/Shell.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import ToastStack from '../components/ui/ToastStack.vue'
+import {usePolling} from '../composables/usePolling'
 const session=useSessionStore()
 useThemeStore()
 const route=useRoute(),router=useRouter()
 async function gate(){
   if(!session.checked)return
   if(!session.user && !route.meta.public)await router.replace({name:'login',query:{next:route.fullPath}})
-  if(session.user && (route.meta.public || (!session.isOwner && !route.meta.viewer)))await router.replace(session.home)
+  if(session.user && (route.meta.public || (!session.isOwner && (!route.meta.viewer||(!session.canResults&&route.path.startsWith('/results'))))))await router.replace(session.home)
 }
 async function restoreSession(){await session.check();await gate()}
 onMounted(restoreSession)
 watch(()=>route.fullPath,()=>{void gate()})
+watch(()=>session.canResults,()=>{void gate()})
+usePolling(session.refreshPermissions,15000)
 </script>
 <template>
   <main v-if="session.checkFailed" class="auth-loading">

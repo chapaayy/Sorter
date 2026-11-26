@@ -40,7 +40,7 @@ def file_allowed(file:Path, run_id=None, kind=None):
 @router.get("/{run_id}/megaloc/{index}")
 def image(run_id:str,index:int,kind:str="query",candidate:int=0,request:Request=None):
     if is_viewer(request):
-        check_published(request,run_id)
+        check_published(request,run_id,"results.media")
         if kind not in ("copy","poster"):
             raise HTTPException(403,"Доступны только готовые фотографии")
     rows=safe_manifest(run_id)

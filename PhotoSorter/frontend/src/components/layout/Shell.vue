@@ -38,7 +38,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
       </div>
       <div class="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav class="nav-links" aria-label="Разделы">
-        <RouterLink v-for="link in links.filter(item=>session.isOwner?!['/settings','/admin'].includes(item.to):item.to==='/results')" :key="link.to" :to="link.to"
+        <RouterLink v-for="link in links.filter(item=>session.isOwner?!['/settings','/admin'].includes(item.to):item.to==='/results'&&session.canResults)" :key="link.to" :to="link.to"
           class="nav-link" :aria-label="link.label"
           :title="sidebar.collapsed?link.label:undefined">
           <span class="nav-icon" aria-hidden="true"><UiIcon :name="link.icon"/></span>
@@ -57,6 +57,7 @@ const title=()=>links.find(link=>route.path.startsWith(link.to))?.label||'Фот
             <span class="nav-text">Настройки</span>
           </RouterLink>
         </nav>
+        <RouterLink to="/profile" class="nav-link" aria-label="Личный аккаунт"><span class="nav-icon"><UiIcon name="users"/></span><span class="nav-text">Личный аккаунт</span></RouterLink>
         <div class="server-pill" title="Приватная панель · MegaLoc">
           <span class="server-pill-text">Приватная панель · MegaLoc</span>
         </div>

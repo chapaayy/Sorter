@@ -28,4 +28,17 @@ def sign_out(request:Request):
 
 @router.get("/me")
 def me(request:Request):
-    return {"username":request.state.user["username"]}
+    user=request.state.user
+    # Existing observer API clients retain their original response shape.
+    return {"username":user["username"],"permissions":user["permissions"],"role_id":user["role_id"]} if user.get("role_id") not in (None,"observer","owner") or (user.get("role_id")=="observer" and user.get("permissions")!={k:"granted" for k in ("results.view","results.media","results.zip")}) else {"username":user["username"]}
+
+@router.get("/profile")
+def profile(request:Request):
+    user=request.state.user
+    return {"username":user["username"],"display_name":user.get("display_name"),"role_id":user.get("role_id"),"permissions":user.get("permissions",{})}
+
+@router.get("/storage")
+def own_storage(request:Request):
+    from ...services.storage_admin import account_detail
+    data=account_detail(request.state.user["id"],limit=1)
+    return {"account":data["account"],"categories":data["categories"],"sampled_at":data["sampled_at"]}

@@ -1,5 +1,5 @@
 export type ThemeChoice = 'system' | 'dark' | 'light'
-export interface User { username: string }
+export interface User { username: string; display_name?:string; role_id?:string; permissions?:Record<string,string> }
 export interface DeletionProgress {
   phase:'queued'|'stopping_jobs'|'waiting_operations'|'scanning'|'files'|'database'|'completed'
   done:number

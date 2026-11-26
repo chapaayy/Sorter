@@ -1,6 +1,6 @@
 import {api,query} from './client'
 import type {ResultPhoto,CursorPage,Run} from '../types/api'
-export interface PublishedResult {
+export interface PublishedResult { can_media?:boolean;can_zip?:boolean;
   id:string; status:Run['status']; display_name:string; finished_at?:string|null
 }
 export const resultApi={

@@ -139,6 +139,8 @@ test('pill fields, password toggle and registration feedback',async({page})=>{
 })
 
 test('owner can read the comment and approve after confirmation',async({page})=>{
+  await page.route('**/api/admin/accounts/roles',route=>route.fulfill({json:{items:[{id:'observer',name:'Наблюдатель',description:'',permissions:{},users:0}],catalog:{}}}))
+  await page.route('**/api/admin/accounts/registration',route=>route.fulfill({json:{enabled:true,pending:1}}))
   await page.route('**/api/auth/me',route=>route.fulfill({json:{username:'admin'}}))
   await page.route('**/api/admin/users?**',route=>route.fulfill({json:{items:[],has_more:false}}))
   let decided=false
@@ -167,6 +169,7 @@ test('owner can read the comment and approve after confirmation',async({page})=>
   await page.goto('/admin')
   await page.getByRole('button',{name:'Аккаунты',exact:true}).click()
   await expect(page.getByRole('heading',{name:'Администрирование'})).toBeVisible()
+  await page.getByRole('button',{name:/^Заявки/}).click()
   await expect(page.getByText(item.comment)).toBeVisible()
   await page.getByRole('button',{name:'Одобрить',exact:true}).click()
   const dialog=page.getByRole('dialog',{name:'Выдать доступ к результатам'})
@@ -210,8 +213,10 @@ test('owner creates a viewer directly and can revoke its selected reports',async
   await page.route('**/api/admin/access-requests?**',route=>route.fulfill({json:{items:[],has_more:false}}))
   const report={id:run,display_name:'Готовый отчёт',status:'completed'}
   await page.route('**/api/results/catalog?**',route=>route.fulfill({json:{items:[report],has_more:false}}))
+  await page.route('**/api/admin/accounts/roles',route=>route.fulfill({json:{items:[{id:'observer',name:'Наблюдатель',description:'',permissions:{},users:0}],catalog:{}}}))
   const user={id:2,email,created_at:'2026-11-15T12:00:00Z'}
   let created=false,grants=[report]
+  await page.route('**/api/admin/accounts?**',route=>route.fulfill({json:{items:created?[{...user,username:email,display_name:'',role_id:'observer',role_name:'Наблюдатель',blocked:false}]:[],has_more:false,stats:{total:created?1:0,active:created?1:0,blocked:0}}}))
   await page.route(/\/api\/admin\/users(?:\?.*)?$/,route=>{
     if(route.request().method()==='POST'){
       expect(route.request().postDataJSON()).toEqual({email,password,confirmation:password,run_ids:[run]})
@@ -243,7 +248,7 @@ test('owner creates a viewer directly and can revoke its selected reports',async
   await expect(create).toHaveCount(0)
   const accounts=page.getByRole('region',{name:'Аккаунты'})
   await expect(accounts.getByText(email,{exact:true})).toBeVisible()
-  await accounts.getByRole('button',{name:'Изменить доступ'}).click()
+  await accounts.getByRole('button',{name:'Изменить доступ к отчётам'}).click()
   const edit=page.getByRole('dialog',{name:'Выдать доступ к результатам'})
   const option=edit.getByRole('checkbox',{name:/Готовый отчёт/})
   await expect(option).toBeChecked()

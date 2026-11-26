@@ -14,7 +14,7 @@ from server import auth, database
 from server.api.routes import access_requests, downloads, images, results
 from server.main import app
 from server.security.login_throttle import LoginThrottle
-from server.services import access_requests as moderation, admin_users
+from server.services import access_requests as moderation, admin_users, accounts
 
 ORIGIN = "https://sorter.example.test"
 OWNER = "disposable_admin_password"
@@ -38,7 +38,7 @@ def isolated(monkeypatch):
     with psycopg.connect(database.DB_URL, autocommit=True) as root:
         root.execute(f"CREATE SCHEMA {schema}")
         try:
-            for module in (auth, database, moderation, admin_users, results, downloads, images):
+            for module in (auth, database, moderation, admin_users, accounts, results, downloads, images):
                 monkeypatch.setattr(module, "connect", connect)
             monkeypatch.setattr(auth, "limiter", LoginThrottle())
             monkeypatch.setattr(access_requests, "submissions", LoginThrottle())
@@ -234,3 +234,41 @@ def test_direct_account_creation_resolves_existing_request_without_using_its_pas
     with isolated() as db:
         request = db.execute("SELECT status,password_hash FROM access_requests").fetchone()
         assert request == {"status":"approved","password_hash":None}
+
+def test_role_overrides_are_live_and_owner_is_protected(isolated):
+    owner,viewer=client(),client()
+    assert login(owner,"admin",OWNER).status_code==200
+    add_run(isolated,RUN,"completed")
+    add_run(isolated,HIDDEN,"completed")
+    created=owner.post("/api/admin/users",json={"email":EMAIL,"password":PASSWORD,"confirmation":PASSWORD,"run_ids":[RUN]}).json()
+    identifier=created["id"]
+    path=f"/api/admin/accounts/{identifier}"
+    assert login(viewer).status_code==200
+    assert viewer.get(path).status_code==403
+    assert viewer.get("/api/results/"+HIDDEN).status_code==404
+    role=owner.post("/api/admin/accounts/roles",json={"name":"Тестовая роль","permissions":{"results.view":"all","results.media":"none","results.zip":"none"}})
+    assert role.status_code==201
+    rid=role.json()["id"]
+    assert viewer.put(path,json={"display_name":"x","role_id":rid,"overrides":{}}).status_code==403
+    assert owner.put(path,json={"display_name":"x","role_id":rid,"overrides":{}}).status_code==200
+    assert viewer.get("/api/results/"+HIDDEN).json()["can_zip"] is False
+    assert viewer.get("/api/download/"+HIDDEN).status_code==403
+    assert viewer.get("/api/results/"+HIDDEN+"/photos").status_code==403
+    assert owner.put(path,json={"display_name":"x","role_id":rid,"overrides":{"results.view":"none"}}).status_code==200
+    assert viewer.get("/api/results/catalog").status_code==403
+    assert owner.put(path,json={"display_name":"x","role_id":rid,"overrides":{}}).status_code==200
+    assert owner.put("/api/admin/accounts/roles/"+rid,json={"name":"Тестовая роль","permissions":{"results.view":"own"}}).status_code==200
+    assert viewer.get("/api/results/catalog").json()["items"]==[]
+    with isolated() as db:
+        owner_id=db.execute("SELECT id FROM users WHERE username='admin'").fetchone()["id"]
+    assert owner.post(f"/api/admin/accounts/{owner_id}/security",json={"action":"block","confirmed":True}).status_code==403
+    assert owner.put(path,json={"display_name":"x","role_id":"owner","overrides":{}}).status_code==422
+    assert owner.post(path+"/security",json={"action":"block","confirmed":True}).status_code==200
+    assert viewer.get("/api/auth/me").status_code==401
+    assert login(viewer).status_code==401
+    assert owner.post(path+"/security",json={"action":"unblock","confirmed":True}).status_code==200
+    assert login(viewer).status_code==200
+    sessions=owner.get(path).json()["sessions"]
+    assert len(sessions)==1 and "token_hash" not in sessions[0]
+    assert owner.post(path+"/security",json={"action":"revoke_session","confirmed":True,"session_id":sessions[0]["session_id"]}).status_code==200
+    assert viewer.get("/api/auth/me").status_code==401

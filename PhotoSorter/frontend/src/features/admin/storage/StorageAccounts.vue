@@ -8,6 +8,7 @@ import LoadingSkeleton from '../../../components/ui/LoadingSkeleton.vue'
 import CategoryTable from './CategoryTable.vue'
 import BudgetSummary from './BudgetSummary.vue'
 import {gibValue,parseGib} from './quotaUnits'
+const props=defineProps<{accountId?:string}>()
 const limit=ref(''),saving=ref(false),saved=ref('')
 const page=ref<StorageAccountsPage|null>(null),detail=ref<StorageAccountDetail|null>(null),selected=ref(''),loading=ref(false),error=ref('')
 async function load(offset=0){
@@ -31,7 +32,7 @@ async function saveLimit(){
 }
 const sum=(categories:Record<string,StorageCounter>,key:'allocated_bytes'|'logical_bytes')=>Object.values(categories).reduce((n,r)=>n+r[key],0)
 const accountTotal=computed(()=>detail.value?sum(detail.value.categories,'allocated_bytes'):null)
-onMounted(()=>void load())
+onMounted(()=>{if(props.accountId)void select(props.accountId);else void load()})
 </script>
 <template>
 <section class="panel stack">
@@ -50,10 +51,10 @@ onMounted(()=>void load())
     </template>
   </template>
   <template v-else>
-    <UiButton small :disabled="loading" @click="selected='';detail=null">К аккаунтам</UiButton>
+    <UiButton v-if="!accountId" small :disabled="loading" @click="selected='';detail=null">К аккаунтам</UiButton>
     <LoadingSkeleton v-if="loading&&!detail" variant="lines" label="Загружаем данные аккаунта"/>
     <template v-if="detail">
-      <div class="row between wrap"><h3>{{detail.account.username}}</h3><strong>{{bytes(detail.sampled_at?accountTotal:null)}}</strong></div>
+      <div class="row between wrap"><h3>{{accountId?'Личный объём':detail.account.username}}</h3><strong>{{bytes(detail.sampled_at?accountTotal:null)}}</strong></div>
       <p class="meta">Текущие записи реестра; последнее агрегированное измерение: {{date(detail.sampled_at)}}. Hardlink учитывается глобально, поэтому повторная обработка может занимать 0 дополнительных блоков.</p>
       <template v-if="detail.account.quota">
         <BudgetSummary :budget="detail.account.quota" title="Личная квота"/>

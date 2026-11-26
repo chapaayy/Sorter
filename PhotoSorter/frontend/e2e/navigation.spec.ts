@@ -38,6 +38,10 @@ async function mock(page:Page){
         {code:'SAM',constructions:12},{code:'MSK',constructions:5},{code:'TLT',constructions:6}
       ]})
     }
+    if(p==='/api/admin/accounts')return respond(route,{items:[{id:1,username:'admin',display_name:'',role_id:'owner',role_name:'Владелец',blocked:false},{id:2,username:'viewer@example.test',display_name:'',role_id:'observer',role_name:'Наблюдатель',blocked:false}],has_more:false,stats:{total:2,active:2,blocked:0}})
+    if(p==='/api/admin/accounts/1')return respond(route,{id:1,username:'admin',display_name:'',role_id:'owner',role_name:'Владелец',blocked:false,permission_overrides:{},role_permissions:{},permissions:{},sessions:[]})
+    if(p==='/api/admin/accounts/roles')return respond(route,{items:[{id:'owner',name:'Владелец',description:'',permissions:{},users:1}],catalog:{}})
+    if(p==='/api/admin/accounts/registration')return respond(route,{enabled:true,pending:0})
     if(p==='/api/admin/users')return respond(route,{items:[],has_more:false})
     if(p==='/api/admin/access-requests')return respond(route,{items:[],has_more:false})
     if(p==='/api/batches')return respond(route,{batches:[batch],total:1})
@@ -1955,6 +1959,7 @@ test('storage center uses registry, drills into accounts and paginates reports',
   storage=page.getByRole('region',{name:'Пользователи'})
   await expect(storage.getByText('viewer@example.test')).toBeVisible()
   await storage.getByRole('button',{name:/admin.*Владелец/}).click()
+  await storage.getByRole('button',{name:'Хранилище',exact:true}).click()
   await expect(storage.getByRole('heading',{name:'admin'})).toBeVisible()
   await storage.getByText('Отчёт 0',{exact:true}).click()
   await expect(storage.getByRole('link',{name:'Открыть фотоотчёт'}).first()).toBeVisible()
@@ -2085,6 +2090,7 @@ test('storage quotas are opt-in and owner edits exact GiB limits',async({page})=
   await page.getByRole('button',{name:'Аккаунты',exact:true}).click()
   storage=page.getByRole('region',{name:'Пользователи'})
   await storage.getByRole('button',{name:/admin.*Владелец/}).click()
+  await storage.getByRole('button',{name:'Хранилище',exact:true}).click()
   await storage.getByLabel('Индивидуальный лимит, ГиБ',{exact:true}).fill('0.5')
   await storage.getByRole('button',{name:'Сохранить лимит',exact:true}).click()
   await expect(storage.getByText('Лимит сохранён')).toBeVisible()

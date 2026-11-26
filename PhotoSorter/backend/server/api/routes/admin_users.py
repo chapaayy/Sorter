@@ -2,7 +2,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, StrictInt
 
 from ...services import admin_users
 from .access_requests import Grants
@@ -15,6 +15,10 @@ class NewUser(Grants):
     email: str = Field(min_length=3, max_length=254)
     password: SecretStr = Field(min_length=12, max_length=256)
     confirmation: SecretStr = Field(min_length=1, max_length=256)
+    role_id:str=Field(default='observer',max_length=64)
+    display_name:str=Field(default='',max_length=120)
+    storage_limit_bytes:StrictInt|None=Field(default=None,ge=0,le=2**63-1)
+    overrides:dict[str,str]=Field(default_factory=dict,max_length=100)
 
 
 @router.get("")
@@ -25,7 +29,8 @@ def users(limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0)):
 @router.post("", status_code=201)
 def create(payload: NewUser):
     return admin_users.create(payload.email, payload.password.get_secret_value(),
-                              payload.confirmation.get_secret_value(), payload.run_ids)
+                              payload.confirmation.get_secret_value(), payload.run_ids,role_id=payload.role_id,display_name=payload.display_name,
+                              storage_limit_bytes=payload.storage_limit_bytes,overrides=payload.overrides)
 
 
 @router.get("/{user_id}/grants")

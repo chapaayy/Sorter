@@ -173,11 +173,14 @@ def configure(values):
                    (values["personal_enabled"],values["temporary_limit_bytes"],values["disk_reserve_bytes"]))
         return status(db)
 
-def set_account(owner,limit):
+def set_account(owner,limit,*,actor=None):
     with connect() as db:
         lock(db)
         total,_=disk_guard.stat(config.APP_STORAGE_ROOT)
         if limit is not None and not 0<=limit<=total:raise HTTPException(422,"Лимит должен быть в пределах ёмкости диска")
         if not db.execute("UPDATE users SET storage_limit_bytes=%s WHERE id=%s RETURNING id",(limit,owner)).fetchone():
             raise HTTPException(404,"Аккаунт не найден")
+        if actor is not None:
+            from ..services.accounts import audit
+            audit(db,actor,owner,'quota_changed',{'limit_bytes':limit})
         return account_budget(db,owner)

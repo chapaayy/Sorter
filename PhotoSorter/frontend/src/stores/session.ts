@@ -6,7 +6,14 @@ import type {User} from '../types/api'
 export const useSessionStore=defineStore('session',()=>{
   const user=ref<User|null>(null),checked=ref(false),checkFailed=ref(false)
   const isOwner=computed(()=>user.value?.username==='admin')
-  const home=computed(()=>isOwner.value?'/fo':'/results')
+  const canResults=computed(()=>isOwner.value||user.value?.permissions?.['results.view']!=='none')
+  const home=computed(()=>isOwner.value?'/fo':canResults.value?'/results':'/profile')
+  async function refreshPermissions(){
+    const previous=user.value
+    if(!previous||isOwner.value)return
+    try{const next=await api<User>('/auth/me');if(user.value===previous)user.value=next}
+    catch(e){if(user.value===previous&&e instanceof ApiError&&e.status===401){user.value=null;checked.value=true;if(!router.currentRoute.value.meta.public)void router.replace({name:'login',query:{next:router.currentRoute.value.fullPath}})}}
+  }
   async function check(){
     checked.value=false;checkFailed.value=false
     try{user.value=await api<User>('/auth/me')}
@@ -22,5 +29,5 @@ export const useSessionStore=defineStore('session',()=>{
     finally{user.value=null;await router.replace({name:'login'})}
   }
   onUnauthorized(()=>{user.value=null;checked.value=true;if(!router.currentRoute.value.meta.public)void router.replace({name:'login',query:{next:router.currentRoute.value.fullPath}})})
-  return {user,checked,checkFailed,isOwner,home,check,login,logout}
+  return {user,checked,checkFailed,isOwner,canResults,home,check,login,logout,refreshPermissions}
 })

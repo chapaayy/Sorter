@@ -15,7 +15,7 @@ archive_member=archives.archive_member
 def download_results(run_id:str,sam:str|None=None,request:Request=None):
     with connect() as db:
         if is_viewer(request):
-            require_published(db,run_id,current_user(request)["id"])
+            require_published(db,run_id,current_user(request)["id"],current_user(request),"results.zip")
         row=db.execute("""SELECT j.batch_id,j.status,b.display_name
             FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE j.id=%s""",(run_id,)).fetchone()
     if not row:raise HTTPException(404,"Запуск не найден")
