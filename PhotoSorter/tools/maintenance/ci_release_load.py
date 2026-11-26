@@ -290,6 +290,7 @@ def sampler(stop,samples):
 def browser_probe(stop,samples):
     # Real Chromium, real backend, not mocked Playwright routes.
     from playwright.sync_api import sync_playwright
+    from ci_release_browser import open_admin_storage, measure_storage
     with sync_playwright() as p:
         browser=p.chromium.launch(headless=True,args=["--no-sandbox"])
         context=browser.new_context(ignore_https_errors=True)
@@ -298,17 +299,7 @@ def browser_probe(stop,samples):
         page.on("pageerror",lambda exc:errors.append(str(exc)[:300]))
         page.on("requestfailed",lambda request:errors.append(f"{request.url}: {request.failure}"[:300]))
         try:
-            response=page.goto(BASE+"/admin",wait_until="domcontentloaded")
-            assert response and response.status==200,("admin deep link",response.status if response else None)
-            page.get_by_label("Электронная почта или логин").fill("admin",timeout=60000)
-            from urllib.parse import urlsplit,parse_qs
-            assert parse_qs(urlsplit(page.url).query).get("next")==["/admin"],("lost login destination",page.url)
-            page.get_by_label("Пароль",exact=True).fill(PASSWORD)
-            page.get_by_role("button",name="Продолжить").click()
-            page.wait_for_url(BASE+"/admin",timeout=60000)
-            page.get_by_role("region",name="Хранилище").wait_for(timeout=60000)
-            page.get_by_role("button",name="Контроль",exact=True).click()
-            page.get_by_role("heading",name="Побайтовый контроль MAP").wait_for(timeout=60000)
+            open_admin_storage(page,BASE,PASSWORD)
             print("PHYSICAL_CONTROL_REAL_BROWSER_OK",flush=True)
             print("STAGE10_REAL_ADMIN_DEEP_LINK_OK",flush=True)
         except Exception as exc:
@@ -317,11 +308,7 @@ def browser_probe(stop,samples):
             return
         while not stop.is_set():
             try:
-                start=time.monotonic()
-                response=page.goto(BASE+"/admin",wait_until="domcontentloaded",timeout=60000)
-                assert response and response.status==200
-                page.get_by_role("heading",name="Объём хранилища").wait_for(timeout=60000)
-                samples.append({"at":time.time(),"browser_storage_seconds":time.monotonic()-start})
+                samples.append(measure_storage(page,BASE))
             except Exception as exc:samples.append({"at":time.time(),"browser_error":str(exc)[:250]})
             stop.wait(30)
         browser.close()

@@ -39,7 +39,7 @@ jobs:
               try:
                   paths = subprocess.check_output(["git", "diff", "--name-only", before, "HEAD"], text=True).splitlines()
                   allowed = {"PhotoSorter/tools/maintenance/ci_vm_health.py", "PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md"}
-                  load_only = {"PhotoSorter/frontend/src/main.ts", "PhotoSorter/frontend/src/features/auth/LoginView.vue", "PhotoSorter/frontend/e2e/navigation.spec.ts", "PhotoSorter/backend/server/api/routes/site.py", "PhotoSorter/backend/tests/test_stage3_ui_api.py", "PhotoSorter/backend/tests/test_stage4_api_bootstrap.py", ".gitignore", "Models/cache/.gitkeep", "Models/models/.gitkeep", "PhotoSorter/data/.gitkeep", "PhotoSorter/tools/maintenance/ci_release_load.py", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md", "AGENTS.md"}
+                  load_only = {"PhotoSorter/tools/maintenance/ci_release_browser.py", "PhotoSorter/tools/maintenance/ci_release_browser_check.py", "PhotoSorter/frontend/src/main.ts", "PhotoSorter/frontend/src/features/auth/LoginView.vue", "PhotoSorter/frontend/e2e/navigation.spec.ts", "PhotoSorter/backend/server/api/routes/site.py", "PhotoSorter/backend/tests/test_stage3_ui_api.py", "PhotoSorter/backend/tests/test_stage4_api_bootstrap.py", ".gitignore", "Models/cache/.gitkeep", "Models/models/.gitkeep", "PhotoSorter/data/.gitkeep", "PhotoSorter/tools/maintenance/ci_release_load.py", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md", "AGENTS.md"}
                   old = subprocess.check_output(["git", "show", before+":.github/workflows/release-acceptance.yml"], text=True)
                   new = open(".github/workflows/release-acceptance.yml").read()
                   # Only skip if the load job itself and every workload/runtime file are identical.
@@ -75,6 +75,26 @@ jobs:
               f.write("load="+str(load).lower()+"\n")
               f.write("vm="+str(vm).lower()+"\n")
           PY
+  browser-preflight:
+    needs: scope
+    if: needs.scope.outputs.load == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "24", cache: "npm", cache-dependency-path: "PhotoSorter/frontend/package-lock.json" }
+      - name: Build actual MAP frontend
+        working-directory: PhotoSorter/frontend
+        run: npm ci --no-audit --no-fund && npm run build
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Fast shared release-browser scenario (fixture API, no MegaLoc)
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+          python PhotoSorter/tools/maintenance/ci_release_browser_check.py PhotoSorter/frontend/dist
+
   clean-ubuntu-systemd:
     needs: scope
     if: needs.scope.outputs.vm == 'true'
@@ -86,7 +106,7 @@ jobs:
         run: bash PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh
 
   realistic-load:
-    needs: scope
+    needs: [scope, browser-preflight]
     if: needs.scope.outputs.load == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
