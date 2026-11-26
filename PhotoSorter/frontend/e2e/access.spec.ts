@@ -190,6 +190,10 @@ test('approved viewer lands in Results and sees no edit controls',async({page})=
   await page.route(url=>url.pathname.startsWith('/api/'),route=>{
     const path=new URL(route.request().url()).pathname
     if(path==='/api/auth/me')return route.fulfill({json:{username:email}})
+    if(path==='/api/activity/own'){
+      expect(route.request().method()).toBe('GET')
+      return route.fulfill({json:{account_id:'2',username:email,sampled_at:new Date().toISOString(),tasks:[]}})
+    }
     if(path==='/api/results/catalog')return route.fulfill({json:{items:[{id:run,display_name:'Готовый отчёт',status:'completed'}],has_more:false}})
     if(path==='/api/results/'+run)return route.fulfill({json:{id:run,display_name:'Готовый отчёт',status:'completed'}})
     if(path.endsWith('/sam'))return route.fulfill({json:{'SAM-0001':1}})

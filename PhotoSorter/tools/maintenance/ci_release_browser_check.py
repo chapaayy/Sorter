@@ -53,6 +53,8 @@ def main():
                 return
             logged_in=True
             route.fulfill(json={"username":"admin"})
+        elif logged_in and key==("GET","/api/activity/own"):
+            route.fulfill(json={"account_id":"1","username":"admin","sampled_at":now,"tasks":[]})
         elif logged_in and key==("GET","/api/storage/usage"):
             route.fulfill(json=usage)
         elif logged_in and key==("GET","/api/storage/accounting/issues"):
