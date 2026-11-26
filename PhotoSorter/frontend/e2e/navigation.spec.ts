@@ -1551,9 +1551,10 @@ test('website transfer queue stays FIFO across two FO folders and references',as
 test('settings are stacked and the theme cards preview the actual palettes',async({page})=>{
   await page.goto('/settings')
   const sections=page.locator('.settings-layout > section')
-  await expect(sections).toHaveCount(3)
+  await expect(sections).toHaveCount(4)
   await expect(sections.first().getByRole('heading',{name:'Оформление'})).toBeVisible()
   await expect(sections.nth(1).getByRole('heading',{name:'Загрузка файлов'})).toBeVisible()
+  await expect(sections.nth(2).getByRole('heading',{name:'Тест анимаций иконки'})).toBeVisible()
   await expect(sections.last().getByRole('heading',{name:'О сервисе MAP'})).toBeVisible()
   const boxes=await sections.evaluateAll(nodes=>nodes.map(node=>{
     const bounds=node.getBoundingClientRect()
@@ -1567,6 +1568,33 @@ test('settings are stacked and the theme cards preview the actual palettes',asyn
   await expect(page.locator('.theme-preview-light .theme-preview-window')).toHaveCSS('background-color','rgb(250, 250, 250)')
   await expect(page.locator('.theme-preview-dark .theme-preview-window')).toHaveCSS('background-color','rgb(16, 16, 16)')
 })
+
+test('favicon playground changes the actual tab icon, animates and restores it',async({page})=>{
+  await page.goto('/settings')
+  const panel=page.getByRole('region',{name:'Тест анимаций иконки'})
+  const icon=page.locator('link[rel="icon"]')
+  const original=await icon.getAttribute('href')
+  const originalType=await icon.getAttribute('type')
+  const spinner=panel.getByRole('button',{name:'Вращающееся кольцо',exact:true})
+  await expect(spinner).toBeEnabled()
+  await spinner.click()
+  await expect(icon).toHaveAttribute('href',/^data:image\/png;base64,/)
+  const firstFrame=await icon.getAttribute('href')
+  await expect.poll(()=>icon.getAttribute('href')).not.toBe(firstFrame)
+  const success=panel.getByRole('button',{name:'Зелёная галочка',exact:true})
+  await success.click()
+  await expect(success).toHaveAttribute('aria-pressed','true')
+  await expect(icon).toHaveAttribute('href',/^data:image\/png;base64,/)
+  await panel.getByRole('button',{name:'Сбросить иконку'}).click()
+  expect(await icon.getAttribute('href')).toBe(original)
+  expect(await icon.getAttribute('type')).toBe(originalType)
+  await expect(panel.getByRole('button',{name:'Сбросить иконку'})).toBeDisabled()
+  await spinner.click()
+  await openQueue(page)
+  await expect(icon).toHaveAttribute('href',original!)
+  expect(await icon.getAttribute('type')).toBe(originalType)
+})
+
 
 test('slow report data and slow thumbnails have distinct skeleton states',async({page})=>{
   const metadata=holdTransfer(),image=holdTransfer(),refresh=holdTransfer()
