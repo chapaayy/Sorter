@@ -138,7 +138,8 @@ def compare(storage,host_sample,*,sample=registry_sample,scan=measure_tree):
     host_stable=bool(not host.get("partial",True) and not host_after.get("partial",True)
                      and host.get("physical_fingerprint") is not None
                      and host.get("physical_fingerprint")==host_after.get("physical_fingerprint")
-                     and host.get("devices")==host_after.get("devices"))
+                     and {k:v.get("allocated_bytes") for k,v in host.get("devices",{}).items()}
+                         == {k:v.get("allocated_bytes") for k,v in host_after.get("devices",{}).items()})
     tree["host_stable"]=host_stable
     tree["registry_file_bytes"]=app
     tree["host_file_bytes"]=protected

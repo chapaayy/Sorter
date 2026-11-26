@@ -533,7 +533,7 @@ def test_reference_import_sessions_are_not_shared_by_client_uuid(system,monkeypa
     assert b.post(file+'/finish').status_code==404
     assert b.post(file+'/duplicate',json={'sha256':hashlib.sha256(raw).hexdigest()}).status_code==404
     assert b.post(url+'/complete').status_code==404
-    assert a.get(file).json()['received']==0
+    assert a.get(file).json()['offset']==0
     assert b.get('/api/references').status_code==200
     with database.connect() as db:
         assert db.execute("SELECT requested_by FROM reference_import_sessions WHERE id=%s",(session,)).fetchone()['requested_by']==alice

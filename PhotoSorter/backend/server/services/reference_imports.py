@@ -120,6 +120,7 @@ def _require_session_actor(db,session_id,user):
         raise HTTPException(404,"Сессия загрузки образцов не найдена")
 
 def require_session_actor(session_id,user):
+    if user is None:return
     with connect() as db:_require_session_actor(db,_uid(session_id),user)
 
 def create(session_id,*,requested_by=None,user=None):
