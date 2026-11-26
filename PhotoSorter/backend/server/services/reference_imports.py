@@ -76,7 +76,7 @@ def _manifest(files):
     desired_sides({'sam':row[1],'checksum':row[6],'side':row[7]} for row in valid)
     return sorted(valid,key=lambda row:(row[3],str(row[0])))
 
-def _check_catalog(db, rows):
+def _check_catalog(db, rows, user=None):
     if db.execute("""
         SELECT 1 FROM uploads WHERE id=ANY(%s) LIMIT 1
     """,([row[0] for row in rows],)).fetchone():
@@ -85,6 +85,10 @@ def _check_catalog(db, rows):
     catalog={r["sam"]:r for r in db.execute("""
         SELECT sam,address,kind FROM reference_constructions WHERE sam=ANY(%s)
     """,(sams,)).fetchall()}
+    if user is not None:
+        from ..security.route_permissions import require
+        if any(sam not in catalog for sam in sams):require(user,'references.create')
+        if any(row[7] is not None for row in rows):require(user,'references.sides')
     from . import regions
     codes=[parse_key(sam)[0] for sam,address in
            {row[1]:row[2] for row in rows}.items() if address is not None]
@@ -139,7 +143,7 @@ def compare(files):
             if side is not None and key in matches and matches[key]["side"]!=side]
     return result
 
-def register_manifest(session_id,files):
+def register_manifest(session_id,files,*,user=None):
     session_id=_uid(session_id)
     expected=_manifest(files)
     signature=_signature(expected)
@@ -155,7 +159,7 @@ def register_manifest(session_id,files):
         else:
             if session["upload_state"]!="uploading":
                 raise HTTPException(409,"Загрузка уже закрыта")
-            _check_catalog(db,expected)
+            _check_catalog(db,expected,user)
             validate_existing_sides(db,desired_sides(
                 {'sam':row[1],'checksum':row[6],'side':row[7]} for row in expected))
             repository.register(db,session_id,expected,signature)

@@ -116,7 +116,7 @@ def _make_plan(db,source,recipient):
     old_prefix="app/"+old.relative_to(root).as_posix()+"/"
     rows=db.execute("SELECT path,category,owner_id,scope,issue,device,inode,allocated_bytes,logical_bytes,batch_id FROM storage_files WHERE starts_with(path,%s)",(old_prefix,)).fetchall()
     evidence={r["path"]:r for r in rows}
-    moves=[];keys=[];seen=set();charge=0
+    moves=[];keys=[];files=[];seen=set();charge=0
     from collections import Counter
     observed=Counter();links={}
     batches={r["id"] for r in db.execute("SELECT id FROM batches WHERE owner_id=%s AND delete_state='transferring'",(source,))}
@@ -148,6 +148,7 @@ def _make_plan(db,source,recipient):
         if inode not in seen:
             seen.add(inode);charge+=max(st.st_size,st.st_blocks*512)
         keys.extend([key,"app/"+dest.relative_to(root).as_posix()])
+        files.append({'path':dest.relative_to(root).as_posix(),'inode':_fingerprint(st),'size':st.st_size,'blocks':st.st_blocks})
     if any(observed[inode]!=count for inode,count in links.items()):raise ValueError('Обнаружены hardlink за пределами данных аккаунта')
     if evidence:raise ValueError("Реестр содержит ещё не сверенные пути аккаунта")
     if db.execute("SELECT 1 FROM storage_result_issues i JOIN jobs j ON j.id=i.run_id JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=%s LIMIT 1",(source,)).fetchone():raise ValueError("Обнаружены расхождения результатов; передача остановлена")
@@ -158,13 +159,20 @@ def _make_plan(db,source,recipient):
             if path is not None:
                 owned_file(Path(path),old)
                 if not Path(path).is_file():raise ValueError("Не найден исходный файл")
-    return {"moves":moves,"keys":keys,"charge":charge,"batches":[str(v) for v in sorted(batches)]}
+    return {"moves":moves,"keys":keys,"files":files,"charge":charge,"batches":[str(v) for v in sorted(batches)]}
 
-def _quota(db,recipient,charge):
+def _quota(db,recipient,charge,plan=None):
     row=db.execute("SELECT blocked FROM users WHERE id=%s FOR UPDATE",(recipient,)).fetchone()
     if not row or row["blocked"]:raise ValueError("Получатель недоступен")
     budget=admission.account_budget(db,recipient)
-    if budget["enabled"] and budget["available_bytes"]<charge:raise ValueError("Недостаточно личной квоты получателя")
+    # Reconciliation after an interrupted move can already charge recipient previews.
+    # Credit only destination paths of the committed transfer plan.
+    credit=0
+    if plan:
+        destinations=[k for k in plan['keys'] if k.startswith('app/'+_owner_root(recipient).relative_to(config.APP_STORAGE_ROOT).as_posix()+'/')]
+        if destinations:
+            credit=db.execute("SELECT coalesce(sum(charged_bytes),0)::bigint AS n FROM storage_accounted_files WHERE owner_id=%s AND path=ANY(%s)",(recipient,destinations)).fetchone()['n']
+    if budget['enabled'] and budget['used_bytes']+budget['reserved_bytes']+max(0,charge-credit)>budget['limit_bytes']:raise ValueError('Недостаточно личной квоты получателя')
 
 def _transfer(row):
     source,recipient=row["source_id"],row["recipient_id"]
@@ -184,10 +192,17 @@ def _transfer(row):
         _lock(db)
         current=db.execute("SELECT * FROM account_lifecycle WHERE source_id=%s FOR UPDATE",(source,)).fetchone()
         plan=current["plan"]
-        _quota(db,recipient,plan["charge"])
+        _quota(db,recipient,plan["charge"],plan)
         if _busy(db,source) or _busy(db,recipient):raise ValueError("Ожидаем завершения активных операций")
         old=str(_owner_root(source));new=str(_owner_root(recipient))
-        for entry in plan["moves"]:_move(root,entry)
+        if 'files' not in plan:raise ValueError('Журнал старой версии требует безопасной ручной проверки')
+        for entry in plan['moves']:_move(root,entry)
+        # Directory inode alone does not prove that all its contents survived.
+        for entry in plan['files']:
+            target=owned_file(root/entry['path'],root)
+            info=target.lstat()
+            if not stat.S_ISREG(info.st_mode) or _fingerprint(info)!=entry['inode'] or info.st_size!=entry['size'] or info.st_blocks!=entry['blocks']:
+                raise ValueError('Файл назначения изменился; публикация владельца остановлена')
         # Update only canonical path prefixes; manifests store relative keys.
         for batch in plan["batches"]:
             from uuid import UUID
@@ -204,7 +219,11 @@ def _transfer(row):
                 if not thumbnail_cache.location(task["checksum"],task["version"],owner_id=recipient).is_file():
                     db.execute("UPDATE thumbnail_tasks SET state='queued',attempts=0,lease_until=NULL WHERE upload_id=%s",(task["upload_id"],))
         # Refresh the one registry transactionally, not a second byte ledger.
-        for start in range(0,len(plan["keys"]),512):registry.observe(db,root,plan["keys"][start:start+512],onerror=lambda:(_ for _ in ()).throw(ValueError("Ошибка учёта после передачи")))
+        for start in range(0,len(plan['keys']),512):
+            keys=plan['keys'][start:start+512]
+            registry.observe(db,root,keys,onerror=lambda:(_ for _ in ()).throw(ValueError('Ошибка учёта после передачи')))
+            invalid=db.execute("SELECT 1 FROM storage_files WHERE path=ANY(%s) AND (issue IS NOT NULL OR scope<>'personal' OR owner_id IS DISTINCT FROM %s) LIMIT 1",(keys,recipient)).fetchone()
+            if invalid:raise ValueError('Некорректная принадлежность после передачи')
         db.execute("UPDATE storage_accounting_state SET requested_at=now()")
         if row["operation"]=="transfer_delete":
             db.execute("UPDATE account_lifecycle SET operation='delete',recipient_id=NULL,plan=NULL,state='queued',detail=NULL,next_attempt=now() WHERE source_id=%s",(source,))
@@ -246,6 +265,7 @@ def _delete(row):
         if not user:return
         db.execute("DELETE FROM batches WHERE owner_id=%s AND delete_state='deleted'",(source,))
         db.execute("DELETE FROM access_requests WHERE email=%s",(user["username"],))
+        db.execute("DELETE FROM thumbnail_gc_candidates WHERE scope_key=%s",(str(source),))
         db.execute("DELETE FROM users WHERE id=%s AND username<>'admin'",(source,))
         accounts.audit(db,row["actor"],source,"account_deleted")
         db.execute("DELETE FROM account_lifecycle WHERE source_id=%s",(source,))

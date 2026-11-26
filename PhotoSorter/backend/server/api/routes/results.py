@@ -32,7 +32,7 @@ def catalog(request:Request, limit: int = Query(30,ge=1,le=100), offset: int = Q
 def overview(run_id:str, request:Request=None):
     published = check_published(request, run_id)
     if published is not None:
-        return {"id":run_id,"status":published["status"],"display_name":published["display_name"],**({"can_media":False} if not published["can_media"] else {}),**({"can_zip":False} if not published["can_zip"] else {})}
+        return {"id":run_id,"status":published["status"],"display_name":published["display_name"],**{k:published[k] for k in ('batch_id','owner_id') if k in published},**({"can_media":False} if not published["can_media"] else {}),**({"can_zip":False} if not published["can_zip"] else {})}
     try:return load_run(run_id)
     except (FileNotFoundError,ValueError):raise HTTPException(404,"Запуск не найден")
 

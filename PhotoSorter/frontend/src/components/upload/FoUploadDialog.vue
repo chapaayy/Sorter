@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {onMounted,ref} from 'vue'
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
 import {useUploadCenterStore} from '../../stores/uploadCenter'
 import {libraryNoticesApi,type LibraryStatus} from '../../api/libraryNotices'
 import UploadPanel from '../../features/fo/UploadPanel.vue'
@@ -10,7 +12,7 @@ const upload=useUploadCenterStore()
 const props=defineProps<{target?:{id:string;name:string}}>()
 const library=ref<LibraryStatus|null>(null),noticeError=ref('')
 onMounted(async()=>{
-  if(props.target)return
+  if(props.target||!session.can('references.view'))return
   try{library.value=await libraryNoticesApi.status()}
   catch{noticeError.value='Не удалось проверить обновления образцов'}
 })

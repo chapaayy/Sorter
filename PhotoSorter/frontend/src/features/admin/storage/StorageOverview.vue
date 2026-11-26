@@ -47,7 +47,7 @@ const systemNames:Record<string,string>={docker_engine:'Docker',containerd_defau
       <span v-else class="seg unknown" :style="{width:pct(disk.used_bytes)+'%'}"/>
       <span class="seg free" :style="{width:pct(disk.free_bytes)+'%'}"/>
     </div>
-    <p class="meta">Оперативные показатели: {{date(disk.sampled_at)}}<template v-if="split"> · оценка</template><template v-if="failed||registry?.stale||host?.stale"> · данные устарели</template><template v-if="!split"> · разбивка пока недоступна</template></p>
+    <p class="meta">Оперативные показатели: {{date(disk.sampled_at)}}<template v-if="split"> · оценка</template><template v-if="failed||registry?.stale||host?.stale"> · Данные устарели</template><template v-if="!split"> · разбивка пока недоступна</template></p>
     <p class="meta" role="status">Последняя независимая сверка: {{date(tree?.finished_at)}}<template v-if="tree?.comparable&&tree.absolute_discrepancy_bytes!=null"> · расхождение {{bytes(tree.absolute_discrepancy_bytes)}}</template><template v-else-if="tree?.finished_at"> · неполный замер</template><template v-if="checking"> · Проверка учёта…</template></p>
     <p v-if="realIssue" class="alert warning" role="status">{{discrepancy?'Расхождение учёта MAP по последней сопоставимой сверке: '+bytes(discrepancy)+'.':'Обнаружены проблемы учёта MAP. Подробности в диагностике.'}}</p>
     <p v-if="usage.independent_check?.state==='retry'" :class="tree?.errors?'alert warning':'meta'" role="status">{{usage.independent_check.detail||'Проверка будет повторена автоматически.'}}</p>

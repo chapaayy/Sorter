@@ -103,14 +103,14 @@ const count=computed(()=>preparing.value||media.value?props.task.total_count:pro
       title="Остановить задачу" @click="emit('action',task,'stop')">■</button>
     <button v-if="preparing&&session.can('queue.shared')" type="button" class="task-card-action"
       @click="emit('details',task)">Подробности</button>
-    <RouterLink v-else-if="media&&task.batch_id" :to="'/fo/'+task.batch_id" class="task-card-action">Открыть ФО</RouterLink>
-    <RouterLink v-else-if="task.fo_run_id" :to="'/queue/runs/'+task.fo_run_id"
+    <RouterLink v-else-if="media&&task.batch_id&&session.can('photos.view',task.owner_id)" :to="'/fo/'+task.batch_id" class="task-card-action">Открыть ФО</RouterLink>
+    <RouterLink v-else-if="task.fo_run_id&&session.can('queue.detail',task.owner_id)" :to="'/queue/runs/'+task.fo_run_id"
       class="task-card-action">Обработка</RouterLink>
   </template>
   <template #menu>
     <button v-if="preparing&&session.can('queue.shared')" type="button" @click="emit('details',task)">Открыть подробности</button>
-    <RouterLink v-else-if="media&&task.batch_id" :to="'/fo/'+task.batch_id" class="task-card-action">Открыть ФО</RouterLink>
-    <RouterLink v-else-if="task.fo_run_id" :to="'/queue/runs/'+task.fo_run_id">Ход обработки</RouterLink>
+    <RouterLink v-else-if="media&&task.batch_id&&session.can('photos.view',task.owner_id)" :to="'/fo/'+task.batch_id" class="task-card-action">Открыть ФО</RouterLink>
+    <RouterLink v-else-if="task.fo_run_id&&session.can('queue.detail',task.owner_id)" :to="'/queue/runs/'+task.fo_run_id">Ход обработки</RouterLink>
     <button v-if="hasBlockingFailure(task)&&session.can('queue.preparation')" type="button" :disabled="busy"
       @click="emit('action',task,'retry')">Повторить подготовку</button>
     <button v-if="preparing&&hasBlockingFailure(task)&&session.can('queue.preparation')" type="button" class="is-danger"

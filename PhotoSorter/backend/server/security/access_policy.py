@@ -37,7 +37,7 @@ def current_user(request):
 
 
 def require_published(db, run_id, user_id, user=None, action="results.view"):
-    row = db.execute("""SELECT j.status,b.display_name,b.owner_id,
+    row = db.execute("""SELECT j.status,b.display_name,b.owner_id,b.id AS batch_id,
         EXISTS(SELECT 1 FROM result_access_grants g WHERE g.run_id=j.id AND g.user_id=%s) AS granted
         FROM jobs j JOIN batches b ON b.id=j.batch_id
         WHERE j.id=%s AND j.status IN ('completed','completed_with_errors') AND b.delete_state='active'""",
@@ -45,7 +45,11 @@ def require_published(db, run_id, user_id, user=None, action="results.view"):
     if row is None or not result_allowed(user or {"access_role":"viewer"},action,
                                           own=row["owner_id"]==user_id,granted=row["granted"]):
         raise HTTPException(404,"Результат не найден")
-    return {"status":row["status"],"display_name":row["display_name"],
+    # Only expose the source batch ID if the caller can actually read it.
+    own=row['owner_id']==user_id
+    source_scope=level(user,'photos.view')
+    source={'batch_id':str(row['batch_id']),'owner_id':str(row['owner_id'])} if row.get('batch_id') and (source_scope=='all' or (source_scope=='own' and own)) else {}
+    return {**source,"status":row["status"],"display_name":row["display_name"],
             "can_media":result_allowed(user or {"access_role":"viewer"},"results.media",own=row["owner_id"]==user_id,granted=row["granted"]),
             "can_zip":result_allowed(user or {"access_role":"viewer"},"results.zip",own=row["owner_id"]==user_id,granted=row["granted"])}
 

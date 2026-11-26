@@ -39,7 +39,12 @@ export const useSessionStore=defineStore('session',()=>{
     }
     checked.value=true
   }
-  async function login(username:string,password:string){user.value=await post<User>('/auth/login',{username,password});checked.value=true}
+  async function login(username:string,password:string){
+    // Resolve the actual server-side rights before publishing the session.
+    await post<User>('/auth/login',{username,password})
+    try{user.value=await api<User>('/auth/me');checked.value=true}
+    catch(e){user.value=null;throw e}
+  }
   async function logout(){
     try{await post('/auth/logout',{})}
     finally{user.value=null;await router.replace({name:'login'})}

@@ -91,7 +91,9 @@ def require(user,key):
     dependency=CATALOG.get(key,{}).get("requires")
     if dependency:
         require(user,dependency)
-    if key=="queue.preparation" and not has(user,"queue.shared"):raise HTTPException(403,"Нет доступа к общим задачам")
+    if key in ('queue.shared','queue.preparation'):
+        require(user,'queue.view')
+        if key=='queue.preparation':require(user,'queue.shared')
 
 def owner_filter(user,key):
     if not user or (user.get("username")=="admin" and user.get("access_role")=="owner"):return None
@@ -105,12 +107,14 @@ def batch_access(db,user,batch_id,key,*,lock=False):
     except (ValueError,TypeError):raise HTTPException(404,"Фотоотчёт не найден")
     row=db.execute("SELECT owner_id,delete_state FROM batches WHERE id=%s"+(" FOR SHARE" if lock else ""),(identifier,)).fetchone()
     if row is None:raise HTTPException(404,"Фотоотчёт не найден")
-    if row["delete_state"]=="transferring":raise HTTPException(409,"Фотоотчёт передаётся")
-    if user.get("username")=="admin" and user.get("access_role")=="owner":return
+    if user.get("username")=="admin" and user.get("access_role")=="owner":
+        if row["delete_state"]=="transferring":raise HTTPException(409,"Фотоотчёт передаётся")
+        return
     for action in ({key,"photos.view"} if key.startswith("photos.") else {key,"queue.view"} if key.startswith("queue.") else {key}):
         scope=level(user,action)
         if scope!="all" and not(scope=="own" and row["owner_id"]==user["id"]):
             raise HTTPException(404,"Фотоотчёт не найден")
+    if row["delete_state"]=="transferring":raise HTTPException(409,"Фотоотчёт передаётся")
 
 def authorize_object(user,key,obj,identifier):
     from ..database import connect
@@ -146,6 +150,8 @@ def authorize_route(user,method,path):
         if not any(has(user,k) for k in ("accounts.edit","accounts.assign","accounts.overrides")):raise HTTPException(403,"Недостаточно прав")
     elif obj=="media":
         if not has(user,key) and not has(user,"references.view"):raise HTTPException(403,"Недостаточно прав")
+    elif method in ('GET','HEAD') and path=='/api/regions':
+        if not any(has(user,k) for k in ('references.view','photos.process','photos.reprocess','photos.auto')):raise HTTPException(403,'Недостаточно прав')
     else:require(user,key)
     if method=="POST" and path=="/api/reference-imports/portable-catalog":require(user,"references.create")
     if method=="POST" and path=="/api/reference-imports/resolve-sides":require(user,"references.sides")

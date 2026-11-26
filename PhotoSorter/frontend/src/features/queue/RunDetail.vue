@@ -18,7 +18,7 @@ const run=ref<Run|null>(null),batch=ref<Batch|null>(null),busy=ref(false),error=
 async function refresh(){
   try{
     run.value=await runApi.one(id)
-    if(!batch.value&&run.value.batch_id)batch.value=await batchApi.one(run.value.batch_id)
+    if(!batch.value&&run.value.batch_id&&session.can('photos.view',run.value.owner_id))batch.value=await batchApi.one(run.value.batch_id)
     error.value=''
   }catch(e){error.value=errorText(e)}
 }
@@ -53,7 +53,7 @@ async function stop(){
     </div>
     <div><span class="label">Идентификатор запуска</span><code class="meta">{{run.id}}</code></div>
   </div>
-  <div class="row wrap"><RouterLink :to="'/logs?run='+id" class="btn">Открыть журнал запуска</RouterLink><RouterLink :to="'/fo/'+run.batch_id" class="btn">Открыть партию ФО</RouterLink></div>
+  <div class="row wrap"><RouterLink v-if="session.can('logs.view',run.owner_id)" :to="'/logs?run='+id" class="btn">Открыть журнал запуска</RouterLink><RouterLink v-if="session.can('photos.view',run.owner_id)" :to="'/fo/'+run.batch_id" class="btn">Открыть партию ФО</RouterLink></div>
 </div>
 <ConfirmDialog v-if="confirmStop&&run"
   :title="run.status==='queued'?'Убрать из очереди MegaLoc?':'Остановить обработку MegaLoc?'"

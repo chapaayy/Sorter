@@ -85,8 +85,9 @@ def create(data:NewSession):
     return reference_imports.create(data.client_session_id)
 
 @router.put("/{session_id}/manifest")
-def register(session_id:uuid.UUID,data:Manifest):
-    return reference_imports.register_manifest(session_id,data.files)
+def register(session_id:uuid.UUID,data:Manifest,request:Request=None):
+    from ...security.access_policy import current_user
+    return reference_imports.register_manifest(session_id,data.files,user=current_user(request))
 
 @router.get("")
 def list_sessions(limit:int=25,offset:int=0):

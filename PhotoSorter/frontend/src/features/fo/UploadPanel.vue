@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue'
+import {useSessionStore} from '../../stores/session'
+const session=useSessionStore()
+const canAuto=computed(()=>session.can('photos.auto')&&session.can('photos.process')&&session.can('photos.view'))
 import type {MediaProfile} from '../../types/api'
 import {runApi} from '../../api/runs'
 import {regionApi,type Region} from '../../api/regions'
@@ -24,12 +27,13 @@ const total=computed(()=>entries.value.reduce((sum,e)=>sum+e.file.size,0))
 const validName=computed(()=>!!name.value.trim()&&Array.from(name.value.trim()).length<=120)
 onMounted(async()=>{
   if(props.target)return
+  if(!canAuto.value){regionsLoading.value=false;return}
   try{regionRows.value=(await regionApi.list()).regions}
   catch(e){error.value='Не удалось загрузить регионы: '+errorText(e)}
   finally{regionsLoading.value=false}
   try{
     const defaults=await runApi.autoSettings()
-    if(!chosenAuto.value)autoProcess.value=defaults.auto_process_new_batches
+    if(!chosenAuto.value)autoProcess.value=canAuto.value&&defaults.auto_process_new_batches
     autoThreshold.value=defaults.grouping_threshold
   }catch{/* Safe defaults */}
 })
@@ -54,6 +58,7 @@ function applySelection(){
 }
 watch(includeUnknown,applySelection)
 function submit(){
+  if(!canAuto.value)autoProcess.value=false
   if(!entries.value.length||(!props.target&&(!validName.value||!validReportDate.value))
      ||(!props.target&&autoProcess.value&&!selectedRegions.value.length))return
   upload.enqueue({kind:'fo',name:props.target?.name||name.value.trim(),entries:[...entries.value],
@@ -100,12 +105,12 @@ function submit(){
       :disabled="!target&&(!validName||!validReportDate||(autoProcess&&!selectedRegions.length)||regionsLoading&&autoProcess)">
       {{target?'Продолжить':'Загрузить'}}</UiButton>
   </div>
-  <label v-if="entries.length&&!target" class="row wrap" style="gap:10px;align-items:center">
+  <label v-if="entries.length&&!target&&canAuto" class="row wrap" style="gap:10px;align-items:center">
     <input v-model="autoProcess" type="checkbox" @change="chosenAuto=true"
       aria-label="Обработать после загрузки"/>
     <span>Отсортировать фото и видео после загрузки</span>
   </label>
-  <div v-if="entries.length&&!target&&autoProcess" class="panel stack-sm">
+  <div v-if="entries.length&&!target&&canAuto&&autoProcess" class="panel stack-sm">
     <RegionChips v-model="selectedRegions" :regions="regionRows" :disabled="regionsLoading"/>
     <p class="meta">Выбор сохранится в партии. После загрузки отдельное окно не потребуется.</p>
   </div>

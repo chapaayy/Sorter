@@ -12,8 +12,10 @@ const emit=defineEmits<{changed:[];deleted:[]}>()
 const session=useSessionStore(),data=ref<Awaited<ReturnType<typeof accountsApi.lifecyclePreview>>|null>(null)
 const recipient=ref(''),operation=ref('transfer'),options=ref<Account[]>([]),search=ref(''),error=ref(''),busy=ref(false),confirm=ref(false)
 const pending=computed(()=>!!data.value?.operation&&data.value.operation.state!=='completed')
+let lastState=''
+
 const choices=computed(()=>[...(session.can('accounts.transfer')?[['transfer','Передать личные данные']]:[]),...(session.can('accounts.transfer')&&session.can('accounts.delete')?[['transfer_delete','Передать данные и удалить аккаунт']]:[]),...(session.can('accounts.delete')?[['delete','Удалить аккаунт и личные данные']]:[])])
-async function refresh(){try{data.value=await accountsApi.lifecyclePreview(props.account.id);error.value=''}catch(e){if(e instanceof ApiError&&e.status===404){emit('deleted');return}error.value=errorText(e)}}
+async function refresh(){try{data.value=await accountsApi.lifecyclePreview(props.account.id);const state=data.value.operation?.state||'';if(state==='completed'&&lastState!=='completed')emit('changed');lastState=state;error.value=''}catch(e){if(e instanceof ApiError&&e.status===404){emit('deleted');return}error.value=errorText(e)}}
 async function searchUsers(){try{options.value=(await accountsApi.list(search.value)).items.filter(u=>u.id!==props.account.id&&!u.blocked)}catch(e){error.value=errorText(e)}}
 async function execute(){busy.value=true;try{await accountsApi.lifecycle(props.account.id,operation.value,operation.value==='delete'?null:Number(recipient.value),props.account.username);confirm.value=false;await refresh();emit('changed')}catch(e){error.value=errorText(e)}finally{busy.value=false}}
 onMounted(()=>{operation.value=choices.value[0]?.[0]||'delete';void refresh();void searchUsers()})

@@ -34,8 +34,8 @@ const {items,cursor,loading,error:pageError,load,reset}=useCursor<ResultPhoto>(n
   resultApi.photos(id,{[mode.value==='sam'?'sam':'group']:selected.value,cursor:next,limit:60}))
 const tiles=computed(()=>items.value.map(p=>({id:String(p.index),label:p.filename||'ФО №'+(p.index+1),thumbnail_url:session.isOwner||p.media_kind==='video'?p.thumbnail_url:p.image_url,original_url:p.image_url,play_url:p.image_url,score:p.score,media_kind:p.media_kind,duration:p.duration})))
 const previews=computed(()=>items.value.map(p=>({src:p.image_url,label:(p.filename||'ФО №'+(p.index+1))+' · '+displaySam(p.assigned_sam||''),score:p.score,video:p.media_kind==='video',poster:p.thumbnail_url})))
-const canMedia=computed(()=>session.isOwner||published.value?.can_media!==false)
-const canZip=computed(()=>session.isOwner||published.value?.can_zip!==false)
+const canMedia=computed(()=>session.isOwner||(session.can('results.media')&&published.value?.can_media!==false))
+const canZip=computed(()=>session.isOwner||(session.can('results.zip')&&published.value?.can_zip!==false))
 const total=computed(()=>Object.values(sams.value).reduce((x,y)=>x+y,0))
 function loadNearGalleryEnd(){
   const panel=galleryScroll.value
@@ -69,6 +69,10 @@ onMounted(async()=>{
       published.value=await resultApi.published(id)
       const [s,g]=await Promise.all([resultApi.sam(id),resultApi.groups(id)])
       sams.value=s;groups.value=g;selected.value=list.value[0]?.id||''
+      if(published.value.batch_id&&session.can('photos.view',published.value.owner_id)){
+        batch.value=await batchApi.one(published.value.batch_id)
+        retention.value=await batchApi.retention(batch.value.batch_id)
+      }
       return
     }
     run.value=await resultApi.one(id)
@@ -105,10 +109,10 @@ async function deleteBatch(){
 <div class="reference-library-view results-detail-view">
 <div class="row" style="margin-bottom:22px"><RouterLink class="meta" to="/results">← Все результаты</RouterLink></div>
 <PageHeader eyebrow="РЕЗУЛЬТАТЫ / MEGALOC" :title="batch?.display_name||published?.display_name||'Результат запуска'" :subtitle="total+' ФО · '+Object.keys(groups).length+' групп ФО'+(run?' · '+date(run.started_at):'')">
-  <template #actions><UiButton v-if="canZip" kind="primary" :disabled="!(published||(run&&isComplete(run.status)))" @click="download()">↓ Скачать всю сортировку ZIP</UiButton><UiButton v-if="session.isOwner" kind="danger" :disabled="!batch" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
+  <template #actions><UiButton v-if="canZip" kind="primary" :disabled="!(published||(run&&isComplete(run.status)))" @click="download()">↓ Скачать всю сортировку ZIP</UiButton><UiButton v-if="session.isOwner||(batch&&session.can('photos.delete',batch.owner_id))" kind="danger" :disabled="!batch" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
-<section v-if="batch&&run" class="panel results-zip-bar" :class="{'deletion-panel':deletion.pending(batch.batch_id)||batch.delete_state==='deleting'}">
+<section v-if="batch&&(run||published)" class="panel results-zip-bar" :class="{'deletion-panel':deletion.pending(batch.batch_id)||batch.delete_state==='deleting'}">
   <div v-if="deletion.pending(batch.batch_id)||batch.delete_state==='deleting'" class="deletion-state">Удаляется · удаление файлов и результатов</div>
   <template v-else>
     <div class="results-zip-info">
@@ -119,7 +123,7 @@ async function deleteBatch(){
     <div class="results-zip-actions">
       <span v-if="retention?.delete_after_at" class="meta">Автоудаление: <strong>{{date(retention.delete_after_at)}}</strong></span>
       <span v-else class="meta">Автоудаление не назначено</span>
-      <UiButton v-if="retention?.delete_after_at" small :loading="busy" @click="extend">Продлить хранение</UiButton>
+      <UiButton v-if="retention?.delete_after_at&&session.can('photos.retention',batch.owner_id)" small :loading="busy" @click="extend">Продлить хранение</UiButton>
     </div>
   </template>
 </section>

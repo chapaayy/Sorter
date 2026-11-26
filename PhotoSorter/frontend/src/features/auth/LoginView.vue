@@ -14,7 +14,6 @@ async function submit(){
     // Capture the intended destination before changing reactive session state.
     const next=route.query.next
     await session.login(username.value,password.value)
-    await session.refreshPermissions()
     const target=typeof next==='string'&&next.startsWith('/')&&!next.startsWith('//')&&!next.includes('\\')?router.resolve(next):null
     const allowed=target&&target.matched.length&&!target.meta.public&&target.name&&session.canPath(target.path)
     await router.replace(allowed?target.fullPath:session.home)
