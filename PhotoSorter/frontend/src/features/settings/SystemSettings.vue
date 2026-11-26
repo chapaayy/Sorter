@@ -44,7 +44,7 @@ usePolling(refresh,12000)
   </section>
   <section class="panel stack">
     <h2>Журналы и диагностика</h2>
-    <p class="meta">Размеры и бюджеты журналов отображаются в разделе «Хранилище».</p>
+    <p class="meta">Размеры и бюджеты журналов отображаются во вкладке «Лимиты и хранение».</p>
     <RouterLink to="/logs" class="btn" style="align-self:flex-start">Открыть журналы</RouterLink>
   </section>
 </div>

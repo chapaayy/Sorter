@@ -114,6 +114,14 @@ def compare(storage,host,*,sample=registry_sample,scan=measure_tree):
     before=sample()
     tree=scan(storage)
     after=sample()
+    # Capacity from the same filesystem and measurement interval as the tree.
+    try:
+        fs=os.statvfs(storage)
+        if str(os.stat(storage).st_dev)==tree.get("device"):
+            tree["capacity_after"]={"total_bytes":fs.f_blocks*fs.f_frsize,
+                "used_bytes":(fs.f_blocks-fs.f_bfree)*fs.f_frsize,
+                "available_bytes":fs.f_bavail*fs.f_frsize}
+    except OSError:pass
     app=after.get("allocated_bytes") if after else None
     protected=host.get("devices",{}).get(tree.get("device"),{}).get("allocated_bytes")
     tree["registry_before"]=before

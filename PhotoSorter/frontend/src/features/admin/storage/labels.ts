@@ -19,8 +19,10 @@ Object.assign(labels,{fo_upload:'Загрузка ФО',reference_upload:'Заг
 export const categoryName=(key:string)=>labels[key]||key
 export const groups=[
  {label:'Фотоотчёты',keys:['fo_original','fo_normalized','result_media','result_metadata','run_state','fo_thumbnail']},
- {label:'Общие образцы',keys:['reference_object','reference_gallery','reference_embedding','reference_thumbnail']},
- {label:'Временное хранилище',keys:['fo_upload_part','reference_upload_part','transcode_temp','video_frames','processing_staging','fo_embedding_temp','zip_results','zip_construction','zip_references','zip_fragment','archive_lock','atomic_fragment','model_download','scratch']},
- {label:'Модель и кэш',keys:['model_weights','model_source','model_metadata','technical_cache']},
- {label:'Инфраструктура и обслуживание',keys:['postgres_data','caddy_state','service_log','run_log','access_log','audit_event','audit_snapshot','updater_backup','updater_workspace','builder_marker','updater_control','updater_rpc_socket','installation_state','unknown']}
+ {label:'Образцы',keys:['reference_object','reference_gallery','reference_embedding','reference_thumbnail']},
+ {label:'Модели ИИ',keys:['model_weights','model_source','model_metadata','technical_cache']},
+ {label:'Временные файлы',keys:['fo_upload_part','reference_upload_part','transcode_temp','video_frames','processing_staging','fo_embedding_temp','zip_results','zip_construction','zip_references','zip_fragment','archive_lock','atomic_fragment','model_download','scratch']},
+ {label:'База данных',keys:['postgres_data']},
+ {label:'Журналы MAP',keys:['service_log','run_log','access_log','audit_event']},
+ {label:'Служебные файлы и инфраструктура',keys:['caddy_state','audit_snapshot','updater_backup','updater_workspace','builder_marker','updater_control','updater_rpc_socket','installation_state']}
 ]

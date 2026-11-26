@@ -2,13 +2,13 @@
 import {computed} from 'vue'
 import {bytes,date} from '../../../utils/format'
 import type {StorageUsage,PhysicalTreeBucket,RootDiskSample} from '../../../types/api'
-const props=defineProps<{usage:StorageUsage|null}>()
+const props=defineProps<{usage:StorageUsage|null;failed?:boolean}>()
 const tree=computed(()=>props.usage?.host?.tree_check)
 const disk=computed(()=>props.usage?.host?.disk_check)
 const history=computed(()=>[...(props.usage?.host?.tree_history||[])].reverse())
 const diskHistory=computed(()=>[...(props.usage?.host?.disk_history||[])].reverse())
-const stale=computed(()=>!!props.usage?.host?.stale)
-const complete=computed(()=>!stale.value&&!tree.value?.stale&&!!tree.value?.comparable&&tree.value.absolute_discrepancy_bytes!=null)
+const stale=computed(()=>!!props.failed||!!props.usage?.host?.stale)
+const complete=computed(()=>!stale.value&&!props.usage?.host?.partial&&!tree.value?.stale&&!tree.value?.partial&&!!tree.value?.comparable&&tree.value.absolute_discrepancy_bytes!=null)
 const old=computed(()=>history.value.find(r=>r.finished_at!==tree.value?.finished_at&&r.comparable&&r.absolute_discrepancy_bytes!=null))
 const growth=computed(()=>complete.value&&old.value?.absolute_discrepancy_bytes!=null?tree.value!.absolute_discrepancy_bytes!-old.value.absolute_discrepancy_bytes:null)
 const exact=(n?:number|null)=>n==null||!Number.isFinite(n)?'—':new Intl.NumberFormat('ru-RU',{maximumFractionDigits:0}).format(n)+' Б'

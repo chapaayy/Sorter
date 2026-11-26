@@ -38,7 +38,7 @@ usePolling(refresh,15000)
    <p v-if="!data.registry_ready" class="alert warning" role="status">Реестр ещё не готов. Включение новых ограничений доступно после полной фоновой сверки.</p>
    <form class="stack" @submit.prevent="save" @input="dirty=true">
     <label class="row wrap"><input v-model="personal" type="checkbox" aria-label="Включить личные квоты" :disabled="saving"/>Включить личные квоты</label>
-    <p class="meta">Индивидуальные значения настраиваются в разделе «По аккаунтам». Без значения аккаунт не ограничен личной квотой. Образцы, постоянные эмбеддинги, модели, ZIP, временные файлы и инфраструктура не относятся к личному объёму.</p>
+    <p class="meta">Индивидуальные значения настраиваются во вкладке «Аккаунты». Без значения аккаунт не ограничен личной квотой. Образцы, постоянные эмбеддинги, модели, ZIP, временные файлы и инфраструктура не относятся к личному объёму.</p>
     <label class="stack meta">Лимит временного пула, ГиБ (пусто — выключено)<input v-model="temporary" aria-label="Лимит временного пула, ГиБ" type="number" min="0" step="any" :disabled="saving"/></label>
     <label class="stack meta">Минимальное свободное место, ГиБ (пусто — штатный резерв)<input v-model="reserve" aria-label="Минимальное свободное место, ГиБ" type="number" min="0" step="any" :disabled="saving"/></label>
     <p class="meta">1 ГиБ = 1024³ байт. Ёмкость диска: {{bytes(data.total_bytes)}}. Штатный минимум: {{bytes(data.disk.baseline_bytes)}}. Для обновлятора дополнительно действует минимум 8 ГиБ. Меньшее значение не ослабляет существующую защиту.</p>

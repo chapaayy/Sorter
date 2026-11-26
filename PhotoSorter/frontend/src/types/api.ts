@@ -153,7 +153,13 @@ export interface StorageHost {
   tmpfs?:{available:boolean;partial:boolean;devices:Record<string,StorageCapacity>;mounts:Array<{service:string;mount:string;device:string}>}|null
   deleted_open?:{allocated_bytes:number;logical_bytes:number;files:number;partial:boolean}|null
 }
+export interface DiskOverview {
+  total_bytes:number;used_bytes:number;available_bytes:number;free_bytes:number
+  map_bytes:number|null;system_bytes:number|null;sampled_at:string|null
+  system_details?:{sampled_at:string;system_bytes:number|null;categories:Record<string,number|null>;remaining_bytes:number|null;partial:boolean}|null
+}
 export interface StorageUsage {
+  disk_overview?:DiskOverview
   disk:StorageCapacity & {device?:number;used_fraction:number;reserved_bytes?:number;operation_reserved_bytes?:number;allocatable_bytes?:number;warning?:'warning'|'critical'|null}
   filesystems?:Record<string,StorageCapacity>;categories_bytes:Record<string,number>
   registry?:StorageRegistry;host?:StorageHost|null;database_estimated_bytes?:number|null
