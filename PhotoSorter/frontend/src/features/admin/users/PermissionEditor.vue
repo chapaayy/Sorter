@@ -1,0 +1,17 @@
+<script setup lang="ts">
+import {computed,ref} from 'vue'
+import type {PermissionInfo,Permissions,Level} from '../../../api/accounts'
+const props=defineProps<{catalog:Record<string,PermissionInfo>;modelValue:Permissions;inherited?:Permissions;disabled?:boolean}>()
+const emit=defineEmits<{(e:'update:modelValue',value:Permissions):void}>()
+const search=ref('')
+const names:Record<Level,string>={none:'Нет',own:'Свои',all:'Все',granted:'Выданные отчёты'}
+const groups=computed(()=>Object.entries(props.catalog).filter(([,v])=>v.label.toLowerCase().includes(search.value.toLowerCase())).reduce((a,[k,v])=>{(a[v.group]??=[]).push([k,v]);return a},{} as Record<string,Array<[string,PermissionInfo]>>))
+const resolved=(k:string)=>props.modelValue[k]??props.inherited?.[k]??'none'
+function change(key:string,value:string){const next={...props.modelValue};if(value==='inherit')delete next[key];else next[key]=value as Level;emit('update:modelValue',next)}
+function group(rows:Array<[string,PermissionInfo]>,value:Level|'inherit'){const next={...props.modelValue};for(const [key] of rows){if(value==='inherit')delete next[key];else next[key]=value}emit('update:modelValue',next)}
+</script>
+<template><div class="stack"><input v-model="search" aria-label="Поиск разрешений" placeholder="Поиск разрешений"/>
+<details v-for="(rows,name) in groups" :key="name"><summary>{{name}} · {{rows.filter(([k])=>resolved(k)!=='none').length}} / {{rows.length}}</summary>
+<div class="row wrap"><button type="button" class="btn small" :disabled="disabled" @click="group(rows,'all')">Разрешить все</button><button type="button" class="btn small" :disabled="disabled" @click="group(rows,'none')">Запретить все</button><button type="button" v-if="inherited" class="btn small" :disabled="disabled" @click="group(rows,'inherit')">По роли</button></div>
+<label v-for="[key,info] in rows" :key="key" class="field permission"><span>{{info.label}}</span><select :value="modelValue[key]??(inherited?'inherit':'none')" :disabled="disabled" @change="change(key,($event.target as HTMLSelectElement).value)"><option v-if="inherited" value="inherit">По роли</option><option v-for="(label,value) in names" :key="value" :value="value">{{label}}</option></select><small class="meta">Итог: {{names[resolved(key)]}}<template v-if="info.requires"> · требуется {{catalog[info.requires]?.label}}</template></small></label></details></div></template>
+<style scoped>.permission{padding:10px 0;border-bottom:1px solid var(--border-subtle)}summary{cursor:pointer;margin:8px 0}</style>

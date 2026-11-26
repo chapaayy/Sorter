@@ -51,13 +51,32 @@ chmod() {
 systemctl() { echo "systemctl $*" >> "$SORTER_TEST_TMP/calls"; }
 sysctl() { echo cubic; }
 chown() { return 0; }
+# The host-prerequisite test mocks the privileged storage bootstrap boundary.
+# Actual bootstrap is tested independently and under real UID in Docker CI.
+python3() {
+  if [[ "$1" == PhotoSorter/tools/maintenance/map_build.py ]]; then
+    return 0
+  elif [[ "$1" == PhotoSorter/tools/maintenance/bootstrap_storage.py ]]; then
+    if [[ "${3:-}" == --check ]]; then
+      [[ "$(cat "$2/system/state/layout-version")" == 2 ]]
+    else
+      mkdir -p "$2/system/state"
+      printf '2\n' > "$2/system/state/layout-version"
+    fi
+  else
+    command python3 "$@"
+  fi
+}
 docker() {
   case "$*" in
     'compose version') [[ -f "$SORTER_TEST_TMP/compose" ]] ;;
     'info --format {{.ServerVersion}}') [[ -f "$SORTER_TEST_TMP/docker" ]] ;;
     'volume inspect outdoor-sorter_postgres_data') [[ -f "$SORTER_TEST_TMP/postgres" ]] ;;
     'compose --env-file .env --env-file .env.generated config --quiet') return 0 ;;
-    'compose --env-file .env --env-file .env.generated up -d --build') touch "$SORTER_TEST_TMP/postgres" ;;
+    'compose --env-file .env --env-file .env.generated up -d --no-build --wait --wait-timeout 180')
+      mkdir -p storage/infrastructure/postgres/data
+      printf '17\n' > storage/infrastructure/postgres/data/PG_VERSION
+      touch "$SORTER_TEST_TMP/postgres" ;;
     *) echo "Unexpected Docker command: $*" >&2; return 1 ;;
   esac
 }
@@ -67,6 +86,7 @@ mkdir -p "$tmp/project/PhotoSorter/tools/maintenance"
 cp install.sh "$tmp/project/"
 cp PhotoSorter/tools/maintenance/{install_prerequisites,setup_tcp_bbr}.sh "$tmp/project/PhotoSorter/tools/maintenance/"
 cd "$tmp/project"
+export MAP_UPDATER_PREBUILT=1 CI=true
 printf 'DOMAIN=sorter.example.com\n' > .env
 
 expect_failure() {

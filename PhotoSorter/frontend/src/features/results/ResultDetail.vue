@@ -34,6 +34,8 @@ const {items,cursor,loading,error:pageError,load,reset}=useCursor<ResultPhoto>(n
   resultApi.photos(id,{[mode.value==='sam'?'sam':'group']:selected.value,cursor:next,limit:60}))
 const tiles=computed(()=>items.value.map(p=>({id:String(p.index),label:p.filename||'ФО №'+(p.index+1),thumbnail_url:session.isOwner||p.media_kind==='video'?p.thumbnail_url:p.image_url,original_url:p.image_url,play_url:p.image_url,score:p.score,media_kind:p.media_kind,duration:p.duration})))
 const previews=computed(()=>items.value.map(p=>({src:p.image_url,label:(p.filename||'ФО №'+(p.index+1))+' · '+displaySam(p.assigned_sam||''),score:p.score,video:p.media_kind==='video',poster:p.thumbnail_url})))
+const canMedia=computed(()=>session.isOwner||published.value?.can_media!==false)
+const canZip=computed(()=>session.isOwner||published.value?.can_zip!==false)
 const total=computed(()=>Object.values(sams.value).reduce((x,y)=>x+y,0))
 function loadNearGalleryEnd(){
   const panel=galleryScroll.value
@@ -58,7 +60,7 @@ watch(selected,(value,old)=>{
   if(value===old)return
   viewer.value=null
   if(galleryScroll.value)galleryScroll.value.scrollTop=0
-  if(value)void reset()
+  if(value&&canMedia.value)void reset()
 })
 onMounted(async()=>{
   window.addEventListener('scroll',loadNearGalleryEnd,{passive:true})
@@ -103,7 +105,7 @@ async function deleteBatch(){
 <div class="reference-library-view results-detail-view">
 <div class="row" style="margin-bottom:22px"><RouterLink class="meta" to="/results">← Все результаты</RouterLink></div>
 <PageHeader eyebrow="РЕЗУЛЬТАТЫ / MEGALOC" :title="batch?.display_name||published?.display_name||'Результат запуска'" :subtitle="total+' ФО · '+Object.keys(groups).length+' групп ФО'+(run?' · '+date(run.started_at):'')">
-  <template #actions><UiButton kind="primary" :disabled="!(published||(run&&isComplete(run.status)))" @click="download()">↓ Скачать всю сортировку ZIP</UiButton><UiButton v-if="session.isOwner" kind="danger" :disabled="!batch" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
+  <template #actions><UiButton v-if="canZip" kind="primary" :disabled="!(published||(run&&isComplete(run.status)))" @click="download()">↓ Скачать всю сортировку ZIP</UiButton><UiButton v-if="session.isOwner" kind="danger" :disabled="!batch" @click="deleteWhole=true">Удалить всю партию</UiButton></template>
 </PageHeader>
 <div v-if="error" class="alert error" role="alert" style="margin-bottom:18px">{{error}}</div>
 <section v-if="batch&&run" class="panel results-zip-bar" :class="{'deletion-panel':deletion.pending(batch.batch_id)||batch.delete_state==='deleting'}">
@@ -133,9 +135,10 @@ async function deleteBatch(){
   <section class="panel split-main">
     <div class="panel-header reference-detail-header">
       <div><h2>{{mode==='sam'?displaySam(selected):selected}}</h2><span class="meta">{{list.find(x=>x.id===selected)?.count||0}} ФО</span></div>
-      <UiButton v-if="mode==='sam'" small @click="download(selected)">↓ Скачать конструкцию</UiButton>
+      <UiButton v-if="mode==='sam'&&canZip" small @click="download(selected)">↓ Скачать конструкцию</UiButton>
     </div>
-    <div ref="galleryScroll" class="reference-library-gallery-scroll" @scroll.passive="loadNearGalleryEnd">
+    <p v-if="!canMedia" class="meta">Просмотр фотографий не разрешён.</p>
+    <div v-else ref="galleryScroll" class="reference-library-gallery-scroll" @scroll.passive="loadNearGalleryEnd">
     <div v-if="pageError" class="alert error" role="alert">{{pageError}}</div>
     <VirtualThumbnailGrid v-if="items.length" :items="tiles" :show-scores="true" @open="i=>viewer=i"/>
     <LoadingSkeleton v-else-if="loading" variant="gallery" label="Загружаем фотографии результата"/>

@@ -4,13 +4,22 @@ from uuid import uuid4
 from datetime import date
 import pytest
 
-from server.api.routes.batches import NewBatch, create
+from server.api.routes.batches import NewBatch, create as create_route
+from starlette.requests import Request
 from server.database import connect
 from server.services import batches, cleanup, upload_manifest
-from .test_stage1_lifecycle import db, sandbox
+from .test_stage1_lifecycle import db, sandbox, owner_for_test
 from .test_stage2_platform import thumbs, _jpg
 from .test_upload_manifest import File, _send
 
+
+def _owner_id():
+    with connect() as conn:
+        return owner_for_test(conn)
+
+def create(payload):
+    request=Request({"type":"http","state":{"user":{"id":_owner_id(),"username":"admin","access_role":"owner"}}})
+    return create_route(request,payload)
 
 def test_same_name_folders_get_separate_manifests_and_photos(thumbs):
     base = "Выезд " + uuid4().hex
@@ -56,7 +65,7 @@ def test_concurrent_creates_allocate_suffixes_and_retry_is_idempotent(sandbox):
 
 def test_names_stay_at_most_120_chars_and_rename_respects_existing_names(sandbox):
     base = uuid4().hex + "а" * 88
-    first, second = [batches.create(base) for _ in range(2)]
+    first, second = [batches.create(base,owner_id=_owner_id()) for _ in range(2)]
     try:
         assert first["display_name"] == base
         assert second["display_name"] == base[:118] + " 2"

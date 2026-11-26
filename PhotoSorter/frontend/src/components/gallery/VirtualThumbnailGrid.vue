@@ -10,7 +10,8 @@ const emit=defineEmits<{(e:'open',index:number):void;(e:'remove',id:string):void
 const host=ref<HTMLElement|null>(null)
 const width=ref(780),top=ref(0),viewportY=ref(0),viewportHeight=ref(800),mobile=ref(false)
 let resize:ResizeObserver|undefined
-let scrollHost:HTMLElement|null=null
+// undefined means no listener attached; null means the window is attached.
+let scrollHost:HTMLElement|null|undefined=undefined
 function attachScrollHost(){
   const next=window.matchMedia('(min-width:701px)').matches
     ?host.value?.closest<HTMLElement>('.reference-library-gallery-scroll')||null:null

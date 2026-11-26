@@ -5,10 +5,17 @@ import pytest
 from fastapi import HTTPException
 from server.services import archives
 
+def mock_run_storage(tmp_path,monkeypatch):
+    from app import config
+    import uuid
+    batch=uuid.uuid4()
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",tmp_path)
+    monkeypatch.setattr(archives.storage_paths,"run_identity",lambda run_id,db=None:(batch,1))
+
 def test_cached_archive_is_reused(tmp_path,monkeypatch):
-    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
+    mock_run_storage(tmp_path,monkeypatch)
     run="20261107T120000-abcdef123456"
-    source=tmp_path/run/"megaloc"/"SAM 0001"/"image.jpg"
+    source=archives.storage_paths.result_media_dir(run)/"SAM 0001"/"image.jpg"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"test-photo")
     name=archives.archive_member("SAM 0001",source.name)
@@ -27,9 +34,9 @@ def test_archive_member_rejects_unsafe_label(bad):
         archives.archive_member(bad,"a.jpg")
 
 def test_new_source_content_invalidates_archive(tmp_path,monkeypatch):
-    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
+    mock_run_storage(tmp_path,monkeypatch)
     run="20261107T120000-abcdef123456"
-    source=tmp_path/run/"megaloc"/"SAM 0001"/"image.jpg"
+    source=archives.storage_paths.result_media_dir(run)/"SAM 0001"/"image.jpg"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"first")
     selection=[(source,"SAM 0001/image.jpg")]
@@ -43,9 +50,9 @@ def test_zip_file_response_supports_http_byte_ranges(tmp_path,monkeypatch):
     from starlette.routing import Route
     from starlette.responses import FileResponse
     from starlette.testclient import TestClient
-    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
+    mock_run_storage(tmp_path,monkeypatch)
     run="20261107T120000-abcdef123456"
-    image=tmp_path/run/"megaloc"/"SAM 0001"/"image.jpg"
+    image=archives.storage_paths.result_media_dir(run)/"SAM 0001"/"image.jpg"
     image.parent.mkdir(parents=True)
     image.write_bytes(b"x"*2048)
     archive=archives.prepare(run,None,[(image,"SAM 0001/image.jpg")])
@@ -62,9 +69,9 @@ def test_zip_file_response_supports_http_byte_ranges(tmp_path,monkeypatch):
         assert partial.content==full.content[10:30]
 
 def test_archive_reports_byte_progress_and_skips_rebuild(tmp_path,monkeypatch):
-    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
+    mock_run_storage(tmp_path,monkeypatch)
     run="20261107T120000-abcdef123456"
-    photo=tmp_path/run/"megaloc"/"SAM 0001"/"one.jpg"
+    photo=archives.storage_paths.result_media_dir(run)/"SAM 0001"/"one.jpg"
     photo.parent.mkdir(parents=True)
     photo.write_bytes(b"jpeg-bytes"*100)
     updates=[]

@@ -16,7 +16,7 @@ from .test_stage2_platform import _jpg
 def batch():
     ident=uuid.uuid4()
     with database.connect() as db:
-        db.execute("INSERT INTO batches(id,display_name) VALUES (%s,'FO notice')",(ident,))
+        db.execute("INSERT INTO batches(id,display_name,owner_id) VALUES (%s,'FO notice',(SELECT id FROM users WHERE username='admin'))",(ident,))
     return ident
 
 def publish(kind='reference_prepared'):
@@ -96,7 +96,8 @@ def test_receipt_idempotency_and_first_upload_sql_manifest_hook(system):
         assert upload_manifest.reconcile_locked(db,own) is False
         assert db.execute("SELECT count(*) AS n FROM fo_library_upload_receipts").fetchone()["n"]==0
     from pathlib import Path
-    root=system/"uploads"/str(own)
+    from server.storage.paths import batch_dir
+    root=batch_dir(own)
     root.mkdir(parents=True)
     picture=root/"photo.jpg"
     picture.write_bytes(raw)

@@ -76,6 +76,9 @@ def initialize():
         migrate(db)
         from .services.reference_publication import ensure_initial_version
         ensure_initial_version(db)
+    from app.storage.changes import install_sink
+    from .storage.registry import note
+    install_sink(note)
 
 
 def wait_and_initialize(timeout=90):

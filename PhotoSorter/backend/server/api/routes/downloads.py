@@ -15,7 +15,7 @@ archive_member=archives.archive_member
 def download_results(run_id:str,sam:str|None=None,request:Request=None):
     with connect() as db:
         if is_viewer(request):
-            require_published(db,run_id,current_user(request)["id"])
+            require_published(db,run_id,current_user(request)["id"],current_user(request),"results.zip")
         row=db.execute("""SELECT j.batch_id,j.status,b.display_name
             FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE j.id=%s""",(run_id,)).fetchone()
     if not row:raise HTTPException(404,"Запуск не найден")
@@ -24,8 +24,7 @@ def download_results(run_id:str,sam:str|None=None,request:Request=None):
     lease=operations.start(row["batch_id"],"download")
     pin=None
     try:
-        root=archives.output_root()
-        folder=owned_directory(run_dir(run_id,root)/".archives",root)
+        folder=archives.archive_folder(run_id)
         pin=archive_cache.pin(folder)
         plan=archive_pipeline.named_plan(run_id,row["batch_id"],row["display_name"],sam)
         file=archives.prepare(run_id,sam,plan.files)

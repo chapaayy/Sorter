@@ -14,7 +14,7 @@ def lock_names(db):
     db.execute("SELECT pg_advisory_xact_lock(%s)",(_NAME_ALLOCATION_LOCK,))
 
 def by_creation_request(db,request_id):
-    return db.execute("""SELECT id,display_name,report_date_mode,report_date FROM batches
+    return db.execute("""SELECT id,display_name,report_date_mode,report_date,owner_id FROM batches
         WHERE creation_request_id=%s""",(request_id,)).fetchone()
 
 def name_taken(db,name,exclude_id=None):
@@ -22,10 +22,10 @@ def name_taken(db,name,exclude_id=None):
         WHERE delete_state <> 'deleted' AND lower(display_name)=lower(%s)
           AND id IS DISTINCT FROM %s LIMIT 1""",(name,exclude_id)).fetchone() is not None
 
-def insert(db,batch_id,name,request_id=None,report_date_mode='processing',report_date=None):
-    db.execute("""INSERT INTO batches(id,display_name,creation_request_id,report_date_mode,report_date)
-        VALUES (%s,%s,%s,%s,%s)""",
-        (batch_id,name,request_id,report_date_mode,report_date))
+def insert(db,batch_id,name,request_id=None,report_date_mode='processing',report_date=None,*,owner_id):
+    db.execute("""INSERT INTO batches(id,display_name,creation_request_id,report_date_mode,report_date,owner_id)
+        VALUES (%s,%s,%s,%s,%s,%s)""",
+        (batch_id,name,request_id,report_date_mode,report_date,owner_id))
 
 def count_photos_and_runs(db,batch_id):
     counter=db.execute("""SELECT count(*) FILTER (WHERE finalized AND ((media_action IS NULL AND original_media_type IS NULL)
@@ -68,7 +68,7 @@ def has_operations(db,batch_id):
                            (batch_id,)).fetchone())
 
 def photo_row(db,batch_id,photo_id):
-    return db.execute("""SELECT id,target_path,media_output_path FROM uploads
+    return db.execute("""SELECT id,filename,target_path,media_output_path FROM uploads
         WHERE id=%s AND batch_id=%s AND kind='fo' FOR UPDATE""",
         (photo_id,batch_id)).fetchone()
 

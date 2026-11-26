@@ -1,71 +1,73 @@
-"""Read-only data-mount capacity and approximate logical/physical category usage."""
-from __future__ import annotations
-import os
+"""Compatibility usage response sourced exclusively from the registry and host report."""
+import json
+from datetime import datetime,timezone
 from pathlib import Path
-from app.config import DATA_DIR, MODELS_DIR
-from .disk_guard import reserve
+from app.storage.categories import LOG_BUDGETS_MIB
 from ..database import connect
-from app.config import RUNS_DIR
+from ..storage.accounting import snapshot,disk
+from ..storage.reporting import legacy_categories
+from .storage_overview import disk_overview
 
-def _size(root,seen):
-    total=0
-    if not root.exists():return 0
-    for directory,subdirs,files in os.walk(root,followlinks=False):
-        subdirs[:]=[d for d in subdirs if not (Path(directory)/d).is_symlink()]
-        for name in files:
-            path=Path(directory)/name
-            try:
-                if path.is_symlink():continue
-                s=path.stat()
-            except OSError:continue
-            ident=(s.st_dev,s.st_ino)
-            if ident not in seen:
-                seen.add(ident)
-                total+=s.st_size
-    return total
+def _host(name):
+    try:
+        data=json.loads((Path("/run/map-updater")/name).read_text())
+        return data if isinstance(data,dict) else {}
+    except (OSError,ValueError,TypeError):return {}
 
 def usage():
-    DATA_DIR.mkdir(parents=True,exist_ok=True)
-    s=os.statvfs(DATA_DIR)
-    total=s.f_frsize*s.f_blocks
-    free=s.f_frsize*s.f_bavail
-    used=total-(s.f_frsize*s.f_bfree)
-    seen=set()
-    groups={}
-    groups["logs"]=_size_logfiles(RUNS_DIR,seen)
-    for key,root in (("photos",DATA_DIR/"uploads"),("results",DATA_DIR/"outputs"),
-                      ("references",DATA_DIR/"references"),("thumbnails",DATA_DIR/"cache"/"thumbnails"),
-                      ("reference_cache",DATA_DIR/"cache"/"megaloc"),("models",MODELS_DIR),
-                      ("runs",DATA_DIR/"runs"),("incoming",DATA_DIR/"incoming")):
-        groups[key]=_size(root,seen)
-    groups["other"]= _size(DATA_DIR,seen)
+    data=snapshot();capacity=disk()
+    capacity['sampled_at']=datetime.now(timezone.utc).isoformat()
+    groups={key:0 for key in ("photos","results","incoming","thumbnails","reference_thumbnails","references","reference_cache","reference_uploads","models","logs","runs","other")}
+    mapping={"originals":"photos","normalized":"photos","results_files":"results","results_zip":"results",
+             "results_temporary":"results","references_zip":"results","reference_objects":"references","reference_gallery":"references",
+             "reference_other":"references","other_cache":"models"}
+    for name,row in legacy_categories(data.get("categories",{})).items():
+        key=mapping.get(name,name)
+        groups[key if key in groups else "other"]+=row["allocated_bytes"]
+    host=_host("storage-host.json")
+    if host:
+        try:
+            age=(datetime.now(timezone.utc)-datetime.fromisoformat(host["at"])).total_seconds()
+        except (KeyError,TypeError,ValueError):age=None
+        host["sample_age_seconds"]=age
+        host["stale"]=age is None or age>180 or age< -60
+        for key,period in (("tree_check",3600),("disk_check",21600)):
+            sample=host.get(key)
+            if not isinstance(sample,dict):continue
+            try:sample_age=(datetime.now(timezone.utc)-datetime.fromisoformat(sample["finished_at"])).total_seconds()
+            except (KeyError,TypeError,ValueError):sample_age=None
+            sample["sample_age_seconds"]=sample_age
+            sample["stale"]=sample_age is None or sample_age>period+600 or sample_age< -60
+    check=_host("storage-check.json")
+    journal=_host("log-usage.json")
+    journals={"at":journal.get("at"),"services":{name:{"bytes":journal.get("services",{}).get(name,{}).get("bytes"),
+                  "budget_bytes":n*1024*1024,"partial":journal.get("services",{}).get(name,{}).get("partial",True)}
+                  for name,n in LOG_BUDGETS_MIB.items()}}
     db_size=None
+    pg=None
     try:
         with connect() as db:
             db_size=db.execute("SELECT pg_database_size(current_database()) AS bytes").fetchone()["bytes"]
-    except Exception:
-        pass
-    fraction=used/total if total else 0
-    required=reserve(total)
-    return {"disk":{"total_bytes":total,"used_bytes":used,"available_bytes":free,
-            "reserved_bytes":required,"admission_ok":free>required,
-            "used_fraction":fraction,"warning":"critical" if fraction>=.90
-            else "warning" if fraction>=.80 else None},
-            "categories_bytes":groups,
-            "database_estimated_bytes":db_size,
-            "not_scanned":["postgres_WAL","Docker_logs","Caddy_volumes"],
-            "counting":"physical_inode_deduplicated"}
-
-def _size_logfiles(root,seen):
-    total=0
-    if not root.exists():return total
-    for file in root.glob("*/events.jsonl*"):
-        try:
-            if file.is_symlink() or not file.is_file():continue
-            stat=file.stat()
-        except OSError:continue
-        key=(stat.st_dev,stat.st_ino)
-        if key not in seen:
-            seen.add(key)
-            total+=stat.st_size
-    return total
+            pg=db.execute("""SELECT count(*) FILTER(WHERE xact_start IS NOT NULL) AS open_transactions,
+              count(*) FILTER(WHERE now()-xact_start>interval '5 minutes') AS long_transactions,
+              coalesce(max(extract(epoch FROM now()-xact_start)),0)::double precision AS oldest_transaction_seconds
+              FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()""").fetchone()
+            pg.update(db.execute("""SELECT coalesce(sum(n_dead_tup),0)::bigint AS estimated_dead_tuples,
+              coalesce(sum(autovacuum_count),0)::bigint AS autovacuum_count,max(last_autovacuum) AS last_autovacuum
+              FROM pg_stat_user_tables""").fetchone())
+            if pg["last_autovacuum"]:pg["last_autovacuum"]=pg["last_autovacuum"].isoformat()
+            pg["sampled_at"]=datetime.now(timezone.utc).isoformat()
+    except Exception:pg=None
+    devices=dict(host.get("filesystems",{}))
+    key=str(capacity["device"])
+    devices[key]={**devices.get(key,{}),**capacity}
+    for device,fs in devices.items():
+        app_bytes=data.get("devices",{}).get(device,{}).get("allocated_bytes",0)
+        host_bytes=host.get("devices",{}).get(device,{}).get("allocated_bytes",0)
+        fs["map_allocated_bytes"]=app_bytes+host_bytes if data.get("sampled_at") or host.get("at") else None
+        fs["outside_map_or_unexplained_bytes"]=fs["used_bytes"]-fs["map_allocated_bytes"] if fs["map_allocated_bytes"] is not None else None
+    groups["logs"]=sum(v.get("allocated_bytes",0) for k,v in host.get("categories",{}).items() if k in ("service_log","run_log","access_log","audit_event"))
+    return {"disk_overview":disk_overview(capacity,host,data),"independent_check":check or None,"journals":journals,"disk":capacity,"filesystems":devices,"categories_bytes":groups,
+      "registry":data,"host":host or None,"database_estimated_bytes":db_size,"postgres_diagnostics":pg,
+      "not_scanned":["Docker shared layers and system files not assigned to MAP","Directory/filesystem metadata","Unlinked-open files are sampled separately"],
+      "counting":"registry_physical_inode_deduplicated"}

@@ -12,7 +12,9 @@ export const ALL_DUPLICATES='Все выбранные фото уже есть 
 const CHUNK=16*1024*1024
 type SavedSession={sessionId:string;ids:string[];manifestKey:string}
 function stableKey(items:readonly ReferenceTransferItem[]):string{
-  const lines=items.map(i=>[i.sam,i.address||'',i.entry.relative,i.entry.file.name,i.entry.file.size].join('|'))
+  const withSides=items.some(i=>!!i.side)
+  const lines=items.map(i=>[i.sam,i.address||'',i.entry.relative,i.entry.file.name,i.entry.file.size,
+    ...(withSides?[i.side||'']:[])].join('|'))
   const encoded=lines.join('\n')
   let hash=2166136261
   for(let i=0;i<encoded.length;i++)hash=Math.imul(hash^encoded.charCodeAt(i),16777619)
@@ -71,7 +73,8 @@ export async function transferReferences(confirmed:ReferenceReview,success:strin
         relative_path:item.entry.relative,
         filename:item.entry.file.name,
         size:item.entry.file.size,
-        sha256:item.sha256
+        sha256:item.sha256,
+        ...(item.side?{side:item.side}:{}),...(item.portable?{portable:true}:{})
       }))
       phase='Регистрация полного списка образцов…';publish()
       await request(()=>referenceImportsApi.create(sid))
@@ -92,7 +95,8 @@ export async function transferReferences(confirmed:ReferenceReview,success:strin
         const item=items[i]!,entry=manifest[i]!
         const existing=byId.get(entry.upload_id)
         if(!existing||existing.sha256!==item.sha256||existing.size!==entry.size||
-           existing.relative_path!==entry.relative_path||existing.sam!==entry.sam)
+           existing.relative_path!==entry.relative_path||existing.sam!==entry.sam||
+           (existing.side||null)!==(entry.side||null))
           throw new Error('Состав файлов на сервере не соответствует выбранной папке')
         if(existing.state==='duplicate'){skip(i);return}
         if(existing.state==='finalized'){

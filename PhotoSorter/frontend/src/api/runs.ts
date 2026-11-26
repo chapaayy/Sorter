@@ -10,9 +10,6 @@ export const runApi={
     batch_id:id,grouping_threshold:threshold,regions:regions??null
   }),
   stop:(id:string)=>post<Run>('/runs/'+id+'/stop',{}),
-  retryArchive:(id:string)=>post<{run_id:string;state:string}>('/runs/'+encodeURIComponent(id)+'/archive/retry',{}),
-  archiveStatus:(id:string)=>api<{run_id:string;state:string;can_retry:boolean}>(
-    '/runs/'+encodeURIComponent(id)+'/archive/status'),
   models:()=>api<ModelInfo>('/models'),
   autoSettings:()=>api<ProcessingSettings>('/processing-settings'),
   saveAutoSettings:(enabled:boolean,threshold:number,minMatchScore?:number)=>api<ProcessingSettings>(

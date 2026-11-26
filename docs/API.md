@@ -27,7 +27,7 @@
 | GET/POST | `/models`, `/models/megaloc/download` | одна модель |
 | GET | `/results/{run_id}`, `/results/{run_id}/megaloc` | run/manifest/score |
 | GET | `/images/{run_id}/megaloc/{index}` | image query/copy/reference |
-| GET | `/download/{run_id}?sam=SAM-0045` | ZIP поток всей сортировки либо одного SAM |
+| GET | `/download/{run_id}?sam=SAM-0045` | ZIP по запросу всей сортировки либо одного SAM |
 | GET | `/logs/{run_id}` | run события |
 
 ## Новые endpoints этапа 1
@@ -106,7 +106,7 @@
 | GET | `/system/status` | uptime, queue, thumbnail counts, free/reserve, recent p95 API |
 | GET | `/storage/usage` | inode-dedup категории + отдельно approx pg_database_size |
 
-**API backwards compatibility:** `GET /results/{run_id}/megaloc` до сих пор возвращает прежний manifest, `GET /download/{run_id}?sam=` стримит ZIP без постоянного файла; POST auth/cookies/Origin остаются. Browser не передаёт filesystem paths. Старые completed runs без `manifest.rows.jsonl` поддерживаются legacy fallback, но могут требовать чтения полного manifest.
+**API backwards compatibility:** `GET /results/{run_id}/megaloc` до сих пор возвращает прежний manifest, `GET /download/{run_id}?sam=` создаёт атомарный временный ZIP по запросу с TTL 3600 секунд и Range/206; POST auth/cookies/Origin остаются. Browser не передаёт filesystem paths. Старые completed runs без `manifest.rows.jsonl` поддерживаются legacy fallback, но могут требовать чтения полного manifest.
 
 **Состояния:** after upload original ready сразу, thumbnail queued/running/ready/failed независимо; `queue_position` появляется только у queued job. После crash running→interrupted; никаких ложных восстановлений промежуточных нейронных embedding. ENOSPC → HTTP 507 для новых загрузок, не удаляет completed файлы.
 
@@ -122,7 +122,7 @@
 | GET | `/`, `/fo/:id`, `/references`, `/queue`, `/queue/runs/:runId`, `/results`, `/logs`, `/settings` и другие SPA пути | Единственный Vue bundle, history fallback, только read-only HTML |
 | GET | `/assets/*` | Только собранные Vite assets внутри `frontend/dist/assets`, без path traversal |
 
-**Сохранённый API:** `/api/auth/login`, `/api/auth/logout`, streaming ZIP, batch CRUD, очереди и API этапов 1–4. API защищён cookie/Origin middleware; root Vue не ослабляет авторизацию. Если Vue dist отсутствует, `/` и SPA deep links возвращают 503, а `/api/health` продолжает работать. Старые `/v3/` и `/static/*` возвращают 404.
+**Сохранённый API:** `/api/auth/login`, `/api/auth/logout`, ZIP по запросу, batch CRUD, очереди и API этапов 1–4. API защищён cookie/Origin middleware; root Vue не ослабляет авторизацию. Если Vue dist отсутствует, `/` и SPA deep links возвращают 503, а `/api/health` продолжает работать. Старые `/v3/` и `/static/*` возвращают 404.
 
 **SAM rename safety:** запрещён при queued/running/stopping MegaLoc и незавершённых загрузках данной SAM. Исторические manifests с исходными путями требуют отдельной проверки/миграции при переименовании библиотеки, прежде чем включать эту функцию на рабочем VPS. Это не изменяет MegaLoc math.
 
@@ -137,7 +137,7 @@
 
 Уникальность конструкции: `city_code + construction_number` (строка, ведущие нули сохраняются). Старые `SAM-xxxx` не переименовываются и не принимаются как названия папок при новом массовом импорте. Дубликат фотографии по SHA-256 в одной конструкции не сохраняется второй раз. Неправильный адрес возвращает 409/422; активная MegaLoc блокирует изменения. Миграция `0008_reference_constructions.sql` добавляет каталог конструкций без удаления старых данных. Полные правила: [REFERENCE_IMPORT](REFERENCE_IMPORT.md).
 
-**Предупреждение о ZIP:** `GET /api/download/{run_id}` только начинает поток; отдельный пользовательский `POST /api/batches/{id}/downloads/confirm` требуется после проверки файла. UI не пытается автоматически подтвердить получение архива.
+**ZIP и retention:** GET создаёт или переиспользует временный ZIP. HTTP-успех не доказывает сохранение на устройстве; подтверждение скачивания для retention не требуется. Ошибка скачивания не меняет состояние сортировки.
 
 ## Здоровье служб и защита API
 
@@ -166,10 +166,10 @@
 
 ## Новые endpoints: полный ZIP и настройки
 
-- `POST /api/runs/{id}/archive/retry` — повторная подготовка ZIP без MegaLoc.
+- `POST /api/runs/{id}/archive/retry` — legacy endpoint: 409, не ставит задачу; повторить обычное скачивание.
 - `GET/PATCH /api/system/retention` — `{enabled, value, unit}`, где `unit` это `minutes`, `hours`, `days` или `months`; только для будущих готовых задач.
 - `GET/PATCH /api/processing-settings/workloads` — `{mode, fo_threads, reference_threads}`; CPU применяется к следующей задаче.
-- `GET /api/download/{id}` — готовый ZIP с Range/206; для старых запусков сохранён совместимый fallback.
+- `GET /api/download/{id}` — ZIP по запросу с Range/206; временный кэш на 3600 секунд.
 
 `POST /api/batches/{id}/downloads/confirm` оставлен как legacy API. В новом UI подтверждение скачивания больше не требуется.
 

@@ -33,9 +33,17 @@ def normalized_candidates(row):
                        label_path(entry.get("reference"))))
     return result
 
+def read_manifest(path):
+    path=Path(path)
+    if path.suffix==".jsonl":
+        with path.open(encoding="utf8") as stream:
+            return [json.loads(line) for line in stream]
+    # External supplied historical golden fixtures, not a runtime storage fallback.
+    return json.loads(path.read_text(encoding="utf8"))
+
 def compare_manifests(baseline,candidate,*,golden_root=None,actual_root=None):
-    old=json.loads(Path(baseline).read_text(encoding="utf8"))
-    new=json.loads(Path(candidate).read_text(encoding="utf8"))
+    old=read_manifest(baseline)
+    new=read_manifest(candidate)
     if not isinstance(old,list) or not isinstance(new,list):
         raise ValueError("Both manifests must be lists")
     differences=[]

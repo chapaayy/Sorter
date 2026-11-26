@@ -4,17 +4,42 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 usage() {
-  echo "Usage: ./install.sh [--check | --deploy]"
+  echo "Usage: ./install.sh [--check | --deploy | --configure]"
+  echo "  --configure: fresh install; prompt for hostname and admin password, then deploy"
   echo "  --check : read-only env/Compose/CPU prerequisite checks"
   echo "  --deploy: install missing prerequisites on Ubuntu/Debian, then deploy Sorter"
 }
 MODE="${1:---deploy}"
-if [[ "$MODE" != "--check" && "$MODE" != "--deploy" ]]; then usage >&2; exit 2; fi
+if [[ "$MODE" != "--check" && "$MODE" != "--deploy" && "$MODE" != "--configure" ]]; then usage >&2; exit 2; fi
+if [[ "$MODE" != "--check" && "$(id -u)" != 0 ]]; then
+  echo '[ERROR] Run the installer as root.' >&2; exit 1
+fi
+if [[ -L .env || -L .env.generated ]]; then
+  echo '[ERROR] Symlinked deployment configuration is forbidden.' >&2; exit 1
+fi
+if [[ "$MODE" == "--configure" ]]; then
+  if [[ -e .env || -e .env.generated ]]; then
+    echo '[ERROR] Existing configuration: use --deploy, never overwrite credentials.' >&2; exit 1
+  fi
+  read -r -p 'Domain (DNS hostname): ' domain
+  if [[ -z "$domain" || "$domain" == 'sorter.example.com' || ! "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
+    echo '[ERROR] Invalid hostname.' >&2; exit 1
+  fi
+  read -r -s -p 'Admin password (16–256 characters; no single quote or backslash): ' password
+  printf '\n'
+  if [[ "${#password}" -lt 16 || "${#password}" -gt 256 || "$password" == *"'"* || "$password" == *\\* || "$password" == *[[:cntrl:]]* ]]; then
+    echo '[ERROR] Invalid password.' >&2; exit 1
+  fi
+  (umask 077; set -o noclobber; printf "DOMAIN=%s\nADMIN_PASSWORD='%s'\nPHOTOSORTER_ENABLE_BBR=1\n" "$domain" "$password" > .env)
+  unset domain password
+  MODE=--deploy
+fi
 if [[ ! -f .env ]]; then
   if [[ "$MODE" == "--check" ]]; then echo '[ERROR] .env missing' >&2; exit 1; fi
-  cp .env.example .env
+  (umask 077; cp .env.example .env)
 fi
-unset ADMIN_PASSWORD
+unset ADMIN_PASSWORD POSTGRES_PASSWORD
+unset MAP_STORAGE_ROOT
 set -a
 # shellcheck disable=SC1091
 if ! source .env 2>/dev/null; then
@@ -44,28 +69,47 @@ if ! docker info --format '{{.ServerVersion}}' >/dev/null; then
   exit 1
 fi
 
-# Deterministic volume name derives from "name: outdoor-sorter" in compose.yaml.
-# A missing .env.generated while PostgreSQL volume exists MUST NOT generate a
-# new DB password. The admin password is configured separately in .env.
+export MAP_STORAGE_ROOT="${MAP_STORAGE_ROOT:-$PWD/storage}"
+if [[ "$MAP_STORAGE_ROOT" != /* || "$MAP_STORAGE_ROOT" == / || "$MAP_STORAGE_ROOT" == *[!a-zA-Z0-9_./-]* ]]; then
+  echo '[ERROR] MAP_STORAGE_ROOT must be a safe absolute directory path.' >&2; exit 1
+fi
+python3 - "$MAP_STORAGE_ROOT" "$PWD" <<'PY'
+from pathlib import Path
+import sys
+root,project=map(Path,sys.argv[1:])
+if root.resolve()!=root or root==project or project.is_relative_to(root) or (root.is_relative_to(project) and root!=project/"storage"):
+    raise SystemExit("[ERROR] Unsafe storage root: use project/storage or a separate absolute directory")
+PY
+
+# Existing bind-mounted PGDATA must retain original credentials.
 EXISTING_POSTGRES=0
-if docker volume inspect outdoor-sorter_postgres_data >/dev/null 2>&1; then
+if [[ -e "$MAP_STORAGE_ROOT/infrastructure/postgres/data/PG_VERSION" ]]; then
   EXISTING_POSTGRES=1
 fi
 if [[ ! -f .env.generated ]]; then
   if [[ "$EXISTING_POSTGRES" -eq 1 ]]; then
-    echo '[ERROR] Existing PostgreSQL volume but .env.generated is missing.' >&2
+    echo '[ERROR] Existing PostgreSQL data but .env.generated is missing.' >&2
     echo 'Restore the ORIGINAL credentials from your backup; do not regenerate.' >&2
     exit 1
   fi
   if [[ "$MODE" == "--check" ]]; then echo '[ERROR] .env.generated missing' >&2; exit 1; fi
   (umask 077; python3 - <<'PY' > .env.generated
-import secrets
+import os,secrets
 print('POSTGRES_PASSWORD='+secrets.token_hex(24))
+print('MAP_STORAGE_ROOT='+os.environ['MAP_STORAGE_ROOT'])
 PY
   )
   echo '[INFO] Created PostgreSQL credentials in .env.generated.'
 fi
 
+# The generated host path is immutable for this installation.
+if [[ "$(grep -c '^MAP_STORAGE_ROOT=' .env.generated || true)" != 1 ]] ||
+   ! grep -Fxq "MAP_STORAGE_ROOT=$MAP_STORAGE_ROOT" .env.generated; then
+  echo '[ERROR] Storage root does not match the installation credentials; refusing to switch roots.' >&2; exit 1
+fi
+if [[ "$EXISTING_POSTGRES" -eq 1 && ! -f "$MAP_STORAGE_ROOT/system/state/layout-version" ]]; then
+  echo '[ERROR] Existing database but no v2 layout marker; refusing to initialize another storage root.' >&2; exit 1
+fi
 # Verify that secrets exist without echoing them to CI/logs.
 if ! grep -Eq '^POSTGRES_PASSWORD=.{16,}$' .env.generated; then
   echo '[ERROR] .env.generated incomplete; restore correct credentials.' >&2
@@ -123,13 +167,14 @@ then
 fi
 
 if [[ "$MODE" == "--check" ]]; then
+  python3 PhotoSorter/tools/maintenance/bootstrap_storage.py "$MAP_STORAGE_ROOT" --check
   bash PhotoSorter/tools/maintenance/setup_tcp_bbr.sh --check
   echo '[OK] Read-only preflight passed. No files or containers changed.'
   exit 0
 fi
 
 if [[ "$EXISTING_POSTGRES" -eq 1 ]]; then
-  echo '[INFO] Updating beta test containers; existing Docker volumes are unchanged.'
+  echo '[INFO] Updating beta test containers; persistent PostgreSQL and Caddy binds are unchanged.'
 fi
 chmod 600 .env .env.generated
 
@@ -142,83 +187,37 @@ case "$ACTIVE_TCP_CC" in
   *) echo '[WARN] Could not determine host TCP algorithm; Caddy uses default CUBIC.' >&2 ;;
 esac
 
-mkdir -p Models/models/megaloc Models/cache/huggingface/{hub,xet} Models/cache/{torch,xdg,downloads} PhotoSorter/data/{references,uploads,runs,cache,outputs}
-if [[ "$EXISTING_POSTGRES" -eq 0 ]]; then
-  # Ownership initialization is safe only on a fresh empty project.
-  if [[ "$(id -u)" == '0' ]]; then
-    chown -R 10001:10001 Models PhotoSorter/data
-  else
-    docker run --rm -v "$(pwd)/Models:/models" -v "$(pwd)/PhotoSorter/data:/data" alpine:3.21 sh -c 'chown -R 10001:10001 /models /data'
-  fi
-else
-  echo '[INFO] Skipped recursive chown of existing model/photo storage.'
+# A fresh v2 application root; no legacy media bind or recursive chown.
+if [[ "$(id -u)" != 0 ]]; then
+  echo '[ERROR] Run the installer as root to initialize protected storage.' >&2; exit 1
 fi
+python3 PhotoSorter/tools/maintenance/bootstrap_storage.py "$MAP_STORAGE_ROOT"
 # Host updater and disposable builder on production Ubuntu. CI uses Compose.
 if [[ "$(id -u)" == 0 && "${CI:-}" != true && "${GITHUB_ACTIONS:-}" != true ]] &&
    [[ -d /run/systemd/system ]] && command -v systemctl >/dev/null; then
-  mkdir -p /var/lib/map-updater
+  mkdir -p "$MAP_STORAGE_ROOT/system/updater/private"
   if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
-    exec 9>/var/lib/map-updater/deploy.lock
+    exec 9>"$MAP_STORAGE_ROOT/system/updater/private/deploy.lock"
     flock -n 9 || { echo '[ERROR] Another MAP deployment is running'; exit 1; }
   fi
   bash PhotoSorter/tools/maintenance/install_map_updater.sh
   if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
-    python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)"
+    python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)" --storage-root "$MAP_STORAGE_ROOT"
   fi
   "${COMPOSE[@]}" up -d --no-build --wait --wait-timeout 180
+  python3 /usr/local/lib/map-updater/host_logs.py "$MAP_STORAGE_ROOT" --request-check
   if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
     systemctl restart map-updater.service
   fi
 else
-  "${COMPOSE[@]}" up -d --build
-fi
-# Optional root-owned, read-only file-event observer. It creates only its own
-# append-only audit logs, not user data or cleanup. No new Python packages.
-if [[ "$(id -u)" == 0 && "${CI:-}" != "true" && "${GITHUB_ACTIONS:-}" != "true" ]] &&
-   command -v systemctl >/dev/null 2>&1 &&
-   [[ -d /run/systemd/system ]] && [[ -w /etc/systemd/system ]]; then
-  AUDIT_UNIT=/etc/systemd/system/map-file-audit.service
-  cat > "$AUDIT_UNIT" <<EOF
-[Unit]
-Description=MAP read-only continuous filesystem event audit
-After=docker.service
-Wants=docker.service
-
-[Service]
-Type=simple
-User=root
-Group=root
-UMask=0027
-WorkingDirectory=$PWD
-ExecStart=/usr/bin/python3 $PWD/PhotoSorter/tools/maintenance/audit_live.py --project-root $PWD
-Restart=on-failure
-RestartSec=5
-NoNewPrivileges=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  if systemctl daemon-reload && systemctl enable map-file-audit.service &&
-     systemctl restart map-file-audit.service; then
-    echo '[OK] Continuous read-only MAP filesystem event audit is running.'
-  else
-    echo '[WARN] Could not start MAP filesystem observer; host snapshot audit still works.' >&2
+  if [[ "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
+    exec 9>"$MAP_STORAGE_ROOT/system/updater/private/deploy.lock"
+    flock -n 9 || { echo '[ERROR] Another MAP deployment is running'; exit 1; }
+    python3 PhotoSorter/tools/maintenance/map_build.py "$PWD" "$(git rev-parse HEAD)" --storage-root "$MAP_STORAGE_ROOT"
   fi
-else
-  echo '[INFO] Continuous host audit requires root + systemd on the VPS.'
+  "${COMPOSE[@]}" up -d --no-build --wait --wait-timeout 180
 fi
-# Read-only host filesystem census after deployment. Root is needed for Docker
-# volumes, container overlay layers and /proc. This never deletes user files,
-# sets quotas or changes the behaviour of the workers.
-if [[ "$(id -u)" == 0 && "${MAP_UPDATER_PREBUILT:-0}" != 1 ]]; then
-  echo '[INFO] Auditing MAP storage, Docker volumes, images, logs and host runtime files.'
-  if ! python3 PhotoSorter/tools/maintenance/audit_host.py --project-root "$PWD"; then
-    echo '[WARN] Host audit reported coverage gaps; view Administration > Host audit.' >&2
-  fi
-else
-  echo '[INFO] Host audit needs root: sudo python3 PhotoSorter/tools/maintenance/audit_host.py --project-root "'"$PWD"'"'
-fi
-# Clean up the previous installer’s copy after Compose accepts the deployment.
+# Remove an obsolete duplicate credential only after successful deployment.
 if grep -Eq '^ADMIN_PASSWORD=' .env.generated; then
   sed -i '/^ADMIN_PASSWORD=/d' .env.generated
 fi

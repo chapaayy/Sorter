@@ -29,6 +29,8 @@ def submit(email, password, confirmation, comment):
     salt = secrets.token_bytes(16)
     verifier = hash_password(password, salt)
     with connect() as db:
+        if not db.execute("SELECT enabled FROM account_registration WHERE singleton FOR SHARE").fetchone()["enabled"]:
+            raise HTTPException(403,"Подача заявок отключена")
         repository.lock_email(db, email)
         repository.create(db, email, comment, salt.hex(), verifier)
 
@@ -51,8 +53,10 @@ def available_results(db, run_ids):
     return chosen
 
 
-def decide(request_id, approved, run_ids=()):
+def decide(request_id, approved, run_ids=(), *, role_id='observer',display_name='',storage_limit_bytes=None,overrides=None):
+    from . import accounts
     with connect() as db:
+        accounts.lock(db)
         application = repository.pending_for_update(db, request_id)
         if application is None:
             raise HTTPException(404, "Заявка не найдена")
@@ -64,17 +68,22 @@ def decide(request_id, approved, run_ids=()):
                                             application["password_salt"], application["password_hash"])
             if user is None:
                 raise HTTPException(409, "Аккаунт с этой почтой уже существует")
+            accounts.configure_new(db,user['id'],role_id,display_name,storage_limit_bytes,overrides or {})
             if chosen:
                 repository.grant_results(db, user["id"], chosen)
+        accounts.audit(db,'admin',request_id,'application_approved' if approved else 'application_rejected',{'role':role_id} if approved else {})
         return repository.decide(db, request_id, "approved" if approved else "rejected")
 
 
 def grants(request_id, run_ids=None):
+    from . import accounts
     with connect() as db:
+        if run_ids is not None:accounts.lock(db)
         application = repository.pending_for_update(db, request_id)
         if application is None or application["status"] != "approved":
             raise HTTPException(404, "Одобренная заявка не найдена")
         email = application["email"]
         if run_ids is not None and not repository.replace_grants(db, email, available_results(db, run_ids)):
             raise HTTPException(404, "Аккаунт не найден")
+        if run_ids is not None:accounts.audit(db,"admin",request_id,"result_grants_changed",{"count":len(run_ids)})
         return {"items": repository.list_grants(db, email)}

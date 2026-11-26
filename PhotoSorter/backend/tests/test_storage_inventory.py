@@ -1,91 +1,69 @@
-"""Read-only file inventory with physical hardlink accounting and explicit scan gaps."""
+"""Read-only registry inventory and CSV tests."""
 import csv
 import io
 import os
-
 import pytest
 from fastapi import HTTPException
-
 from server.services import storage_inventory as inventory
+from server.storage.reporting import inventory as capture
+from app import config
+from .test_unified_queue_stage3 import system
+from .test_stage1_lifecycle import _batch,_job
+from .accounting_checks import settle
 
-
-def test_inventory_lists_real_paths_and_owners_without_writing(tmp_path):
-    data = tmp_path / "data"
-    models = tmp_path / "Models"
-    batch_id = "11111111-1111-4111-8111-111111111111"
-    run_id = "20261123T123000-abcdef123456"
-    original = data / "uploads" / batch_id / "one.jpg"
-    original.parent.mkdir(parents=True)
-    original.write_bytes(b"a" * 8192)
-    published = data / "outputs" / run_id / "megaloc" / "SAM 0004" / "one.jpg"
+def test_inventory_lists_real_paths_and_owners_without_writing(system):
+    from server.storage.paths import batch_dir
+    from app.storage.categories import Category
+    from app.storage.paths import managed_path
+    from server import database
+    from pathlib import Path
+    batch=_batch(system)
+    run=_job(system,batch)
+    original=next(batch_dir(batch).iterdir())
+    with database.connect() as db:
+        owner=db.execute("SELECT owner_id FROM batches WHERE id=%s",(batch,)).fetchone()["owner_id"]
+    published=managed_path(Category.RESULT_MEDIA,user_id=owner,batch_uuid=batch,run_id=run)/"SAM 0004"/"one.jpg"
     published.parent.mkdir(parents=True)
-    os.link(original, published)
-    part = data / "incoming" / "pending.part"
-    part.parent.mkdir()
-    part.write_bytes(b"x")
-    cache = data / "cache" / "megaloc" / "references" / "one.npy"
-    cache.parent.mkdir(parents=True)
-    cache.write_bytes(b"c" * 20)
-    model = models / "models" / "megaloc" / "model.safetensors"
-    model.parent.mkdir(parents=True)
-    model.write_bytes(b"m" * 10)
+    os.link(original,published)
+    root=config.APP_STORAGE_ROOT
+    before=sorted(p.relative_to(root) for p in root.rglob("*"))
+    settle()
+    summary=inventory.scan()
+    rows=inventory.files(snapshot_id=summary["snapshot_id"])["files"]
+    after=sorted(p.relative_to(root) for p in root.rglob("*"))
+    assert before==after
+    assert summary["files_scanned"]==2
+    assert sum(int(r["hardlink"]) for r in rows)==1
+    assert sum(r["allocated_bytes"] for r in rows)==original.stat().st_blocks*512
+    assert all(r["owner_name"] for r in rows)
 
-    before = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*"))
-    summary, records = inventory._collect(
-        data, models, {batch_id: "Фотоотчёт 321"}, {run_id: batch_id}
-    )
-    after = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*"))
-    assert before == after, "Inventory must not create, rewrite or remove files"
-    assert summary["partial"] is False
-    assert summary["files_scanned"] == 5
-    by_path = {r["path"]: r for r in records}
-    assert by_path["PhotoSorter/data/incoming/pending.part"]["purpose"] == "temporary"
-    assert by_path["PhotoSorter/data/cache/megaloc/references/one.npy"]["purpose"] == "cache"
-    assert by_path["Models/models/megaloc/model.safetensors"]["purpose"] == "system"
-    assert by_path["PhotoSorter/data/uploads/" + batch_id + "/one.jpg"]["owner_name"] == "Фотоотчёт 321"
-    # Only one of the two physical hardlinks receives disk-block allocation.
-    shared = [r for r in records if r["path"].endswith("/one.jpg")]
-    assert len(shared) == 2
-    assert sum(int(r["hardlink"]) for r in shared) == 1
-    assert sum(r["allocated_bytes"] for r in shared) == original.stat().st_blocks * 512
-    assert by_path["PhotoSorter/data/uploads/" + batch_id + "/one.jpg"]["allocated_bytes"] > 0
-    assert by_path["PhotoSorter/data/outputs/" + run_id + "/megaloc/SAM 0004/one.jpg"]["allocated_bytes"] == 0
-    assert summary["allocated_bytes"] == sum(r["allocated_bytes"] for r in records)
-
-
-def test_inventory_does_not_follow_symlinks_and_reports_partial(tmp_path):
-    root = tmp_path / "data"
-    root.mkdir()
-    models = tmp_path / "models"
-    models.mkdir()
-    outside = tmp_path / "private"
+def test_inventory_reports_unknown_symlink_and_bounded_snapshot(system,tmp_path):
+    root=config.APP_STORAGE_ROOT
+    outside=tmp_path/"private"
     outside.mkdir()
-    (outside / "secret.txt").write_text("SECRET")
-    (root / "external").symlink_to(outside, target_is_directory=True)
-    summary, records = inventory._collect(root, models, {}, {})
-    assert records == []
-    assert summary["partial"] is True
-    assert summary["skipped_paths"] == 1
-    (root / "external").unlink()
-    for n in range(5):
-        (root / f"{n}.jpg").write_text("image")
-    summary, records = inventory._collect(root, models, {}, {}, max_files=2)
-    assert len(records) == 2
-    assert summary["partial"] is True
-
+    (outside/"secret.txt").write_text("SECRET")
+    (root/"external").symlink_to(outside,target_is_directory=True)
+    for n in range(5):(root/f"{n}.jpg").write_text("image")
+    settle()
+    summary,rows=capture()
+    assert summary["files_scanned"]==6
+    assert any(r["issue"]=="unexpected_symlink" for r in rows)
+    assert all("secret.txt" not in r["path"] for r in rows)
+    summary,rows=capture(limit=2)
+    assert len(rows)==2 and summary["partial"] is True
 
 def test_inventory_pagination_rejects_expired_snapshot(monkeypatch):
     summary = {"snapshot_id": "test", "files_scanned": 3}
     rows = [
-        {"path": "PhotoSorter/data/a", "category": "originals", "owner_name": "A"},
-        {"path": "PhotoSorter/data/b", "category": "logs", "owner_name": None},
-        {"path": "PhotoSorter/data/c", "category": "originals", "owner_name": "A"},
+        {"path": "storage/app/state/a", "category": "originals", "owner_name": "A"},
+        {"path": "storage/app/state/b", "category": "logs", "owner_name": None},
+        {"path": "storage/app/state/c", "category": "originals", "owner_name": "A"},
     ]
     monkeypatch.setattr(inventory, "_snapshot", (summary, rows))
     page = inventory.files(snapshot_id="test", offset=1, limit=1)
     assert page["total"] == 3
     assert page["files"][0]["path"].endswith("/b")
-    filtered = inventory.files(snapshot_id="test", category="originals", search="data/c")
+    filtered = inventory.files(snapshot_id="test", category="originals", search="state/c")
     assert filtered["total"] == 1
     with pytest.raises(HTTPException) as exc:
         inventory.files(snapshot_id="old")
@@ -97,7 +75,7 @@ def test_complete_csv_export_has_every_row_and_blocks_excel_formulas(monkeypatch
     snapshot = {"snapshot_id": "full", "captured_at": "2026-11-23T14:00:00+00:00"}
     entries = [
         {
-            "path": f"PhotoSorter/data/uploads/photo-{index}.jpg",
+            "path": f"storage/app/state/uploads/photo-{index}.jpg",
             "category": "originals",
             "purpose": "permanent",
             "owner_name": "=HYPERLINK(\"https://unsafe.example\")" if index == 3 else "ФО 321",

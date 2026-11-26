@@ -6,20 +6,21 @@ from app.config import DATA_DIR
 from app.recognition.grouping.finder import PhotoGroup, find_groups
 from app.recognition.errors import JobCancelled
 from ..database import connect
-from ..storage.paths import owned_file
+from ..storage.paths import owned_file,batch_root
 from .formats import output_name
-from .video import extract_frames
+from .video import extract_frames,FRAME_LIMIT
 
 
 class MediaQueries:
-    def __init__(self, job, directory):
+    def __init__(self, job, directory, *,budget=None):
+        self.budget=budget
         self.videos = {}
         self.information = {}
         self.photos = []
         self.frame_paths = []
         self.errors = 0
         batch_id = job.info['batch_id']
-        root = DATA_DIR / 'uploads' / batch_id
+        root = batch_root(batch_id)
         with connect() as db:
             rows = db.execute("""SELECT u.id,u.filename,u.target_path,u.original_media_type,
                 u.media_action,u.media_output_path,u.media_duration,b.media_image_format,b.media_video_format
@@ -45,7 +46,8 @@ class MediaQueries:
             if video:
                 folder = directory / str(row['id'])
                 folder.mkdir()
-                frames = extract_frames(source,folder,stop=job.stopped)
+                if self.budget:self.budget.grow(8*FRAME_LIMIT)
+                frames = extract_frames(source,folder,stop=job.stopped,managed=self.budget is not None)
                 self.frame_paths.extend(frames)
                 self.videos[str(source)] = [str(frame) for frame in frames], None
             else:

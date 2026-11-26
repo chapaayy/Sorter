@@ -1,0 +1,148 @@
+"""Atomic admission leases with crash recovery and registry handoff."""
+from contextlib import contextmanager
+from pathlib import Path
+import fcntl
+import os
+import uuid
+from app.storage.categories import Category
+from app.storage.paths import app_key
+from app.storage.filesystem import directory_fd,parent_fd
+from app.storage.temporary import leased_operation
+from ..database import connect
+from app import config
+from . import admission
+from .registry import key_for,observe,note
+
+def sync_paths(db,keys,tree_key=None):
+    # Only the private operation tree, never a global scan. Include vanished
+    # rows so atomic rename/delete is accounted for before releasing the lease.
+    def unavailable():raise RuntimeError("Storage reservation evidence is unreadable")
+    keys=set(keys)
+    if tree_key:
+        from .reconciliation import walk
+        keys.update(walk(config.APP_STORAGE_ROOT,tree_key,onerror=unavailable))
+        keys.update(r["path"] for r in db.execute("SELECT path FROM storage_files WHERE starts_with(path,%s)",(tree_key+"/",)))
+    ordered=sorted(keys)
+    for start in range(0,len(ordered),512):
+        observe(db,config.APP_STORAGE_ROOT,ordered[start:start+512],onerror=unavailable)
+
+class Lease:
+    def __init__(self,token=None,limit=0):self.token=token;self.limit=limit
+    def track(self,path,*,tree=False):
+        if self.token is None:return
+        key=key_for(path)
+        if not key:return # standalone paths are not in the app registry
+        with connect() as db:
+            admission.lock(db)
+            db.execute("UPDATE storage_reservations SET work_key=%s,work_tree=%s WHERE id=%s",(key,tree,self.token))
+    def publish(self,*paths):
+        if self.token is None:return
+        keys=[k for p in paths if (k:=key_for(p))]
+        if not keys:return
+        with connect() as db:
+            admission.lock(db)
+            db.execute("UPDATE storage_reservations SET publish_keys=publish_keys||%s::text[] WHERE id=%s",(keys,self.token))
+    def grow(self,additional,*,personal=0,temporary=None):
+        if additional<=0:return
+        if self.token is None:
+            self.limit+=additional
+            return
+        additional=admission.rounded(additional)
+        personal=admission.rounded(personal)
+        temporary=additional if temporary is None else admission.rounded(temporary)
+        with connect() as db:
+            admission.lock(db)
+            row=db.execute("SELECT * FROM storage_reservations WHERE id=%s",(self.token,)).fetchone()
+            if not row:raise RuntimeError("Lost storage reservation")
+            admission.admit(db,additional,temporary=temporary,owner=row["owner_id"],personal=personal)
+            db.execute("""UPDATE storage_reservations SET requested_bytes=requested_bytes+%s,
+               personal_bytes=personal_bytes+%s,temporary_bytes=temporary_bytes+%s WHERE id=%s""",
+               (additional,personal,temporary,self.token))
+        self.limit+=additional
+
+    def sync(self,db=None):
+        if self.token is None:return
+        if db is None:
+            with connect() as conn:return self.sync(conn)
+        admission.lock(db)
+        row=db.execute("SELECT * FROM storage_reservations WHERE id=%s",(self.token,)).fetchone()
+        if row:_sync(db,row)
+
+def _sync(db,row):
+    key=row["work_key"]
+    keys=list(row["publish_keys"])
+    if key and not row["work_tree"]:keys.append(key)
+    sync_paths(db,keys,key if row["work_tree"] else None)
+
+@contextmanager
+def reservation(kind,requested,*,owner=None,personal=0,temporary=None,path=None,work=None,tree=False):
+    from .. import database
+    if not database.DB_URL:
+        from ..services import disk_guard
+        if path is not None:disk_guard.check_admission(requested,path=path)
+        yield Lease(limit=requested);return
+    requested=admission.rounded(requested,path=path)
+    temporary=requested if temporary is None else admission.rounded(temporary,path=path)
+    personal=admission.rounded(personal)
+    token=uuid.uuid4();key=token.int & ((1<<63)-1)
+    # A kernel lease survives loss of the PostgreSQL session while this
+    # process is still writing. Use the existing typed scratch lease path;
+    # no competing ledger or new cleanup policy.
+    with leased_operation(config.APP_STORAGE_ROOT,Category.SCRATCH,service="worker",operation_id=token):
+        with connect() as db:
+            db.execute("SELECT pg_advisory_lock(%s)",(key,))
+            admission.lock(db)
+            admission.admit(db,requested,temporary=temporary,owner=owner,personal=personal,path=path)
+            db.execute("""INSERT INTO storage_reservations(id,kind,lease_key,requested_bytes,
+                owner_id,personal_bytes,temporary_bytes,work_key,work_tree)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (token,kind,key,requested,owner,personal,temporary,key_for(work) if work is not None else None,tree))
+            db.commit()
+            try:yield Lease(token,requested)
+            finally:
+                # A fresh connection makes handoff independent of the
+                # original session's health. Recovery retries a failed handoff.
+                with connect() as final:
+                    admission.lock(final)
+                    row=final.execute("SELECT * FROM storage_reservations WHERE id=%s",(token,)).fetchone()
+                    if row:_sync(final,row)
+                    final.execute("DELETE FROM storage_reservations WHERE id=%s",(token,))
+
+@contextmanager
+def _recovery_guard(token):
+    key=app_key(Category.SCRATCH,service="worker",operation_id=token).relative
+    try:
+        with directory_fd(config.APP_STORAGE_ROOT,key) as fd:
+            try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:
+                yield False
+                return
+            yield True
+            # The marker has no data files. Only remove this empty exact
+            # directory; do not erase an unexpected entry.
+            try:
+                with parent_fd(config.APP_STORAGE_ROOT,key) as (parent,name):os.rmdir(name,dir_fd=parent)
+            except OSError:pass
+    except FileNotFoundError:
+        # Old lease rows or already-collected empty markers: PostgreSQL lock
+        # is the remaining recovery authority.
+        yield True
+
+def recover(db,limit=100,after=None):
+    """Advance through all leases, including those behind long-lived holders.
+
+    A crash may reset the cursor safely: a deleted row never resurrects, and
+    a complete pass wraps around to catch inserts before the cursor.
+    """
+    admission.lock(db)
+    if after is None:
+        rows=db.execute("SELECT * FROM storage_reservations ORDER BY id LIMIT %s",(limit,)).fetchall()
+    else:
+        rows=db.execute("SELECT * FROM storage_reservations WHERE id>%s ORDER BY id LIMIT %s",(after,limit)).fetchall()
+    for row in rows:
+        if db.execute("SELECT pg_try_advisory_xact_lock(%s) AS ok",(row["lease_key"],)).fetchone()["ok"]:
+            with _recovery_guard(row["id"]) as safe:
+                if not safe:continue
+                _sync(db,row)
+                db.execute("DELETE FROM storage_reservations WHERE id=%s",(row["id"],))
+    return rows[-1]["id"] if len(rows)==limit else None

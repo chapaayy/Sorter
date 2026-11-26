@@ -15,6 +15,7 @@ export const router = createRouter({
     { path: '/results/:runId', name: 'result-detail', component: () => import('../features/results/ResultDetail.vue'), meta:{viewer:true} },
     { path: '/logs', name: 'logs', component: () => import('../features/logs/LogsView.vue') },
     { path: '/admin', name: 'admin', component: () => import('../features/admin/AdminView.vue') },
+    { path: '/profile', name: 'profile', component: () => import('../features/settings/PersonalAccount.vue'), meta:{viewer:true} },
     { path: '/settings', name: 'settings', component: () => import('../features/settings/SettingsView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/fo' }
   ]

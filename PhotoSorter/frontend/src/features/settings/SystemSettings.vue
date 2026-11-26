@@ -2,17 +2,15 @@
 import LoadingSkeleton from '../../components/ui/LoadingSkeleton.vue'
 import {onMounted,ref} from 'vue'
 import {systemApi} from '../../api/system'
-import {logApi} from '../../api/logs'
 import {usePolling} from '../../composables/usePolling'
-import {bytes,errorText} from '../../utils/format'
+import {errorText} from '../../utils/format'
 import type {SystemStatus} from '../../types/api'
 const initialLoading=ref(true)
 const system=ref<SystemStatus|null>(null)
-const logs=ref<{bytes:number;budget_bytes:number}|null>(null),error=ref('')
+const error=ref('')
 async function refresh(){
   try{
-    const [s,l]=await Promise.all([systemApi.status(),logApi.usage()])
-    system.value=s;logs.value=l;error.value=''
+    system.value=await systemApi.status();error.value=''
   }catch(e){error.value=errorText(e)}finally{initialLoading.value=false}
 }
 onMounted(()=>void refresh())
@@ -46,9 +44,7 @@ usePolling(refresh,12000)
   </section>
   <section class="panel stack">
     <h2>Журналы и диагностика</h2>
-    <LoadingSkeleton v-if="initialLoading" variant="lines" :count="1" label="Считываем размер журналов"/>
-    <div v-else class="row between"><span class="meta">Использование хранилища журналов</span>
-      <strong>{{bytes(logs?.bytes)}} / {{bytes(logs?.budget_bytes)}}</strong></div>
+    <p class="meta">Размеры и бюджеты журналов отображаются во вкладке «Лимиты и хранение».</p>
     <RouterLink to="/logs" class="btn" style="align-self:flex-start">Открыть журналы</RouterLink>
   </section>
 </div>

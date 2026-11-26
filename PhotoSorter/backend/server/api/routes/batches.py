@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import date
 import uuid
 from typing import Literal
-from fastapi import APIRouter,HTTPException
+from fastapi import APIRouter,HTTPException,Request
+from ...security.access_policy import current_user,is_owner
 from pydantic import BaseModel,Field,model_validator
 from ...services import batches,cleanup,retention,upload_manifest,auto_processing,batch_runs
 from ...database import connect
@@ -43,9 +44,12 @@ class BatchManifest(BaseModel):
     regions:list[str]|None=None
 
 @router.post("")
-def create(payload:NewBatch|None=None):
+def create(request:Request,payload:NewBatch|None=None):
+    user=current_user(request)
+    if user is None or not is_owner(user):
+        raise HTTPException(403,"Недостаточно прав")
     return batches.create(payload.display_name,payload.creation_request_id,
-        payload.report_date_mode,payload.report_date) if payload else batches.create()
+        payload.report_date_mode,payload.report_date,owner_id=user["id"]) if payload else batches.create(owner_id=user["id"])
 
 @router.get("")
 def list_batches(limit:int=100,offset:int=0):

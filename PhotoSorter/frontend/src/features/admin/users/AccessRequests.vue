@@ -2,6 +2,7 @@
 import LoadingSkeleton from '../../../components/ui/LoadingSkeleton.vue'
 import {onMounted,ref,watch} from 'vue'
 import {accessRequests,type AccessRequest,type RequestStatus} from '../../../api/accessRequests'
+import type {AccountOptions} from '../../../api/adminUsers'
 import {date,errorText} from '../../../utils/format'
 import UiButton from '../../../components/ui/UiButton.vue'
 import ConfirmDialog from '../../../components/ui/ConfirmDialog.vue'
@@ -29,13 +30,13 @@ function selectTab(status:RequestStatus){
   tab.value=status
   void load()
 }
-async function decide(runIds:string[]=[]){
+async function decide(runIds:string[]=[],options:AccountOptions={}){
   if(busy.value||!selected.value)return
   busy.value=true;error.value=''
   const {item,approved,edit}=selected.value
   try{
     if(edit)await accessRequests.save(item.id,runIds)
-    else await accessRequests.decide(item.id,approved,runIds)
+    else await accessRequests.decide(item.id,approved,runIds,options)
     selected.value=null
     if(approved&&!edit)emit('approved')
     notice.add(edit?'Доступ обновлён':approved?'Заявка одобрена':'Заявка отклонена','ok')
@@ -70,7 +71,7 @@ watch(()=>props.refreshKey,()=>{void load()})
     <p v-else-if="!items.length&&!error" class="meta">Заявок пока нет.</p>
     <UiButton v-if="more" small :disabled="loading" @click="load(true)">Показать ещё</UiButton>
   </section>
-  <ApproveAccessDialog v-if="selected?.approved" :email="selected.item.email" :busy="busy" :load-grants="selected.edit?()=>accessRequests.grants(selected!.item.id):undefined"
+  <ApproveAccessDialog v-if="selected?.approved" :configure-account="!selected.edit" :email="selected.item.email" :busy="busy" :load-grants="selected.edit?()=>accessRequests.grants(selected!.item.id):undefined"
     @approve="decide" @cancel="selected=null"/>
   <ConfirmDialog v-else-if="selected" title="Отклонить заявку?"
     :message="selected.item.email+' не получит доступ к MAP.'"

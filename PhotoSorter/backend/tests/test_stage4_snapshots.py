@@ -19,16 +19,22 @@ RESTORE_DB="postgresql://test_user:private_test_password@127.0.0.1:5432/sorter_r
 @pytest.fixture
 def project(tmp_path,monkeypatch):
     root=tmp_path/"project"
-    (root/"PhotoSorter"/"data"/"references"/"SAM-0001").mkdir(parents=True)
-    (root/"PhotoSorter"/"data"/"uploads"/"test-batch").mkdir(parents=True)
-    (root/"Models"/"models"/"megaloc").mkdir(parents=True)
-    (root/"Models"/"cache"/"torch"/"hub").mkdir(parents=True)
-    (root/".env.generated").write_text("ADMIN_PASSWORD=synthetic\nPOSTGRES_PASSWORD=synthetic\n")
+    (root/"storage"/"app"/"state"/"references"/"SAM-0001").mkdir(parents=True)
+    (root/"storage"/"app"/"state"/"uploads"/"test-batch").mkdir(parents=True)
+    (root/"storage"/"app"/"models"/"megaloc").mkdir(parents=True)
+    (root/"storage"/"app"/"cache"/"torch"/"hub").mkdir(parents=True)
+    for name in ("data","config"):
+        (root/"storage/infrastructure/caddy"/name).mkdir(parents=True)
+    (root/"storage/infrastructure/caddy/data/test-cert.pem").write_bytes(b"synthetic TLS state")
+    marker=root/"storage/system/state/layout-version"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("2\n")
+    (root/".env.generated").write_text(f"ADMIN_PASSWORD=synthetic\nPOSTGRES_PASSWORD=synthetic\nMAP_STORAGE_ROOT={root}/storage\n")
     (root/".env").write_text("DOMAIN=staging.invalid\n")
     (root/"compose.yaml").write_text("name: synthetic\n")
-    source=root/"PhotoSorter"/"data"/"uploads"/"test-batch"/"photo.jpg"
+    source=root/"storage"/"app"/"state"/"uploads"/"test-batch"/"photo.jpg"
     source.write_bytes(b"unchanged synthetic original")
-    target=root/"PhotoSorter"/"data"/"references"/"SAM-0001"/"linked.jpg"
+    target=root/"storage"/"app"/"state"/"references"/"SAM-0001"/"linked.jpg"
     os.link(source,target)
     # Deliberately simulate pg_dump/psql/pg_restore without connecting to production.
     commands=[]
@@ -59,6 +65,7 @@ def test_backup_restore_verifies_checksum_and_inode(project,tmp_path):
     assert a.read_bytes()==source.read_bytes()
     assert b.read_bytes()==target.read_bytes()
     assert a.stat().st_ino==b.stat().st_ino
+    assert (restored/"storage/infrastructure/caddy/data/test-cert.pem").read_bytes()==b"synthetic TLS state"
     assert ("pg_dump",TEST_DB) in commands and ("pg_restore",RESTORE_DB) in commands
 
 def test_backup_refuses_symlinks_and_project_internal_destination(project,tmp_path):
@@ -87,11 +94,11 @@ def test_restore_rejects_unmarked_parent_and_original_database(project,tmp_path)
     with pytest.raises(ValueError):snapshot.restore_test(archive,tmp_path/"other",RESTORE_DB,confirmed=True)
     (tmp_path/".photosorter-staging-only").write_text("STAGING_ONLY")
     with pytest.raises(ValueError):snapshot.restore_test(archive,tmp_path/"other",TEST_DB,confirmed=True)
-    with pytest.raises(ValueError):snapshot.restore_test(archive,root/"PhotoSorter"/"data"/"secret",RESTORE_DB,confirmed=True)
+    with pytest.raises(ValueError):snapshot.restore_test(archive,root/"storage"/"app"/"state"/"secret",RESTORE_DB,confirmed=True)
 
 def test_huggingface_internal_symlink_round_trip_and_external_symlink_rejected(project,tmp_path):
     root,source,target,commands=project
-    cache=root/"Models"/"cache"/"huggingface"/"hub"/"models--gberton--MegaLoc"
+    cache=root/"storage"/"app"/"cache"/"huggingface"/"hub"/"models--gberton--MegaLoc"
     blob=cache/"blobs"/"0123456789abcdef"
     blob.parent.mkdir(parents=True)
     blob.write_bytes(b"fake-model-weight")
@@ -112,3 +119,20 @@ def test_huggingface_internal_symlink_round_trip_and_external_symlink_rejected(p
     unsafe.symlink_to("../../../../../../../outside-secret")
     with pytest.raises(ValueError):
         snapshot.capture(root,tmp_path/"unsafe-archive",TEST_DB,quiesced=True)
+
+
+def test_external_storage_pin_and_restore_member_layout(project,tmp_path):
+    root,source,target,_=project
+    external=tmp_path/"external-storage"
+    (root/"storage").rename(external)
+    config=root/".env.generated"
+    config.write_text(config.read_text().replace(str(root/"storage"),str(external)))
+    with pytest.raises(ValueError):
+        snapshot.capture(root,external/"backup",TEST_DB,quiesced=True)
+    backup=tmp_path/"external-backup"
+    snapshot.capture(root,backup,TEST_DB,quiesced=True)
+    assert snapshot.verify(backup)["verified"]
+    with tarfile.open(backup/"files.tar") as tar:
+        assert source.relative_to(root).as_posix() in tar.getnames()
+        assert "storage/system/state/layout-version" in tar.getnames()
+        assert not any(name.startswith(("Models/","PhotoSorter/data/")) for name in tar.getnames())

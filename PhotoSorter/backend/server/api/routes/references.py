@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
 from ..file_response import LeasedFileResponse
 from ...services import reference_archives,reference_sides,archive_cache
+from ...storage.reference_lifecycle import ReadPin
 from pydantic import BaseModel,Field
 import uuid
 from ...services import references as reference_service
@@ -27,10 +28,11 @@ def export_reference_sides():
 
 @router.get("/export")
 def export_all_references():
-    plan=reference_archives.current_plan()
-    pin=archive_cache.pin(reference_archives.EXPORTS)
+    pin=archive_cache.pin(reference_archives.export_folder())
     try:
-        archive=reference_archives.prepare(plan)
+        with ReadPin():
+            plan=reference_archives.current_plan()
+            archive=reference_archives.prepare(plan)
         return LeasedFileResponse(archive,archive_pin=pin,media_type="application/zip",
             filename=f"Образцы — версия {plan.version}.zip",
             headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})

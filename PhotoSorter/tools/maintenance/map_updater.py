@@ -20,10 +20,15 @@ from pathlib import Path
 from datetime import datetime,timezone
 import map_build
 
-ROOT=Path("/var/lib/map-updater")
+ROOT=Path("/nonexistent/map-updater")
 CONTROL=ROOT/"control"
 RPC=ROOT/"rpc"
 PRIVATE=ROOT/"private"
+WORKSPACE=ROOT/"workspace"
+BACKUPS=ROOT/"backups"
+STORAGE=None
+BRANCH="feature/storage-architecture-v2"
+LOG_DIRECTORY=None
 STATE=CONTROL/"status.json"
 MARKER=CONTROL/"maintenance"
 LOCK=CONTROL/"activity.lock"
@@ -35,6 +40,40 @@ REPO_URLS={"https://github.com/chapaayy/Sorter","https://github.com/chapaayy/Sor
            "git@github.com:chapaayy/Sorter.git","ssh://git@github.com/chapaayy/Sorter.git"}
 MIN_FREE=8*1024**3
 ROLLBACK="map-local/app:rollback"
+
+def configure(storage,project):
+    global ROOT,CONTROL,RPC,PRIVATE,WORKSPACE,BACKUPS,STATE,MARKER,LOCK,STORAGE,BRANCH,LOG_DIRECTORY
+    storage=Path(storage)
+    if not storage.is_absolute() or storage.resolve()!=storage:raise ValueError("Unsafe storage root")
+    pin=storage/"system/state/update-branch"
+    info=pin.stat(follow_symlinks=False)
+    if pin.is_symlink() or info.st_uid!=0 or info.st_mode&0o077:raise ValueError("Unsafe update branch pin")
+    branch=pin.read_text().strip()
+    if branch != "feature/storage-architecture-v2":raise ValueError("Invalid trusted branch")
+    expected=[line.split("=",1)[1] for line in (project/".env.generated").read_text().splitlines() if line.startswith("MAP_STORAGE_ROOT=")]
+    if expected!=[str(storage)]:raise ValueError("Storage pin mismatch")
+    STORAGE=storage
+    ROOT=storage/"system/updater"
+    CONTROL=ROOT/"control";RPC=ROOT/"rpc";PRIVATE=ROOT/"private";WORKSPACE=ROOT/"workspace"
+    BACKUPS=storage/"system/backups/updater";LOG_DIRECTORY=storage/"logs/updater"
+    STATE=CONTROL/"status.json";MARKER=CONTROL/"maintenance";LOCK=CONTROL/"activity.lock"
+    BRANCH=branch
+    map_build.configure(storage)
+
+def recover_owned_work(storage=None):
+    # Caller owns deployment lock; never remove another running build.
+    workspace,backups=WORKSPACE,BACKUPS
+    if storage is not None:
+        storage=Path(storage)
+        map_build.configure(storage)
+        workspace=storage/"system/updater/workspace"
+        backups=storage/"system/backups/updater"
+    warnings=map_build.clean_owned_builders()
+    for path in workspace.glob("source-*"):
+        if path.is_dir() and not path.is_symlink():shutil.rmtree(path)
+    for path in backups.glob(".pending-*"):
+        if path.is_dir() and not path.is_symlink():shutil.rmtree(path)
+    return warnings
 
 def now():
     return datetime.now(timezone.utc).isoformat()
@@ -58,6 +97,9 @@ def atomic_json(path,value):
         os.fsync(out.fileno())
     os.chmod(temp,0o644)
     os.replace(temp,path)
+    fd=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY)
+    try:os.fsync(fd)
+    finally:os.close(fd)
 
 def service_id(service):
     ids=docker("ps","-q","--filter","label=com.docker.compose.project="+PROJECT,
@@ -99,8 +141,7 @@ def verify_idle():
        (SELECT count(*) FROM work_queue WHERE state='running') +
        (SELECT count(*) FROM batch_operations WHERE heartbeat_at>now()-interval '12 hours') +
        (SELECT count(*) FROM thumbnail_tasks WHERE state='running') +
-       (SELECT count(*) FROM cleanup_tasks WHERE state='running') +
-       (SELECT count(*) FROM archive_retries WHERE state='running')"""))
+       (SELECT count(*) FROM cleanup_tasks WHERE state='running')"""))
     if active:
         raise RuntimeError("В БД ещё есть незавершённые операции; переключение отменено")
     if recent_uploads():
@@ -128,15 +169,47 @@ def check_proxy():
                 raise RuntimeError("Caddy не возвращает здоровый API")
 
 def disk_available(project):
-    paths=[project,ROOT,Path("/var/lib/docker"),Path("/var/lib/containerd")]
+    paths=[project,STORAGE or ROOT,Path("/var/lib/docker"),Path("/var/lib/containerd")]
     return min(shutil.disk_usage(p).free for p in paths if p.exists())
 
+def reserve_policy():
+    """Read the fixed policy from the running DB, not arbitrary host input.
+    Older revisions do not have the policy table; their historical floor
+    still applies. Do not silently ignore a broken database query.
+    """
+    disk=shutil.disk_usage(STORAGE or ROOT)
+    env=inspect_container("api")["Config"].get("Env",[])
+    entries=[v.split("=",1)[1] for v in env if v.startswith("PHOTOSORTER_MIN_FREE_BYTES=")]
+    baseline=max(0,int(entries[0])) if entries and entries[0] else min(12*1024**3,max(256*1024**2,int(disk.total*.06)))
+    configured=0
+    if sql("SELECT to_regclass('storage_limits') IS NOT NULL")=="t":
+        configured=int(sql("SELECT coalesce(disk_reserve_bytes,0) FROM storage_limits WHERE singleton"))
+    return max(MIN_FREE,baseline,configured),configured
+
+def check_space(project,*,extra=0):
+    minimum,_=reserve_policy()
+    # A native build must not spend space promised to admitted app writers.
+    # Full requested sizes are intentionally conservative on the host; the app
+    # computes exact outstanding bytes using its own registry and live paths.
+    outstanding=0
+    if sql("SELECT to_regclass('storage_limits') IS NOT NULL")=="t":
+        outstanding=int(sql("""SELECT
+            coalesce((SELECT sum(requested_bytes) FROM storage_reservations),0)
+            +coalesce((SELECT sum(declared_size) FROM uploads WHERE kind='fo' AND NOT finalized),0)
+            +coalesce((SELECT sum(f.declared_size) FROM reference_import_files f
+              JOIN reference_import_sessions s ON s.id=f.session_id
+              WHERE f.state='pending' AND s.upload_state='uploading' AND (f.storage_admitted OR f.received>0)),0)"""))
+    if disk_available(project)<minimum+extra+outstanding:
+        raise RuntimeError("Недостаточно места для обновления: требуется сохранить действующий резерв диска")
+    return minimum
+
 def backup(project,revision):
-    directory=PRIVATE/("backup-"+revision[:12]+"-"+uuid.uuid4().hex)
+    name="backup-"+revision[:12]+"-"+uuid.uuid4().hex
+    directory=BACKUPS/(".pending-"+name)
     directory.mkdir(mode=0o700)
-    for name in (".env",".env.generated","compose.yaml"):
-        shutil.copy2(project/name,directory/name)
-        os.chmod(directory/name,0o600)
+    for filename in (".env",".env.generated","compose.yaml"):
+        shutil.copy2(project/filename,directory/filename)
+        os.chmod(directory/filename,0o600)
     dump=directory/"postgres.dump"
     with dump.open("wb") as stream:
         subprocess.run(["docker","exec",service_id("postgres"),"pg_dump","-Fc",
@@ -148,7 +221,15 @@ def backup(project,revision):
         subprocess.run(["docker","exec","-i",service_id("postgres"),"pg_restore","-l"],
                        stdin=stream,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
                        timeout=120,check=True)
-    return directory
+    (directory/"revision").write_text(revision+"\n")
+    for file in directory.iterdir():
+        with file.open("rb") as stream:os.fsync(stream.fileno())
+    published=BACKUPS/name
+    os.rename(directory,published)
+    fd=os.open(BACKUPS,os.O_RDONLY|os.O_DIRECTORY)
+    try:os.fsync(fd)
+    finally:os.close(fd)
+    return published
 
 def clean_images(current,previous):
     warnings=[]
@@ -179,7 +260,11 @@ class Updater:
             self.state=json.loads(STATE.read_text())
         except (OSError,ValueError):
             self.state={}
-        self.state.update(available=True,busy=False)
+        self.state.update(available=True,busy=False,branch=BRANCH,storage_maintenance_supported=True)
+        action=self.state.get("storage_action")
+        if isinstance(action,dict) and action.get("state")=="running":
+            self.state["storage_action"]={**action,"state":"interrupted","finished_at":now(),
+                "detail":"Хостовая операция прервана; проверьте состояние сервисов."}
         if MARKER.exists():
             self.state.update(phase="recovery_required",detail="Прервано переключение версии. Нужна проверка на сервере.")
         elif self.state.get("phase") not in ("success","failed","checked"):
@@ -193,6 +278,11 @@ class Updater:
     def publish(self,**fields):
         with self.mutex:
             self.state.update(fields,updated_at=now())
+            if LOG_DIRECTORY is not None and "phase" in fields:
+                # Host log contains only trusted phase/revision, not command output.
+                from host_logs import record
+                try:record(LOG_DIRECTORY,"updater",str(fields["phase"]))
+                except OSError:pass
             atomic_json(STATE,self.state)
 
     def status(self):
@@ -203,13 +293,13 @@ class Updater:
         return cmd(["git",*args],cwd=self.project)
 
     def target(self):
-        if self.git("remote","get-url","origin") not in REPO_URLS:
+        if self.git("config","--get","remote.origin.url") not in REPO_URLS:
             raise RuntimeError("origin не соответствует репозиторию MAP")
-        if self.git("symbolic-ref","--short","HEAD")!="main":
-            raise RuntimeError("Рабочая ветка должна быть main")
+        if self.git("symbolic-ref","--short","HEAD")!=BRANCH:
+            raise RuntimeError("Рабочая ветка не соответствует закреплённой ветке установки")
         if self.git("status","--porcelain","--untracked-files=no"):
             raise RuntimeError("Есть локальные изменения отслеживаемых файлов")
-        self.git("fetch","--no-tags","origin","main")
+        self.git("fetch","--no-tags","origin",BRANCH)
         target=self.git("rev-parse","FETCH_HEAD")
         if not REV.fullmatch(target):
             raise RuntimeError("Некорректная версия Git")
@@ -234,6 +324,16 @@ class Updater:
         with self.mutex:
             if self.state.get("busy") or MARKER.exists():
                 return {"rejected":True,"detail":"Обновление уже выполняется или требуется восстановление"}
+            if command=="storage-check":
+                from host_logs import request_check
+                return request_check(STORAGE)
+            if command in ("storage-cache","storage-logs"):
+                self.state.update(busy=True,storage_action={"kind":command,"state":"running","started_at":now()},
+                                  updated_at=now())
+                atomic_json(STATE,self.state)
+                result=dict(self.state)
+                threading.Thread(target=self.storage_maintenance,args=(command,),daemon=True).start()
+                return result
             target=self.state.get("target")
             if command=="update" and (not self.state.get("update_available") or not isinstance(target,str) or not REV.fullmatch(target)):
                 return {"rejected":True,"detail":"Сначала проверьте обновления"}
@@ -247,6 +347,108 @@ class Updater:
                          args=() if command=="check" else (target,),daemon=True).start()
         return result
 
+    def storage_maintenance(self,command):
+        """Restricted host action, mutually exclusive with deploy/installer.
+        No user paths, shell text, foreign images, or online cache deletion.
+        """
+        if command not in ("storage-cache","storage-logs"):
+            raise ValueError("Unknown storage action")
+        lock=gate=None
+        marked=stopped=False
+        before=None
+        error=None
+        removed=None
+        recovery=False
+        try:
+            lock=(PRIVATE/"deploy.lock").open("a")
+            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            before=shutil.disk_usage(STORAGE).free
+            if command=="storage-logs":
+                from host_logs import prune_postgres,publish_usage
+                removed=prune_postgres(STORAGE)
+                publish_usage(STORAGE)
+            else:
+                revision,image=installed()
+                if self.git("rev-parse","HEAD")!=revision or image_info(map_build.CURRENT)["Id"]!=image:
+                    raise RuntimeError("Исходники и рабочий образ должны совпадать")
+                if recent_uploads():
+                    raise RuntimeError("Завершите недавние загрузки перед обслуживанием")
+                for service in SERVICES:
+                    mounts=inspect_container(service).get("Mounts",[])
+                    if not any(m.get("Source")==str(CONTROL) and m.get("Destination")=="/run/map-updater"
+                               and not m.get("RW") for m in mounts):
+                        raise RuntimeError("Не установлен защищённый канал обслуживания")
+                MARKER.touch(mode=0o644,exist_ok=False)
+                marked=True
+                fd=os.open(CONTROL,os.O_RDONLY|os.O_DIRECTORY)
+                try:os.fsync(fd)
+                finally:os.close(fd)
+                gate=LOCK.open("rb")
+                deadline=time.monotonic()+30
+                while True:
+                    try:
+                        fcntl.flock(gate,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic()>=deadline:raise RuntimeError("Есть активные операции; очистка отменена")
+                        time.sleep(.25)
+                verify_idle()
+                if "," in str(STORAGE) or "\n" in str(STORAGE):
+                    raise RuntimeError("Неподдерживаемый путь хранения")
+                prefix=["docker","compose","--env-file",".env","--env-file",".env.generated"]
+                # If stop partially fails, finally still attempts to restore every service.
+                old_workers=worker_instances()
+                stopped=True
+                cmd([*prefix,"stop",*SERVICES],cwd=self.project,timeout=120)
+                docker("run","--rm","--network","none","--read-only","--user","10001:10001",
+                       "--entrypoint","python","-e","MAP_APP_STORAGE_ROOT=/storage/app",
+                       "--mount","type=bind,source="+str(STORAGE/"app")+",target=/storage/app",
+                       image,"-c","from app.system.technical_cache import clear_disposable; clear_disposable()",
+                       timeout=180)
+        except Exception as exc:
+            error=str(exc)[:250]
+        finally:
+            if stopped:
+                try:
+                    cmd([*prefix,"up","-d","--no-build","--wait","--wait-timeout","180",*SERVICES],
+                        cwd=self.project,timeout=240)
+                    deadline=time.monotonic()+90
+                    while True:
+                        try:
+                            if installed()[0]!=revision:raise RuntimeError("Рабочая ревизия изменилась")
+                            fresh=worker_instances()
+                            if len(fresh)!=3 or fresh.intersection(old_workers):raise RuntimeError("Нет новых heartbeat работников")
+                            check_proxy()
+                            break
+                        except (RuntimeError,OSError,ValueError,http.client.HTTPException,subprocess.SubprocessError):
+                            if time.monotonic()>=deadline:raise
+                            time.sleep(2)
+                except Exception:
+                    recovery=True
+                    error="Не удалось восстановить приложение после обслуживания. Требуется проверка сервера."
+            if marked and not recovery:
+                try:
+                    MARKER.unlink(missing_ok=True)
+                    fd=os.open(CONTROL,os.O_RDONLY|os.O_DIRECTORY)
+                    try:os.fsync(fd)
+                    finally:os.close(fd)
+                except OSError:
+                    recovery=True
+                    error="Не удалось снять режим обслуживания. Требуется проверка сервера."
+            if gate is not None:gate.close()
+            if lock is not None:lock.close()
+            delta=None
+            if before is not None:
+                try:delta=shutil.disk_usage(STORAGE).free-before
+                except OSError:pass
+            result={"kind":command,"state":"failed" if error else "completed",
+                    "started_at":self.state.get("storage_action",{}).get("started_at"),
+                    "finished_at":now(),"removed":removed,"available_delta_bytes":delta,
+                    "detail":error or "Обслуживание завершено"}
+            fields={"busy":False,"storage_action":result}
+            if recovery:fields.update(phase="recovery_required",detail=error)
+            self.publish(**fields)
+
     def update(self,expected):
         locked=gate=None
         switched=False
@@ -254,16 +456,19 @@ class Updater:
         warnings=[]
         candidate=None
         try:
-            locked=(ROOT/"deploy.lock").open("a")
+            locked=(PRIVATE/"deploy.lock").open("a")
             fcntl.flock(locked,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            warnings+=recover_owned_work()
             old,old_image=installed()
             target=self.target()
             if target!=expected or target==old:
                 raise RuntimeError("Версия изменилась; выполните новую проверку")
             if self.git("rev-parse","HEAD")!=old:
                 raise RuntimeError("Исходники и работающий образ не совпадают")
-            if disk_available(self.project)<MIN_FREE:
-                raise RuntimeError("Для сборки требуется не менее 8 ГиБ свободного места")
+            minimum,configured=reserve_policy()
+            check_space(self.project)
+            # With an explicit reserve, drain before starting any large build
+            # to avoid racing app admissions against Docker/BuildKit writes.
             if recent_uploads():
                 raise RuntimeError("Недавно начата или прервана загрузка. Завершите её перед обновлением.")
             for service in SERVICES:
@@ -273,10 +478,31 @@ class Updater:
                     raise RuntimeError("Отсутствует защищённый канал обновления: "+service)
                 docker("exec",service_id(service),"test","-f","/run/map-updater/activity.lock")
             check_proxy()
+            if configured:
+                self.publish(phase="draining",detail="Ожидание завершения операций перед сборкой с резервом")
+                MARKER.touch(mode=0o644,exist_ok=False)
+                marked=True
+                gate=LOCK.open("rb")
+                deadline=time.monotonic()+7200
+                while True:
+                    try:
+                        fcntl.flock(gate,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic()>=deadline:raise RuntimeError("Не удалось дождаться завершения операций")
+                        time.sleep(1)
+                verify_idle()
+                # Durable unfinished transfers remain reserved after restart.
+                if sql("SELECT to_regclass('storage_limits') IS NOT NULL")=="t" and int(sql("""SELECT
+                    (SELECT count(*) FROM uploads WHERE kind='fo' AND NOT finalized) +
+                    (SELECT count(*) FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id
+                        WHERE f.state='pending' AND s.upload_state='uploading' AND (f.storage_admitted OR f.received>0))""")):
+                    raise RuntimeError("Завершите или отмените зарезервированные загрузки перед обновлением")
+                check_space(self.project,extra=256*1024**2)
             before=shutil.disk_usage(self.project).free
-            self.publish(phase="building",detail="Сборка нового образа; MAP продолжает работать",
+            self.publish(phase="building",detail="Сборка нового образа; MAP в режиме обслуживания" if configured else "Сборка нового образа; MAP продолжает работать",
                          free_before=before,free_change=None,warnings=[])
-            with tempfile.TemporaryDirectory(prefix="source-",dir=PRIVATE) as directory:
+            with tempfile.TemporaryDirectory(prefix="source-",dir=WORKSPACE) as directory:
                 archive=Path(directory)/"source.tar"
                 with archive.open("wb") as out:
                     subprocess.run(["git","archive","--format=tar",target],cwd=self.project,
@@ -284,24 +510,34 @@ class Updater:
                 subprocess.run(["tar","-xf",str(archive),"-C",directory],check=True,timeout=120)
                 archive.unlink()
                 candidate="map-local/app:rev-"+target
-                warnings+=map_build.build(Path(directory),target,candidate)
-            self.publish(phase="draining",detail="Ожидание завершения текущих операций",warnings=warnings)
-            MARKER.touch(mode=0o644,exist_ok=False)
-            marked=True
-            gate=LOCK.open("rb")
-            deadline=time.monotonic()+7200
-            while True:
-                try:
-                    fcntl.flock(gate,fcntl.LOCK_EX|fcntl.LOCK_NB)
-                    break
-                except BlockingIOError:
-                    if time.monotonic()>=deadline:
-                        raise RuntimeError("Не удалось дождаться завершения операций")
-                    time.sleep(1)
+                def monitor():
+                    # Re-read effective floor; even with no explicit reserve
+                    # do not proceed below the old updater/app protections.
+                    if not marked and reserve_policy()[1]:
+                        raise RuntimeError("Изменён дисковый резерв; повторите обновление")
+                    check_space(self.project,extra=128*1024**2)
+                warnings+=map_build.build(Path(directory),target,candidate,check_space=monitor)
+            if not marked:
+                self.publish(phase="draining",detail="Ожидание завершения текущих операций",warnings=warnings)
+                MARKER.touch(mode=0o644,exist_ok=False)
+                marked=True
+                gate=LOCK.open("rb")
+                deadline=time.monotonic()+7200
+                while True:
+                    try:
+                        fcntl.flock(gate,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic()>=deadline:
+                            raise RuntimeError("Не удалось дождаться завершения операций")
+                        time.sleep(1)
             verify_idle()
+            # Conservative bound for the compressed backup and config.
+            check_space(self.project,extra=int(sql("SELECT pg_database_size(current_database())"))+16*1024**2)
             self.publish(phase="backup",detail="Резервная копия базы и конфигурации")
             old_workers=worker_instances()
             backup_dir=backup(self.project,old)
+            check_space(self.project)
             docker("tag",old_image,ROLLBACK)
             docker("tag",old_image,"map-local/app:rev-"+old)
             self.publish(previous=old,backup=backup_dir.name)
@@ -336,7 +572,7 @@ class Updater:
             try:
                 warnings+=clean_images(target,old)
                 warnings+=map_build.clean_owned_builders()
-                for path in PRIVATE.glob("backup-*"):
+                for path in BACKUPS.glob("backup-*"):
                     if path!=backup_dir and path.is_dir() and not path.is_symlink() and re.fullmatch(r"backup-[0-9a-f]{12}-[0-9a-f]{32}",path.name):
                         shutil.rmtree(path)
             except Exception:
@@ -374,7 +610,7 @@ class Handler(socketserver.StreamRequestHandler):
             return
         try:
             line=self.rfile.readline(32)
-            if line not in (b"status\n",b"check\n",b"update\n"):
+            if line not in (b"status\n",b"check\n",b"update\n",b"storage-cache\n",b"storage-logs\n",b"storage-check\n"):
                 return
             result=self.server.updater.dispatch(line.decode().strip())
             self.wfile.write((json.dumps(result,ensure_ascii=False)+"\n").encode())
@@ -384,6 +620,7 @@ class Handler(socketserver.StreamRequestHandler):
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument("--project-root",type=Path,required=True)
+    parser.add_argument("--storage-root",type=Path,required=True)
     args=parser.parse_args()
     if os.geteuid()!=0:
         parser.error("root required")
@@ -391,6 +628,11 @@ def main():
     project=args.project_root.resolve(strict=True)
     if project.stat().st_uid!=0 or project.stat().st_mode&0o022:
         parser.error("project must be root-owned and not group/world writable")
+    configure(args.storage_root,project)
+    with (PRIVATE/"deploy.lock").open("a") as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:pass
+        else:recover_owned_work()
     socket_path=RPC/"control.sock"
     socket_path.unlink(missing_ok=True)
     updater=Updater(project)

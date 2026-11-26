@@ -1,0 +1,100 @@
+# Stage 1 source review backlog — module-level dependency review
+
+Baseline c6d77ebb1c9c80c732df209a17a993dd38ec381f. All 96 listed modules retrieved at the pinned baseline and inspected through source bodies or selected relevant source excerpts. This is module-level semantic mapping, not a guarantee that every line or indirect native write was exhaustively traced. No files are marked fully verified solely on this basis. Cross-reference original candidate indexes and lifecycle catalog.
+
+- **`PhotoSorter/backend/app/config.py`** — Creates current data/Models/weights/cache/runs roots; app startup delegates here. Stage 2 root contract.
+- **`PhotoSorter/backend/app/jobs/overall_progress.py`** — In-memory stage throughput math only; progress metadata consumed by record/runtime; obsolete ZIP estimation branch is not a writer.
+- **`PhotoSorter/backend/app/jobs/progress.py`** — record updates info and calls job.save throttled at 0.5s; indirect run.json + jobs.snapshot writer, not a separate progress cache.
+- **`PhotoSorter/backend/app/jobs/worker.py`** — TemporaryDirectory under job.path for media frames, scanner reads source, engine loads model/cache, save_model publishes result; errors.txt append is separate unbounded run diagnostic. Move frames to temporary, error file to bounded run_log.
+- **`PhotoSorter/backend/app/photos/construction.py`** — Pure parse stable label/display name; validates addresses; not an FS writer.
+- **`PhotoSorter/backend/app/photos/labels.py`** — Pure label normalization/reserved names; copier uses label as current folder; replace physical name with stable ID while retaining export labels.
+- **`PhotoSorter/backend/app/photos/reader.py`** — PIL opens and decodes read-only source into RAM; no file save; image loader may use native scratch, no evidence of persistent cache.
+- **`PhotoSorter/backend/app/photos/scanner.py`** — rglob/stat/PIL.verify read original media; legacy non-profile job scanner consumes batch root, no writes.
+- **`PhotoSorter/backend/app/recognition/engines/base.py`** — Protocol only; extract(path) returns RAM ndarray; concrete engine reviewed separately.
+- **`PhotoSorter/backend/app/recognition/engines/megaloc/extractor.py`** — PIL decoding and Torch CPU inference with prefetch; load_megaloc indirect source/weight reads/cache, arrays in RAM; no FO feature disk spill.
+- **`PhotoSorter/backend/app/recognition/errors.py`** — Exception type only.
+- **`PhotoSorter/backend/app/recognition/grouping/finder.py`** — NumPy grouping in RAM; paths as identities, no disk persistence.
+- **`PhotoSorter/backend/app/recognition/matching/resolver.py`** — NumPy resolver creates query, reference, group_members/group_peers and candidate reference path strings in manifest rows; typed key conversion includes nested paths.
+- **`PhotoSorter/backend/app/recognition/math.py`** — NumPy normalization in memory only.
+- **`PhotoSorter/backend/app/recognition/pipeline.py`** — Engine.extract_many reads paths and reference cache wrapper indirectly writes embeddings; group/query/reference matrices in RAM; returned rows store paths.
+- **`PhotoSorter/backend/app/results/copier.py`** — Creates label directory; names based on path hash + original basename; delegates verified link/copy; change to stable IDs, result_media.
+- **`PhotoSorter/backend/app/results/match_filter.py`** — Pure row filter; does not delete a file when reassigning result.
+- **`PhotoSorter/backend/app/results/sides.py`** — Maps pinned member path to side in RAM; manifest dependency on exact reference key.
+- **`PhotoSorter/backend/app/system/performance.py`** — Environment/CPU settings and memory global only; no persistent tuning file.
+- **`PhotoSorter/backend/server/api/file_response.py`** — Starlette FileResponse opens/seeks/streams file including Range; heartbeat batch lease and close archive pin in finally, no generated file here.
+- **`PhotoSorter/backend/server/api/routes/access_requests.py`** — Delegates auth/application/grant SQL only; no FS side effect.
+- **`PhotoSorter/backend/server/api/routes/admin_users.py`** — Delegates viewer/account SQL; no file ownership change.
+- **`PhotoSorter/backend/server/api/routes/auth.py`** — Cookie/session auth DB; no server-side file storage.
+- **`PhotoSorter/backend/server/api/routes/batches.py`** — Batch create/rename/manifest/gallery/deletion/retention delegates; create currently no authenticated owner passed; deletion delegates cleanup and file removal; preserve API.
+- **`PhotoSorter/backend/server/api/routes/downloads.py`** — Checks published grant/status, starts batch operation, pins .archives then builds named ZIP and leased response; only HTTP builds; 507 ENOSPC.
+- **`PhotoSorter/backend/server/api/routes/images.py`** — Loads manifest rows; reads query/copy/reference, video or preview; viewer copy/poster restrictions; normal image FileResponse lacks batch lease unlike video. Stage 3/4 address read/deletion coordination.
+- **`PhotoSorter/backend/server/api/routes/library_notices.py`** — Reference event history/status/ack SQL; version FK, no file log.
+- **`PhotoSorter/backend/server/api/routes/logs.py`** — load_run + rotating event readers/page/tail/usage; old run state existence required; preserve cursor semantics when separating logs.
+- **`PhotoSorter/backend/server/api/routes/models.py`** — files_present reads model verification; downloads.start indirectly creates model artifacts; no filesystem writes in route itself.
+- **`PhotoSorter/backend/server/api/routes/originals.py`** — DB UUID -> target_path or media_output_path, owned_file root check, leases; gallery reference paths may retain prior label; convert all readers.
+- **`PhotoSorter/backend/server/api/routes/processing_settings.py`** — Preferences/CPU stored in PostgreSQL, not .env or app cache.
+- **`PhotoSorter/backend/server/api/routes/reference_imports.py`** — Reference transfer chunk/finish/duplicate delegated to storage through service; UUIDs, CHUNK_LIMIT; staged bytes not browser path authority.
+- **`PhotoSorter/backend/server/api/routes/references.py`** — Reference archive current plan + pin + leased response; gallery/uploads SQL projection; construction edit and deletion delegated. Ref ZIP built only on download.
+- **`PhotoSorter/backend/server/api/routes/regions.py`** — Region DB metadata only.
+- **`PhotoSorter/backend/server/api/routes/results.py`** — safe_manifest loads JSON; overview run state; photos pages JSONL and DB path lookup; routes return IDs/URLs, viewer permissions; retain row indexes and full JSON API semantic even if disk format changes.
+- **`PhotoSorter/backend/server/api/routes/site.py`** — Reads built Vue dist index/assets from image, no app writes. Build assets are runtime_image, not personal storage; note UI_SECTIONS missing admin direct navigation as separate defect, do not change scope without test.
+- **`PhotoSorter/backend/server/api/routes/storage.py`** — On-demand inventory in memory/stream CSV; host audit reads latest JSON/CSV/live state/event logs from data/audits/host; stage 6/8 bounded diagnostics and access separation.
+- **`PhotoSorter/backend/server/api/routes/system.py`** — statvfs + DB + memory latency ring; manual GC delegates thumbnail cleanup; no new quota mechanism.
+- **`PhotoSorter/backend/server/api/routes/thumbnails.py`** — UUID + ready thumbnail checksum/version -> path FileResponse; retry updates queue state; owner-scoped key needed, active read coordination.
+- **`PhotoSorter/backend/server/api/routes/updater.py`** — Fixed Unix socket client, read JSON from socket, no disk writes; root RPC narrow.
+- **`PhotoSorter/backend/server/api/routes/work_queue.py`** — SQL FIFO projections/recovery actions only; no ZIP queue; reference and media work state must survive update.
+- **`PhotoSorter/backend/server/auth.py`** — Credentials from env and PostgreSQL, session hash rows; no credential file writing by API.
+- **`PhotoSorter/backend/server/db/migration_runner.py`** — Reads SQL files under source tree; transactional schema_migrations table and DDL -> PG native storage; not runtime data path.
+- **`PhotoSorter/backend/server/db/repositories/access_requests.py`** — SQL users/applications/grants; no physical ownership implications.
+- **`PhotoSorter/backend/server/db/repositories/batches.py`** — SQL batch id/name/manifest/run/operation/path ownership queries; insert lacks owner_id; path_is_shared equality only. Stage 2 ownership and Stage 3 key changes.
+- **`PhotoSorter/backend/server/db/repositories/job_status.py`** — SQL snapshot decorator strips old archive fields, returns on_demand; no archive file read.
+- **`PhotoSorter/backend/server/db/repositories/pagination.py`** — DB keyset photo pagination and thumbnail/play/original URLs; uses media_output_path presence; no FS.
+- **`PhotoSorter/backend/server/db/repositories/reference_imports.py`** — SQL import sessions/files stored_path and member target_path; state authoritative; reference object dependencies.
+- **`PhotoSorter/backend/server/db/repositories/work_queue.py`** — Single FIFO lock and claims, pins version and reference members in snapshot; no disk writes except indirect model signature read; preserve one queue.
+- **`PhotoSorter/backend/server/main.py`** — Startup ensure_dirs, configure_model_environment, DB migration/auth; routing and middleware auth/update gate; implicit Uvicorn logging to stdout.
+- **`PhotoSorter/backend/server/media/estimate.py`** — Pure ETA estimate from media metadata; no file.
+- **`PhotoSorter/backend/server/media/formats.py`** — ffprobe captured JSON stdout reads file; _webm reads header; PIL open/HEIF decode and normalized_image saves destination; actual target supplied by media worker; native temp possible.
+- **`PhotoSorter/backend/server/media/preview.py`** — MIME whitelist constant; no file.
+- **`PhotoSorter/backend/server/media/sorting.py`** — MediaQueries SQL playable path, owned_file; creates per-video frame folder and calls extract_frames; collapse converts frame rows to video row, frame files temporary.
+- **`PhotoSorter/backend/server/security/access_policy.py`** — SQL grants + owner check; no FS; viewer not owner.
+- **`PhotoSorter/backend/server/security/login_throttle.py`** — Bounded in-memory throttle only.
+- **`PhotoSorter/backend/server/services/access_requests.py`** — SQL applications/grants; passwords hashed, no FS.
+- **`PhotoSorter/backend/server/services/admin_users.py`** — SQL viewer creation/grants; no ownership transfer or file writes.
+- **`PhotoSorter/backend/server/services/archive_layout.py`** — Builds archive plan by manifest copy and DB names/date/sides; stat checks trusted output; no ZIP creation; names sanitized and unique; preserve export semantic.
+- **`PhotoSorter/backend/server/services/archive_pipeline.py`** — load_model JSON and named_plan delegate; build_for_job only sets on_demand; legacy_selections reads output paths for old cache check (remove after call audit, no legacy migration).
+- **`PhotoSorter/backend/server/services/archive_retries.py`** — SQL status and 409 retry compatibility only; no archive writer; updater still queries obsolete table.
+- **`PhotoSorter/backend/server/services/auto_processing.py`** — SQL opt-in automatic enqueue + files_present model check + manifest reconcile reads FS; no second queue.
+- **`PhotoSorter/backend/server/services/batch_runs.py`** — SQL run summaries, no paths leaked, no disk read.
+- **`PhotoSorter/backend/server/services/cleanup.py`** — Requests batch deletion under queue/batch lock, cancels work, checks leases, delegates remove_batch_files, commits progress/DB cleanup; ensure scratch/logs/archive new roots included and shared refs untouched.
+- **`PhotoSorter/backend/server/services/compute_settings.py`** — CPU preferences SQL, affinity OS read only; no cache.
+- **`PhotoSorter/backend/server/services/construction_catalog.py`** — Construction catalog DB metadata/notice events; no path creation; stable construction identity needed for physical gallery.
+- **`PhotoSorter/backend/server/services/construction_relabel.py`** — Identity relabel publishes new immutable version while keeping original bytes; old gallery path may remain; no move on rename.
+- **`PhotoSorter/backend/server/services/disk_guard.py`** — statvfs and DATA_DIR.mkdir in admission; current reserve min(12GiB,max(256MiB,6%)) or env; no atomic reservation.
+- **`PhotoSorter/backend/server/services/heartbeat.py`** — DB heartbeat upsert, logging exception stdout; memory thread; no heartbeat file.
+- **`PhotoSorter/backend/server/services/library_notices.py`** — SQL version cursors/receipts/events; historical FK is metadata reference, not automatically physical recovery promise; preserve history semantics.
+- **`PhotoSorter/backend/server/services/media_preparation.py`** — SQL schedules/retries media FIFO, playable validates path; actual conversion in worker; no file write.
+- **`PhotoSorter/backend/server/services/operations.py`** — DB lease start/heartbeat/finish, no lock file; cleanup checks leases.
+- **`PhotoSorter/backend/server/services/reference_sides.py`** — SQL side labels and FIFO lock; no move or inference; frozen in claimed snapshots.
+- **`PhotoSorter/backend/server/services/references.py`** — Publishes new current version, removes uploads/catalog rows; old staging object bytes retained. Deferred delete uses FIFO; no destructive historical object GC.
+- **`PhotoSorter/backend/server/services/regions.py`** — DB region code/selection metadata, pure filtering of pinned members.
+- **`PhotoSorter/backend/server/services/retention.py`** — SQL retention schedule on completion, confirm legacy reads manifest.json; extend and due cleanup. Do not delete based on ZIP TTL; preserve current default 2 months unless changed.
+- **`PhotoSorter/backend/server/services/storage_breakdown.py`** — Read-only stat scan + DB owner mapping; uses allocated/logical and inode; category prefixes need new contract, unknown visible.
+- **`PhotoSorter/backend/server/services/storage_inventory.py`** — Bounded metadata scan into RAM, CSV streaming; no file content reads or disk snapshot writes. Current categories/purpose and ownership need replacement.
+- **`PhotoSorter/backend/server/services/storage_usage.py`** — statvfs and DATA_DIR.mkdir, os.walk/stat dedup st_size (not st_blocks) despite physical label; pg_database_size independent. Correct accounting in stage 7.
+- **`PhotoSorter/backend/server/services/update_gate.py`** — Read-only control lock and marker under /run/map-updater, flock retained for streaming; no mutation.
+- **`PhotoSorter/backend/server/services/upload_manifest.py`** — DB expected relative paths, finalization reconcile checks actual path/size; calls auto-processing/media scheduling; preserve idempotency and validate typed keys.
+- **`PhotoSorter/backend/server/services/upload_validation.py`** — PIL verify and file --mime-type subprocess read-only; name currently digest + stem/.media, not upload UUID; stage 3 stable storage naming.
+- **`PhotoSorter/backend/server/services/worker_cpu_affinity.py`** — /proc/self/task read and sched_setaffinity syscall; no FS writes.
+- **`PhotoSorter/backend/server/storage/hardlinks.py`** — sha256 reads, exclusive os.link or xb fallback copy/fsync/copystat, validates source/destination and unlinks only created target on error; one mount real tests.
+- **`PhotoSorter/backend/server/storage/paths.py`** — UUID/run builders and resolved ownership checks, root path not account-level; need stronger no-symlink traversal and typed key.
+- **`PhotoSorter/backend/server/worker.py`** — Single leader DB advisory lock, activity gate, delegates media/FO/reference/deletion; warm model may load cache; logging stdout.
+- **`PhotoSorter/backend/server/workers/reference_prepare.py`** — Reads staged objects, verifies digests, calls cached_feature/extract, publishes version/gallery via hardlinks; SQL errors/progress; preserve historical dependencies.
+- **`PhotoSorter/backend/server/workers/thumbnail.py`** — Worker claim/complete delegates thumbnails, update lock and DB heartbeat; stdout logging.
+- **`PhotoSorter/backend/server/workers/warm_megaloc.py`** — Resident engine only in memory, signature verification/model loader indirect file reads/caches; no persistent engine instance file.
+- **`PhotoSorter/tools/benchmark_api.py`** — HTTP read-only benchmark, JSON stdout; no managed file unless operator redirects.
+- **`PhotoSorter/tools/maintenance/audit_write_sites.py`** — AST scan of source tree only; export_csv writes explicit diagnostic report; not proof of all runtime writes.
+- **`PhotoSorter/tools/maintenance/compare_baseline.py`** — Reads golden/candidate manifest JSON and ZIP index; outputs stdout; canonical format change must preserve comparison tooling or update it.
+- **`PhotoSorter/tools/maintenance/install_prerequisites.sh`** — Host apt keyring/sources/package indexes/cache, dpkg/systemd docker service; outside managed app; no package removal.
+- **`PhotoSorter/tools/maintenance/setup_tcp_bbr.sh`** — Root /etc/sysctl.d and modules-load.d atomic mktemp/mv configs + explicit disable removal; host config category; sysctl native state.
+- **`PhotoSorter/tools/maintenance/staging_probe.py`** — Reads optional protected cookie file and HTTP/ Docker stats; writes exclusive operator output JSON; external diagnostic category.
+- **`PhotoSorter/tools/maintenance/test_install_prerequisites.sh`** — Disposable mock host fixture in mktemp, writes fake env/calls/credentials and removes only own fixture; CI/test external, never runtime personal.

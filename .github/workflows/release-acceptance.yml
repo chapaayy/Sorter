@@ -1,0 +1,116 @@
+name: MAP Storage V2 release acceptance
+on:
+  push:
+    branches: ["feature/storage-architecture-v2"]
+    paths:
+      - ".github/workflows/release-acceptance.yml"
+      - "install.sh"
+      - "compose.yaml"
+      - "PhotoSorter/**"
+      - "docs/storage-layout-v2.json"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  # A VM-harness repair must not cancel a real-photo run on identical app code.
+  group: map-storage-v2-release-acceptance-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    outputs:
+      load: ${{ steps.scope.outputs.load }}
+      vm: ${{ steps.scope.outputs.vm }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Select only acceptance gates affected by the change
+        id: scope
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          load = True
+          vm = True
+          if os.environ["EVENT"] == "push":
+              before = os.environ.get("BEFORE", "")
+              try:
+                  paths = subprocess.check_output(["git", "diff", "--name-only", before, "HEAD"], text=True).splitlines()
+                  allowed = {"PhotoSorter/tools/maintenance/ci_vm_health.py", "PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md"}
+                  load_only = {"PhotoSorter/frontend/src/main.ts", "PhotoSorter/frontend/src/features/auth/LoginView.vue", "PhotoSorter/frontend/e2e/navigation.spec.ts", "PhotoSorter/backend/server/api/routes/site.py", "PhotoSorter/backend/tests/test_stage3_ui_api.py", "PhotoSorter/backend/tests/test_stage4_api_bootstrap.py", ".gitignore", "Models/cache/.gitkeep", "Models/models/.gitkeep", "PhotoSorter/data/.gitkeep", "PhotoSorter/tools/maintenance/ci_release_load.py", ".github/workflows/release-acceptance.yml", "docs/STORAGE_V2_PROGRESS.md", "docs/STORAGE_V2_FINAL_REPORT.md", "AGENTS.md"}
+                  old = subprocess.check_output(["git", "show", before+":.github/workflows/release-acceptance.yml"], text=True)
+                  new = open(".github/workflows/release-acceptance.yml").read()
+                  # Only skip if the load job itself and every workload/runtime file are identical.
+                  marker = "  realistic-load:\n"
+                  old_load = old.split(marker, 1)[1]
+                  new_load = new.split(marker, 1)[1]
+                  old_load = old_load.removeprefix("    needs: scope\n    if: needs.scope.outputs.load == 'true'\n")
+                  new_load = new_load.removeprefix("    needs: scope\n    if: needs.scope.outputs.load == 'true'\n")
+                  vm_marker = "  clean-ubuntu-systemd:\n"
+                  old_vm = old.split(vm_marker, 1)[1].split(marker, 1)[0]
+                  new_vm = new.split(vm_marker, 1)[1].split(marker, 1)[0]
+                  vm_guard = "    needs: scope\n    if: needs.scope.outputs.vm == 'true'\n"
+                  if paths and set(paths) <= load_only and old_vm.removeprefix(vm_guard) == new_vm.removeprefix(vm_guard):
+                      vm = False
+                      print("Load/UI-route-only change; preserve successful VM evidence")
+                  export_only = {"PhotoSorter/backend/tests/test_storage_v2_reference_lifecycle.py", "PhotoSorter/backend/server/services/reference_archives.py", "PhotoSorter/backend/tests/test_reference_archives.py", "PhotoSorter/tools/maintenance/ci_release_load.py", ".github/workflows/release-acceptance.yml", "docs/REFERENCE_IMPORT.md"}
+                  reference_import_only = ["PhotoSorter/backend/server/api/routes/reference_imports.py","PhotoSorter/backend/server/services/reference_imports.py","PhotoSorter/backend/server/db/repositories/reference_imports.py","PhotoSorter/backend/server/workers/reference_prepare.py","PhotoSorter/frontend/src/utils/referenceSelection.ts","PhotoSorter/frontend/src/types/referenceTransfer.ts","PhotoSorter/frontend/src/api/referenceImports.ts","PhotoSorter/frontend/src/composables/useReferencePreflight.ts","PhotoSorter/frontend/src/utils/referenceTransfer.ts","PhotoSorter/frontend/src/utils/referenceDuplicates.ts","PhotoSorter/frontend/src/features/references/ReferenceDirectoryImporter.vue","PhotoSorter/frontend/src/features/references/ReferenceImportReview.vue","PhotoSorter/frontend/tests/upload.test.ts","PhotoSorter/backend/tests/test_unified_queue_stage3.py","docs/REFERENCE_IMPORT.md","PhotoSorter/backend/server/db/migrations/0047_reference_import_sides.sql","PhotoSorter/backend/server/services/reference_import_sides.py"].copy()
+                  reference_import_only += ["PhotoSorter/frontend/e2e/navigation.spec.ts","PhotoSorter/backend/server/services/reference_portable_catalog.py","PhotoSorter/backend/server/db/migrations/0048_reference_portable_sides.sql","PhotoSorter/frontend/src/utils/referenceZip.ts","PhotoSorter/frontend/src/utils/referencePortable.ts","PhotoSorter/frontend/tests/referenceZip.test.ts","PhotoSorter/backend/tests/test_reference_portable_catalog.py"]
+                  reference_import_only += ["PhotoSorter/frontend/tests/referenceRoundtripBridge.mjs", "PhotoSorter/backend/tests/test_reference_portability_roundtrip.py", ".github/workflows/ci.yml"]
+                  if paths and set(paths) <= set(reference_import_only) | export_only and old_vm == new_vm and old_load == new_load:
+                      vm = load = False
+                      print("Reference portability only: regression CI, no repeated VM or full load acceptance")
+                  host_socket_only = {"docs/storage-layout-v2.json", "PhotoSorter/tools/maintenance/host_accounting.py", "PhotoSorter/frontend/src/features/admin/storage/labels.ts", "PhotoSorter/backend/tests/test_storage_v2_contract.py", "PhotoSorter/backend/tests/test_host_accounting_socket.py", ".github/workflows/release-acceptance.yml"}
+                  if paths and set(paths) <= host_socket_only and old_vm == new_vm and old_load == new_load:
+                      vm = load = False
+                      print("Host socket classification only; covered by regression CI")
+                  if paths and set(paths) <= allowed and old_load == new_load:
+                      load = False
+                      print("VM-harness-only change; load evidence remains tied to", before)
+              except (subprocess.CalledProcessError, IndexError):
+                  pass
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("load="+str(load).lower()+"\n")
+              f.write("vm="+str(vm).lower()+"\n")
+          PY
+  clean-ubuntu-systemd:
+    needs: scope
+    if: needs.scope.outputs.vm == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - name: Boot pristine Ubuntu VM and verify actual systemd, reboot and update
+        run: bash PhotoSorter/tools/maintenance/ci_fresh_ubuntu.sh
+
+  realistic-load:
+    needs: scope
+    if: needs.scope.outputs.load == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Real image corpus and browser dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          python -m pip install requests Pillow playwright
+          python -m playwright install --with-deps chromium
+          curl --fail --retry 3 --location --output "$RUNNER_TEMP/coco-val2017.zip" https://huggingface.co/datasets/pcuenq/coco-2017-mirror/resolve/fbbee70f52f540987cca6936c9f1d7b1ff969ad1/val2017.zip
+          echo "4f7e2ccb2866ec5041993c9cf2a952bbed69647b115d0f74da7ce8f4bef82f05  $RUNNER_TEMP/coco-val2017.zip" | sha256sum -c -
+      - name: Real MegaLoc 10 photos, 1 video, three cycles and accelerated ZIP expiry
+        run: |
+          sudo --preserve-env=CI,GITHUB_ACTIONS,PLAYWRIGHT_BROWSERS_PATH env PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" "$(command -v python)" PhotoSorter/tools/maintenance/ci_release_load.py "$RUNNER_TEMP/map-corpus" "$RUNNER_TEMP/coco-val2017.zip" "$RUNNER_TEMP/map-release-report.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: measured-map-release-load
+          path: ${{ runner.temp }}/map-release-report.json
+          retention-days: 7
+      - name: Disposable runner diagnostics
+        if: failure()
+        run: sudo docker compose --env-file .env --env-file .env.generated logs --tail=40 api worker cleanup thumbnail || true

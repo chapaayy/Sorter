@@ -20,14 +20,14 @@ def session(db, session_id, *, lock=False):
 def file(db, session_id, upload_id, *, lock=False):
     return db.execute("""
         SELECT session_id,upload_id,sam,address,relative_path,filename,
-               declared_size,checksum,received,stored_path,state,updated_at
+               declared_size,checksum,received,stored_path,state,updated_at,side
         FROM reference_import_files WHERE session_id=%s AND upload_id=%s
     """+(" FOR UPDATE" if lock else ""), (session_id,upload_id)).fetchone()
 
 def files(db, session_id):
     return db.execute("""
         SELECT session_id,upload_id,sam,address,relative_path,filename,
-               declared_size,checksum,received,stored_path,state,updated_at
+               declared_size,checksum,received,stored_path,state,updated_at,side
         FROM reference_import_files WHERE session_id=%s
         ORDER BY relative_path,upload_id
     """,(session_id,)).fetchall()
@@ -37,8 +37,8 @@ def register(db, session_id, manifest, digest):
         cursor.executemany("""
             INSERT INTO reference_import_files(
                 session_id,upload_id,sam,address,relative_path,filename,
-                declared_size,checksum)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                declared_size,checksum,side)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,[(session_id,*item) for item in manifest])
     db.execute("""
         UPDATE reference_import_sessions SET
@@ -77,11 +77,12 @@ def matching_published(db,sam,digest,size):
 
 def compare_published(db,sams,digests,sizes):
     return db.execute("""
-        SELECT DISTINCT m.sam,m.source_hash,m.declared_size,m.target_path
+        SELECT DISTINCT m.sam,m.source_hash,m.declared_size,m.target_path,p.side,m.reference_id
         FROM unnest(%s::text[],%s::text[],%s::bigint[]) AS selected(sam,digest,size)
         JOIN reference_version_members m
           ON (m.sam,m.source_hash,m.declared_size)=(selected.sam,selected.digest,selected.size)
         JOIN reference_library_state s ON s.current_version_id=m.version_id
+        LEFT JOIN reference_photo_sides p ON p.reference_id=m.reference_id
         WHERE s.id=1 AND m.source_kind='staged'
     """,(sams,digests,sizes)).fetchall()
 

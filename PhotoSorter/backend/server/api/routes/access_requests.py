@@ -2,7 +2,7 @@
 from typing import Annotated, Literal
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field, SecretStr, StrictBool
+from pydantic import BaseModel, Field, SecretStr, StrictBool, StrictInt
 from ... import auth
 from ...security.access_policy import RUN
 from ...security.login_throttle import LoginThrottle
@@ -25,6 +25,10 @@ class Grants(BaseModel):
 
 class Decision(Grants):
     approved: StrictBool
+    role_id:str=Field(default='observer',max_length=64)
+    display_name:str=Field(default='',max_length=120)
+    storage_limit_bytes:StrictInt|None=Field(default=None,ge=0,le=2**63-1)
+    overrides:dict[str,str]=Field(default_factory=dict,max_length=100)
     run_ids: list[Annotated[str, Field(pattern=f"^{RUN}$", max_length=28)]] = Field(default_factory=list, max_length=100)
 
 
@@ -49,7 +53,8 @@ def inbox(status: Literal["pending", "approved", "rejected"] = "pending",
 
 @router.post("/admin/access-requests/{request_id}/decision")
 def moderate(request_id: UUID, decision: Decision):
-    return access_requests.decide(request_id, decision.approved, decision.run_ids)
+    return access_requests.decide(request_id, decision.approved, decision.run_ids,role_id=decision.role_id,display_name=decision.display_name,
+                                  storage_limit_bytes=decision.storage_limit_bytes,overrides=decision.overrides)
 
 
 @router.get("/admin/access-requests/{request_id}/grants")

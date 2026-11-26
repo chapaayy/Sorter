@@ -59,10 +59,11 @@ def sandbox(tmp_path,monkeypatch,db):
     from server.api.routes import images
     from app.results import repository
     data=tmp_path/"data"
+    from app import config
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",tmp_path/"storage/app")
+    config.APP_STORAGE_ROOT.mkdir(parents=True)
     for folder in ("uploads","outputs","incoming","references","runs"):
         (data/folder).mkdir(parents=True)
-    monkeypatch.setattr(paths,"UPLOADS",data/"uploads")
-    monkeypatch.setattr(paths,"OUTPUTS",data/"outputs")
     monkeypatch.setattr(cleanup,"DATA_DIR",data)
     monkeypatch.setattr(cleanup,"RUNS_DIR",data/"runs")
     monkeypatch.setattr(batches,"DATA_DIR",data)
@@ -71,10 +72,16 @@ def sandbox(tmp_path,monkeypatch,db):
     monkeypatch.setattr(repository,"RUNS_DIR",data/"runs")
     return data
 
+def owner_for_test(db):
+    return db.execute("""INSERT INTO users(username,access_role) VALUES ('admin','owner')
+        ON CONFLICT(username) DO UPDATE SET access_role='owner' RETURNING id""").fetchone()["id"]
+
 def _batch(data,with_photo=True):
     from server.services import batches
     from server.database import connect
-    ident=uuid.UUID(batches.create("Тестовая партия")["batch_id"])
+    with connect() as db:
+        owner_id=owner_for_test(db)
+    ident=uuid.UUID(batches.create("Тестовая партия",owner_id=owner_id)["batch_id"])
     if with_photo:
         file_id=uuid.uuid4()
         folder=paths.batch_dir(ident)
@@ -98,10 +105,16 @@ def _job(data,batch_id,status="completed"):
                    (run_id,batch_id,status,Jsonb({"id":run_id,"status":status})))
     return run_id
 
-def test_additive_migration_legacy_rows_survive(db):
+def test_historical_additive_migrations_and_v2_rejects_unowned_rows(db,tmp_path,monkeypatch):
     import psycopg
     from server.database import DB_URL,SCHEMA
     from server.db.migration_runner import migrate,MIGRATIONS
+    import shutil
+    from server.db import migration_runner
+    for file in MIGRATIONS.glob('*.sql'):
+        if file.name != '0037_batch_ownership.sql':
+            shutil.copy2(file,tmp_path/file.name)
+    monkeypatch.setattr(migration_runner,'MIGRATIONS',tmp_path)
     schema="stage1_"+uuid.uuid4().hex[:16]
     with psycopg.connect(DB_URL) as conn:
         conn.execute(f'CREATE SCHEMA "{schema}"')
@@ -115,8 +128,12 @@ def test_additive_migration_legacy_rows_survive(db):
             assert conn.execute("SELECT display_name FROM batches WHERE id=%s",(old,)).fetchone()[0].startswith("ФО ")
             migrate(conn)
             assert {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}=={
-                file.name for file in MIGRATIONS.glob("*.sql")}
+                file.name for file in tmp_path.glob("*.sql")}
             assert conn.execute("SELECT id FROM batches WHERE id=%s",(old,)).fetchone()[0]==old
+            monkeypatch.setattr(migration_runner,"MIGRATIONS",MIGRATIONS)
+            with pytest.raises(psycopg.errors.NotNullViolation):
+                with conn.transaction():
+                    migrate(conn)
         finally:
             conn.execute("RESET search_path")
             conn.execute(f'DROP SCHEMA "{schema}" CASCADE')
@@ -148,20 +165,29 @@ def test_cleanup_only_owned_paths_multiple_runs_and_idempotent(sandbox):
     runs=[_job(sandbox,own),_job(sandbox,own)]
     source=next(paths.batch_dir(own).iterdir())
     for run in runs:
-        target=paths.run_dir(run)/"megaloc"/"SAM-0001"/"photo.jpg"
+        target=paths.result_media_dir(run)/"SAM-0001"/"photo.jpg"
         target.parent.mkdir(parents=True)
         os.link(source,target)
-        run_folder=sandbox/"runs"/run
-        run_folder.mkdir()
+        from app.storage.paths import managed_path
+        from app.storage.categories import Category
+        run_folder=managed_path(Category.RUN_STATE,run_id=run)
+        run_folder.mkdir(parents=True)
+        # A legacy directory outside the contract must never be removed.
+        outside=sandbox/"runs"/run
+        outside.mkdir()
+        (outside/"sentinel").write_text("keep")
         (run_folder/"run.json").write_text("{}",encoding="utf8")
-        zip_dir=paths.run_dir(run)/".archives"
-        zip_dir.mkdir()
+        from server.services.archives import archive_folder
+        zip_dir=archive_folder(run)
+        zip_dir.mkdir(parents=True)
         (zip_dir/"ready.zip").write_bytes(b"completed ZIP")
     assert cleanup.request(own)["state"]=="deleting"
     assert cleanup.cleanup_one(own)=="completed"
     assert not paths.batch_dir(own).exists()
-    assert all(not paths.run_dir(run).exists() for run in runs)  # includes .archives ZIP files
-    assert all(not (sandbox/"runs"/run).exists() for run in runs)
+    assert not (paths.batch_root(own)/"results").exists()
+    assert all(not managed_path(Category.RUN_STATE,run_id=run).exists() for run in runs)
+    assert all((sandbox/"runs"/run/"sentinel").read_text()=="keep" for run in runs)
+    assert all(not archive_folder(run).exists() for run in runs)
     assert paths.batch_dir(other).exists()
     assert protected.read_bytes()==b"permanent-reference"
     assert cleanup.request(own)["state"]=="deleted"
@@ -255,9 +281,9 @@ def test_confirm_calendar_months_extension_and_warning(sandbox):
     from server.database import connect
     own=_batch(sandbox)
     run=_job(sandbox,own)
-    directory=paths.run_dir(run)/"megaloc"
+    directory=paths.result_metadata_dir(run)
     directory.mkdir(parents=True)
-    (directory/"manifest.json").write_text("[]",encoding="utf8")
+    (directory/"manifest.rows.jsonl").write_text("",encoding="utf8")
     assert retention.status(own)["delete_after_at"] is None
     data=retention.confirm(own,run)
     assert data["delete_after_at"]>data["download_confirmed_at"]
@@ -279,15 +305,13 @@ def test_legacy_zip_and_stream_lease_survives_delete_request(sandbox):
     own=_batch(sandbox)
     run=_job(sandbox,own)
     source=next(paths.batch_dir(own).iterdir())
-    target=paths.run_dir(run)/"megaloc"/"SAM-0045"/"photo.jpg"
+    target=paths.result_media_dir(run)/"SAM-0045"/"photo.jpg"
     target.parent.mkdir(parents=True)
     os.link(source,target)
-    run_model_dir=sandbox/"runs"/run/"models"
-    run_model_dir.mkdir(parents=True)
-    (run_model_dir/"megaloc.json").write_text(json.dumps({"path":str(target.parents[1]/"manifest.json")}),encoding="utf8")
-    (target.parents[1]/"manifest.json").write_text(json.dumps([{
+    from app.results.exporter import export
+    export(paths.result_metadata_dir(run),[{
         "query":str(source),"copy":str(target),"assigned_sam":"SAM-0045","top":[]
-    }]),encoding="utf8")
+    }],run_id=run)
     with connect() as db:
         archive_day=db.execute("""SELECT (COALESCE(started_at,created_at) AT TIME ZONE 'Europe/Samara')::date AS day
             FROM jobs WHERE id=%s""",(run,)).fetchone()['day'].isoformat()
@@ -307,9 +331,9 @@ def test_retention_due_guard_cannot_delete_after_new_run(sandbox):
     from server.database import connect
     own=_batch(sandbox)
     run=_job(sandbox,own)
-    directory=paths.run_dir(run)/"megaloc"
+    directory=paths.result_metadata_dir(run)
     directory.mkdir(parents=True)
-    (directory/"manifest.json").write_text("[]",encoding="utf8")
+    (directory/"manifest.rows.jsonl").write_text("",encoding="utf8")
     retention.confirm(own,run)
     with connect() as db:
         db.execute("""UPDATE batches SET delete_after_at=now()-interval '1 minute'
@@ -388,35 +412,44 @@ def test_hardlink_collision_does_not_unlink_original_result(tmp_path):
 
 def test_result_export_atomic_hardlink_and_manifest_contract(sandbox):
     from app.results import repository
-    run="20261105T120000-"+uuid.uuid4().hex[:12]
-    source=sandbox/"uploads"/"source.jpg"
+    own=_batch(sandbox,with_photo=False)
+    run=_job(sandbox,own)
+    source=paths.batch_dir(own)/"source.jpg"
+    source.parent.mkdir(parents=True)
     source.write_bytes(b"exact immutable pixels")
     original=sha256(source)
     stamp=(source.stat().st_size,source.stat().st_mtime_ns)
     rows=[{"query":str(source),"top":[{"label":"SAM-0045","score":0.95,
             "reference":"sample.jpg"}],"group_id":"G0001"}]
-    saved=repository.save_model({"id":run,"output":str(sandbox/"outputs")},
+    saved=repository.save_model({"id":run,"batch_id":str(own)},
             "megaloc",rows,query_stamps={str(source):stamp})
     copy=Path(saved[0]["copy"])
     assert copy.exists() and copy.stat().st_ino==source.stat().st_ino
     assert sha256(source)==original
-    assert (copy.parents[1]/"manifest.json").is_file()
+    assert (paths.result_metadata_dir(run)/"manifest.rows.jsonl").is_file()
+    assert not (paths.result_metadata_dir(run)/"manifest.json").exists()
+    assert not (paths.result_metadata_dir(run)/"manifest.csv").exists()
+    assert not (sandbox/"runs"/run/"models").exists()
     reloaded=repository.load_model(run,"megaloc")
     assert reloaded[0]["assigned_sam"]=="SAM-0045"
     assert reloaded[0]["score"]==0.95
     assert reloaded[0]["copy"]==str(copy)
-    assert not (copy.parents[2]/".megaloc.building").exists()
+    from app.storage.paths import managed_path
+    from app.storage.categories import Category
+    assert not managed_path(Category.PROCESSING_STAGING,run_id=run).exists()
     with pytest.raises(FileExistsError):
-        repository.save_model({"id":run,"output":str(sandbox/"outputs")},
+        repository.save_model({"id":run,"batch_id":str(own)},
             "megaloc",rows,query_stamps={str(source):stamp})
     assert sha256(copy)==original
 
 def test_export_crash_does_not_publish_partial_result(sandbox,monkeypatch):
     from app.results import repository
-    run="20261105T120000-"+uuid.uuid4().hex[:12]
-    source=sandbox/"uploads"/"first.jpg"
+    own=_batch(sandbox,with_photo=False)
+    run=_job(sandbox,own)
+    source=paths.batch_dir(own)/"first.jpg"
+    source.parent.mkdir(parents=True)
     source.write_bytes(b"first")
-    second=sandbox/"uploads"/"second.jpg"
+    second=source.parent/"second.jpg"
     second.write_bytes(b"second")
     old=repository.copy_photo
     count={"n":0}
@@ -427,10 +460,12 @@ def test_export_crash_does_not_publish_partial_result(sandbox,monkeypatch):
     monkeypatch.setattr(repository,"copy_photo",fail_after_first)
     rows=[{"query":str(source),"top":[]},{"query":str(second),"top":[]}]
     with pytest.raises(RuntimeError):
-        repository.save_model({"id":run,"output":str(sandbox/"outputs")},
+        repository.save_model({"id":run,"batch_id":str(own)},
                               "megaloc",rows)
-    assert not paths.run_dir(run).exists() or not (paths.run_dir(run)/"megaloc").exists()
-    assert not (paths.run_dir(run)/".megaloc.building").exists()
+    assert not paths.run_dir(run).exists()
+    from app.storage.paths import managed_path
+    from app.storage.categories import Category
+    assert not managed_path(Category.PROCESSING_STAGING,run_id=run).exists()
     assert source.read_bytes()==b"first"
     assert second.read_bytes()==b"second"
 
@@ -440,9 +475,9 @@ def test_cannot_reconfirm_old_zip_after_a_newer_run(sandbox):
     from fastapi import HTTPException
     own=_batch(sandbox)
     old=_job(sandbox,own)
-    olddir=paths.run_dir(old)/"megaloc"
+    olddir=paths.result_metadata_dir(old)
     olddir.mkdir(parents=True)
-    (olddir/"manifest.json").write_text("[]",encoding="utf8")
+    (olddir/"manifest.rows.jsonl").write_text("",encoding="utf8")
     retention.confirm(own,old)
     new=_job(sandbox,own,"running")
     with connect() as db:
@@ -463,9 +498,14 @@ def test_orphan_unpublished_export_only_terminal_jobs(sandbox):
     own=_batch(sandbox)
     finished=_job(sandbox,own,"interrupted")
     running=_job(sandbox,own,"running")
-    folder1=paths.run_dir(finished)/".megaloc.building"
-    folder2=paths.run_dir(running)/".megaloc.building"
-    for folder in (folder1,folder2):
+    from app.storage.paths import managed_path
+    from app.storage.categories import Category
+    folder1=managed_path(Category.PROCESSING_STAGING,run_id=finished)
+    folder2=managed_path(Category.PROCESSING_STAGING,run_id=running)
+    frames1=managed_path(Category.VIDEO_FRAMES,run_id=finished)
+    frames2=managed_path(Category.VIDEO_FRAMES,run_id=running)
+    unknown=managed_path(Category.VIDEO_FRAMES,run_id="20261105T000000-000000000001")
+    for folder in (folder1,folder2,frames1,frames2,unknown):
         folder.mkdir(parents=True)
         (folder/"unfinished.jpg").write_bytes(b"temporary")
         os.utime(folder,(time.time()-7200,time.time()-7200))
@@ -473,6 +513,7 @@ def test_orphan_unpublished_export_only_terminal_jobs(sandbox):
     assert finished in removed
     assert not folder1.exists()
     assert folder2.exists(), "Do not clear still-running inference outputs"
+    assert not frames1.exists() and frames2.exists() and unknown.exists()
     cleanup.request(own)
     from server.database import connect
     with connect() as db:
@@ -486,6 +527,7 @@ def test_delete_refuses_symlink_escape_and_leaves_external_files(sandbox,tmp_pat
     external.mkdir()
     (external/"protected.jpg").write_bytes(b"never delete")
     batchfolder=paths.batch_dir(own)
+    batchfolder.parent.mkdir(parents=True)
     batchfolder.symlink_to(external,target_is_directory=True)
     cleanup.request(own)
     assert cleanup.cleanup_one(own)=="failed"
@@ -515,8 +557,6 @@ def test_upload_state_transitions_with_real_finalization(sandbox,monkeypatch):
     from server.db.repositories import batches as batch_repository
     from server.database import connect
     own=_batch(sandbox,with_photo=False)
-    monkeypatch.setattr(uploads,"UPLOADS_DIR",sandbox/"uploads")
-    monkeypatch.setattr(uploads,"PART_DIR",sandbox/"incoming")
     assert batches.get(own)["upload_state"]=="open"
     picture=io.BytesIO()
     Image.new("RGB",(20,20),"green").save(picture,format="JPEG")
@@ -526,7 +566,7 @@ def test_upload_state_transitions_with_real_finalization(sandbox,monkeypatch):
     file_id=uuid.uuid4()
     uploads._create_upload(payload,file_id)
     assert batches.get(own)["upload_state"]=="open"
-    (sandbox/"incoming"/f"{file_id}.part").write_bytes(raw)
+    paths.part_path(own,file_id).write_bytes(raw)
     result=uploads._finalize_sync(str(file_id))
     assert result["sha256"]==payload.sha256
     assert batches.get(own)["upload_state"]=="ready"
@@ -545,3 +585,23 @@ def test_upload_state_transitions_with_real_finalization(sandbox,monkeypatch):
     assert exc.value.status_code==409
     cleanup.request(own)
     assert cleanup.cleanup_one(own)=="completed"
+
+
+def test_result_export_refuses_other_owner_even_with_valid_file(sandbox):
+    from app.results import repository
+    from server.database import connect
+    own=_batch(sandbox)
+    other=_batch(sandbox)
+    with connect() as db:
+        second=db.execute("INSERT INTO users(username,access_role) VALUES (%s,'viewer') RETURNING id",
+                          ("isolation-"+uuid.uuid4().hex,)).fetchone()["id"]
+        db.execute("UPDATE batches SET owner_id=%s WHERE id=%s",(second,other))
+    # Put a file in the second user's actual directory, not in the first owner's.
+    alien=paths.batch_dir(other)/"private.jpg"
+    alien.parent.mkdir(parents=True,exist_ok=True)
+    alien.write_bytes(b"private")
+    run=_job(sandbox,own)
+    with pytest.raises(ValueError,match="outside owned storage"):
+        repository.save_model({"id":run,"batch_id":str(own)},"megaloc",[{"query":str(alien),"top":[]}])
+    assert not paths.run_dir(run).exists()
+    assert alien.read_bytes()==b"private"

@@ -4,6 +4,7 @@ from fastapi import APIRouter,HTTPException,Query,Request
 from app.results.repository import load_model,load_run
 from ...database import connect
 from ...security.access_policy import check_published,current_user,is_viewer
+from ...security.roles import level
 from ...services import result_pages
 
 router=APIRouter(prefix="/api/results",tags=["results"])
@@ -14,22 +15,24 @@ def safe_manifest(run_id):
 
 @router.get("/catalog")
 def catalog(request:Request, limit: int = Query(30,ge=1,le=100), offset: int = Query(0,ge=0)):
-    user_id = current_user(request)["id"] if is_viewer(request) else None
+    user=current_user(request)
+    user_id=user["id"] if is_viewer(request) else None
+    scope=level(user,"results.view") if user_id is not None else "all"
     with connect() as db:
         rows = db.execute("""SELECT j.id,j.status,j.finished_at,b.display_name FROM jobs j
             JOIN batches b ON b.id=j.batch_id
             WHERE j.status IN ('completed','completed_with_errors') AND b.delete_state='active'
-            AND (%s::bigint IS NULL OR EXISTS(SELECT 1 FROM result_access_grants g
-                WHERE g.run_id=j.id AND g.user_id=%s))
+            AND (%s='all' OR (%s='own' AND b.owner_id=%s) OR (%s='granted' AND EXISTS(SELECT 1 FROM result_access_grants g
+                WHERE g.run_id=j.id AND g.user_id=%s)))
             ORDER BY j.finished_at DESC NULLS LAST,j.id DESC LIMIT %s OFFSET %s""",
-            (user_id,user_id,limit+1,offset)).fetchall()
+            (scope,scope,user_id,scope,user_id,limit+1,offset)).fetchall()
     return {"items":rows[:limit],"has_more":len(rows)>limit}
 
 @router.get("/{run_id}")
 def overview(run_id:str, request:Request=None):
     published = check_published(request, run_id)
     if published is not None:
-        return {"id":run_id,"status":published["status"],"display_name":published["display_name"]}
+        return {"id":run_id,"status":published["status"],"display_name":published["display_name"],**({"can_media":False} if not published["can_media"] else {}),**({"can_zip":False} if not published["can_zip"] else {})}
     try:return load_run(run_id)
     except (FileNotFoundError,ValueError):raise HTTPException(404,"Запуск не найден")
 
@@ -55,7 +58,7 @@ def groups(run_id:str, request:Request=None):
 @router.get("/{run_id}/photos")
 def photos(run_id:str,sam:str|None=None,group:str|None=None,
            cursor:str|None=None,limit:int=60,request:Request=None):
-    published = check_published(request,run_id)
+    published = check_published(request,run_id,"results.media")
     result=result_pages.page(run_id,sam=sam,group=group,cursor=cursor,limit=limit)
     queries=[r.get("query") for r in result["rows"] if r.get("query")]
     photo_ids={}

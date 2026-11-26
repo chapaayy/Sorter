@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 import pytest
+from pathlib import Path
 
 from server.database import connect
 from server.services import batches,cleanup
@@ -23,7 +24,7 @@ def test_complete_fo_parts_appear_as_pending_and_finalize_without_reupload(thumb
             uid=uuid.uuid4()
             uploads._create_upload(uploads.BeginUpload(
                 kind='fo',batch_id=str(batch),filename=f'IMG_{i}.JPG',size=len(raw)),uid)
-            (thumbs/'incoming'/f'{uid}.part').write_bytes(raw)
+            uploads.part_path(batch,uid).write_bytes(raw)
             ids.append((uid,raw))
 
         before=batches.get(batch)
@@ -50,7 +51,7 @@ def test_cancel_incomplete_session_keeps_all_finalized_photos(thumbs):
     try:
         uploads._create_upload(uploads.BeginUpload(
             kind='fo',batch_id=str(batch),filename='broken.jpg',size=len(raw)),uid)
-        (thumbs/'incoming'/f'{uid}.part').write_bytes(raw[:100])
+        uploads.part_path(batch,uid).write_bytes(raw[:100])
         assert batches.get(batch)['pending']==1
         pending=batches.pending_uploads(batch)['uploads'][0]
         assert pending['received']==100 and pending['prefix_bytes']==100
@@ -58,7 +59,7 @@ def test_cancel_incomplete_session_keeps_all_finalized_photos(thumbs):
         assert asyncio.run(uploads.cancel_upload(str(uid)))=={'cancelled':True}
         assert batches.get(batch)['photos']==1
         assert batches.get(batch)['pending']==0
-        assert not (thumbs/'incoming'/f'{uid}.part').exists()
+        assert not uploads.part_path(batch,uid).exists()
     finally:
         cleanup.request(batch);cleanup.cleanup_one(batch)
 
@@ -87,9 +88,44 @@ def test_missing_part_is_visible_but_cannot_be_auto_finalized(thumbs):
     try:
         uploads._create_upload(uploads.BeginUpload(
             kind='fo',batch_id=str(batch),filename='missing.jpg',size=500),uid)
-        (thumbs/'incoming'/f'{uid}.part').unlink()
+        uploads.part_path(batch,uid).unlink()
         pending=batches.pending_uploads(batch)['uploads']
         assert len(pending)==1 and not pending[0]['has_part']
         assert not pending[0]['can_finalize']
+    finally:
+        cleanup.request(batch);cleanup.cleanup_one(batch)
+
+
+def test_duplicate_bytes_share_inode_and_interrupted_finalization_is_reclaimed(thumbs):
+    from server import uploads
+    from server.services import temp_cleanup
+    from server.storage.paths import original_path
+    import os
+    batch=_batch(thumbs,with_photo=False)
+    data=_jpg()
+    ids=[uuid.uuid4(),uuid.uuid4()]
+    try:
+        paths=[]
+        for uid in ids:
+            uploads._create_upload(uploads.BeginUpload(kind="fo",batch_id=str(batch),
+                filename="same.jpg",size=len(data)),uid)
+            uploads.part_path(batch,uid).write_bytes(data)
+            paths.append(Path(uploads._finalize_sync(str(uid))["path"]))
+        assert paths[0]!=paths[1]
+        assert paths[0].stat().st_ino==paths[1].stat().st_ino
+        leftover=uploads.part_path(batch,ids[0])
+        os.link(paths[0],leftover)
+        assert temp_cleanup.reclaim_finalized_parts()>=1
+        assert not leftover.exists() and all(p.read_bytes()==data for p in paths)
+        pending=uuid.uuid4()
+        uploads._create_upload(uploads.BeginUpload(kind="fo",batch_id=str(batch),
+            filename="cancel.jpg",size=len(data)),pending)
+        part=uploads.part_path(batch,pending)
+        part.write_bytes(data)
+        orphan=original_path(batch,pending,"jpg")
+        os.link(part,orphan)
+        assert asyncio.run(uploads.cancel_upload(str(pending)))=={"cancelled":True}
+        assert not orphan.exists() and not part.exists()
+        assert all(p.read_bytes()==data for p in paths)
     finally:
         cleanup.request(batch);cleanup.cleanup_one(batch)

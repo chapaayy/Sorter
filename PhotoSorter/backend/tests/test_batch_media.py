@@ -133,14 +133,10 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     for module in (jobs,sorting,media_prepare,archives,images):
         monkeypatch.setattr(module,'DATA_DIR',thumbs,raising=False)
     monkeypatch.setattr(repository,'RUNS_DIR',thumbs/'runs')
-    monkeypatch.setattr(reference_objects,'ROOT',thumbs/'staged')
-    monkeypatch.setattr(reference_gallery,'GALLERY',thumbs/'references')
-    monkeypatch.setattr(reference_publication,'signature',lambda:'stage3-model')
-    monkeypatch.setattr(work_queue,'signature',lambda:'stage3-model')
+    monkeypatch.setattr(reference_publication,'signature',lambda:('a'*64))
+    monkeypatch.setattr(work_queue,'signature',lambda:('a'*64))
     monkeypatch.setattr(model_store,'files_present',lambda:True)
-    monkeypatch.setattr(reference_cache,'CACHE_DIR',thumbs/'ref-cache')
-    monkeypatch.setattr(reference_cache,"REFERENCE_ROOT",thumbs/"staged")
-    monkeypatch.setattr(reference_cache,"signature",lambda:"stage3-model")
+    monkeypatch.setattr(reference_cache,"signature",lambda:("a"*64))
     add_published_reference(thumbs)
     ahead=_batch(thumbs,with_photo=True)
     older=jobs.enqueue(jobs.NewRun(batch_id=ahead))['id']
@@ -164,13 +160,28 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     with database.connect() as conn:
         task=work_queue.claim_next(conn)
     media_prepare.run(task,stopping=lambda:False)
+    from app.config import APP_STORAGE_ROOT
+    from app.storage.categories import Category
+    from app.storage.paths import app_key
+    for upload,_ in saved:
+        assert not (APP_STORAGE_ROOT/app_key(Category.TRANSCODE_TEMP,task_id=upload.upload_id).relative).exists()
     state=batches.get(batch)
     assert state['media_preparation']['state']=='completed'
     assert state['media_preparation']['completed_count']==2
     assert state['auto_process_state']=='queued'
     assert (state['photos'],state['videos'])==(2,1)
+    from server.storage.paths import batch_dir,normalized_dir,part_path
     for upload,metadata in saved:
-        assert Path(metadata['path']).read_bytes()==source[upload.filename]
+        original=Path(metadata['path'])
+        assert original.parent==batch_dir(batch)
+        assert original.stem==str(upload.upload_id)
+        assert original.read_bytes()==source[upload.filename]
+        assert not part_path(batch,upload.upload_id).exists()
+    assert len(list(normalized_dir(batch).iterdir()))==2
+    from .accounting_checks import settle,exact,observed
+    settle()
+    for _,metadata in saved:assert exact(Path(metadata['path']))['category']=='fo_original'
+    for normalized in normalized_dir(batch).iterdir():assert exact(normalized)['category']=='fo_normalized'
     with database.connect() as conn:
         item=work_queue.claim_next(conn)
     assert item['kind']=='fo_processing' and item['info']['has_media_profile']
@@ -193,15 +204,35 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     assert len(rows)==3
     videos=[row for row in rows if row['media_kind']=='video']
     assert len(videos)==1 and videos[0]['assigned_sam']=='SAM 0001'
-    assert not list(job.path.glob('media-frames-*'))
+    assert not (APP_STORAGE_ROOT/app_key(Category.VIDEO_FRAMES,run_id=item['id']).relative).exists()
+    for row in rows:
+        source, target = Path(row['query']), Path(row['copy'])
+        assert (source.stat().st_dev,source.stat().st_ino)==(target.stat().st_dev,target.stat().st_ino)
     assert job.info['archive_state']=='on_demand'
-    assert not list((thumbs/'outputs'/item['id']).rglob('*.zip'))
+    from server.storage.paths import run_dir,result_media_dir,result_metadata_dir
+    first_dir=run_dir(item['id'])
+    assert first_dir.parent.parent==batch_dir(batch).parent
+    assert not list(first_dir.rglob('*.zip'))
+    assert not (APP_STORAGE_ROOT/app_key(Category.PROCESSING_STAGING,run_id=item['id']).relative).exists()
+    assert set(p.name for p in result_metadata_dir(item['id']).iterdir())=={'manifest.rows.jsonl'}
+    assert not (job.path/'run.json').exists()
     from server.api.routes.downloads import router as download_router
     app=FastAPI()
     app.include_router(download_router)
     with TestClient(app) as client:
         response=client.get('/api/download/'+item['id'])
     assert response.status_code==200
+    settle()
+    for row in rows:
+        assert exact(Path(row['copy']))['physical_bytes']==0
+    from server.services import archive_cache
+    archive=next((APP_STORAGE_ROOT/app_key(Category.ZIP_RESULTS,run_id=item['id']).relative).glob('*.zip'))
+    assert exact(archive)['category']=='zip_results'
+    assert exact(archive)['charged_bytes']==0
+    import time
+    assert archive_cache.sweep_folder(archive.parent,now=time.time()+7200)>=1
+    settle()
+    assert observed(archive) is None
     with zipfile.ZipFile(BytesIO(response.content)) as zipped:
         assert {Path(name).name for name in zipped.namelist()}=={'Альфа.jpg','Клип.mp4','Совместимый.JPG'}
         mp4=next(name for name in zipped.namelist() if name.endswith('.mp4'))
@@ -216,9 +247,36 @@ def test_mixed_folder_waits_for_fifo_then_sorts_and_exports_whole_video(thumbs,c
     with TestClient(app) as client:
         result=client.get(f"/api/images/{item['id']}/megaloc/{index}?kind=copy",headers={'Range':'bytes=0-19'})
     assert result.status_code==206 and result.content==normalized.read_bytes()[:20]
+    # Repeat the actual FIFO -> sorting -> export path, without reconversion.
+    rerun=jobs.enqueue(jobs.NewRun(batch_id=batch))['id']
+    with database.connect() as conn:
+        second=work_queue.claim_next(conn)
+    assert second['id']==rerun
+    repeat=jobs.ServerJob(second['info'],warm_megaloc=Warm())
+    repeat.run()
+    assert repeat.info['status']=='completed',repeat.info.get('error')
+    again=repository.load_model(rerun,'megaloc')
+    assert len(again)==len(rows)
+    old={r['query']:r for r in rows}
+    for row in again:
+        assert row['assigned_sam']==old[row['query']]['assigned_sam']
+        assert Path(row['copy']).is_relative_to(result_media_dir(rerun))
+        assert Path(row['copy']).stat().st_ino==Path(old[row['query']]['copy']).stat().st_ino
+    assert first_dir.exists() and not list(run_dir(rerun).rglob('*.zip'))
+    assert not (APP_STORAGE_ROOT/app_key(Category.PROCESSING_STAGING,run_id=rerun).relative).exists()
+    assert not (APP_STORAGE_ROOT/app_key(Category.VIDEO_FRAMES,run_id=rerun).relative).exists()
+    with database.connect() as conn:
+        status=conn.execute("SELECT status FROM jobs WHERE id=%s",(rerun,)).fetchone()
+        assert status['status']=='completed'
+    assert not (repeat.path/'run.json').exists()
     cleanup.request(batch)
     assert cleanup.cleanup_one(batch)=='completed'
-    assert not (thumbs/'uploads'/str(batch)/'.normalized').exists()
+    assert not first_dir.exists()
+    from server.storage.paths import batch_root
+    assert not batch_root(batch).exists()
+    settle()
+    with database.connect() as conn:
+        assert not conn.execute('SELECT 1 FROM storage_files WHERE batch_id=%s',(batch,)).fetchone()
 
 
 def test_frame_sampling_last_frame_and_alternative_video_format(tmp_path,clips):
@@ -247,6 +305,10 @@ def test_bad_file_does_not_poison_fifo_and_retry_has_own_history(thumbs,clips,mo
     with database.connect() as db:
         task=work_queue.claim_next(db)
     media_prepare.run(task,stopping=lambda:False)
+    from app.config import APP_STORAGE_ROOT
+    from app.storage.categories import Category
+    from app.storage.paths import app_key
+    assert not (APP_STORAGE_ROOT/app_key(Category.TRANSCODE_TEMP,task_id=saved[0][0].upload_id).relative).exists()
     assert batches.get(batch)['media_preparation']['state']=='completed_with_errors'
     assert media_preparation.file_errors(batch)['files'][0]['filename']=='bad.mov'
     assert Path(saved[0][1]['path']).read_bytes()==broken

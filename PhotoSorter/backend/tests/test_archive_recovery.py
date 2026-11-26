@@ -7,7 +7,7 @@ import pytest
 from psycopg.types.json import Jsonb
 
 from server.database import connect
-from server.services import archives,archive_retries,archive_pipeline,cleanup
+from server.services import archives,archive_pipeline,cleanup
 from server.storage import paths
 from .test_stage1_lifecycle import sandbox,db,_batch,_job
 
@@ -20,21 +20,22 @@ def test_zip_absence_is_normal_and_never_changes_job_status(sandbox):
             db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(
                 Jsonb({"id":run,"status":"completed","archive_state":"ready",
                        "models":{"megaloc":{"status":"completed"}}}),run))
-        assert archive_retries.archive_status(run)=={
-            "run_id":run,"state":"on_demand","can_retry":False}
-        with pytest.raises(HTTPException) as rejected:
-            archive_retries.request(run)
-        assert rejected.value.status_code==409
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from server.jobs import router
+        app=FastAPI()
+        app.include_router(router)
+        with TestClient(app) as client:
+            assert client.post("/api/runs/"+run+"/archive/retry").status_code==404
         with connect() as db:
             assert db.execute("SELECT status FROM jobs WHERE id=%s",(run,)).fetchone()["status"]=="completed"
-            assert db.execute("SELECT count(*) AS n FROM archive_retries WHERE run_id=%s",(run,)).fetchone()["n"]==0
-        assert not list(paths.run_dir(run).rglob("*.zip"))
+            assert db.execute("SELECT to_regclass('archive_retries') AS t").fetchone()["t"] is None
+        assert not list(archives.archive_folder(run).glob("*.zip"))
     finally:
         cleanup.request(batch)
         cleanup.cleanup_one(batch)
 
-@pytest.mark.parametrize("legacy_format",[True,False])
-def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_format):
+def test_download_preserves_names_without_rerunning_megaloc(sandbox):
     from io import BytesIO
     from urllib.parse import unquote
     from fastapi import FastAPI
@@ -45,9 +46,7 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
     batch=_batch(sandbox)
     title=batches.rename(batch,"Самара 15.11")["display_name"]
     run=_job(sandbox,batch)
-    model=paths.run_dir(run)/"megaloc"
-    index=sandbox/"runs"/run/"models"
-    index.mkdir(parents=True)
+    model=paths.result_media_dir(run)
     sam="SAM 9961"
     address="Гагарина 64"
     with connect() as db:
@@ -63,27 +62,23 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
     rows=[]
     try:
         for folder,name,query in [(sam,"hash1.jpg",original),(sam,"hash2.jpg",original),
-                                  ("_Неопределено","hash3.jpg","/unused/IMG_0914.JPG")]:
+                                  ("_Неопределено","hash3.jpg",str(paths.batch_dir(batch)/"IMG_0914.JPG"))]:
             source=model/folder/name
             source.parent.mkdir(parents=True,exist_ok=True)
             source.write_bytes(name.encode())
             rows.append({"copy":str(source),"query":query,"assigned_sam":folder})
-        manifest=model/"manifest.json"
-        manifest.write_text(json.dumps(rows))
-        (index/"megaloc.json").write_text(json.dumps({"path":str(manifest)}))
-        if legacy_format:
-            initial=archives.prepare(run,None,archive_pipeline.legacy_selections(run))
-        else:
-            from types import SimpleNamespace
-            info={"id":run,"batch_id":str(batch),"status":"completed",
-                  "models":{"megaloc":{"status":"completed"}}}
-            noop=lambda *args:None
-            job=SimpleNamespace(info=info,progress=noop,log=noop,stopped=lambda:False,save=noop)
-            archive_pipeline.build_for_job(job)
-            assert info["archive_state"]=="on_demand"
-            assert not list(model.parent.rglob("*.zip"))
-            with connect() as db:
-                db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(Jsonb(info),run))
+        from app.results.exporter import export
+        manifest=export(paths.result_metadata_dir(run),rows,run_id=run)
+        from types import SimpleNamespace
+        info={"id":run,"batch_id":str(batch),"status":"completed",
+              "models":{"megaloc":{"status":"completed"}}}
+        noop=lambda *args:None
+        job=SimpleNamespace(info=info,progress=noop,log=noop,stopped=lambda:False,save=noop)
+        archive_pipeline.mark_on_demand(job)
+        assert info["archive_state"]=="on_demand"
+        assert not list(model.parent.rglob("*.zip"))
+        with connect() as db:
+            db.execute("UPDATE jobs SET snapshot=%s WHERE id=%s",(Jsonb(info),run))
 
         app=FastAPI()
         app.include_router(router)
@@ -105,16 +100,16 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
                 row=db.execute("SELECT status,snapshot FROM jobs WHERE id=%s",(run,)).fetchone()
                 assert row["status"]=="completed"
                 assert "archive_file" not in row["snapshot"]
-            assert archive_retries.archive_status(run)["state"]=="on_demand"
+            assert row["snapshot"]["archive_state"]=="on_demand"
             partial=client.get("/api/download/"+run,headers={"Range":"bytes=5-20"})
             assert partial.status_code==206
             assert partial.content==reply.content[5:21]
             from server.services import archive_cache
             import os,time
-            for file in (model.parent/".archives").glob("*.zip"):
+            for file in (archives.archive_folder(run)).glob("*.zip"):
                 os.utime(file,(time.time()-3700,)*2)
-            assert archive_cache.sweep_folder(model.parent/".archives")>=2
-            assert not list((model.parent/".archives").glob("*.zip"))
+            assert archive_cache.sweep_folder(archives.archive_folder(run))>=2
+            assert not list((archives.archive_folder(run)).glob("*.zip"))
             rebuilt=client.get("/api/download/"+run)
             assert rebuilt.status_code==200
             assert rebuilt.content==reply.content
@@ -127,15 +122,16 @@ def test_download_preserves_names_without_rerunning_megaloc(sandbox,legacy_forma
 
 
 def test_zip_failed_integrity_check_is_never_published(tmp_path,monkeypatch):
-    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
+    from .test_archives import mock_run_storage
+    mock_run_storage(tmp_path,monkeypatch)
     run="20261107T120000-abcdef123456"
-    source=tmp_path/run/"megaloc"/"SAM 0001"/"one.jpg"
+    source=paths.result_media_dir(run)/"SAM 0001"/"one.jpg"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"photo")
     monkeypatch.setattr(zipfile.ZipFile,"testzip",lambda _self:"SAM 0001/one.jpg")
     with pytest.raises(OSError,match="проверки ZIP"):
         archives.prepare(run,None,[(source,"SAM 0001/one.jpg")])
-    archive_dir=source.parents[2]/".archives"
+    archive_dir=archives.archive_folder(run)
     assert not list(archive_dir.glob("*.zip"))
     assert not list(archive_dir.glob("*.tmp"))
 
@@ -144,9 +140,7 @@ def test_manual_date_and_video_zip_layout(sandbox):
     from datetime import date
     batch=_batch(sandbox)
     run=_job(sandbox,batch)
-    model=paths.run_dir(run)/"megaloc"
-    index=sandbox/"runs"/run/"models"
-    index.mkdir(parents=True,exist_ok=True)
+    model=paths.result_media_dir(run)
     items=[]
     try:
         with connect() as db:
@@ -160,11 +154,10 @@ def test_manual_date_and_video_zip_layout(sandbox):
             source=model/sam/name
             source.parent.mkdir(parents=True,exist_ok=True)
             source.write_bytes(name.encode())
-            items.append({"query":str(source),"copy":str(source),"assigned_sam":sam,
+            items.append({"query":str(paths.batch_dir(batch)/name),"copy":str(source),"assigned_sam":sam,
                           "media_kind":kind,"export_name":name,"side":side})
-        manifest=model/"manifest.json"
-        manifest.write_text(json.dumps(items))
-        (index/"megaloc.json").write_text(json.dumps({"path":str(manifest)}))
+        from app.results.exporter import export
+        manifest=export(paths.result_metadata_dir(run),items,run_id=run)
         plan=archive_pipeline.named_plan(run,batch,"Отчёт по выезду")
         members={name for _,name in plan.files}
         assert members=={
@@ -183,15 +176,12 @@ def test_manual_date_and_video_zip_layout(sandbox):
 def test_processing_date_uses_job_start_not_upload_date(sandbox):
     batch=_batch(sandbox)
     run=_job(sandbox,batch)
-    model=paths.run_dir(run)/"megaloc"
+    model=paths.result_media_dir(run)
     source=model/"SAM 0001"/"one.jpg"
     source.parent.mkdir(parents=True,exist_ok=True)
     source.write_bytes(b"photo")
-    index=sandbox/"runs"/run/"models"
-    index.mkdir(parents=True,exist_ok=True)
-    manifest=model/"manifest.json"
-    manifest.write_text(json.dumps([{"copy":str(source),"assigned_sam":"SAM 0001"}]))
-    (index/"megaloc.json").write_text(json.dumps({"path":str(manifest)}))
+    from app.results.exporter import export
+    manifest=export(paths.result_metadata_dir(run),[{"copy":str(source),"assigned_sam":"SAM 0001"}],run_id=run)
     try:
         with connect() as db:
             db.execute("UPDATE jobs SET started_at=%s WHERE id=%s",

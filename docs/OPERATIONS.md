@@ -1,81 +1,25 @@
-# Эксплуатация PhotoSorter — очереди, превью, логи и диск
+# Эксплуатация MAP Storage V2
 
-**Текущая версия:** все сервисы входят в `main`. При изменении действующего VPS нужны проверенный бэкап, контроль активных задач и предварительная диагностика.
+[Установка/обновление](DEPLOYMENT.md) · [бэкап](BACKUP_RESTORE.md) · [контракт](STORAGE_V2_FINAL_CATALOG.md).
 
-## Сервисы
+Сервисы: postgres, caddy, api, worker (одна FIFO сортировка), thumbnail, cleanup. Хост: map-updater.service и map-log-maintenance.timer. Диагностика: `sudo docker compose --env-file .env --env-file .env.generated ps`, `sudo journalctl -u map-updater.service`. Не удаляй файлы напрямую. 
 
-`caddy` — HTTPS; `api` — авторизованные маршруты, upload/metadata; `worker` — один MegaLoc inference; `thumbnail` — CPU-limited WebP задачи; `cleanup` — retention, упавшие outputs, preview cache и старые .part; `postgres` — транзакции и долговременные очереди.
+Администрирование → Хранилище: общий объём, категории, временные операции, пользователи, лимиты, сверка и разрешённые операции обслуживания. Устаревший/неполный снимок не основание для удаления. При необходимости запустить фоновую сверку, а не ручной полный обход Ubuntu. Личные квоты и общий временный лимит отключены по умолчанию. Резерв диска действует независимо; при нехватке места API отклоняет новые записи, снижение лимита не удаляет существующие. Обновлятор учитывает собственный минимум свободного места и согласованные резервы. Viewer видит только выданные ему результаты, owner управляет всеми ФО.
 
-`Models/models` — веса; `Models/cache` — torch/huggingface; `PhotoSorter/data` — PhotoSorter uploads, refs, outputs, thumbnails. Docker volumes и `.env.generated` сохраняются. Нельзя выполнять `docker compose down -v`.
+Скачивание: ZIP строится по запросу, повторно используется пока действителен, range поддерживается, удаляется cleanup после TTL при отсутствии активных читателей. Удаление партии выполняется через API/UI, не через rm. Общие объекты удаляются лишь после исчезновения зависимостей и grace. Модель и технический кэш имеют разные политики.
 
-## Загрузка и миниатюры
+Проблемы обновления: проверь журнал updater, состояние active ops, свободное место, образ-кандидат и backup. Не перезапускай установщик поверх незавершённого обновления. При ошибке сохрани данные и диагностический вывод. Не применяй общий Docker prune, не меняй закреплённый storage root.
 
-1. `POST /api/uploads` с предварительно сохранённым `client_upload_id` (идемпотентный повтор после пропажи ответа), PATCH offset блоками 16 МиБ, `finish` — контроль фактического размера, SHA-256 и Pillow. Direct PUT сохранён для совместимости, новый UI использует PATCH.
-2. В транзакции успешной финализации создаётся `thumbnail_tasks`. Запрос **не ждёт** PNG/JPEG/TIFF decoding.
-3. Низкоприоритетный Worker создаёт WebP 480px q78, применяет EXIF orientation и преобразование ICC→sRGB для корректных профилей, использует оригинал только для чтения.
-4. `GET /api/thumbnails/{UUID}`: 202 пока pending, 200 WebP после готовности, 404 нет фото. `POST /api/thumbnails/{UUID}/retry` для failed.
-5. После crash устаревшие running задачи переclaim'ятся через 5 минут, максимум 3 попытки до ручного retry; общий cache очищается только если checksum больше никому не принадлежит и прошёл grace 24 часа.
-6. `DELETE /api/uploads/{id}` — только незаконченная загрузка. Каждые ~10 минут проверяются `.part` старше 30 суток без активных операций. **Ни один finalized оригинал автоматически по TTL .part не удаляется.**
+## Проверка фактического здоровья
 
-До завершения перекодирования клик по плитке ФО не запускает скачивание. Встроенный просмотрщик использует оригинал, если его формат поддерживает браузер, или готовое превью. Отсутствие полноразмерного просмотра не означает, что исходный файл потерян. Чтение блокирует удаление партии только на время запроса. При завершении, ошибке диапазона или обрыве соединения API снимает блокировку.
+На штатном хосте `sudo systemctl is-active docker.service`, `sudo systemctl is-active map-updater.service`, `sudo systemctl is-active map-log-maintenance.timer` проверяются по отдельности. `docker compose ... ps` показывает контейнеры, но не все имеют Docker Healthcheck. PostgreSQL и API обязаны быть native healthy; Caddy проверяется HTTPS `/api/health` с корректным SNI/Host; состояние MegaLoc/thumbnail/cleanup — в authenticated `/api/system/status` (`services.*.alive`, `last_seen`). Heartbeat 10 секунд, alive до 35 секунд. После reboot нужны новые экземпляры heartbeat и его обновление, а не старые строки базы. Не использовать CI VM harness на рабочем VPS.
 
-### Восстановление после сбоя сети/VPN
+### Independent physical storage check
 
-- Если ответ POST/PATCH/finish потерялся после фактической записи данных, браузер повторяет запрос с экспоненциальным ожиданием, сверяет реальное состояние через `GET /api/uploads/{id}` и возобновляет с подтверждённого смещения. Сетевые ошибки (status=0) ожидают возобновления, повторные 5xx имеют ограниченное число попыток. Кнопка «Пауза» прерывает ожидание; недосланное остаётся на VPS.
-- При повторном открытии `/fo/{batch_id}` компонент «Незавершённые загрузки» читает `GET /api/batches/{id}/pending`: ID, имя, размер, реальное число байт на диске и SHA-256 всей уже принятой части (до 60 МиБ на фото). Полные `.part` автоматически пробуют `POST /api/uploads/{id}/finish` (повторная передача оригинала **не нужна**). Недокачанные — «Продолжить» с выбором исходного файла. Сначала сравниваются имя, размер и SHA-256 уже полученного начала. После потери файловых прав браузера оригинал нельзя прочитать без повторного выбора пользователем.
-- «Отменить» имеет отдельное подтверждение и вызывает `DELETE /api/uploads/{id}` **только для выбранной незавершённой** записи. Готовые фотографии и результаты не затрагиваются. Отмена нужна, если исходник недоступен, повреждён либо загрузка не нужна.
-- `/processing` отображает партию с `pending>0`, но запрещает запуск MegaLoc до завершения/отмены оставшихся передач и даёт ссылку на партию. Миниатюры ready не гарантируют `pending=0`.
-- При невозможности финализации не удаляйте .part вручную: проверьте наличие файла, контроль размера, правильность формата изображения, дисковые ошибки и логи API. При пропавшем временном файле можно отменить именно эту недозагруженную запись. Старая автоматическая TTL-очистка (30 дней) сохраняется.
+The host sampler publishes `host.tree_check` in the existing storage usage response. Once per hour (five-minute retry after an incomplete comparison), it independently walks the configured storage tree, counts directory blocks separately and deduplicates hardlinked nodes by device/inode. The walk is capped by entries/time; symlinks are never traversed, other devices and cross-scope links make the comparison partial. The app registry and protected-host file totals remain unchanged and directory blocks are not charged to personal quotas. `unexplained_bytes` is a signed observed residual, never a category inferred from the remainder; null means insufficient comparable evidence. Opposite app/host residuals cannot hide discrepancies: `absolute_discrepancy_bytes` is the sum of their absolute values. The report retains timestamps and is not an atomic live snapshot. Read-only diagnostics; it never deletes data. Whole-disk attribution and history are separate follow-up work.
 
-### Диагностика остановки загрузки ФО
+The **Control** tab in the storage center shows the independently measured tree, signed app/host residuals, their absolute sum, unknown objects, and bounded history. A separate root-filesystem walk runs every six hours (hourly retry if incomplete), skips mountpoints from the current mount table, and records physical directory/file blocks under the configured MAP root, observed Docker root, the default containerd path, system log paths and remaining visible paths. It samples unlinked regular-file FDs on the root device separately. It never asserts that the root residual equals filesystem metadata. Other filesystems are outside this root-device measurement; Docker virtual image sizes remain non-additive. The scanner is limited to one million entries or 45 seconds per walk. Partial measurements and mount changes are explicitly reported. To request a fresh read-only diagnostic sample without cleanup on the installed host: `sudo python3 /usr/local/lib/map-updater/host_logs.py /opt/Sorter/storage --sample-only --force-check` (use the actual configured storage root). The sample writes the existing bounded host report; no data deletion.
 
-Одновременная инициализация файлов одной партии использует блокировку PostgreSQL `FOR NO KEY UPDATE`: прежнее повышение `FOR SHARE` → `UPDATE` могло приводить к взаимным блокировкам при 5–10 параллельных передачах. Очередь браузера показывает первый HTTP-код ошибки сразу и останавливает начальный поток после трёх ошибок без успешного файла, сохраняя возможность докачки. Ноль процентов во время «Подготовка партии» сам по себе не доказывает сбой.
+Acceptance: the disposable real MegaLoc workload now compares GNU `du -x -B1` and independently counted application-file/directory blocks after each settled lifecycle phase. It also introduces and then removes a deliberate unclassified test file, checking that the registry identifies it and never deletes it. The fresh Ubuntu VM verifies installed diagnostic samplers and persisted history across deployment, reboot and API update. A root-filesystem live sample is allowed to be explicitly partial; exactness is required for settled application-tree tests, not fabricated for the live root device. No probe file is introduced on the production VPS.
 
-При повторной проблеме проверяйте `docker compose --env-file .env --env-file .env.generated logs --tail=120 api postgres` и сообщение в панели. Не очищайте `PhotoSorter/data/incoming`, не удаляйте объекты uploads и не запускайте `docker compose down -v`: незаконченные передачи могут возобновиться.
-
-## MegaLoc
-
-`POST /api/runs`: FIFO до 20 queued, один running, DB advisory/leader locks. `GET /api/runs/{id}` отображает `queue_position`. `POST .../stop` queued→stopped, running→stopping→stopped; при crash running→interrupted. Никаких недостоверных обещаний продолжить inference с того же кадра. Логика FO→groups→SAM прежняя.
-
-## Логи и диск
-
-`/api/logs/{run_id}/page?limit=200&cursor=...`: event lines по сегментам, курсор может устареть после ротации (422, начать заново). Legacy `/api/logs/{run_id}` показывает хвост 250 событий. Docker ограничен max-size=10m/max-file=3.
-
-`/api/system/status` — очереди, p95 API и reserve; `/api/storage/usage` — inode-dedup по категориям и DB estimate; `/api/logs/usage` — журнал. На 80% диска warning, на 90% critical. При 507 освободить место ручной **подтверждённой** очисткой/расширить диск, а не безусловно стирать незагруженные архивы.
-
-## Тестирование и откат
-
-CI запускает PostgreSQL 17, compile Python, Compose config и unit/integration тесты. Full Docker runtime с CPU PyTorch и A/B на фактическом VPS не проводились. Документы: [PERFORMANCE](PERFORMANCE.md), [ROLLBACK](ROLLBACK.md), [BACKUP_RESTORE](BACKUP_RESTORE.md).
-
-## Границы проверок
-
-Сборка Python/Compose и 52 автоматических теста завершились успешно: [GitHub Actions 41954580354](https://github.com/chapaayy/Sorter/actions/runs/41954580354). Full production smoke test и A/B по реальным CPU, сети и 1315 ФО не выполнялись. Это остаётся обязательным до внедрения.
-
-## Heartbeat и операторские состояния
-
-Три независимых процесса периодически (раз в 10 секунд) пишут в `service_heartbeats` отметку присутствия; API `/api/system/status.services` возвращает `alive:bool` (свежее ≤35 секунд), `last_seen`. Пустая очередь заданий не означает, что process alive. После остановки процесса реальная отметка устаревает, `Settings` показывает ошибочное состояние, вместо фиктивного «работает».
-
-После обновления Schema 0007 и запуска Compose проверить worker, thumbnail, cleanup heartbeat **при простое и во время инференса**. Если Process не отвечает, сверить Docker ps, logs, DB network и RAM; не запускать второй worker в обход global advisory lock.
-
-Скрипт `install.sh --check` теперь проверяет допустимость cpuset на текущем хосте; обновления существующего volume требуют реального backup и отдельного ack. См. [STAGE4_ROLLOUT](ROLLOUT.md).
-
-
-## Единый beta pipeline
-
-Очередь ФО и подготовок образцов — только `work_queue.seq`. Перед передачей `/api/reference-imports/compare` сверяет файлы с текущей библиотекой. Дубли не отправляются в `reference_staging` и не создают задачу, если новых фото нет. После полной подготовки публикуется неизменяемая версия библиотеки. Приёмка включает пустую базу, докачку, FIFO, публикацию и Chromium/WebKit. Текущая архитектура описана в [REFERENCE_PIPELINE](REFERENCE_PIPELINE.md).
-
-## ZIP и автоудаление
-
-Полный ZIP атомарно формируется до состояния `completed`. Ошибка ZIP не уничтожает готовые результаты MegaLoc: запрос повторной подготовки сохраняется в `archive_retries` и исполняется cleanup worker, без инференса. При удалении партии удаляется и `.archives/`.
-
-`GET /api/batches/{id}/deletion` показывает фазу и счётчики `task.progress`.
-Процент считается по фактически выполненным операциям (оригиналы, незавершённые
-загрузки, каталоги запусков и финальная транзакция), а не по байтам или времени.
-Пока удаление ожидает фонового сервиса, остановки MegaLoc или освобождения
-скачивания, интерфейс показывает причину без искусственного процента.
-Удаление выполняется отдельным циклом того же cleanup-воркера с опросом
-раз в секунду. Длительное восстановление ZIP не задерживает удаление
-других партий. На активном экране «Фотографии» прогресс удаляемых партий
-проверяется каждые 250 мс. Быстрые операции не задерживаются ради анимации.
-
-Настройка срока от минуты до месяцев действует только на новые успешные обработки, чтобы смена параметра не удалила существующие партии внезапно. Активные скачивания защищены `batch_operations`.
+Cross-scope hardlink conflicts count distinct device/inode pairs, independent of directory iteration order. Any cross-scope alias keeps the comparison partial; total physical bytes still count each inode once.

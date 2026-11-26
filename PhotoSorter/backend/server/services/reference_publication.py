@@ -21,8 +21,7 @@ def digest_members(members,model_signature):
 def verify_member(member):
     if member["source_kind"]!="staged":
         raise ValueError("Only prepared staged objects may belong to the library")
-    reference_objects.verify(member["target_path"],reference_objects.ROOT,
-                             member["declared_size"],digest=member["source_hash"])
+    reference_objects.verify_object(member["target_path"],member["declared_size"],digest=member["source_hash"])
 
 def ensure_initial_version(db):
     """Create V1 with no references. Importing the first reference is fully legal."""
@@ -60,6 +59,7 @@ def publish(db,members,model_signature,*,job_id=None,event_kind="reference_prepa
     """Run with global FIFO advisory lock + publication row lock, commit atomically."""
     for member in members:
         verify_member(member)
+        reference_objects.register(db,member["source_hash"],member["declared_size"])
     existing=repository.current(db)
     if not existing or existing["id"] is None:
         raise RuntimeError("Reference library not initialized")
@@ -82,6 +82,7 @@ def publish(db,members,model_signature,*,job_id=None,event_kind="reference_prepa
                 VALUES (%s,%s,%s,%s,%s,%s,%s,'staged')
             """,[(version,m["reference_id"],m["sam"],m["filename"],m["source_hash"],
                   m["target_path"],m["declared_size"]) for m in members])
+    db.execute("UPDATE reference_library_versions SET superseded_at=now() WHERE id=%s",(existing["id"],))
     db.execute("""UPDATE reference_library_state
         SET current_version_id=%s,baseline_state='ready',
             baseline_error=NULL,updated_at=now() WHERE id=1""",(version,))

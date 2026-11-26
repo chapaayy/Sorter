@@ -6,6 +6,7 @@ from fastapi import HTTPException
 import pytest
 from server.services import archive_cache,archives
 from server.api.file_response import LeasedFileResponse
+from .test_stage1_lifecycle import db
 
 def test_expiry_does_not_remove_pinned_archive_or_other_files(tmp_path):
     folder=tmp_path/".archives"
@@ -58,10 +59,11 @@ def test_response_pin_released_on_range_error(tmp_path):
     assert archive_cache.sweep_folder(tmp_path,reference=True)==1
 
 def test_low_disk_space_rejects_zip_without_partial_file(tmp_path,monkeypatch):
-    monkeypatch.setattr(archives.storage_paths,"OUTPUTS",tmp_path)
+    from .test_archives import mock_run_storage
+    mock_run_storage(tmp_path,monkeypatch)
     monkeypatch.setattr(archive_cache.disk_guard,"stat",lambda _: (1000000000,1))
     run="20261107T120000-abcdef123456"
-    source=tmp_path/run/"megaloc"/"one.jpg"
+    source=archives.storage_paths.result_media_dir(run)/"one.jpg"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"test")
     with pytest.raises(HTTPException) as e:
@@ -69,3 +71,37 @@ def test_low_disk_space_rejects_zip_without_partial_file(tmp_path,monkeypatch):
     assert e.value.status_code==507
     assert not list(tmp_path.rglob("*.zip"))
     assert not list(tmp_path.rglob("*.tmp"))
+
+def test_same_zip_concurrent_requests_build_once_and_expiry_rebuilds(tmp_path,monkeypatch,db):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    from .test_archives import mock_run_storage
+    mock_run_storage(tmp_path,monkeypatch)
+    run="20261107T120000-abcdef123456"
+    source=archives.storage_paths.result_media_dir(run)/"one.jpg"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"payload")
+    selected=[(source,"SAM/one.jpg")]
+    calls=[]
+    real=archives._build
+    def counted(*args,**kwargs):
+        calls.append(1)
+        time.sleep(.05)
+        return real(*args,**kwargs)
+    monkeypatch.setattr(archives,"_build",counted)
+    barrier=threading.Barrier(2)
+    def get():
+        barrier.wait(timeout=5)
+        return archives.prepare(run,None,selected)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        a,b=pool.submit(get),pool.submit(get)
+        first,second=a.result(timeout=10),b.result(timeout=10)
+    assert first==second and len(calls)==1
+    assert first.is_relative_to(tmp_path/"temporary/archives/results")
+    stamp=first.stat().st_mtime_ns
+    assert archives.prepare(run,None,selected).stat().st_mtime_ns==stamp
+    os.utime(first,(time.time()-3601,)*2)
+    assert archives.prepare(run,None,selected)==first
+    assert len(calls)==2 and archive_cache.fresh(first)
+    with zipfile.ZipFile(first) as z:
+        assert z.read("SAM/one.jpg")==b"payload"

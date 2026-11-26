@@ -15,7 +15,7 @@ const categoryNames:Record<string,string>={
   results_temporary:'Временные результаты',reference_objects:'Объекты образцов',
   reference_gallery:'Галерея образцов',references_zip:'ZIP образцов',
   reference_uploads:'Загрузка образцов',reference_other:'Прочие образцы',
-  thumbnails:'Миниатюры',reference_cache:'Признаки MegaLoc',
+  thumbnails:'Миниатюры ФО',reference_thumbnails:'Миниатюры образцов',reference_cache:'Признаки MegaLoc',
   other_cache:'Кэши',runs:'Данные обработок',logs:'Журналы',
   incoming:'Незавершённые загрузки',models:'Модели',other:'Прочее'
 }
@@ -61,11 +61,11 @@ function applyFilters(){
 </script>
 
 <template>
-  <section class="panel stack">
+  <section class="panel stack" aria-label="Реестр файлов">
     <div class="row between wrap">
       <div class="stack" style="gap:4px">
-        <h2>Учёт файлов MAP</h2>
-        <p class="meta">Проверка файлов на диске: пути, размеры, категории и связь с ФО.
+        <h2>Реестр файлов MAP</h2>
+        <p class="meta">Снимок автоматического реестра: пути, размеры, категории и связь с ФО.
           Только чтение — без удаления, лимитов и изменений в обработке.</p>
       </div>
       <div class="row wrap">
@@ -74,12 +74,12 @@ function applyFilters(){
           Скачать полный отчёт CSV
         </a>
         <UiButton :loading="scanning" :disabled="scanning" @click="scan">
-          {{summary?'Повторить проверку':'Проверить файлы'}}
+          {{summary?'Обновить список':'Показать файлы'}}
         </UiButton>
       </div>
     </div>
     <div v-if="error" class="alert error" role="alert">{{error}}</div>
-    <p v-if="scanning" class="meta" role="status">Проверяем файлы на диске…</p>
+    <p v-if="scanning" class="meta" role="status">Читаем реестр…</p>
     <template v-if="summary">
       <div class="row wrap meta">
         <span>Файлов: {{summary.files_scanned.toLocaleString('ru-RU')}}</span>
@@ -119,6 +119,7 @@ function applyFilters(){
             <strong>{{bytes(item.allocated_bytes)}} на диске</strong>
           </div>
           <code class="inventory-path">{{item.path}}</code>
+          <span v-if="item.issue" class="meta" role="status">Расхождение: {{item.issue}}</span>
           <div class="row wrap meta">
             <span>{{purposeNames[item.purpose]||item.purpose}}</span>
             <span>Размер: {{bytes(item.logical_bytes)}}</span>
@@ -143,7 +144,7 @@ function applyFilters(){
       <details>
         <summary>Что пока не учитывается по отдельным файлам</summary>
         <p class="meta">Приложение видит только подключённые каталоги данных и моделей.
-          Системные Docker-тома и временные файлы вне этих каталогов требуют отдельного мониторинга.</p>
+          Защищённые данные PostgreSQL, Caddy, журналы и Docker показываются отдельно в обзоре. Этот список содержит только пути реестра приложения.</p>
         <ul><li v-for="item in summary.not_scanned" :key="item">{{item}}</li></ul>
       </details>
     </template>

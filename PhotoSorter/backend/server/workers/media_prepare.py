@@ -1,16 +1,21 @@
 """Convert immutable originals using the same exclusive leader as MegaLoc."""
 import os
-import shutil
+import io
+from fastapi import HTTPException
 import time
 from pathlib import Path
 
 from app.config import DATA_DIR
+from app.storage.categories import Category
+from app.storage.temporary import pipeline_directory
 from ..database import connect
 from ..media.formats import normalized_image,probe
 from ..media.estimate import Estimate,work
 from ..media.video import encode
 import subprocess
-from ..storage.paths import owned_file
+from ..storage.paths import owned_file,batch_dir,normalized_path,normalized_dir
+from app import config
+from app.storage.filesystem import atomic_publish,directory_fd
 from ..services import operations,disk_guard
 
 
@@ -36,16 +41,16 @@ def run(item, *, stopping, cpus=2):
     try:
         token = operations.start(batch_id, 'media_prepare')
         with connect() as db:
-            settings = db.execute("""SELECT media_image_format,media_video_format
+            settings = db.execute("""SELECT media_image_format,media_video_format,owner_id
                 FROM batches WHERE id=%s""",(batch_id,)).fetchone()
             rows = db.execute("""SELECT id,filename,target_path,original_media_type,declared_size
                 FROM uploads WHERE batch_id=%s AND kind='fo' AND finalized
                 AND media_action='prepare' AND media_output_path IS NULL AND media_error IS NULL
                 ORDER BY created_at,id""",(batch_id,)).fetchall()
-        root = DATA_DIR / 'uploads' / str(batch_id)
-        dest = root / '.normalized'
-        if dest.is_symlink():raise ValueError('Недопустимый каталог подготовки')
-        dest.mkdir(exist_ok=True)
+        root = batch_dir(batch_id,settings['owner_id'])
+        dest = normalized_dir(batch_id,settings['owner_id'])
+        with directory_fd(config.APP_STORAGE_ROOT,dest.relative_to(config.APP_STORAGE_ROOT),create=True):
+            pass
         plan=[]
         for row in rows:
             if stop():raise InterruptedError()
@@ -83,36 +88,57 @@ def run(item, *, stopping, cpus=2):
                         estimate.observe(index,fraction,now-started)
                     save_progress(index,fraction,row['filename'])
                     last_update=now
-            output = dest / f"{row['id']}.{ext}"
-            partial = dest / f".{row['id']}.part.{ext}"
-            partial.unlink(missing_ok=True)
+            output = normalized_path(batch_id,row["id"],ext,settings["owner_id"])
             failure = None
             duration = None
             try:
-                source = owned_file(Path(row['target_path']), root)
-                usage=shutil.disk_usage(dest)
-                if usage.free-max(64*1024**2,source.stat().st_size)<disk_guard.reserve(usage.total):
-                    raise ValueError('Недостаточно места для подготовленной копии')
-                if is_video:duration=encode(source,partial,ext,stop=stop,meta=meta,
-                    progress=video_progress,cpus=cpus).duration
-                else:normalized_image(source,partial,ext)
-                if stop():raise InterruptedError()
-                with partial.open('rb') as file:os.fsync(file.fileno())
-                partial.chmod(0o444)
-                os.replace(partial, output)
+                with pipeline_directory(Category.TRANSCODE_TEMP, task_id=row["id"]) as stage:
+                    partial = stage / f"output.{ext}"
+                    source = owned_file(Path(row['target_path']), root)
+                    from ..storage.reservations import reservation
+                    if is_video:
+                        # Start with a bounded estimate and grow before allowing
+                        # the native encoder to extend its file-size limit.
+                        size=max(8*1024**2,source.stat().st_size*2)
+                        raw=None
+                    else:
+                        buffer=io.BytesIO()
+                        normalized_image(source,buffer,ext)
+                        raw=buffer.getvalue()
+                        size=len(raw)
+                    with reservation("transcode",size,owner=settings["owner_id"],
+                        personal=size,work=partial) as budget:
+                        budget.publish(output)
+                        if is_video:
+                            duration=encode(source,partial,ext,stop=stop,meta=meta,
+                                progress=video_progress,cpus=cpus,budget=budget).duration
+                        else:
+                            with partial.open("xb") as file:file.write(raw)
+                        if stop():raise InterruptedError()
+                        with partial.open('rb') as file:os.fsync(file.fileno())
+                        partial.chmod(0o444)
+                        atomic_publish(config.APP_STORAGE_ROOT,partial.relative_to(config.APP_STORAGE_ROOT),output.relative_to(config.APP_STORAGE_ROOT))
+                        # Receipt and registry must be valid before releasing
+                        # personal headroom to concurrent transfers.
+                        with connect() as db:
+                            from ..storage import admission
+                            admission.lock(db)
+                            db.execute("UPDATE uploads SET media_output_path=%s,media_duration=coalesce(%s,media_duration) WHERE id=%s",
+                                (str(output),duration,row["id"]))
+                            budget.sync(db)
             except InterruptedError:
                 raise
             except Exception as exc:
                 # Do not expose command lines, local paths or raw FFmpeg output.
-                failure = str(exc)[:300] if isinstance(exc,ValueError) else 'Не удалось прочитать или перекодировать файл'
+                failure = str(exc.detail)[:300] if isinstance(exc,HTTPException) else str(exc)[:300] if isinstance(exc,ValueError) else 'Не удалось прочитать или перекодировать файл'
                 failures += 1
-            finally:
-                partial.unlink(missing_ok=True)
             if not failure:estimate.observe(index,1,time.monotonic()-started)
             percent,eta=estimate.snapshot(index+1,0)
             with connect() as db:
                 db.execute("UPDATE uploads SET media_output_path=%s,media_error=%s,media_duration=coalesce(%s,media_duration) WHERE id=%s",
                            (str(output) if not failure else None,failure,duration,row['id']))
+                from ..storage.registry import note
+                note([output],db=db)
                 db.execute("""UPDATE work_queue SET media_completed_count=media_completed_count+1,
                     media_failed_count=media_failed_count+%s,media_progress_percent=%s,media_eta_seconds=%s
                     WHERE seq=%s""",(int(bool(failure)),percent,eta,seq))

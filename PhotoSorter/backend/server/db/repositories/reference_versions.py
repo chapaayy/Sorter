@@ -11,6 +11,9 @@ def current(db):
     """).fetchone()
 
 def members(db,version_id):
+    header=db.execute("SELECT members_retired_at FROM reference_library_versions WHERE id=%s",(version_id,)).fetchone()
+    if not header or header["members_retired_at"] is not None:
+        raise ValueError("Reference version contents are no longer retained")
     return db.execute("""
         SELECT reference_id,sam,filename,source_hash,target_path,declared_size,source_kind
         FROM reference_version_members WHERE version_id=%s ORDER BY sam,reference_id

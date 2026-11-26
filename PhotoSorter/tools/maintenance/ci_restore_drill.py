@@ -33,12 +33,19 @@ def main():
         with tempfile.TemporaryDirectory(prefix="photosorter-ci-restore-") as scratch:
             temp=Path(scratch)
             root=temp/"original"
-            a=root/"PhotoSorter"/"data"/"uploads"/"fake-batch"
-            b=root/"PhotoSorter"/"data"/"references"/"SAM-0001"
+            a=root/"storage"/"app"/"state"/"uploads"/"fake-batch"
+            b=root/"storage"/"app"/"state"/"references"/"SAM-0001"
             a.mkdir(parents=True);b.mkdir(parents=True)
-            (root/"Models"/"models"/"megaloc").mkdir(parents=True)
-            (root/"Models"/"cache"/"torch"/"hub").mkdir(parents=True)
-            (root/".env.generated").write_text("POSTGRES_PASSWORD=test_only_no_real_data\nADMIN_PASSWORD=test_only_no_real_data\n")
+            (root/"storage"/"app"/"models"/"megaloc").mkdir(parents=True)
+            (root/"storage"/"app"/"cache"/"torch"/"hub").mkdir(parents=True)
+            for name in ("data","config"):
+                (root/"storage/infrastructure/caddy"/name).mkdir(parents=True)
+            cert=root/"storage/infrastructure/caddy/data/test-cert.pem"
+            cert.write_bytes(b"synthetic TLS state")
+            marker=root/"storage/system/state/layout-version"
+            marker.parent.mkdir(parents=True)
+            marker.write_text("2\n")
+            (root/".env.generated").write_text(f"POSTGRES_PASSWORD=test_only_no_real_data\nADMIN_PASSWORD=test_only_no_real_data\nMAP_STORAGE_ROOT={root}/storage\n")
             (root/".env").write_text("DOMAIN=ci.example.test\n")
             (root/"compose.yaml").write_text("name: staging-only\n")
             original=a/"fo.jpg"
@@ -54,6 +61,7 @@ def main():
             result_b=restored/(b/"ref.jpg").relative_to(root)
             assert result_a.read_bytes()==data and result_b.read_bytes()==data
             assert result_a.stat().st_ino==result_b.stat().st_ino
+            assert (restored/"storage/infrastructure/caddy/data/test-cert.pem").read_bytes()==b"synthetic TLS state"
             with psycopg.connect(target) as conn:
                 row=conn.execute("SELECT digest FROM ci_restore_marker WHERE key=%s",(token,)).fetchone()
                 assert row and row[0]==signature

@@ -30,7 +30,7 @@ def test_only_published_staging_is_recognition_input(system):
         refs=reference_publication.snapshot(db,version["id"])
     assert len(refs)==1
     assert refs[0]["path"]==str(source)
-    assert "/reference_staging/" in str(source)
+    assert "/shared/references/objects/" in str(source)
     assert refs[0]["sam"]=="SAM 0001"
 
 def test_delete_photo_publishes_new_version_and_retains_immutable_history(system):

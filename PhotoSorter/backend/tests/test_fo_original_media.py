@@ -76,7 +76,8 @@ def test_mixed_batch_preserves_download_and_only_indexes_supported_photos(thumbs
         record=batches.get(batch)
         assert (record['photos'],record['media_files'],record['size_bytes'])==(1,1,len(raw)+len(clip))
         assert thumbnails.counts(batch)['total']==1
-        assert len(images(thumbs/'uploads'/str(batch)))==1
+        from server.storage.paths import batch_dir
+        assert len(images(batch_dir(batch)))==1
         gallery=batch_routes.gallery(str(batch))['photos']
         tile=next(row for row in gallery if row['id']==str(video.upload_id))
         assert tile['name']==video.filename

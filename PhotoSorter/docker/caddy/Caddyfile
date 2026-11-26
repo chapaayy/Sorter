@@ -2,12 +2,42 @@
 # independent TCP connections instead of multiplexing on one h2/h3 connection.
 # Revert this global block to restore Caddy defaults (h1, h2, h3).
 {
+  log {
+    output file /logs/runtime/caddy.jsonl {
+      roll_size {$MAP_CADDY_RUNTIME_ROLL:6MiB}
+      roll_keep 4
+      roll_keep_for 168h
+    }
+    format filter {
+      wrap json
+      fields {
+        request>headers delete
+        request>uri delete
+        resp_headers delete
+      }
+    }
+  }
   servers :443 {
     protocols h1
   }
 }
 
 {$DOMAIN} {
+  log {
+    output file /logs/access/access.jsonl {
+      roll_size {$MAP_CADDY_ACCESS_ROLL:20MiB}
+      roll_keep 4
+      roll_keep_for 168h
+    }
+    format filter {
+      wrap json
+      fields {
+        request>headers delete
+        request>uri delete
+        resp_headers delete
+      }
+    }
+  }
   encode zstd gzip
   request_body {
     max_size 64MB

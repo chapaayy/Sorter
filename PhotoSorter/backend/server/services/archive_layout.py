@@ -8,7 +8,7 @@ import re
 import unicodedata
 
 from . import archives
-from ..storage.paths import owned_directory,owned_file,run_dir
+from ..storage.paths import owned_directory,owned_file,result_media_dir
 from .construction_catalog import construction_title
 
 _FORBIDDEN=re.compile(r'[<>:"/\\|?*]')
@@ -90,8 +90,7 @@ def build(db,run_id,batch_id,title,rows,sam=None):
         ORDER BY target_path,created_at,id""",(batch_id,paths)).fetchall()
     originals={row["target_path"]:row["filename"] for row in uploads}
     root=portable_name(title,"Фотоотчёт")
-    run=owned_directory(run_dir(run_id,archives.output_root()),archives.output_root())
-    outputs=owned_directory(run/"megaloc",run)
+    outputs=result_media_dir(run_id,db=db)
     groups=defaultdict(list)
     for row in filtered:
         source=owned_file(Path(row['copy']),outputs)

@@ -1,0 +1,134 @@
+"""Registry-backed totals; physical, logical and prospective charge are independent."""
+from __future__ import annotations
+import os
+from datetime import datetime,timezone
+from psycopg.types.json import Jsonb
+from ..database import connect
+from app import config
+from app.storage.categories import CATEGORIES,Category
+from app.results.exporter import MANIFEST_NAME
+from ..services.disk_guard import reserve
+
+SUMS="""count(*) AS files,coalesce(sum(logical_bytes),0)::bigint AS logical_bytes,
+ coalesce(sum(physical_bytes),0)::bigint AS allocated_bytes,
+ coalesce(sum(charged_bytes),0)::bigint AS charged_bytes,
+ count(*) FILTER(WHERE physical_rank>1) AS hardlink_paths,
+ coalesce(sum(logical_bytes) FILTER(WHERE physical_rank>1),0)::bigint AS hardlink_reused_bytes"""
+# Business metadata is the expected-file index; a completed model must have
+# its canonical manifest even when the run stopped after model publication.
+def missing_keys():
+    prefix=str(config.APP_STORAGE_ROOT)+"/"
+    template=CATEGORIES[Category.RESULT_METADATA]["path"]+MANIFEST_NAME
+    return """WITH expected AS (
+      SELECT 'app/'||substr(path,%s) AS path FROM (
+        SELECT target_path AS path FROM uploads WHERE finalized AND target_path IS NOT NULL
+        UNION SELECT media_output_path FROM uploads WHERE media_output_path IS NOT NULL
+        UNION SELECT cache_path FROM reference_cache
+        UNION SELECT target_path FROM reference_version_members
+      ) e WHERE starts_with(e.path,%s)
+      UNION SELECT replace(replace(replace(%s,'{user_id}',b.owner_id::text),
+        '{batch_uuid}',b.id::text),'{run_id}',j.id)
+      FROM jobs j JOIN batches b ON b.id=j.batch_id
+      WHERE b.delete_state='active' AND j.snapshot->'models'->'megaloc'->>'status'='completed'
+      UNION SELECT r.path FROM storage_result_issues r JOIN jobs j ON j.id=r.run_id
+      JOIN batches b ON b.id=j.batch_id WHERE b.delete_state='active' AND r.issue='missing_result_media'
+    ), missing AS (
+      SELECT e.path FROM expected e WHERE NOT EXISTS
+        (SELECT 1 FROM storage_files f WHERE f.path=e.path AND f.kind='file')
+    ) """,(len(prefix)+1,prefix,template)
+
+def temporary_operations(db,limit=100):
+    # Group only observed current paths, never invent future bytes. Archive
+    # fragments are attributed to their containing run, reference exports to
+    # their file key; scratch is a leased service/operation directory.
+    rows=db.execute("""WITH operations AS (
+      SELECT category,owner_id,batch_id,run_id,
+        CASE
+          WHEN starts_with(path,'app/temporary/uploads/') THEN array_to_string((string_to_array(path,'/'))[1:5],'/')
+          WHEN starts_with(path,'app/temporary/archives/results/') OR starts_with(path,'app/temporary/scratch/')
+            THEN array_to_string((string_to_array(path,'/'))[1:5],'/')
+          WHEN starts_with(path,'app/temporary/archives/references/') THEN path
+          ELSE array_to_string((string_to_array(path,'/'))[1:4],'/')
+        END AS operation_key, logical_bytes,physical_bytes
+      FROM storage_accounted_files WHERE scope='temporary'
+    ), totals AS (
+      SELECT operation_key,category,owner_id,batch_id::text,run_id,
+        count(*) AS files,sum(logical_bytes)::bigint AS logical_bytes,
+        sum(physical_bytes)::bigint AS allocated_bytes
+      FROM operations GROUP BY operation_key,category,owner_id,batch_id,run_id
+    ) SELECT *,count(*) OVER() AS total_groups FROM totals
+      ORDER BY allocated_bytes DESC,operation_key,category LIMIT %s""",(limit,)).fetchall()
+    total=rows[0]["total_groups"] if rows else 0
+    for row in rows:row.pop("total_groups")
+    return {"rows":rows,"total_groups":total,"partial":total>len(rows)}
+
+def aggregate(db):
+    categories={};owners={};devices={};temporary={"allocated_bytes":0,"logical_bytes":0,"files":0,"charged_bytes":0,"hardlink_paths":0,"hardlink_reused_bytes":0}
+    # Materialize the ranked evidence once for all dimensions.
+    for row in db.execute("""WITH evidence AS MATERIALIZED (SELECT * FROM storage_accounted_files)
+       SELECT category,owner_id,scope,device,GROUPING(category,owner_id,scope,device) AS grouping,"""+SUMS+"""
+       FROM evidence GROUP BY GROUPING SETS ((category),(scope,owner_id),(scope),(device))"""):
+        group=row.pop("grouping");category=row.pop("category");owner=row.pop("owner_id");scope=row.pop("scope");device=row.pop("device")
+        if group==7:categories[category]=row
+        elif group==9 and scope=="personal" and owner is not None:owners[str(owner)]=row
+        elif group==13 and scope=="temporary":temporary=row
+        elif group==14:devices[str(device)]=row
+    issues={r["issue"]:r["n"] for r in db.execute("""SELECT issue,count(*) AS n FROM (
+      SELECT issue FROM storage_files WHERE issue IS NOT NULL
+      UNION ALL SELECT r.issue FROM storage_result_issues r JOIN jobs j ON j.id=r.run_id
+      JOIN batches b ON b.id=j.batch_id WHERE b.delete_state='active'
+      ) AS observations GROUP BY issue""")}
+    query,params=missing_keys()
+    missing=db.execute(query+"SELECT count(*) AS n FROM missing",params).fetchone()["n"]
+    conflicts=db.execute("""SELECT count(*) AS n FROM (
+      SELECT device,inode FROM storage_files WHERE scope='personal' GROUP BY device,inode
+      HAVING count(DISTINCT owner_id)>1) x""").fetchone()["n"]
+    from .admission import counters,policy,_budget
+    budgets=counters(db)
+    temporary_budget=_budget(budgets["temporary_used_bytes"],budgets["temporary_reserved_bytes"],policy(db)["temporary_limit_bytes"])
+    reservations=budgets["reservations"]
+    reserved=budgets["disk_reserved_bytes"]
+    incoming=db.execute("""SELECT count(*) AS files,coalesce(sum(greatest(declared_size-received,0)),0)::bigint AS remaining_bytes FROM uploads WHERE NOT finalized AND kind='fo'""").fetchone()
+    reference_incoming=db.execute("""SELECT count(*) AS files,coalesce(sum(greatest(f.declared_size-f.received,0)),0)::bigint AS remaining_bytes FROM reference_import_files f JOIN reference_import_sessions s ON s.id=f.session_id WHERE f.state='pending' AND s.upload_state='uploading'""").fetchone()
+    return {"categories":categories,"owners":owners,"devices":devices,"temporary":temporary,"issues":issues,
+            "missing_expected":missing,"cross_owner_inode_conflicts":conflicts,"reserved_bytes":reserved,"reservations":reservations,"temporary_budget":temporary_budget,
+            "unfinished_fo":incoming,"unfinished_references":reference_incoming,
+            "temporary_operations":temporary_operations(db),
+            "allocated_bytes":sum(r["allocated_bytes"] for r in categories.values()),
+            "logical_bytes":sum(r["logical_bytes"] for r in categories.values())}
+def refresh(db,*,force=False):
+    # A single SQL aggregate snapshot for all consumers; no disk traversal on GET.
+    row=db.execute("SELECT sampled_at,now()-sampled_at<interval '15 seconds' AS fresh FROM storage_accounting_state").fetchone()
+    if row["fresh"] and not force:return
+    summary=aggregate(db)
+    from .reporting import history
+    summary["reference_history"]=history(db)
+    db.execute("""UPDATE storage_accounting_state SET summary=%s,sampled_at=now(),
+      temporary_peak_bytes=greatest(temporary_peak_bytes,%s)""",(Jsonb(summary),summary["temporary"]["allocated_bytes"]))
+def snapshot():
+    with connect() as db:
+        row=db.execute("SELECT * FROM storage_accounting_state").fetchone()
+        pending=db.execute("SELECT count(*) AS n FROM storage_dirty").fetchone()["n"]
+    summary=dict(row["summary"])
+    age=(datetime.now(timezone.utc)-row["sampled_at"]).total_seconds() if row["sampled_at"] else None
+    stale=age is None or age>60 or age< -60
+    requested=bool(row["requested_at"] and (not row["started_at"] or row["requested_at"]>row["started_at"]))
+    for field in ("sampled_at","reconciled_at","started_at","requested_at"):
+        summary[field]=row[field].isoformat() if row[field] else None
+    reconciling=bool(row["started_at"] and (not row["reconciled_at"] or row["started_at"]>row["reconciled_at"]))
+    summary.update(pending_changes=pending,reconciling=reconciling,reconciliation_requested=requested,errors=row["errors"],temporary_peak_bytes=row["temporary_peak_bytes"],
+                   sample_age_seconds=age,stale=stale,
+                   partial=stale or requested or row["reconciled_at"] is None or bool(row["errors"]) or bool(pending) or reconciling)
+    return summary
+def disk():
+    fs=os.statvfs(config.APP_STORAGE_ROOT)
+    total=fs.f_frsize*fs.f_blocks;free=fs.f_frsize*fs.f_bavail
+    used=total-fs.f_frsize*fs.f_bfree
+    from .admission import policy,counters
+    with connect() as db:
+        guard=reserve(total,configured=policy(db)['disk_reserve_bytes'])
+        outstanding=counters(db)["disk_reserved_bytes"]
+    return {"device":os.stat(config.APP_STORAGE_ROOT).st_dev,"total_bytes":total,"used_bytes":used,
+            "available_bytes":free,"reserved_bytes":guard,"operation_reserved_bytes":outstanding,
+            "allocatable_bytes":max(0,free-guard-outstanding),"admission_ok":free>guard+outstanding,
+            "used_fraction":used/total if total else 0,"warning":"critical" if used>=total*.90 else "warning" if used>=total*.80 else None}

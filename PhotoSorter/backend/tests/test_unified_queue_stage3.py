@@ -30,19 +30,20 @@ def system(tmp_path,monkeypatch):
         admin.execute('CREATE SCHEMA "'+schema+'"')
     monkeypatch.setattr(database,"DB_URL",make_conninfo(url,options="-c search_path="+schema))
     root=tmp_path/"data"
+    from app import config
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",tmp_path/"storage/app")
+    config.APP_STORAGE_ROOT.mkdir(parents=True)
     refs=root/"references"
     refs.mkdir(parents=True)
-    staging=root/"reference_staging"
-    monkeypatch.setattr(reference_objects,"ROOT",staging)
-    monkeypatch.setattr(reference_gallery,"GALLERY",refs)
-    monkeypatch.setattr(reference_prepare,"signature",lambda:"stage3-model")
-    monkeypatch.setattr(reference_publication,"signature",lambda:"stage3-model")
-    monkeypatch.setattr(work_queue,"signature",lambda:"stage3-model")
+    monkeypatch.setattr(reference_prepare,"signature",lambda:("a"*64))
+    monkeypatch.setattr(reference_publication,"signature",lambda:("a"*64))
+    monkeypatch.setattr(work_queue,"signature",lambda:("a"*64))
     from server import reference_cache
-    cache=root/"cache"/"megaloc"/"references"
-    cache.mkdir(parents=True)
-    monkeypatch.setattr(reference_cache,"CACHE_DIR",cache)
+    monkeypatch.setattr(reference_cache,"signature",lambda:"a"*64)
     database.initialize()
+    from .test_stage1_lifecycle import owner_for_test
+    with database.connect() as db:
+        owner_for_test(db)
     # Tests that predate the region picker create standard constructions in
     # these two cities. Register both, like the upgrade migration does on VPS.
     from server.services import regions
@@ -59,7 +60,8 @@ def add_published_reference(root,sam="SAM 0001",address="Победы 12"):
     raw=_jpg()
     key=uuid.uuid4()
     sid=uuid.uuid4()
-    file=reference_objects.object_path(sid,key,"one.jpg")
+    digest=hashlib.sha256(raw).hexdigest()
+    file=reference_objects.object_path(digest)
     file.parent.mkdir(parents=True,exist_ok=True)
     file.write_bytes(raw)
     digest=hashlib.sha256(raw).hexdigest()
@@ -73,7 +75,7 @@ def add_published_reference(root,sam="SAM 0001",address="Победы 12"):
         entry={"reference_id":key,"sam":sam,"filename":"one.jpg",
                "source_hash":digest,"target_path":str(file),
                "declared_size":len(raw),"source_kind":"staged"}
-        reference_publication.publish(db,[entry],"stage3-model")
+        reference_publication.publish(db,[entry],("a"*64))
         reference_gallery.index_published(db,{
             "upload_id":key,"sam":sam,"filename":"one.jpg",
             "checksum":digest,"declared_size":len(raw),"stored_path":str(file)})
@@ -82,37 +84,39 @@ def add_published_reference(root,sam="SAM 0001",address="Победы 12"):
 def add_fo():
     batch=uuid.uuid4()
     with database.connect() as db:
-        db.execute("""INSERT INTO batches(id,display_name,upload_manifest_state)
-             VALUES (%s,'Test FO','complete')""",(batch,))
+        db.execute("""INSERT INTO batches(id,display_name,upload_manifest_state,owner_id)
+             VALUES (%s,'Test FO','complete',(SELECT id FROM users WHERE username='admin'))""",(batch,))
         db.execute("""INSERT INTO uploads(id,kind,batch_id,filename,declared_size,
              received,finalized) VALUES (%s,'fo',%s,'report.jpg',100,100,true)""",
              (uuid.uuid4(),batch))
     return jobs.enqueue(jobs.NewRun(batch_id=batch))["id"]
 
-def prepare_import(root):
+def prepare_import(root,side=None):
     raw=_jpg(exif=True)
     fid=uuid.uuid4()
     sid=uuid.uuid4()
     reference_imports.create(sid)
     from server.api.routes.reference_imports import ImportFile
     entry=ImportFile(upload_id=fid,sam="SAM 0004",address="Гагарина 64",
-         relative_path="SAM 0004 — Гагарина 64/new.jpg",
-         filename="new.jpg",size=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+         relative_path="SAM 0004 — Гагарина 64/"+(side+"/" if side else "")+"new.jpg",
+         filename="new.jpg",size=len(raw),sha256=hashlib.sha256(raw).hexdigest(),side=side)
     reference_imports.register_manifest(sid,[entry])
     assert reference_imports.status(sid)["state"]=="uploading"
     reference_uploads.append(sid,fid,0,raw)
     assert reference_uploads.finish(sid,fid)["already_present"] is False
     state=reference_imports.status(sid)
     assert state["state"]=="complete"
-    path=reference_objects.object_path(sid,fid,"new.jpg")
+    path=reference_objects.object_path(hashlib.sha256(raw).hexdigest())
     return sid,fid,path,hashlib.sha256(raw).hexdigest(),state["preparation_job_id"]
 
 def cache_vector(root,digest):
-    target=root/"cache"/"megaloc"/"references"/(digest+".npy")
+    from server.reference_cache import location
+    target=location(digest,"a"*64)
+    target.parent.mkdir(parents=True,exist_ok=True)
     np.save(target,np.asarray([0.9,0.1],dtype="float32"))
     with database.connect() as db:
-        db.execute("""INSERT INTO reference_cache(source_hash,model_signature,cache_path)
-        VALUES (%s,'stage3-model',%s)""",(digest,str(target)))
+        db.execute("""INSERT INTO reference_cache(source_hash,model_signature,cache_path,vector_sha256,dimensions)
+        VALUES (%s,%s,%s,%s,2)""",(digest,"a"*64,str(target),hashlib.sha256(target.read_bytes()).hexdigest()))
 
 def finish_fo(run_id):
     with database.connect() as db:
@@ -139,7 +143,7 @@ def test_fifo_5_fo_prep_fo_has_frozen_v_before_and_after(system):
         initial_versions.append(task["info"]["reference_version"])
         first_path=task["info"]["reference_members"][0]["path"]
         assert Path(first_path).is_file()
-        assert "/reference_staging/" in first_path
+        assert "/shared/references/objects/" in first_path
         finish_fo(run_id)
     assert len(set(initial_versions))==1
     with database.connect() as db:
@@ -199,9 +203,10 @@ def test_pinned_reference_is_not_the_mutable_gallery_file(system):
         item=work_queue.claim_next(db)
     pinned=Path(item["info"]["reference_members"][0]["path"])
     original=pinned.read_bytes()
-    gallery=system/"references"/"SAM 0001"/(str(key)+"_one.jpg")
-    assert gallery.is_file() and pinned!=gallery
-    gallery.unlink()
+    with database.connect() as db:
+        gallery=db.execute("SELECT target_path FROM uploads WHERE id=%s",(key,)).fetchone()
+    assert Path(gallery["target_path"])==pinned
+    assert not list((system/"references").iterdir())
     assert pinned.read_bytes()==original
     finish_fo(run)
 
@@ -230,17 +235,15 @@ def test_auto_fo_reserves_fifo_on_final_manifest_file(system,monkeypatch):
     batch=uuid.uuid4()
     file_id=uuid.uuid4()
     with database.connect() as db:
-        db.execute("""INSERT INTO batches(id,display_name) VALUES (%s,'Auto FO')""",
+        db.execute("""INSERT INTO batches(id,display_name,owner_id) VALUES (%s,'Auto FO',(SELECT id FROM users WHERE username='admin'))""",
                    (batch,))
     files=[SimpleNamespace(upload_id=file_id,relative_path="photo.jpg",
                            filename="photo.jpg",size=len(raw))]
     upload_manifest.register(batch,files,auto_process=True,grouping_threshold=.5)
-    monkeypatch.setattr(uploads,"UPLOADS_DIR",system/"uploads")
-    monkeypatch.setattr(uploads,"PART_DIR",system/"incoming")
     uploads._create_upload(uploads.BeginUpload(
          kind="fo",batch_id=str(batch),filename="photo.jpg",
          size=len(raw),sha256=hashlib.sha256(raw).hexdigest()),file_id)
-    (system/"incoming"/(str(file_id)+".part")).write_bytes(raw)
+    uploads.part_path(batch,file_id).write_bytes(raw)
     uploads._finalize_sync(str(file_id))
     with database.connect() as db:
         queued=db.execute("""
@@ -443,7 +446,6 @@ def test_legacy_interrupted_zip_stage_is_not_automatically_queued(system):
     """Old incomplete tasks remain interrupted; new downloads never enqueue jobs."""
     from psycopg.types.json import Jsonb
     from server.db.repositories import work_queue
-    from server.services import archive_retries
     add_published_reference(system)
     run_id=add_fo()
     with database.connect() as db:
@@ -455,11 +457,77 @@ def test_legacy_interrupted_zip_stage_is_not_automatically_queued(system):
         work_queue.mark_interrupted(db)
         row=db.execute("SELECT status,snapshot FROM jobs WHERE id=%s",(run_id,)).fetchone()
         assert row["status"]=="interrupted"
-        assert row["snapshot"]["archive_state"]=="failed"
-    from fastapi import HTTPException
-    with pytest.raises(HTTPException) as error:
-        archive_retries.request(run_id)
-    assert error.value.status_code==409
+        assert "archive_state" not in row["snapshot"]
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from server.jobs import router
+    app=FastAPI()
+    app.include_router(router)
+    with TestClient(app) as client:
+        assert client.post("/api/runs/"+run_id+"/archive/retry").status_code==404
     with database.connect() as db:
         assert db.execute("SELECT status FROM jobs WHERE id=%s",(run_id,)).fetchone()["status"]=="interrupted"
-        assert db.execute("SELECT count(*) AS n FROM archive_retries WHERE run_id=%s",(run_id,)).fetchone()["n"]==0
+        assert db.execute("SELECT to_regclass('archive_retries') AS t").fetchone()["t"] is None
+
+def test_imported_side_survives_staging_and_is_published_with_photo(system):
+    sid,uid,path,digest,pid=prepare_import(system,"B2")
+    assert reference_imports.status(sid)["files"][0]["side"]=="B2"
+    with database.connect() as db:
+        assert not db.execute("SELECT 1 FROM reference_photo_sides WHERE reference_id=%s",(uid,)).fetchone()
+        task=work_queue.claim_next(db)
+    cache_vector(system,digest)
+    reference_prepare.run(task["id"])
+    with database.connect() as db:
+        assert db.execute("SELECT side FROM reference_photo_sides WHERE reference_id=%s",(uid,)).fetchone()["side"]=="B2"
+        assert path.is_file()
+    from server.api.routes.reference_imports import ComparisonFile
+    result=reference_imports.compare([ComparisonFile(sam="SAM 0004",sha256=digest,size=path.stat().st_size,side="A")])
+    assert result["duplicates"]==[True]
+    assert result["side_conflicts"]==[{"index":0,"reference_id":str(uid),"existing_side":"B2","requested_side":"A"}]
+
+
+def test_duplicate_side_conflict_rejects_manifest_without_mutating_existing(system):
+    key,path=add_published_reference(system)
+    from server.services import reference_sides
+    from server.api.routes.reference_imports import ImportFile
+    reference_sides.assign("SAM 0001",[key],"A")
+    sid=uuid.uuid4()
+    reference_imports.create(sid)
+    entry=ImportFile(upload_id=uuid.uuid4(),sam="SAM 0001",filename="one.jpg",
+        relative_path="SAM 0001 — Победы 12/B/one.jpg",size=path.stat().st_size,
+        sha256=hashlib.sha256(path.read_bytes()).hexdigest(),side="B")
+    with pytest.raises(HTTPException) as error:
+        reference_imports.register_manifest(sid,[entry])
+    assert error.value.status_code==409
+    with database.connect() as db:
+        assert db.execute("SELECT side FROM reference_photo_sides WHERE reference_id=%s",(key,)).fetchone()["side"]=="A"
+
+
+def test_confirmed_side_changes_are_atomic_idempotent_and_metadata_only(system):
+    from server.services import reference_import_sides,reference_sides
+    from server.api.routes.reference_imports import SideResolution
+    first,path=add_published_reference(system)
+    digest=hashlib.sha256(path.read_bytes()).hexdigest()
+    inode=path.stat().st_ino
+    with database.connect() as db:
+        version=reference_versions.current(db)["id"]
+        before=db.execute("SELECT count(*) AS n FROM work_queue").fetchone()["n"]
+    item=SideResolution(reference_id=first,sam="SAM 0001",sha256=digest,
+        size=path.stat().st_size,existing_side=None,requested_side="A2")
+    missing=item.model_copy(update={"reference_id":uuid.uuid4()})
+    with pytest.raises(HTTPException) as error:
+        reference_import_sides.resolve_conflicts([item,missing])
+    assert error.value.status_code==409
+    with database.connect() as db:
+        assert not db.execute("SELECT 1 FROM reference_photo_sides WHERE reference_id=%s",(first,)).fetchone()
+    assert reference_import_sides.resolve_conflicts([item])=={"confirmed":1,"updated":1}
+    assert reference_import_sides.resolve_conflicts([item])=={"confirmed":1,"updated":0}
+    reference_sides.assign("SAM 0001",[first],"B")
+    with pytest.raises(HTTPException):
+        reference_import_sides.resolve_conflicts([item])
+    with database.connect() as db:
+        assert reference_versions.current(db)["id"]==version
+        assert db.execute("SELECT count(*) AS n FROM work_queue").fetchone()["n"]==before
+        assert db.execute("SELECT side FROM reference_photo_sides WHERE reference_id=%s",(first,)).fetchone()["side"]=="B"
+    assert path.stat().st_ino==inode
+    assert hashlib.sha256(path.read_bytes()).hexdigest()==digest

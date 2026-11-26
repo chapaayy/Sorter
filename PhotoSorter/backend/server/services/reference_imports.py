@@ -13,6 +13,8 @@ from app.photos.labels import check_label
 from ..database import connect
 from ..db.repositories import reference_imports as repository
 from ..storage import reference_objects as storage
+from .reference_import_sides import normalize_import_side
+from .reference_import_sides import desired_sides, validate_existing_sides
 
 MAX_FILES=20000
 MAX_PATH=1024
@@ -68,7 +70,10 @@ def _manifest(files):
             raise HTTPException(422,"Повтор UUID или пути в манифесте")
         unique_ids.add(uid)
         unique_paths.add(relative)
-        valid.append((uid,sam,address,relative,filename,item.size,item.sha256))
+        side=normalize_import_side(getattr(item,'side',None),getattr(item,'portable',False))
+        valid.append((uid,sam,address,relative,filename,item.size,item.sha256,side))
+    # Reject a manifest assigning two different sides to identical content.
+    desired_sides({'sam':row[1],'checksum':row[6],'side':row[7]} for row in valid)
     return sorted(valid,key=lambda row:(row[3],str(row[0])))
 
 def _check_catalog(db, rows):
@@ -95,8 +100,10 @@ def _check_catalog(db, rows):
             raise HTTPException(422,f"Новая конструкция {sam} требует адреса")
 
 def _signature(rows):
-    payload=[[str(uid),sam,address,path,name,size,sha] for
-             uid,sam,address,path,name,size,sha in rows]
+    # Keep the exact signature of pre-upgrade sessions without sides.
+    with_sides=any(row[7] is not None for row in rows)
+    payload=[[str(uid),sam,address,path,name,size,sha]+([side] if with_sides else []) for
+             uid,sam,address,path,name,size,sha,side in rows]
     return hashlib.sha256(json.dumps(payload,ensure_ascii=False,
         separators=(",",":")).encode("utf-8")).hexdigest()
 
@@ -112,17 +119,25 @@ def compare(files):
     sams,digests,sizes=map(list,zip(*dict.fromkeys(keys)))
     with connect() as db:
         candidates=repository.compare_published(db,sams,digests,sizes)
-    matches=set()
+    matches={}
     for row in candidates:
         key=(row["sam"],row["source_hash"],row["declared_size"])
         if key in matches:
             continue
         try:
-            storage.verify(row["target_path"],storage.ROOT,key[2],digest=key[1])
+            storage.verify_object(row["target_path"],key[2],digest=key[1])
         except (OSError,TypeError,ValueError):
             continue
-        matches.add(key)
-    return {"duplicates":[key in matches for key in keys]}
+        matches[key]=row
+    result={"duplicates":[key in matches for key in keys]}
+    # Preserve the old response for legacy clients without side metadata.
+    requested=[normalize_import_side(getattr(item,"side",None),getattr(item,"portable",False)) for item in files]
+    if any(requested):
+        result["side_conflicts"]=[{"index":i,"reference_id":str(matches[key]["reference_id"]),
+             "existing_side":matches[key]["side"],"requested_side":side}
+            for i,(key,side) in enumerate(zip(keys,requested))
+            if side is not None and key in matches and matches[key]["side"]!=side]
+    return result
 
 def register_manifest(session_id,files):
     session_id=_uid(session_id)
@@ -141,6 +156,8 @@ def register_manifest(session_id,files):
             if session["upload_state"]!="uploading":
                 raise HTTPException(409,"Загрузка уже закрыта")
             _check_catalog(db,expected)
+            validate_existing_sides(db,desired_sides(
+                {'sam':row[1],'checksum':row[6],'side':row[7]} for row in expected))
             repository.register(db,session_id,expected,signature)
     return status(session_id)
 
@@ -185,10 +202,11 @@ def _complete_locked(db,session_id):
             return None
         if entry["state"]=="finalized":
             try:
-                storage.verify(entry["stored_path"],storage.session_root(session_id),
-                               entry["declared_size"])
+                storage.verify_object(entry["stored_path"],entry["declared_size"],digest=entry["checksum"])
             except (OSError,TypeError,ValueError):
                 return None
+    requested=desired_sides(entries)
+    validate_existing_sides(db,requested)
     if all(entry["state"]=="duplicate" for entry in entries):
         repository.complete_without_preparation(db,session_id)
         return _completion(session_id)
@@ -228,16 +246,21 @@ def status(session_id):
             saved_offset=storage.offset(session_id,entry["upload_id"],size)
             if saved_offset==0:missing+=1
         elif state=="finalized":
-            try:
-                storage.verify(entry["stored_path"],storage.session_root(session_id),size)
+            if session["preparation_state"] in ("completed","stopped") or session["upload_state"]=="cancelled":
+                # Historical transfer receipts are not physical owners.
                 finalized+=1
-            except (ValueError,OSError,TypeError):
-                state="missing_saved"
+            else:
+                try:
+                    storage.verify_object(entry["stored_path"],size,digest=entry["checksum"])
+                    finalized+=1
+                except (ValueError,OSError,TypeError):
+                    state="missing_saved"
         else:
             duplicates+=1
         items.append({"upload_id":str(entry["upload_id"]),
                       "relative_path":entry["relative_path"],"sam":entry["sam"],
                       "filename":entry["filename"],"size":size,"state":state,
+                      "side":entry["side"],
                       "received":saved_offset if state=="pending" else entry["received"],
                       "sha256":entry["checksum"]})
     return {"id":str(session_id),"state":session["upload_state"],

@@ -23,14 +23,24 @@ export function useReferencePreflight(){
         phase.value='Проверка файлов на дубли · '+index+' из '+items.length
         const hash=await fileSha256(item.entry.file)
         if(!hash)throw new Error('Не удалось прочитать файл «'+item.entry.file.name+'». Для проверки нужен HTTPS и поддержка SHA-256.')
+        if(item.expectedSha256&&hash!==item.expectedSha256)throw new Error('SHA-256 не совпадает с манифестом: '+item.entry.relative)
         checked.push({...item,sha256:hash})
       }
       signal.throwIfAborted()
       phase.value='Сравниваем с библиотекой образцов…'
-      const result=await referenceImportsApi.compare(checked.map(({sam,sha256,entry})=>
-        ({sam,sha256,size:entry.file.size})),signal)
+      const result=await referenceImportsApi.compare(checked.map(({sam,sha256,entry,side,portable})=>
+        ({sam,sha256,size:entry.file.size,...(side?{side}:{}),...(portable?{portable:true}:{})})),signal)
       signal.throwIfAborted()
-      review.value=reviewReferences(checked,result.duplicates)
+      const next=reviewReferences(checked,result.duplicates)
+      const conflicts=new Map<string,NonNullable<ReferenceReview['sideConflicts']>[number]>()
+      for(const conflict of result.side_conflicts||[]){
+        const file=checked[conflict.index]
+        if(!file||!result.duplicates[conflict.index]||file.side!==conflict.requested_side||!conflict.reference_id)
+          throw new Error('Некорректный результат проверки сторон')
+        conflicts.set(conflict.reference_id,{...conflict,file})
+      }
+      if(conflicts.size)next.sideConflicts=[...conflicts.values()]
+      review.value=next
       phase.value=''
     }catch(e){
       phase.value=''

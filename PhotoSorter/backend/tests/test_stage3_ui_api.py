@@ -19,6 +19,7 @@ def test_single_root_vue_site_and_assets_cannot_escape(tmp_path,monkeypatch):
     assert site.index().path==root/"index.html"
     assert site.app_route("fo/example").path==root/"index.html"
     assert site.app_route("references").path==root/"index.html"
+    assert site.app_route("admin").path==root/"index.html"
     assert site.asset("main-1.js").path==assets/"main-1.js"
     with pytest.raises(HTTPException) as exc:site.asset("../../index.html")
     assert exc.value.status_code==404

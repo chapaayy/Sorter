@@ -11,6 +11,15 @@ const run={id:rid,batch_id:bid,status:'completed',models:{megaloc:{status:'compl
 const photo={id:pid,name:'screen_001.jpg',bytes:1024,created_at:'2026-11-05T06:00:00Z',thumbnail_status:'pending',thumbnail_url:'/api/thumbnails/'+pid,original_url:'/api/photos/'+pid+'/original'}
 const output={index:0,assigned_sam:'SAM-0001',group_id:'G0001',score:.921,thumbnail_url:'/api/thumbnails/'+pid,image_url:'/api/images/'+rid+'/megaloc/0?kind=query'}
 function respond(route:any,data:unknown){return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)})}
+const stat=(allocated_bytes:number,logical_bytes=allocated_bytes,files=1,hardlink_paths=0)=>({allocated_bytes,logical_bytes,files,hardlink_paths})
+function storageFixture(stale=false){
+  return {disk_overview:{total_bytes:10000000000,used_bytes:4000000000,available_bytes:6000000000,free_bytes:6000000000,map_bytes:stale?null:350000000,system_bytes:stale?null:3650000000,sampled_at:stale?null:'2026-11-25T00:00:00Z',system_details:null},disk:{device:1,total_bytes:10000000000,used_bytes:4000000000,available_bytes:6000000000,used_fraction:.4,reserved_bytes:600000000,allocatable_bytes:5400000000},
+    filesystems:{'1':{total_bytes:10000000000,used_bytes:4000000000,available_bytes:6000000000,map_allocated_bytes:350000000,outside_map_or_unexplained_bytes:3650000000}},
+    categories_bytes:{},registry:{sampled_at:'2026-11-25T00:00:00Z',reconciled_at:'2026-11-25T00:00:00Z',started_at:'2026-11-24T23:59:00Z',partial:stale,stale,reconciling:false,pending_changes:0,errors:0,
+      allocated_bytes:250000000,logical_bytes:350000000,categories:{fo_original:stat(250000000),result_media:stat(0,100000000,1,1)},temporary:stat(0,0,0),temporary_peak_bytes:0,reserved_bytes:0,
+      reference_history:{objects:0,object_bytes:0,embeddings:0,embedding_bytes:0,missing:0,partial:false},issues:{},missing_expected:0},
+    host:{at:'2026-11-25T00:00:00Z',partial:false,stale:false,errors:0,tree_check:{finished_at:'2026-11-25T00:00:00Z',device:'1',partial:stale,comparable:!stale,errors:0,allocated_bytes:350000000,directory_bytes:0,absolute_discrepancy_bytes:stale?null:0},categories:{postgres_data:stat(100000000)},devices:{'1':stat(100000000)},docker:{available:true,shared_engine_totals:[{Type:'Build Cache',Size:'1 GB',Reclaimable:'100 MB'}],map_revision_images:[],limitations:[]}}}
+}
 async function mock(page:Page){
   const defaults={auto_process_new_batches:false,grouping_threshold:.50,min_match_score:0,model:'megaloc'}
   const retention={enabled:true,value:2,unit:'months'}
@@ -29,6 +38,10 @@ async function mock(page:Page){
         {code:'SAM',constructions:12},{code:'MSK',constructions:5},{code:'TLT',constructions:6}
       ]})
     }
+    if(p==='/api/admin/accounts')return respond(route,{items:[{id:1,username:'admin',display_name:'',role_id:'owner',role_name:'Владелец',blocked:false},{id:2,username:'viewer@example.test',display_name:'',role_id:'observer',role_name:'Наблюдатель',blocked:false}],has_more:false,stats:{total:2,active:2,blocked:0}})
+    if(p==='/api/admin/accounts/1')return respond(route,{id:1,username:'admin',display_name:'',role_id:'owner',role_name:'Владелец',blocked:false,permission_overrides:{},role_permissions:{},permissions:{},sessions:[]})
+    if(p==='/api/admin/accounts/roles')return respond(route,{items:[{id:'owner',name:'Владелец',description:'',permissions:{},users:1}],catalog:{}})
+    if(p==='/api/admin/accounts/registration')return respond(route,{enabled:true,pending:0})
     if(p==='/api/admin/users')return respond(route,{items:[],has_more:false})
     if(p==='/api/admin/access-requests')return respond(route,{items:[],has_more:false})
     if(p==='/api/batches')return respond(route,{batches:[batch],total:1})
@@ -78,7 +91,9 @@ async function mock(page:Page){
     if(p==='/api/results/'+rid+'/groups')return respond(route,{'G0001':2})
     if(p==='/api/results/'+rid+'/photos')return respond(route,{photos:[output],next_cursor:null})
     if(p==='/api/storage/host-audit')return respond(route,{available:false,detail:'Host scan not run'})
-    if(p==='/api/storage/usage')return respond(route,{disk:{total_bytes:10000000000,used_bytes:4000000000,available_bytes:6000000000,used_fraction:.4,warning:null,reserved_bytes:600000000,admission_ok:true},categories_bytes:{photos:250000000,results:100000000}})
+    if(p==='/api/storage/usage')return respond(route,storageFixture())
+    if(p==='/api/storage/accounting/issues')return respond(route,{files:[],missing:[],offset:0,limit:50,snapshot:'2026-11-25T00:00:00Z'})
+    if(p==='/api/storage/maintenance')return respond(route,[])
     if(p==='/api/system/status')return respond(route,{at:'2026-11-05T06:00:00Z',worker:{queue:{},expected_threads:7},thumbnails:{queued:0},disk:{total_bytes:10000000000,available_bytes:6000000000,reserved_bytes:600000000},api:{uptime_seconds:400,latency:{samples:6,p50_ms:13,p95_ms:30},rss_peak_kib:90000}})
     if(p==='/api/logs/usage')return respond(route,{bytes:2000,budget_bytes:524288000})
     if(p==='/api/logs/'+rid+'/page')return respond(route,{events:[{at:'2026-11-05T06:02:00Z',level:'INFO',model:'megaloc',source:'MegaLoc',message:'Обработка завершена'}],next_cursor:null})
@@ -110,6 +125,35 @@ function holdTransfer(){
   return {waiting,release}
 }
 test.beforeEach(async({page})=>{await mock(page)})
+test('unauthenticated owner returns to the requested admin deep link after login',async({page})=>{
+  let loggedIn=false
+  await page.route('**/api/auth/me',route=>loggedIn?respond(route,{username:'admin'}):route.fulfill({status:401,json:{detail:'Необходим вход'}}))
+  await page.route('**/api/auth/login',route=>{loggedIn=true;return respond(route,{username:'admin'})})
+  await page.goto('/admin?source=deep-link')
+  await expect(page.getByRole('heading',{name:'Войти в MAP'})).toBeVisible()
+  expect(new URL(page.url()).searchParams.get('next')).toBe('/admin?source=deep-link')
+  await page.getByLabel('Электронная почта или логин').fill('admin')
+  await page.locator('input[autocomplete="current-password"]').fill('example-only-passphrase')
+  await page.getByRole('button',{name:'Продолжить',exact:true}).click()
+  await expect(page).toHaveURL(/\/admin\?source=deep-link$/)
+  await expect(page.getByRole('heading',{name:'Администрирование'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'Объём хранилища'})).toBeVisible()
+  await page.reload()
+  await expect(page).toHaveURL(/\/admin\?source=deep-link$/)
+  await expect(page.getByRole('heading',{name:'Объём хранилища'})).toBeVisible()
+})
+test('viewer cannot use login next to open an owner-only page',async({page})=>{
+  await page.route('**/api/auth/me',route=>route.fulfill({status:401,json:{detail:'Необходим вход'}}))
+  await page.route('**/api/auth/login',route=>respond(route,{username:'viewer@example.test'}))
+  await page.route('**/api/results/catalog**',route=>respond(route,{items:[],has_more:false}))
+  await page.goto('/admin')
+  await expect(page.getByRole('heading',{name:'Войти в MAP'})).toBeVisible()
+  await page.getByLabel('Электронная почта или логин').fill('viewer@example.test')
+  await page.locator('input[autocomplete="current-password"]').fill('example-only-passphrase')
+  await page.getByRole('button',{name:'Продолжить',exact:true}).click()
+  await expect(page).toHaveURL(/\/results$/)
+  await expect(page.getByRole('heading',{name:'Администрирование'})).toHaveCount(0)
+})
 test('six navigation sections and real data bindings',async({page})=>{
   await page.goto('/fo')
   await expect(page.getByRole('heading',{name:'Фотоотчёты'})).toBeVisible()
@@ -198,22 +242,26 @@ test('full ZIP is ready for direct download without extra confirmation',async({p
 })
 test('auto-processing preference defaults off and saves on the server',async({page})=>{
   await page.goto('/admin')
+  await page.getByRole('button',{name:'Система',exact:true}).click()
   const enabled=page.getByRole('checkbox',{name:'Автоматически обрабатывать загруженные ФО'})
   await expect(enabled).not.toBeChecked()
   await enabled.check()
   await expect(enabled).toBeChecked()
   await page.reload()
+  await page.getByRole('button',{name:'Система',exact:true}).click()
   await expect(enabled).toBeChecked()
 })
 test('storage settings persist minute-level automatic deletion',async({page})=>{
   await page.goto('/admin')
+  await page.getByRole('button',{name:'Лимиты и хранение',exact:true}).click()
   const enabled=page.getByRole('checkbox',{name:'Удалять старые фотоотчёты автоматически'})
   await expect(enabled).toBeChecked()
   await page.getByRole('spinbutton',{name:'Удалять через'}).fill('5')
   await page.getByRole('combobox',{name:'Единицы срока хранения'}).click()
   await page.getByRole('option',{name:'Минут'}).click()
-  await page.getByRole('region',{name:'Хранилище'}).getByRole('button',{name:'Сохранить'}).click()
+  await page.getByRole('region',{name:'Лимиты и хранение'}).getByRole('button',{name:'Сохранить',exact:true}).click()
   await page.reload()
+  await page.getByRole('button',{name:'Лимиты и хранение',exact:true}).click()
   await expect(page.getByRole('spinbutton',{name:'Удалять через'})).toHaveValue('5')
   await expect(page.getByRole('combobox',{name:'Единицы срока хранения'})).toContainText('Минут')
 })
@@ -240,6 +288,7 @@ test('mobile drawer allows navigation',async({page,isMobile})=>{
 
 test('processing overview lives in Administration, run details in Queue',async({page})=>{
   await page.goto('/admin')
+  await page.getByRole('button',{name:'Система',exact:true}).click()
   await expect(page.getByRole('heading',{name:'MegaLoc',exact:true})).toBeVisible()
   await expect(page.getByText('Модель установлена')).toBeVisible()
   await expect(page.getByRole('heading',{name:'Производительность',exact:true})).toBeVisible()
@@ -953,6 +1002,7 @@ test('System settings identify a lost Worker heartbeat',async({page})=>{
     api:{uptime_seconds:10,latency:{samples:0,p50_ms:null,p95_ms:null},rss_peak_kib:100}
   }))
   await page.goto('/admin')
+  await page.getByRole('button',{name:'Система',exact:true}).click()
   await expect(page.getByText('Нет свежего сигнала').first()).toBeVisible()
 })
 test('FO library notice appears once, shows events and requires explicit acknowledgement',async({page})=>{
@@ -1138,6 +1188,51 @@ test('reference folder with only duplicates never starts transfer or creates a j
     await expect(page.getByText('К очереди',{exact:true})).toHaveCount(0)
     expect(checked).toBe(1)
     expect(writes).toBe(0)
+  }finally{await rm(folder,{recursive:true,force:true})}
+})
+
+test('side conflicts require explicit selection and update only metadata',async({page})=>{
+  let writes=0
+  const id='11111111-1111-4111-8111-111111111111'
+  await page.route('**/api/references/import/preview',route=>respond(route,{
+    errors:[],new_regions:[],entries:[{sam:'SAM 0004',folder:'SAM 0004 — Гагарина 64',existing:true}]
+  }))
+  await page.route('**/api/reference-imports{,/**}',route=>{
+    const path=new URL(route.request().url()).pathname
+    if(path.endsWith('/compare')){
+      const {files}=route.request().postDataJSON()
+      expect(files[0].side).toBe('B2')
+      return respond(route,{duplicates:[true],side_conflicts:[{index:0,reference_id:id,existing_side:'A',requested_side:'B2'}]})
+    }
+    if(path.endsWith('/resolve-sides')){
+      writes++
+      expect(route.request().postDataJSON().changes).toEqual([{reference_id:id,sam:'SAM 0004',
+        sha256:expect.stringMatching(/^[0-9a-f]{64}$/),size:6,existing_side:'A',requested_side:'B2'}])
+      return respond(route,{confirmed:1,updated:1})
+    }
+    throw new Error('Unexpected transfer: '+path)
+  })
+  const folder=await mkdtemp(join(tmpdir(),'map-side-conflict-'))
+  try{
+    const side=join(folder,'SAM 0004 — Гагарина 64','B2')
+    await mkdir(side,{recursive:true})
+    await writeFile(join(side,'copy.jpg'),'sample')
+    await page.goto('/references')
+    await page.getByRole('button',{name:'+ Создать конструкцию'}).click()
+    const dialog=page.getByRole('dialog',{name:'Создать конструкцию'})
+    await dialog.getByRole('tab',{name:'Импорт папки'}).click()
+    await dialog.locator('input[webkitdirectory]').setInputFiles(folder)
+    await dialog.getByRole('button',{name:'Загрузить и подготовить'}).click()
+    await expect(dialog.getByText('Конфликты сторон — 1')).toBeVisible()
+    await expect(dialog.getByRole('checkbox')).not.toBeChecked()
+    await dialog.getByRole('button',{name:'Отмена'}).click()
+    expect(writes).toBe(0)
+    await dialog.getByRole('button',{name:'Загрузить и подготовить'}).click()
+    await dialog.getByRole('button',{name:'Принять все стороны'}).click()
+    await dialog.getByRole('button',{name:'ОК',exact:true}).click()
+    await expect(dialog).toBeHidden()
+    await expect(page.getByText('Стороны обновлены: 1. Повторной загрузки и подготовки нет.')).toBeVisible()
+    expect(writes).toBe(1)
   }finally{await rm(folder,{recursive:true,force:true})}
 })
 
@@ -1543,8 +1638,10 @@ test('administration lives outside Settings and is unavailable to viewers',async
   if(await drawer.isVisible())await drawer.click()
   await page.getByRole('link',{name:'Администрирование'}).click()
   await expect(page.getByRole('heading',{name:'Администрирование'})).toBeVisible()
-  await expect(page.getByRole('region',{name:'Пользователи'})).toBeVisible()
   await expect(page.getByRole('region',{name:'Хранилище'})).toBeVisible()
+  await page.getByRole('button',{name:'Аккаунты',exact:true}).click()
+  await expect(page.getByRole('region',{name:'Пользователи'})).toBeVisible()
+  await page.getByRole('button',{name:'Система',exact:true}).click()
   await expect(page.getByRole('heading',{name:'MegaLoc',exact:true})).toBeVisible()
   await page.route('**/api/auth/me',route=>respond(route,{username:'viewer@example.com'}))
   await page.goto('/admin')
@@ -1770,7 +1867,9 @@ test('read-only file inventory scans and displays per-file ownership',async({pag
       body:'Путь;Размер\\r\\nPhotoSorter/data/uploads/batch/photo.jpg;4096\\r\\n'
     }))
   await page.goto('/admin')
-  await page.getByRole('button',{name:'Проверить файлы'}).click()
+  await page.getByRole('button',{name:/Диагностика хранилища/}).click()
+  await page.getByRole('button',{name:'Открыть реестр файлов'}).click()
+  await page.getByRole('button',{name:'Показать файлы'}).click()
   await expect(page.getByText('PhotoSorter/data/uploads/batch/photo.jpg')).toBeVisible()
   await expect(page.getByText('Hardlink: без повторного места')).toBeVisible()
   await expect(page.getByRole('region',{name:'Реестр файлов'})).toBeVisible()
@@ -1812,8 +1911,10 @@ test('Administration shows host audit scope, incomplete coverage and full downlo
       'Content-Disposition':'attachment; filename="map-full-host-file-audit.csv"'
     },body:'path;scope\\n/srv/test;app\\n'}))
   await page.goto('/admin')
+  await page.getByRole('button',{name:/Диагностика хранилища/}).click()
+  await page.getByRole('button',{name:'Открыть отчёт хоста'}).click()
   const host=page.getByRole('region',{name:'Аудит сервера'})
-  await expect(host.getByRole('heading',{name:'Аудит всего сервера MAP'})).toBeVisible()
+  await expect(host.getByRole('heading',{name:'Диагностический снимок MAP'})).toBeVisible()
   await expect(host.getByText('Общие файлы Docker и системы')).toBeVisible()
   await expect(host.getByText('Временные каталоги контейнеров (только просмотр)')).toBeVisible()
   const download=page.waitForEvent('download')
@@ -1823,9 +1924,236 @@ test('Administration shows host audit scope, incomplete coverage and full downlo
   const sourceDownload=page.waitForEvent('download')
   await host.getByRole('link',{name:'Скачать карту записей файлов в коде'}).click()
   expect((await sourceDownload).suggestedFilename()).toBe('map-file-write-sites.csv')
-  await expect(host.getByRole('heading',{name:'Непрерывный учёт файловых событий'})).toBeVisible()
+  await expect(host.getByRole('heading',{name:'Ограниченное наблюдение файловых событий'})).toBeVisible()
   await expect(host.getByText(/Каталогов под наблюдением: 45/)).toBeVisible()
   const liveDownload=page.waitForEvent('download')
-  await host.getByRole('link',{name:'Скачать все события файлов JSONL'}).click()
+  await host.getByRole('link',{name:'Скачать события последнего сеанса JSONL'}).click()
   expect((await liveDownload).suggestedFilename()).toBe('map-file-live-events.jsonl')
+})
+
+test('storage center uses registry, drills into accounts and paginates reports',async({page})=>{
+  let requests=0
+  await page.route('**/api/storage/accounts?**',route=>respond(route,{
+    rows:[{id:'1',username:'admin',access_role:'owner',usage:stat(250000000,350000000,2,1)},{id:'2',username:'viewer@example.test',access_role:'viewer',usage:stat(0,0,0)}],
+    total:2,offset:0,limit:25,partial:false,sampled_at:'2026-11-25T00:00:00Z'
+  }))
+  await page.route('**/api/storage/accounts/1?**',route=>{
+    requests++
+    const offset=Number(new URL(route.request().url()).searchParams.get('offset'))
+    return respond(route,{account:{id:'1',username:'admin',access_role:'owner'},categories:{fo_original:stat(250000000),result_media:stat(0,100000000,1,1)},
+      batches:offset?[{batch_id:bid,display_name:'Последний отчёт',categories:{result_media:stat(0,100000000,1,1)}}]:Array.from({length:25},(_,i)=>({batch_id:bid.slice(0,-2)+String(i).padStart(2,'0'),display_name:'Отчёт '+i,categories:{fo_original:stat(10000000)}})),
+      total:26,offset,limit:25,sampled_at:'2026-11-25T00:00:00Z',basis:'live_registry_rows_global_inode_attribution'})
+  })
+  await page.goto('/admin')
+  let storage=page.getByRole('region',{name:'Хранилище'})
+  await expect(storage.getByRole('heading',{name:'Объём хранилища'})).toBeVisible()
+  await expect(storage.getByRole('img',{name:'Распределение места на диске'})).toBeVisible()
+  await expect(storage.getByText(/Последняя независимая сверка:.*расхождение 0 Б/)).toBeVisible()
+  await expect(storage.getByRole('button',{name:/Диагностика хранилища/})).toHaveAttribute('aria-expanded','false')
+  await storage.locator('summary').filter({hasText:/^MAP/}).click()
+  await storage.getByRole('button',{name:/Диагностика хранилища/}).click()
+  await expect(storage.getByText('Build Cache',{exact:true})).toBeVisible()
+  await storage.getByText('Фотоотчёты',{exact:true}).click()
+  await expect(storage.getByText('Оригиналы ФО',{exact:false}).first()).toBeVisible()
+  await page.getByRole('button',{name:'Аккаунты',exact:true}).click()
+  storage=page.getByRole('region',{name:'Пользователи'})
+  await expect(storage.getByText('viewer@example.test')).toBeVisible()
+  await storage.getByRole('button',{name:/admin.*Владелец/}).click()
+  await storage.getByRole('button',{name:'Хранилище',exact:true}).click()
+  await expect(storage.getByRole('heading',{name:'admin'})).toBeVisible()
+  await storage.getByText('Отчёт 0',{exact:true}).click()
+  await expect(storage.getByRole('link',{name:'Открыть фотоотчёт'}).first()).toBeVisible()
+  await storage.getByRole('button',{name:'Дальше'}).click()
+  await expect(storage.getByText('Последний отчёт',{exact:true})).toBeVisible()
+  expect(requests).toBe(2)
+  expect(await storage.evaluate(el=>el.scrollWidth<=el.clientWidth+2)).toBeTruthy()
+})
+test('storage diagnostics reports stale data and errors; reconciliation and maintenance are explicit',async({page})=>{
+  let reconciles=0,started=0,reads=0
+  await page.route('**/api/storage/usage',route=>{
+    reads++
+    if(reads===2)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Сервер временно недоступен'})})
+    return respond(route,storageFixture(true))
+  })
+  await page.route('**/api/storage/accounting/issues?**',route=>respond(route,{files:[{path:'app/unknown.bin',category:'unknown',issue:'unclassified_path',logical_bytes:2,allocated_bytes:4096}],missing:[{path:'app/users/1/lost.jpg',issue:'expected_not_observed'}],offset:0,limit:50,snapshot:'2026-11-25T00:00:00Z'}))
+  await page.route('**/api/storage/reconcile',route=>{reconciles++;return respond(route,{requested_at:'2026-11-25T00:01:00Z'})})
+  await page.route('**/api/storage/maintenance/expired_archives/preview',route=>respond(route,{kind:'expired_archives',files:2,allocated_bytes:4096,sampled_at:'2026-11-25T00:00:00Z',partial:true,basis:'age_based'}))
+  await page.route('**/api/storage/maintenance/expired_archives',route=>{
+    started++;expect(route.request().postDataJSON()).toEqual({confirmed:true})
+    return respond(route,{kind:'expired_archives',state:'queued',requested_at:'2026-11-25T00:01:00Z',started_at:null,finished_at:null,removed:null,detail:null})
+  })
+  await page.goto('/admin')
+  let storage=page.getByRole('region',{name:'Хранилище'})
+  await expect(storage.getByText(/Данные устарели/)).toBeVisible()
+  await storage.getByRole('button',{name:'Обновить показатели'}).click()
+  await expect(storage.getByRole('alert').filter({hasText:'Сервер временно недоступен'})).toBeVisible()
+  await expect(storage.getByRole('heading',{name:'Объём хранилища'})).toBeVisible()
+  await storage.getByRole('button',{name:/Диагностика хранилища/}).click()
+  await expect(storage.getByText('app/unknown.bin',{exact:true})).toBeVisible()
+  await expect(storage.getByText('app/users/1/lost.jpg',{exact:true})).toBeVisible()
+  expect(reconciles).toBe(0)
+  await storage.getByRole('button',{name:'Запустить сверку'}).click()
+  await expect(storage.getByText(/Дополнительная сверка поставлена/)).toBeVisible()
+  expect(reconciles).toBe(1)
+  await page.getByRole('button',{name:'Лимиты и хранение',exact:true}).click()
+  storage=page.getByRole('region',{name:'Лимиты и хранение'})
+  await storage.getByRole('button',{name:'Предпросмотр очистки'}).first().click()
+  const dialog=page.getByRole('alertdialog')
+  await expect(dialog.getByText(/Кандидатов по возрасту: 2/)).toBeVisible()
+  expect(started).toBe(0)
+  await dialog.getByRole('button',{name:'Отмена'}).click()
+  await storage.getByRole('button',{name:'Предпросмотр очистки'}).first().click()
+  await page.getByRole('alertdialog').getByRole('button',{name:'Запустить очистку'}).click()
+  await expect(storage.getByText(/В очереди ·/)).toBeVisible()
+  expect(started).toBe(1)
+})
+test('storage empty and unmeasured states never fabricate capacity or history',async({page})=>{
+  await page.route('**/api/storage/usage',route=>respond(route,{...storageFixture(),disk_overview:undefined,registry:{sampled_at:null,reconciled_at:null,partial:true,stale:true,pending_changes:0,errors:0},host:null}))
+  await page.goto('/admin')
+  let storage=page.getByRole('region',{name:'Хранилище'})
+  await expect(storage.getByText(/разбивка пока недоступна/)).toBeVisible()
+  await expect(storage.locator('.disk-bar .map')).toHaveCount(0)
+  await storage.getByRole('button',{name:/Диагностика хранилища/}).click()
+  await expect(storage.getByText('Сведения Docker пока недоступны.')).toBeVisible()
+})
+
+
+test('storage temporary view distinguishes future bytes and observed archives; host action requires confirmation',async({page})=>{
+  let confirmed=0
+  const stamp='2026-11-25T00:00:00Z'
+  await page.route('**/api/storage/usage',route=>{
+    const data=storageFixture()
+    return respond(route,{...data,registry:{...data.registry,temporary:stat(4096),reserved_bytes:2*1024**3,temporary_peak_bytes:8192,unfinished_fo:{files:3,remaining_bytes:1024**3},unfinished_references:{files:2,remaining_bytes:1024},reservations:{archive:{bytes:2*1024**3,operations:1}},temporary_operations:{rows:[],total_groups:0,partial:false}}})
+  })
+  await page.route('**/api/storage/operations',route=>respond(route,{active_queue:[{seq:1,kind:'media_preparation',state:'running',display_name:'Активный ФО',started_at:stamp}],io_leases:[{kind:'download',operations:1,last_seen:stamp}],archives:[{category:'zip_results',files:2,expired:1,next_eligible_at:stamp}],unfinished_fo_next_eligible_at:stamp,unfinished_reference_next_eligible_at:stamp,archive_ttl_seconds:3600,scratch_grace_seconds:3600,cleanup_worker:{alive:true,last_seen:stamp}}))
+  await page.route('**/api/system/update',route=>respond(route,{available:true,busy:confirmed>0,storage_maintenance_supported:true,phase:'idle',...(confirmed?{storage_action:{kind:'storage-cache',state:'running',started_at:stamp}}:{})}))
+  await page.route('**/api/storage/host-maintenance/storage-cache/preview',route=>respond(route,{kind:'storage-cache',files:5,allocated_bytes:4096,sampled_at:stamp,partial:false,basis:'typed_provider_cache_offline_only'}))
+  await page.route('**/api/storage/host-maintenance/storage-cache',route=>{
+    expect(route.request().postDataJSON()).toEqual({confirmed:true});confirmed++
+    return respond(route,{available:true,busy:true,storage_maintenance_supported:true,storage_action:{kind:'storage-cache',state:'running',started_at:stamp}})
+  })
+  await page.goto('/admin')
+  let storage=page.getByRole('region',{name:'Хранилище'})
+  await page.getByRole('button',{name:'Лимиты и хранение',exact:true}).click()
+  storage=page.getByRole('region',{name:'Лимиты и хранение'})
+  await expect(storage.getByText('Активный ФО',{exact:false})).toBeVisible()
+  await expect(storage.getByText('2 готовых · 1 просрочено')).toBeVisible()
+  await expect(storage.getByText('ФО: 3 файлов')).toBeVisible()
+  await expect(storage.getByText(/Скачивание файлов · зарегистрированных IO-операций: 1/)).toBeVisible()
+  await expect(storage.getByText('Зарезервировано операциями')).toBeVisible()
+  await page.getByRole('button',{name:'Лимиты и хранение',exact:true}).click()
+  storage=page.getByRole('region',{name:'Лимиты и хранение'})
+  await storage.getByText('Технический кэш и закрытые журналы',{exact:true}).click()
+  const button=storage.getByRole('button',{name:'Предпросмотр: Удаляемый технический кэш'})
+  await button.click()
+  await expect(page.getByRole('alertdialog').getByText(/Приложение будет временно остановлено/)).toBeVisible()
+  expect(confirmed).toBe(0)
+  await page.getByRole('alertdialog').getByRole('button',{name:'Отмена'}).click()
+  await button.click()
+  await page.getByRole('alertdialog').getByRole('button',{name:'Запустить очистку'}).click()
+  await expect.poll(()=>confirmed).toBe(1)
+  await expect(button).toBeDisabled()
+})
+
+
+test('storage quotas are opt-in and owner edits exact GiB limits',async({page})=>{
+  const gib=1024**3
+  let policy={personal_enabled:false,temporary_limit_bytes:null as number|null,disk_reserve_bytes:null as number|null}
+  let accountLimit:number|null=null
+  let saves=0
+  const budget=(limit:number|null,used=0,reserved=0,enabled=true)=>({limit_bytes:limit,used_bytes:used,reserved_bytes:reserved,
+    enabled:enabled&&limit!==null,available_bytes:enabled&&limit!==null?Math.max(0,limit-used-reserved):null,
+    state:!enabled||limit===null?'unlimited':used+reserved>limit?'exceeded':used+reserved===limit?'full':'ok'})
+  const account=()=>({id:'1',username:'admin',access_role:'owner',usage:stat(4096,4096,1,0),quota:budget(accountLimit,gib,0,policy.personal_enabled)})
+  await page.route('**/api/storage/limits',route=>{
+    if(route.request().method()==='PATCH'){policy=route.request().postDataJSON();saves++}
+    return respond(route,{policy,registry_ready:true,total_bytes:100*gib,disk:{used_bytes:10*gib,free_bytes:90*gib,reserved_bytes:0,minimum_bytes:Math.max(6*gib,policy.disk_reserve_bytes??0),baseline_bytes:6*gib,available_bytes:84*gib},temporary:budget(policy.temporary_limit_bytes)})
+  })
+  await page.route('**/api/storage/accounts?**',route=>respond(route,{rows:[account()],total:1,offset:0,limit:25,partial:false,sampled_at:'2026-11-25T00:00:00Z'}))
+  await page.route('**/api/storage/accounts/1?**',route=>respond(route,{account:account(),categories:{},batches:[],total:0,offset:0,limit:25,sampled_at:'2026-11-25T00:00:00Z'}))
+  await page.route('**/api/storage/accounts/1/limit',route=>{
+    accountLimit=route.request().postDataJSON().limit_bytes
+    return respond(route,account().quota)
+  })
+  await page.goto('/admin')
+  let storage=page.getByRole('region',{name:'Хранилище'})
+  await page.getByRole('button',{name:'Лимиты и хранение',exact:true}).click()
+  storage=page.getByRole('region',{name:'Лимиты и хранение'})
+  const toggle=page.getByLabel('Включить личные квоты')
+  await expect(toggle).not.toBeChecked()
+  await toggle.check()
+  await storage.getByLabel('Лимит временного пула, ГиБ',{exact:true}).fill('1.5')
+  await storage.getByLabel('Минимальное свободное место, ГиБ',{exact:true}).fill('20')
+  await storage.getByRole('button',{name:'Сохранить настройки лимитов'}).click()
+  await expect(storage.getByText('Настройки лимитов сохранены')).toBeVisible()
+  expect(policy).toEqual({personal_enabled:true,temporary_limit_bytes:1.5*gib,disk_reserve_bytes:20*gib})
+  await page.getByRole('button',{name:'Аккаунты',exact:true}).click()
+  storage=page.getByRole('region',{name:'Пользователи'})
+  await storage.getByRole('button',{name:/admin.*Владелец/}).click()
+  await storage.getByRole('button',{name:'Хранилище',exact:true}).click()
+  await storage.getByLabel('Индивидуальный лимит, ГиБ',{exact:true}).fill('0.5')
+  await storage.getByRole('button',{name:'Сохранить лимит',exact:true}).click()
+  await expect(storage.getByText('Лимит сохранён')).toBeVisible()
+  expect(accountLimit).toBe(.5*gib)
+  await storage.getByRole('button',{name:'Без ограничения',exact:true}).click()
+  await storage.getByRole('button',{name:'Сохранить лимит',exact:true}).click()
+  await expect.poll(()=>accountLimit).toBeNull()
+  await page.getByRole('button',{name:'Лимиты и хранение',exact:true}).click()
+  storage=page.getByRole('region',{name:'Лимиты и хранение'})
+  await expect(toggle).toBeChecked()
+  await toggle.uncheck()
+  await storage.getByLabel('Лимит временного пула, ГиБ',{exact:true}).fill('')
+  await storage.getByRole('button',{name:'Сохранить настройки лимитов'}).click()
+  await expect.poll(()=>saves).toBe(2)
+  expect(policy.personal_enabled).toBe(false)
+  expect(policy.temporary_limit_bytes).toBeNull()
+  expect(await storage.evaluate(el=>el.scrollWidth<=el.clientWidth+2)).toBeTruthy()
+})
+
+
+test('storage control shows exact independent bytes and never claims incomplete samples match',async({page})=>{
+  const stamp='2026-11-25T00:00:00Z'
+  let incomplete=false
+  await page.route('**/api/storage/usage',route=>{
+    const data=storageFixture()
+    return respond(route,{...data,host:{...data.host,tree_check:{finished_at:stamp,allocated_bytes:8192,registry_file_bytes:4096,host_file_bytes:0,directory_bytes:4096,partial:incomplete,comparable:!incomplete,errors:0,absolute_discrepancy_bytes:incomplete?null:0,unknown_files:0,unknown_bytes:0},tree_history:[{finished_at:stamp,allocated_bytes:8192,comparable:!incomplete,absolute_discrepancy_bytes:incomplete?null:0}]}})
+  })
+  await page.goto('/admin')
+  let storage=page.getByRole('region',{name:'Хранилище'})
+  await storage.getByRole('button',{name:/Диагностика хранилища/}).click()
+  await expect(storage.getByRole('heading',{name:'Побайтовый контроль MAP'})).toBeVisible()
+  await expect(storage.getByText('Последний сопоставимый замер: расхождение 0 байт.')).toBeVisible()
+  incomplete=true
+  await storage.getByRole('button',{name:'Обновить показатели'}).click()
+  await expect(storage.getByText('Нет сопоставимого актуального замера. Нули и 100% не подставляются.')).toBeVisible()
+  await expect(storage.getByText('Последний сопоставимый замер: расхождение 0 байт.')).toHaveCount(0)
+  expect(await storage.evaluate(el=>el.scrollWidth<=el.clientWidth+2)).toBeTruthy()
+})
+
+test('independent storage check is distinct from live refresh and preserves the bar',async({page})=>{
+  let requested=0,reads=0
+  const stamp='2026-11-25T00:00:00Z'
+  await page.route('**/api/storage/usage',route=>{
+    reads++
+    const data=storageFixture()
+    const delta=reads>1?50000000:0
+    return respond(route,{...data,disk_overview:{...data.disk_overview,map_bytes:350000000+delta,
+      used_bytes:4000000000+delta,free_bytes:6000000000-delta,sampled_at:stamp},
+      independent_check:requested?{state:'running',started_at:stamp}:null})
+  })
+  await page.route('**/api/storage/independent-check',route=>{requested++;return respond(route,{state:'queued',requested_at:stamp})})
+  await page.goto('/admin')
+  const storage=page.getByRole('region',{name:'Хранилище'})
+  const map=storage.locator('.disk-bar .map')
+  await expect(map).toBeVisible()
+  await storage.getByRole('button',{name:'Обновить показатели'}).click()
+  await expect(map).toHaveAttribute('style',/width: 4%/)
+  expect(requested).toBe(0)
+  await storage.getByRole('button',{name:/Диагностика хранилища/}).click()
+  const check=storage.getByRole('button',{name:'Проверить учёт'})
+  await check.click()
+  await expect(check).toBeDisabled()
+  await expect(storage.getByText(/Проверка учёта…/).first()).toBeVisible()
+  await expect(map).toBeVisible()
+  expect(requested).toBe(1)
 })

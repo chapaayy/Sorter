@@ -15,9 +15,6 @@ def thumbs(sandbox,monkeypatch):
     from server import uploads
     from server.api.routes import thumbnails as endpoint
     monkeypatch.setattr(thumbnails,"DATA_DIR",sandbox)
-    monkeypatch.setattr(cache,"ROOT",sandbox/"cache"/"thumbnails")
-    monkeypatch.setattr(uploads,"UPLOADS_DIR",sandbox/"uploads")
-    monkeypatch.setattr(uploads,"PART_DIR",sandbox/"incoming")
     return sandbox
 
 def _finalize_picture(root,batch_id,raw,filename="image.jpg"):
@@ -26,7 +23,7 @@ def _finalize_picture(root,batch_id,raw,filename="image.jpg"):
     info=uploads.BeginUpload(kind="fo",batch_id=str(batch_id),filename=filename,
               size=len(raw),sha256=hashlib.sha256(raw).hexdigest())
     uploads._create_upload(info,identifier)
-    (root/"incoming"/f"{identifier}.part").write_bytes(raw)
+    uploads.part_path(batch_id,identifier).write_bytes(raw)
     uploads._finalize_sync(str(identifier))
     return identifier
 
@@ -61,6 +58,9 @@ def test_finalize_enqueues_webp_later_and_uses_exif(thumbs):
         assert rendered.height>rendered.width, "EXIF rotation must be applied"
         assert max(rendered.size)<=cache.MAX_SIDE
     assert batches.get(own)["thumbnail_state"]=="ready"
+    import asyncio
+    from .asgi_response import response_bytes
+    assert asyncio.run(response_bytes(response))
     cleanup.request(own)
     assert cleanup.cleanup_one(own)=="completed"
 
@@ -93,7 +93,8 @@ def test_content_addressed_cache_reuse_and_owner_safe_gc(thumbs,monkeypatch):
     assert thumbnails.complete(thumbnails.claim())=="ready"
     assert thumbnails.complete(thumbnails.claim())=="ready"
     assert len(rendered)==1
-    shared=cache.location(hashlib.sha256(data).hexdigest())
+    from server.storage.paths import batch_owner
+    shared=cache.location(hashlib.sha256(data).hexdigest(),owner_id=batch_owner(first))
     assert shared.is_file()
     cleanup.request(first)
     assert cleanup.cleanup_one(first)=="completed"
@@ -150,14 +151,27 @@ def test_export_rows_jsonl_and_paged_results(thumbs,monkeypatch):
     from server.services import result_pages
     from app.config import DATA_DIR
     monkeypatch.setattr(result_pages,"DATA_DIR",thumbs)
-    run="20261105T120000-"+uuid.uuid4().hex[:12]
-    picture=thumbs/"uploads"/"photo.jpg"
+    from server.storage.paths import batch_dir
+    own=_batch(thumbs,with_photo=False)
+    run=_job(thumbs,own)
+    picture=batch_dir(own)/"photo.jpg"
+    picture.parent.mkdir(parents=True)
     picture.write_bytes(b"immutable bytes")
     rows=[]
     for i in range(9):
         rows.append({"query":str(picture),"top":[{"label":f"SAM-000{i%3+1}",
             "reference":"ref","score":.88}],"group_id":f"G{i//3:04d}"})
-    repository.save_model({"id":run,"output":str(thumbs/"outputs")},"megaloc",rows)
+    repository.save_model({"id":run,"batch_id":str(own)},"megaloc",rows)
+    manifest=repository.manifest_path(run)
+    assert {p.name for p in manifest.parent.iterdir() if p.is_file()}=={"manifest.rows.jsonl"}
+    encoded=json.loads(manifest.read_text(encoding="utf-8").splitlines()[0])
+    assert encoded["query"]=="originals/photo.jpg"
+    assert encoded["copy"].startswith("SAM-0001/")
+    assert not Path(encoded["copy"]).is_absolute()
+    from server.storage.paths import result_keys
+    keys=result_keys(run)
+    for key in ("../escape.jpg","/tmp/escape.jpg","SAM-0001/../escape.jpg"):
+        with pytest.raises(ValueError):keys.decode({**encoded,"copy":key})
     cursor=None
     indexes=[]
     while True:
@@ -218,14 +232,50 @@ def test_expired_final_attempt_becomes_failed(thumbs):
     cleanup.cleanup_one(own)
 
 def test_stale_temp_webp_cleanup_never_removes_real_preview(thumbs):
-    import time
-    root=cache.ROOT/"v1"/"aa"
+    import time,uuid
+    from app import config
+    from app.storage.paths import managed_prefix
+    from app.storage.categories import Category
+    from app.storage.temporary import collect_abandoned
+    root=managed_prefix(Category.REFERENCE_THUMBNAIL,version=1)/"aa"
     root.mkdir(parents=True)
-    temp=root/".thumb-123.webp.tmp"
-    temp.write_bytes(b"temporary")
-    os.utime(temp,(time.time()-90000,time.time()-90000))
+    stage=managed_prefix(Category.SCRATCH,service="thumbnail",operation_id=uuid.uuid4())
+    stage.mkdir(parents=True)
+    (stage/"fragment").write_bytes(b"temporary")
+    os.utime(stage,(time.time()-3700,time.time()-3700))
     live=root/("a"*64+".webp")
     live.write_bytes(b"live")
-    assert thumbnails.gc_incomplete(limit=10,grace_seconds=86400)==1
-    assert not temp.exists()
+    assert collect_abandoned(config.APP_STORAGE_ROOT)==1
+    assert not stage.exists()
     assert live.exists()
+
+
+def test_previews_are_shared_only_within_same_owner(thumbs):
+    from server.storage.paths import batch_owner
+    from server.services import cleanup
+    from .test_stage1_lifecycle import _batch
+    first=_batch(thumbs,with_photo=False)
+    second=_batch(thumbs,with_photo=False)
+    with connect() as db:
+        owner=db.execute("INSERT INTO users(username,access_role) VALUES (%s,'viewer') RETURNING id",
+                         ("thumb-"+uuid.uuid4().hex,)).fetchone()["id"]
+        db.execute("UPDATE batches SET owner_id=%s WHERE id=%s",(owner,second))
+    data=_jpg()
+    digest=hashlib.sha256(data).hexdigest()
+    a=_finalize_picture(thumbs,first,data)
+    b=_finalize_picture(thumbs,second,data)
+    assert thumbnails.complete(thumbnails.claim())=="ready"
+    assert thumbnails.complete(thumbnails.claim())=="ready"
+    paths=[cache.location(digest,owner_id=batch_owner(batch)) for batch in (first,second)]
+    assert all(path.is_file() for path in paths)
+    assert paths[0]!=paths[1]
+    assert paths[0].stat().st_ino!=paths[1].stat().st_ino
+    assert not cache.location(digest).exists()
+    cleanup.request(first)
+    assert cleanup.cleanup_one(first)=="completed"
+    assert thumbnails.gc_unowned(grace_seconds=0)>=1
+    assert not paths[0].exists() and paths[1].exists()
+    cleanup.request(second)
+    assert cleanup.cleanup_one(second)=="completed"
+    assert thumbnails.gc_unowned(grace_seconds=0)>=1
+    assert not paths[1].exists()

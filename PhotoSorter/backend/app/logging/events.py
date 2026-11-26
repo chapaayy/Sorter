@@ -1,15 +1,19 @@
 """Bounded per-run JSONL rotation and streaming cursor/page reads."""
 from __future__ import annotations
-import base64,json,os,re,threading
+import base64,json,os,re,threading,fcntl
+from contextlib import contextmanager
 from collections import deque
 from datetime import datetime,timezone
 from pathlib import Path
-from ..config import RUNS_DIR
+from ..config import APP_STORAGE_ROOT
+from ..storage.categories import LOG_BUDGETS_MIB,RUN_LOG_BUDGET_MIB
+from .service import redact
+RUNS_DIR=Path(os.environ.get('MAP_LOG_ROOT',str(APP_STORAGE_ROOT.parent/'logs')))/'processing'
 
 RUN_RE=re.compile(r"\d{8}T\d{6}-[a-f0-9]{12}\Z")
-SEGMENT_BYTES=4*1024*1024
+SEGMENT_BYTES=RUN_LOG_BUDGET_MIB*1024*1024//5
 SEGMENTS=5  # 4 old + active, up to 20 MiB/run
-TOTAL_BYTES=512*1024*1024
+TOTAL_BYTES=LOG_BUDGETS_MIB['processing']*1024*1024
 MAX_MESSAGE=4096
 _lock=threading.Lock()
 _emits=0
@@ -32,12 +36,21 @@ def _rotate(active):
         if prev.exists():prev.replace(active.with_name(f"{active.name}.{i+1}"))
     if active.exists():active.replace(active.with_name(f"{active.name}.1"))
 
-def _budget():
+@contextmanager
+def journal_lock():
+    RUNS_DIR.mkdir(parents=True,exist_ok=True)
+    fd=os.open(RUNS_DIR,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        fcntl.flock(fd,fcntl.LOCK_EX)
+        yield
+    finally:os.close(fd)
+
+def _budget(terminal=()):
     """Limit all application run event bytes, never user photos or references."""
     files=[f for f in RUNS_DIR.glob("*/events.jsonl*")
            if f.is_file() and not f.is_symlink() and
-           re.fullmatch(r"events\.jsonl(?:\.[1-4])?",f.name)]
-    usage=sum(f.stat().st_size for f in files)
+           (re.fullmatch(r"events\.jsonl\.[1-4]",f.name) or (f.name=="events.jsonl" and f.parent.name in terminal))]
+    usage=sum(f.stat().st_size for f in RUNS_DIR.glob("*/events.jsonl*") if f.is_file() and not f.is_symlink())
     if usage<=TOTAL_BYTES:return
     for item in sorted(files,key=lambda f:f.stat().st_mtime_ns):
         if usage<=TOTAL_BYTES:break
@@ -50,12 +63,12 @@ def emit(run_id,level,message,model=None,source=None):
     event={"at":datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
         "level":str(level).upper(),"model":model,
         "source":source or ("MegaLoc" if model else "API"),
-        "message":str(message)[:MAX_MESSAGE]}
+        "message":redact(message)[:MAX_MESSAGE]}
     path=_runpath(run_id)/"events.jsonl"
     line=json.dumps(event,ensure_ascii=False,separators=(",",":"))+"\n"
     payload=line.encode("utf-8")
     if len(payload)>SEGMENT_BYTES:raise ValueError("One log record exceeds segment cap")
-    with _lock:
+    with _lock,journal_lock():
         path.parent.mkdir(parents=True,exist_ok=True)
         if path.exists() and path.stat().st_size+len(payload)>SEGMENT_BYTES:
             _rotate(path)
@@ -63,6 +76,11 @@ def emit(run_id,level,message,model=None,source=None):
         _emits+=1
         if _emits%32==0:_budget()
     return event
+
+def prune_terminal(terminal):
+    # Only authoritative DB-terminal runs are eligible for active-file deletion.
+    with _lock,journal_lock():
+        _budget(set(terminal))
 
 def _accept(row,model=None,level=None,source=None,search=None):
     if model and row.get("model")!=model:return False

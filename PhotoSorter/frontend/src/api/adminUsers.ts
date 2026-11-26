@@ -2,7 +2,8 @@ import {api,post,query} from './client'
 import type {PublishedResult} from './results'
 
 export interface ManagedUser {id:number;email:string;created_at:string}
-export interface NewUser {email:string;password:string;confirmation:string;run_ids:string[]}
+export interface AccountOptions {role_id?:string;display_name?:string;storage_limit_bytes?:number|null;overrides?:import('./accounts').Permissions}
+export interface NewUser extends AccountOptions {email:string;password:string;confirmation:string;run_ids:string[]}
 
 export const adminUsers={
   list:(offset=0)=>api<{items:ManagedUser[];has_more:boolean}>('/admin/users'+query({offset})),

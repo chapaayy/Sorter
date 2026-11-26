@@ -8,8 +8,9 @@ from app.config import DATA_DIR
 from app.photos.reader import EXTS
 from ...database import connect
 from ...media.preview import INLINE_TYPES
-from ...storage.paths import owned_file
+from ...storage.paths import owned_file,batch_dir,batch_root
 from ...services import operations
+from ...storage.reference_lifecycle import ReadPin
 from ..file_response import LeasedFileResponse
 
 router=APIRouter(prefix="/api/photos",tags=["photos"])
@@ -25,7 +26,7 @@ def prepared(photo_id:uuid.UUID):
     if not row:raise HTTPException(404,"Файл не найден")
     token=operations.start(row['batch_id'],'original')
     try:
-        path=playable(row,DATA_DIR/'uploads'/str(row['batch_id']))
+        path=playable(row,batch_root(row['batch_id']))
         if not path.is_file():raise FileNotFoundError()
         video=(row['original_media_type'] or '').startswith('video/')
         mime=(
@@ -51,7 +52,7 @@ def preview(photo_id:uuid.UUID):
         raise HTTPException(404,"Файл недоступен для просмотра")
     token=operations.start(row["batch_id"],"original")
     try:
-        path=owned_file(Path(row["target_path"]),DATA_DIR/"uploads"/str(row["batch_id"]))
+        path=owned_file(Path(row["target_path"]),batch_dir(row["batch_id"]))
         if not path.is_file():raise FileNotFoundError()
         return LeasedFileResponse(path,lease=token,media_type=row["original_media_type"],
                             headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"})
@@ -73,21 +74,25 @@ def original(photo_id:str):
             WHERE u.id=%s""",(uid,)).fetchone()
     if not row or not row["finalized"]:raise HTTPException(404,"Фотография не найдена")
     token=operations.start(row["batch_id"],"original") if row["batch_id"] else None
+    pin=None
     try:
+        if row["kind"]=="reference":pin=ReadPin()
         if row["kind"]=="fo":
-            root=DATA_DIR/"uploads"/str(row["batch_id"])
+            root=batch_dir(row["batch_id"])
         else:
             # Renaming updates the UUID gallery index, not the immutable hardlink path.
-            root=DATA_DIR/"references"
+            from ...storage.reference_objects import object_root
+            root=object_root()
         path=owned_file(Path(row["target_path"]),root)
         attachment=row["kind"]=="fo" and row["original_media_type"] is not None
-        if not path.is_file() or (not attachment and path.suffix.lower() not in EXTS):
+        if not path.is_file() or (not attachment and row["kind"]=="fo" and path.suffix.lower() not in EXTS):
             raise HTTPException(404,"Фотография не найдена")
-        content_type="application/octet-stream" if attachment else mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        content_type="application/octet-stream" if attachment else mimetypes.guess_type(row["filename"])[0] or "application/octet-stream"
         headers={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
         if attachment:
             headers["Content-Disposition"]="attachment; filename*=UTF-8''"+quote(row["filename"],safe="")
-        return LeasedFileResponse(path,lease=token,media_type=content_type,headers=headers)
+        return LeasedFileResponse(path,lease=token,archive_pin=pin,media_type=content_type,headers=headers)
     except BaseException:
+        if pin:pin.close()
         operations.finish(token)
         raise

@@ -1,19 +1,114 @@
 """Read-only actual data-mount storage statistics."""
-from fastapi import APIRouter
+from fastapi import APIRouter,Request
 from ...services.storage_usage import usage
 from ...services.storage_breakdown import breakdown
 from ...services import storage_inventory
 from fastapi import Query
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi import HTTPException
+from ...storage.reporting import issues
 from pathlib import Path
 from datetime import datetime, timezone
 import json
 from app.config import DATA_DIR
+from pydantic import BaseModel,StrictBool,StrictInt,Field
+from ...storage import admission
+from ...security.access_policy import is_owner
+from ...services import storage_admin,storage_maintenance
 router=APIRouter(prefix="/api/storage",tags=["storage"])
+
+def require_owner(request:Request):
+    user=getattr(request.state,"user",None)
+    if not user or not is_owner(user):raise HTTPException(403,"Недостаточно прав")
+
+class StorageLimits(BaseModel):
+    personal_enabled:StrictBool
+    temporary_limit_bytes:StrictInt|None=Field(default=None,ge=0,le=2**63-1)
+    disk_reserve_bytes:StrictInt|None=Field(default=None,ge=0,le=2**63-1)
+
+class AccountLimit(BaseModel):
+    limit_bytes:StrictInt|None=Field(ge=0,le=2**63-1)
+
+@router.get("/limits")
+def limits(request:Request):
+    require_owner(request)
+    return admission.status()
+
+@router.patch("/limits")
+def save_limits(request:Request,payload:StorageLimits):
+    require_owner(request)
+    return admission.configure(payload.model_dump())
+
+@router.patch("/accounts/{owner_id}/limit")
+def save_account_limit(request:Request,owner_id:int,payload:AccountLimit):
+    require_owner(request)
+    if not 0<owner_id<2**63:raise HTTPException(422,"Неверный аккаунт")
+    return admission.set_account(owner_id,payload.limit_bytes,actor=request.state.user['username'])
+
+@router.get("/accounts")
+def storage_accounts(request:Request,offset:int=Query(0,ge=0),limit:int=Query(25,ge=1,le=100)):
+    require_owner(request)
+    return storage_admin.accounts(offset,limit)
+
+@router.get("/accounts/{owner_id}")
+def storage_account(request:Request,owner_id:int,offset:int=Query(0,ge=0),limit:int=Query(25,ge=1,le=100)):
+    require_owner(request)
+    if not 0<owner_id<2**63:raise HTTPException(422,"Неверный аккаунт")
+    return storage_admin.account_detail(owner_id,offset,limit)
+
+@router.get("/operations")
+def storage_operations(request:Request):
+    require_owner(request)
+    return storage_admin.operational()
+
+@router.post("/reconcile",status_code=202)
+def reconcile_storage(request:Request):
+    require_owner(request)
+    return storage_admin.request_reconciliation()
+
+@router.get("/maintenance")
+def maintenance_status(request:Request):
+    require_owner(request)
+    return storage_maintenance.status()
+
+@router.get("/maintenance/{kind}/preview")
+def maintenance_preview(request:Request,kind:str):
+    require_owner(request)
+    return storage_maintenance.preview(kind)
+
+class MaintenanceConfirmation(BaseModel):
+    confirmed:StrictBool
+
+@router.post("/maintenance/{kind}",status_code=202)
+def maintenance_start(request:Request,kind:str,payload:MaintenanceConfirmation):
+    require_owner(request)
+    return storage_maintenance.enqueue(kind,payload.confirmed)
+
+@router.get("/host-maintenance/{kind}/preview")
+def host_maintenance_preview(request:Request,kind:str):
+    require_owner(request)
+    return storage_maintenance.host_preview(kind)
+
+@router.post("/host-maintenance/{kind}",status_code=202)
+def host_maintenance_start(request:Request,kind:str,payload:MaintenanceConfirmation):
+    require_owner(request)
+    if kind not in ("storage-cache","storage-logs") or payload.confirmed is not True:
+        raise HTTPException(422,"Требуется подтверждение разрешённой операции")
+    from .updater import request_host
+    return request_host(request,kind)
+
+@router.post("/independent-check",status_code=202)
+def independent_check(request:Request):
+    require_owner(request)
+    from .updater import request_host
+    return request_host(request,"storage-check")
 
 @router.get("/usage")
 def storage_usage():return usage()
+
+@router.get("/accounting/issues")
+def accounting_issues(offset:int=Query(0,ge=0),limit:int=Query(100,ge=1,le=200)):
+    return issues(limit,offset)
 
 @router.get("/breakdown")
 def storage_breakdown():return breakdown()
@@ -47,7 +142,8 @@ def inventory_csv_report(snapshot_id: str):
     )
 
 
-_HOST_REPORT = DATA_DIR / "audits" / "host"
+_HOST_REPORT = Path("/host-audit")
+_LIVE_REPORT = Path("/logs/audit")
 
 @router.get("/host-audit")
 def host_audit_summary():
@@ -108,7 +204,7 @@ def host_audit_json():
 
 @router.get("/host-audit/live")
 def host_live_audit_status():
-    path = _HOST_REPORT / "live-state.json"
+    path = _LIVE_REPORT / "live-state.json"
     if not path.is_file():
         return {"available": False, "detail": "Наблюдение ещё не запущено"}
     try:
@@ -126,14 +222,14 @@ def host_live_audit_status():
     except (ValueError, TypeError):
         payload["heartbeat_stale"] = True
     payload["running"] = bool(payload.get("running")) and not payload["heartbeat_stale"]
-    payload["download_available"] = (_HOST_REPORT / "live-events.jsonl").is_file()
+    payload["download_available"] = (_LIVE_REPORT / "live-events.jsonl").is_file()
     return payload
 
 
 @router.get("/host-audit/live-events.jsonl")
 def host_live_audit_events():
-    """No page limit or compression: all observed events from observer startup."""
-    path = _HOST_REPORT / "live-events.jsonl"
+    """Bounded latest opt-in observer session."""
+    path = _LIVE_REPORT / "live-events.jsonl"
     if not path.is_file():
         raise HTTPException(404, "Наблюдение ещё не запущено")
     return FileResponse(

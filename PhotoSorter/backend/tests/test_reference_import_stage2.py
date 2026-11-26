@@ -28,8 +28,9 @@ def isolated_import(tmp_path,monkeypatch):
         admin.execute('CREATE SCHEMA "'+schema+'"')
     monkeypatch.setattr(database,"DB_URL",
                         make_conninfo(original,options="-c search_path="+schema))
-    monkeypatch.setattr(storage,"ROOT",tmp_path/"reference_staging")
-    monkeypatch.setattr(storage,"LEGACY_ROOT",tmp_path/"references")
+    from app import config
+    monkeypatch.setattr(config,"APP_STORAGE_ROOT",tmp_path/"app")
+    config.APP_STORAGE_ROOT.mkdir()
     try:
         database.initialize()
         from server.services import regions
@@ -139,14 +140,14 @@ def test_duplicate_receipts_skip_bytes_and_preserve_one_preparation(isolated_imp
     assert count_jobs()==1
     assert reference_uploads.confirm_duplicate(sid,second.upload_id,digest)["already_present"]
     assert count_jobs()==1
-    assert len(list((isolated_import/"reference_staging"/str(sid)/"files").iterdir()))==1
+    assert len(list(storage.object_root().glob("*/*")))==1
 
 def test_duplicate_can_be_confirmed_against_published_staged_source(isolated_import):
     from server.services import reference_publication
     raw=_jpg()
     digest=hashlib.sha256(raw).hexdigest()
     key=uuid.uuid4()
-    source=storage.object_path(uuid.uuid4(),key,"old.jpg")
+    source=storage.object_path(digest)
     source.parent.mkdir(parents=True,exist_ok=True)
     source.write_bytes(raw)
     with database.connect() as db:
@@ -200,7 +201,7 @@ def test_uploaded_bytes_are_deduplicated_on_server(isolated_import):
     state=reference_imports.status(sid)
     assert state["finalized"]==1
     assert state["duplicates"]==1
-    assert len(list((isolated_import/"reference_staging"/str(sid)/"files").iterdir()))==1
+    assert len(list(storage.object_root().glob("*/*")))==1
 
 def test_duplicate_without_verified_source_is_rejected(isolated_import):
     raw=_jpg()
@@ -271,7 +272,7 @@ def test_staging_symlink_parent_is_rejected_before_writing(isolated_import):
     raw=_jpg()
     item=entry()
     sid=open_session([item])
-    incoming=storage.session_root(sid)/"incoming"
+    incoming=storage.session_root(sid)
     incoming.parent.mkdir(parents=True)
     outside=isolated_import/"outside"
     outside.mkdir()
